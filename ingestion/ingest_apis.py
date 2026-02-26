@@ -14,6 +14,12 @@ import pyalex
 import httpx
 from dotenv import load_dotenv
 
+import sys
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except AttributeError:
+    pass
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.vector_store import QdrantStore
 from database.knowledge_graph import Neo4jGraphStore
@@ -78,6 +84,10 @@ def obtener_metadatos_de_scopus(scopus_ids):
     if isinstance(scopus_ids, str): scopus_ids = [scopus_ids]
     metadatos = {}
     for sid in scopus_ids:
+        # Extraer ID numérico si viene como URL (https://www.scopus.com/authid/detail.uri?authorId=...)
+        if 'authorId=' in sid:
+            sid = sid.split('authorId=')[-1].split('&')[0]
+            
         try:
             au = AuthorRetrieval(sid)
             for pub in au.get_documents():
@@ -136,12 +146,19 @@ def process_and_ingest_academics(json_path):
         original_name = data.get('original_name', academic_name)
         entity_name = data.get('entity', 'UNAM')
         
+        # 1. Checar flag previas
         if data.get('already_in_db', False):
             mapped_name = data.get('mapped_name', academic_name)
             print(f"\n[{academic_name}] Ya existe como '{mapped_name}'. Solo agregando afiliación a '{entity_name}'.")
             graph_store.add_academic_affiliation(mapped_name, entity_name)
             continue
             
+        # 2. Checar base de datos directo (por si se interrumpió y se vuelve a correr)
+        if hasattr(graph_store, 'check_academic_exists') and graph_store.check_academic_exists(academic_name):
+            print(f"\n[{academic_name}] Ya existe en Neo4j. Saltando recopilación API y agregando afiliación a '{entity_name}'.")
+            graph_store.add_academic_affiliation(academic_name, entity_name)
+            continue
+
         scopus_id = data.get('scopus', [])
         orcid = data.get('orcid', '')
         

@@ -167,3 +167,16 @@ class Neo4jGraphStore:
             except Exception as e:
                 pass
 
+    def check_academic_exists(self, academic_name: str) -> bool:
+        """
+        Verifica si un académico ya fue ingestados con sus documentos en Neo4j.
+        """
+        query = "MATCH (a:Academic {name: $academic_name}) RETURN count(a) > 0 as exists"
+        with self.driver.session() as session:
+            try:
+                result = session.run(query, academic_name=academic_name)
+                record = result.single()
+                return record["exists"] if record else False
+            except Exception as e:
+                return False
+

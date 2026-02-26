@@ -2,6 +2,12 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 import uuid
 from typing import List, Dict, Any
+import sys
+
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except AttributeError:
+    pass
 
 class QdrantStore:
     """
