@@ -67,6 +67,7 @@ class RAGOrchestrator:
         2. Si el usuario te pide cálculos complejos, análisis de datos en CSVs o Excel, generar gráficas, o interactuar fuertemente con el sistema operativo de forma dinámica, UTILIZA LA HERRAMIENTA 'OpenInterpreter_CodeExecutor'. Escríbele instrucciones claras en lenguaje natural.
         3. Mantén el contexto entre mensajes.
         4. Si se te provee el contexto de una 'Entidad Seleccionada' (ej. una facultad o instituto de la UNAM), DEBES restringir y enfocar tus respuestas a los académicos o producción exclusiva de esa entidad.
+        5. Siempre incluye en tus respuestas las fuentes de donde obtuviste la información. Por ejemplo, si mencionas un académico, incluye su nombre y la entidad a la que pertenece. Si mencionas una publicación, incluye su título, autores, año y DOI (con https://doi.org/...). 
         """
         
         self.prompt_template = ChatPromptTemplate.from_messages([

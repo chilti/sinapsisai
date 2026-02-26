@@ -3,7 +3,6 @@ venv/
 __pycache__/
 *.pyc
 .env
-data/
 *.db
 *.parquet
 
@@ -18,3 +17,5 @@ milvus_data/
 .DS_Store
 .vscode/
 .idea/
+
+data/cache/
