@@ -6,10 +6,6 @@ __pycache__/
 data/
 *.db
 *.parquet
-*.json
-*.xlsx
-*.txt
-*.bib
 
 # Databases & local storage
 neo4j_data/
