@@ -50,13 +50,13 @@ def render_institucion_view(entity_name):
             fig = px.area(df_annual, x='year', y='num_documents', 
                           title="Documentos Publicados por Año",
                           color_discrete_sequence=['#ff7f0e'])
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
             # Gráfico FWCI
             fig_fwci = px.line(df_annual, x='year', y='fwci_avg', markers=True, 
                                title="Evolución FWCI Promedio Institucional")
             fig_fwci.add_hline(y=1.0, line_dash="dash", line_color="red", annotation_text="Base Mundial (1.0)")
-            st.plotly_chart(fig_fwci, use_container_width=True)
+            st.plotly_chart(fig_fwci, width="stretch")
         
     if df_topics is not None and not df_topics.empty:
         df_topics = df_topics[df_topics['entity_name'] == entity_name]
@@ -76,7 +76,7 @@ def render_institucion_view(entity_name):
                 title="Concentración Temática"
             )
             fig_sun.update_layout(margin=dict(t=50, l=0, r=0, b=10), height=700)
-            st.plotly_chart(fig_sun, use_container_width=True)
+            st.plotly_chart(fig_sun, width="stretch")
 
 def render_investigador_view(entity_name):
     st.header(f"👤 Vista por Investigador ({entity_name})")
@@ -121,7 +121,7 @@ def render_investigador_view(entity_name):
         if df_inv_ann is not None:
             ann_data = df_inv_ann[df_inv_ann['academic_name'] == selected_inv].sort_values('year')
             fig_hist = px.bar(ann_data, x='year', y='num_documents', title="Producción Anual", text_auto=True)
-            st.plotly_chart(fig_hist, use_container_width=True)
+            st.plotly_chart(fig_hist, width="stretch")
         else:
             st.info("Sin datos anuales.")
 
@@ -135,7 +135,7 @@ def render_investigador_view(entity_name):
                 top_c = conc_data.sort_values('value', ascending=False).head(10)
                 fig_bar = px.bar(top_c, x='value', y='topic', orientation='h', title="Áreas de Expertise")
                 fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
-                st.plotly_chart(fig_bar, use_container_width=True)
+                st.plotly_chart(fig_bar, width="stretch")
             else:
                 st.info("Sin información temática.")
         else:
@@ -183,6 +183,6 @@ def render_investigador_view(entity_name):
             xaxis_title="Dimensión 1",
             yaxis_title="Dimensión 2"
         )
-        st.plotly_chart(fig_umap, use_container_width=True)
+        st.plotly_chart(fig_umap, width="stretch")
     else:
         st.info("El mapa UMAP no está disponible o faltan datos base calculados.")
