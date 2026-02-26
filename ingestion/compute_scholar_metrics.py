@@ -7,6 +7,11 @@ import os
 import sys
 import json
 import numpy as np
+
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except AttributeError:
+    pass
 import pandas as pd
 from pathlib import Path
 from umap import UMAP

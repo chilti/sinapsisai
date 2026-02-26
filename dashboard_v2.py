@@ -104,13 +104,27 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("Configuración")
     
-    # Extraer entidades precalculadas
-    df_institucion = load_cached_data("institucion_total.parquet")
-    if df_institucion is not None and not df_institucion.empty:
-        entidades_disponibles = sorted(df_institucion['entity_name'].unique())
+    # Extraer entidades direcamente desde Neo4j (grafo local)
+    try:
+        from database.knowledge_graph import Neo4jGraphStore
+        store = Neo4jGraphStore()
+        with store.driver.session() as session:
+            result = session.run("MATCH (e:Entity) RETURN DISTINCT e.name AS name")
+            entidades_neo4j = [record["name"] for record in result]
+        store.close()
+    except Exception as e:
+        entidades_neo4j = []
+
+    if entidades_neo4j:
+        entidades_disponibles = sorted(entidades_neo4j)
     else:
-        entidades_disponibles = ["Facultad de Ciencias", "Centro de Ciencias de la Complejidad", "UNAM Global"]
-        
+        # Fallback a data cache o de prueba
+        df_institucion = load_cached_data("institucion_total.parquet")
+        if df_institucion is not None and not df_institucion.empty:
+            entidades_disponibles = sorted(df_institucion['entity_name'].unique())
+        else:
+            entidades_disponibles = ["Facultad de Ciencias", "Centro de Ciencias de la Complejidad", "UNAM Global"]
+            
     selected_entity = st.selectbox("Entidad UNAM", entidades_disponibles)
     
     st.selectbox("Modelo", ["openai/gpt-oss-20b", "mistral-7b", "llama-3"], index=0)
