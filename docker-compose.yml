@@ -9,7 +9,7 @@ services:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - ./qdrant_storage:/qdrant/storage
+      - /mnt/expansion/dockers_drives/qdrant_storage:/qdrant/storage
     environment:
       - QDRANT__SERVICE__GRPC_PORT=6334
     restart: unless-stopped
@@ -22,10 +22,10 @@ services:
       - "7474:7474" # Browser GUI
       - "7687:7687" # Bolt connection
     volumes:
-      - ./neo4j_data:/data
-      - ./neo4j_logs:/logs
-      - ./neo4j_import:/var/lib/neo4j/import
-      - ./neo4j_plugins:/plugins
+      - /mnt/expansion/dockers_drives/neo4j_data:/data
+      - /mnt/expansion/dockers_drives/neo4j_logs:/logs
+      - /mnt/expansion/dockers_drives/neo4j_import:/var/lib/neo4j/import
+      - /mnt/expansion/dockers_drives/neo4j_plugins:/plugins
     environment:
       - NEO4J_AUTH=neo4j/password123
       - NEO4J_PLUGINS=["apoc"]
