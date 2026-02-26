@@ -1,4 +1,4 @@
-﻿annotated-doc==0.0.4
+annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.12.1
 anywidget==0.9.21
@@ -130,8 +130,7 @@ python-dotenv==1.2.1
 python-json-logger==4.0.0
 python-multipart==0.0.22
 pytz==2025.2
-pywin32==311
-pywinpty==3.0.3
+
 PyYAML==6.0.3
 pyzmq==27.1.0
 qdrant-client==1.17.0
