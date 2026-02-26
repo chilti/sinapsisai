@@ -137,7 +137,9 @@ def query_knowledge_graph_cypher(cypher_query: str) -> str:
     - Académicos/Autores: usen la etiqueta múltiple `WHERE (a:Academic OR a:Author)`. Atributos: `id`, `name`.
     - Artículos: usen la etiqueta múltiple `WHERE (p:APIPaper OR p:Paper)`. Atributos: `doi`, `title`, `year`, `citations`.
     - Entidades/Institución: `(e:Entity)` o `(i:Institution)`. Atributos: `name`.
-    - Relaciones: `(a)-[:AUTHORED]->(p)`, `(a)-[:AFFILIATED_TO]->(e)`.
+    - Tópicos Temáticos: `(t:Topic)`. Atributos: `id`, `name`, `domain`, `field`, `subfield`.
+    - ODS: `(s:SDG)`. Atributos: `id`, `name` (e.g. 'SDG 13').
+    - Relaciones: `(a)-[:AUTHORED]->(p)`, `(a)-[:AFFILIATED_TO]->(e)`, `(p)-[:ADDRESSES]->(s)`, `(p)-[:HAS_TOPIC]->(t)`.
     
     IMPORTANTE PARA NOMBRES: Los nombres en la base pueden estar como "APELLIDO, NOMBRE" u ordenados distinto. NUNCA busques por coincidencia exacta `{name: '...'}`. 
     SIEMPRE usa la búsqueda relativa ignorando mayúsculas: `WHERE toLower(a.name) CONTAINS toLower('Bucio Carrillo')`

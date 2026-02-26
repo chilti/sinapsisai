@@ -67,8 +67,18 @@ Para cargar información de una entidad, debes ejecutar de manera secuencial los
    ```bash
    python .\ingestion\ingest_apis.py .\ingestion\profesores_Entidad_Resultados.json 
    ```
-4. **Computar las Métricas Analíticas y Tableros (Caché Parquet)**
-   Precalcula el Sunburst, dimensiones UMAP y conteos históricos para alimentar el Dashboard sin demoras.
+4. **Extraer Nodos de Tópicos (Graph Transformation)**
+   Extrae la información temática de la API de OpenAlex y la despliega como Nodos Temáticos `(t:Topic)` explícitos conectados por relaciones en Neo4j.
+   ```bash
+   python .\ingestion\extract_topics.py
+   ```
+5. **Auto-Clasificación ODS con LLM Local**
+   Se conecta a un modelo de lenguaje local (ej. LM Studio por defecto en puerto 1234) para inferir y asignar el ODS (Sustainable Development Goal) principal del Abstract del artículo iterando Neo4j.
+   ```bash
+   python .\ingestion\ingest_sdg.py
+   ```
+6. **Computar las Métricas Analíticas y Tableros (Caché Parquet)**
+   Precalcula el Sunburst, dimensiones UMAP y conteos históricos para alimentar el Dashboard sin demoras. Utiliza el módulo de interfaz `viz_ods.py` en la generación.
    ```bash
    python .\ingestion\compute_scholar_metrics.py
    ```

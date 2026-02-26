@@ -95,6 +95,23 @@ if "chat_history" not in st.session_state:
 
 # ---- Sidebar ----
 with st.sidebar:
+    st.markdown("""
+    <style>
+    [data-testid="stSidebar"] div[data-baseweb="select"] > div {
+        background-color: rgba(28, 131, 225, 0.1) !important;
+    }
+    [data-testid="stSidebar"] div[data-baseweb="select"] * {
+        color: black !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stSelectbox"] div[role="button"] {
+        background-color: rgba(28, 131, 225, 0.1) !important;
+        color: black !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stSelectbox"] div[role="button"] * {
+        color: black !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
     st.title("🔬 Sinapsis AI")
     st.markdown("---")
     st.subheader("Estado del Sistema")

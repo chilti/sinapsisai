@@ -46,12 +46,16 @@ def extract_academic_papers():
     query = """
     MATCH (a:Academic)-[:AUTHORED]->(p)
     OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
+    OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
     RETURN a.name AS academic_name,
            collect(DISTINCT e.name) AS entities,
            p.id AS paper_id,
            p.year AS year,
            p.citations AS citations,
-           p.raw_metadata AS raw_metadata
+           p.raw_metadata AS raw_metadata,
+           s.name AS sdg_name,
+           r.confidence AS sdg_confidence,
+           r.reasoning AS sdg_reasoning
     """
     
     records = []
@@ -66,6 +70,9 @@ def extract_academic_papers():
                     pass
             
             fwci = raw_meta.get('fwci', None) 
+            title = raw_meta.get('Title', 'No Title')
+            source = raw_meta.get('Source', 'Unknown')
+            doi_link = "https://doi.org/" + row['paper_id'] if row['paper_id'] and not "urn:" in row['paper_id'] else None
             
             topics = raw_meta.get('OpenAlex_Topics', [])
             if not isinstance(topics, list): topics = []
@@ -76,8 +83,16 @@ def extract_academic_papers():
                 'paper_id': row['paper_id'],
                 'year': row['year'],
                 'citations': row['citations'],
+                'Title': title,
+                'Source': source,
+                'DOI': doi_link,
+                'Link': doi_link,
                 'fwci': fwci,
-                'topics': topics
+                'topics': topics,
+                'ODS_ID': row['sdg_name'] if row['sdg_name'] else None,
+                'ODS_Nombre': row['sdg_name'] if row['sdg_name'] else None,
+                'ODS_Confianza': row['sdg_confidence'] if row['sdg_confidence'] else None,
+                'ODS_Justificacion': row['sdg_reasoning'] if row['sdg_reasoning'] else None
             })
             
     return pd.DataFrame(records)
@@ -87,11 +102,15 @@ def extract_entity_papers():
     graph_store = Neo4jGraphStore()
     query = """
     MATCH (e:Entity)-[:HAS_PAPER]->(p:Paper)
+    OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
     RETURN e.name AS entity_name,
            p.id AS paper_id,
            p.year AS year,
            p.citations AS citations,
-           p.raw_metadata AS raw_metadata
+           p.raw_metadata AS raw_metadata,
+           s.name AS sdg_name,
+           r.confidence AS sdg_confidence,
+           r.reasoning AS sdg_reasoning
     """
     records = []
     with graph_store.driver.session() as session:
@@ -105,6 +124,9 @@ def extract_entity_papers():
                     pass
             
             fwci = raw_meta.get('fwci', None) 
+            title = raw_meta.get('Title', 'No Title')
+            source = raw_meta.get('Source', 'Unknown')
+            doi_link = "https://doi.org/" + row['paper_id'] if row['paper_id'] and not "urn:" in row['paper_id'] else None
             
             topics = raw_meta.get('OpenAlex_Topics', [])
             if not isinstance(topics, list): topics = []
@@ -114,8 +136,16 @@ def extract_entity_papers():
                 'paper_id': row['paper_id'],
                 'year': row['year'],
                 'citations': row['citations'],
+                'Title': title,
+                'Source': source,
+                'DOI': doi_link,
+                'Link': doi_link,
                 'fwci': fwci,
-                'topics': topics
+                'topics': topics,
+                'ODS_ID': row['sdg_name'] if row['sdg_name'] else None,
+                'ODS_Nombre': row['sdg_name'] if row['sdg_name'] else None,
+                'ODS_Confianza': row['sdg_confidence'] if row['sdg_confidence'] else None,
+                'ODS_Justificacion': row['sdg_reasoning'] if row['sdg_reasoning'] else None
             })
             
     return pd.DataFrame(records)
@@ -179,6 +209,9 @@ def process_and_save():
     df_raw = df_raw.dropna(subset=['year'])
     df_raw = compute_percentiles(df_raw)
     
+    # Exportar listado general de papers de Académicos
+    df_raw.to_parquet(CACHE_DIR / 'papers_profesor.parquet', index=False)
+    
     # TOPICOS SUNBURST
     print("⏳ Precalculando agrupaciones de Tópicos (Sunburst)...")
     topics_list = []
@@ -229,6 +262,9 @@ def process_and_save():
         df_inst_raw['year'] = pd.to_numeric(df_inst_raw['year'], errors='coerce')
         df_inst_raw = df_inst_raw.dropna(subset=['year'])
         df_inst_raw = compute_percentiles(df_inst_raw)
+        
+        # Exportar listado general de papers de Institucion
+        df_inst_raw.to_parquet(CACHE_DIR / 'papers_institucion.parquet', index=False)
         
         df_inst_tot = aggregate_metrics(df_inst_raw, ['entity_name'])
         df_inst_tot.to_parquet(CACHE_DIR / 'institucion_total.parquet', index=False)

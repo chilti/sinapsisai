@@ -4,6 +4,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import os
 import sys
+import json
+import numpy as np
+import viz_ods  # Nuevo módulo para pintar la matriz de ODS
 
 # Paths
 BASE_PATH = os.path.dirname(os.path.abspath(__file__))
@@ -15,6 +18,39 @@ def load_cached_data(filename):
     if os.path.exists(path):
         return pd.read_parquet(path)
     return None
+
+def cargar_lista_academicos(ruta_json="ingestion/profesores_Instituto_de_Ciencias_Nucleares.json"):
+    path = os.path.join(BASE_PATH, ruta_json)
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def mostrar_banners_destacados(df):
+    st.subheader("Publicaciones Destacadas")
+    
+    if df.empty:
+        st.info("Sin publicaciones para mostrar.")
+        return
+
+    # Preparamos los datos
+    df_sorted_citas = df.sort_values(by="citations", ascending=False).head(10)
+    df_sorted_recientes = df.sort_values(by="year", ascending=False).head(10)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("#### 🔥 Artículos Más Citados")
+        for _, row in df_sorted_citas.iterrows():
+            Title = f"[{row['Title']}]({row['DOI']})" if row['DOI'] else row['Title']
+            st.markdown(f"**{int(row['citations'])} citas** - {Title} ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
+
+    with col2:
+        st.markdown("#### 🚀 Artículos Más Recientes")
+        for _, row in df_sorted_recientes.iterrows():
+            Title = f"[{row['Title']}]({row['DOI']})" if row['DOI'] else row['Title']
+            st.markdown(f"**{int(row['year']) if pd.notna(row['year']) else 'N/A'}** - {Title}")
 
 def render_institucion_view(entity_name):
     st.header(f"🏢 Vista de la Institución: {entity_name}")
@@ -69,7 +105,7 @@ def render_institucion_view(entity_name):
             
             fig_sun = px.sunburst(
                 top_topics, 
-                path=['Institución', 'domain', 'field', 'subfield', 'topic'], 
+                path=[ 'domain', 'field', 'subfield', 'topic'], 
                 values='value',
                 color='value', 
                 color_continuous_scale='Blues',
@@ -78,9 +114,38 @@ def render_institucion_view(entity_name):
             fig_sun.update_layout(margin=dict(t=50, l=0, r=0, b=10), height=700)
             st.plotly_chart(fig_sun, width="stretch")
 
+    df_institucion_papers = load_cached_data("papers_institucion.parquet")
+    if df_institucion_papers is not None and not df_institucion_papers.empty:
+        df_inst_p = df_institucion_papers[df_institucion_papers['entity_name'] == entity_name]
+        
+        st.markdown("---")
+        st.header("🌍 Impacto Global Institucional en Sostenibilidad (ODS)")
+        st.write("Distribución consolidada de toda la producción científica de la institución respecto a los Objetivos de Desarrollo Sostenible.")
+        html_code_inst = viz_ods.render_sdg_matrix(df_inst_p, col_ods='ODS_ID')
+        st.markdown(html_code_inst, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        st.subheader("📜 Repositorio de Publicaciones (Institucional)")
+        years_inst = np.flip(np.unique(df_inst_p['year'].dropna()))
+        s_year_inst = st.selectbox("Filtrar publicaciones institucionales por año:", options=["Todos"] + list(years_inst))
+        
+        df_display_inst = df_inst_p if s_year_inst == "Todos" else df_inst_p[df_inst_p['year'] == s_year_inst]
+        
+        df_display_inst = df_display_inst[[
+            "year", "Title", "Source", "citations", "DOI", "ODS_Nombre"
+        ]].rename(columns={
+            "year": "Año",
+            "Title": "Título",
+            "Source": "Revista/Publicación",
+            "citations": "Citas",
+            "DOI": "DOI",
+            "ODS_Nombre": "ODS"
+        }).sort_values(by="Año", ascending=False)
+        
+        st.dataframe(df_display_inst, use_container_width=True, hide_index=True, column_config={"DOI": st.column_config.LinkColumn("Enlace DOI")})
+
 def render_investigador_view(entity_name):
     st.header(f"👤 Vista por Investigador ({entity_name})")
-    st.markdown("Perfil Evolutivo y Desempeño Multivariado")
 
     df_inv_tot = load_cached_data("investigador_total.parquet")
     df_inv_ann = load_cached_data("investigador_annual.parquet")
@@ -104,6 +169,25 @@ def render_investigador_view(entity_name):
     investigadores = sorted(df_inv_tot['academic_name'].unique())
     selected_inv = st.selectbox("Seleccione un Académico:", investigadores)
 
+    # 4. Enlaces de Perfil Externo
+    academicos_dict = cargar_lista_academicos()
+    academico_info = academicos_dict.get(selected_inv, {})
+    
+    st.markdown("---")
+    st.subheader("🔗 Enlaces de Perfil Académico")
+    col_links1, col_links2 = st.columns([3, 1])
+    with col_links1:
+        if academico_info.get("siia") and "No encont" not in academico_info["siia"]:
+            st.markdown(f"- **SIIA-UNAM:** [Ver Perfil de {selected_inv}]({academico_info['siia']})")
+        if academico_info.get("orcid"):
+            st.markdown(f"- **ORCID:** [Ver Perfil]({academico_info['orcid']})")
+        
+        lista_scopus_id = academico_info.get("scopus", "")
+        if lista_scopus_id and "http" in lista_scopus_id:
+            st.markdown(f"- **Scopus:** [Ver Perfil]({lista_scopus_id})")
+            
+    
+
     # 1. KPIs del Investigador
     inv_data = df_inv_tot[df_inv_tot['academic_name'] == selected_inv].iloc[0]
     st.markdown("---")
@@ -113,7 +197,10 @@ def render_investigador_view(entity_name):
     c3.metric("Total Citas", f"{int(inv_data.get('citations',0)):,}")
     c4.metric("FWCI Prom.", f"{inv_data.get('fwci_avg', 0):.2f}")
 
+
     colizq, colder = st.columns([1, 1])
+
+    
 
     # 2. Trayectoria Anual
     with colizq:
@@ -141,7 +228,60 @@ def render_investigador_view(entity_name):
         else:
             st.info("No hay caché temático.")
 
-    # 4. Mapa UMAP
+    # 3.5 Sunburst Temático
+    if df_topics is not None:
+        conc_data = df_topics[df_topics['academic_name'] == selected_inv]
+        if not conc_data.empty:
+            st.markdown("---")
+            st.subheader("Concentración Temática (Sunburst)")
+            top_topics_inv = conc_data.sort_values('value', ascending=False).head(100)
+            
+            fig_sun_inv = px.sunburst(
+                top_topics_inv, 
+                path=['domain', 'field', 'subfield', 'topic'], 
+                values='value',
+                color='value', 
+                color_continuous_scale='Blues',
+            )
+            fig_sun_inv.update_layout(margin=dict(t=10, l=0, r=0, b=10), height=600)
+            st.plotly_chart(fig_sun_inv, use_container_width=True)
+
+    
+
+    df_profesores_papers = load_cached_data("papers_profesor.parquet")
+    if df_profesores_papers is not None and not df_profesores_papers.empty:
+        df_prof = df_profesores_papers[df_profesores_papers['academic_name'] == selected_inv]
+        
+        st.markdown("---")
+        mostrar_banners_destacados(df_prof)
+        
+        st.markdown("---")
+        st.header("🌍 Panorama General de Sostenibilidad (ODS)")
+        st.write("Distribución de la producción científica en base a Objetivos de Desarrollo Sostenible (Asignados por LLM).")
+        html_code = viz_ods.render_sdg_matrix(df_prof, col_ods='ODS_ID')
+        st.markdown(html_code, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        st.subheader("📜 Lista Completa de Publicaciones")
+        years = np.flip(np.unique(df_prof['year'].dropna()))
+        s_year = st.selectbox("Filtrar por año de publicación (o ver todos):", options=["Todos"] + list(years))
+        
+        df_display = df_prof if s_year == "Todos" else df_prof[df_prof['year'] == s_year]
+        
+        df_display = df_display[[
+            "year", "Title", "Source", "citations", "DOI", "ODS_Nombre"
+        ]].rename(columns={
+            "year": "Año",
+            "Title": "Título",
+            "Source": "Revista/Publicación",
+            "citations": "Citas",
+            "DOI": "DOI",
+            "ODS_Nombre": "ODS"
+        }).sort_values(by="Año", ascending=False)
+        
+        st.dataframe(df_display, use_container_width=True, hide_index=True, column_config={"DOI": st.column_config.LinkColumn("Enlace DOI")})
+    
+    # 5. Mapa UMAP
     st.markdown("---")
     st.subheader("Mapa de Desempeño Institucional (UMAP)")
     st.markdown("Cálculo multidimensional comparando Doc, %Top 10, FWCI y Citas normalizadas frente al resto del padrón.")
