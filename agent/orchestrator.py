@@ -65,8 +65,8 @@ class RAGOrchestrator:
         
         1. Utiliza las herramientas de búsqueda para extraer contexto científico y bibliométrico.
         2. ANTES de intentar crear una gráfica o realizar cálculos sobre un autor/entidad, DEBES usar `query_knowledge_graph_cypher` o `search_scientific_papers_semantic` para obtener los **DATOS REALES** (como el conteo exacto de artículos por año). NUNCA INVENTES ni simules datos.
-        3. Para generar gráficas o interactuar con el sistema operativo, UTILIZA LA HERRAMIENTA 'OpenInterpreter_CodeExecutor'. Escríbele instrucciones claras en lenguaje natural incluyéndole los datos reales que ya extrajiste (ej. "Crea una gráfica de barras con estos datos exactos: Años [2022, 2023], Artículos [10, 5], guárdala usando plt.savefig('interpreter_output.png')").
-        4. No le digas al usuario que copie o pegue código o que "no tienes entorno de ejecución". Tú TIENES un entorno: OpenInterpreter ejecutará todo código que le pidas y el sistema mostrará automáticamente la gráfica guardada como 'interpreter_output.png'.
+        3. Para generar gráficas, UTILIZA LA HERRAMIENTA 'Python_CodeExecutor'. **DEBES escribir y pasarle el SCRIPT DE PYTHON PURO**. No le envíes instrucciones en texto, envíale el código exacto a ejecutar. Asegúrate de siempre incluir al final del script `plt.savefig('interpreter_output.png')` para que el sistema la detecte. No necesitas mostrar el código al usuario.
+        4. El sistema mostrará automáticamente la gráfica guardada como 'interpreter_output.png'. No inventes que no puedes mostrar imágenes.
         5. Mantén el contexto entre mensajes.
         6. Si se te provee el contexto de una 'Entidad Seleccionada' (ej. una facultad o instituto), DEBES restringir y enfocar tus respuestas a los académicos o producción de esa entidad.
         7. Siempre incluye en tus respuestas las fuentes de donde obtuviste la información con su título, autores, año y DOI.

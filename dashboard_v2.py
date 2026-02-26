@@ -146,16 +146,12 @@ with st.sidebar:
     
     st.selectbox("Modelo", ["openai/gpt-oss-20b", "mistral-7b", "llama-3"], index=0)
 
-    if st.button("Limpiar Conversación"):
-        st.session_state.chat_history = []
-        st.session_state.orchestrator.clear_session(st.session_state.session_id)
-        st.rerun()
 
     st.markdown("---")
     st.markdown("### Capas de Datos Activas")
-    st.markdown("- ✅ **OpenAlex** (Global)")
-    st.markdown("- ✅ **Qdrant** (Semántica Local)")
     st.markdown("- ✅ **Neo4j** (Grafos Local)")
+    st.markdown("- ✅ **Qdrant** (Semántica Local)")    
+    st.markdown("- ✅ **OpenAlex** (Global)")
     st.markdown("- ✅ **OpenInterpreter** (Código)")
     #st.markdown("- ✅ **Sci-Hub** (Descargas)")
 
@@ -164,12 +160,19 @@ with st.sidebar:
 st.title("Sinapsis AI: Hub de Ciencia Abierta")
 st.markdown("Inteligencia Bibliométrica Híbrida")
 
-tab_chat, tab_inst, tab_inv = st.tabs(["🤖 Orquestador RAG", "🏢 Panorama Institucional", "👤 Perfil Académico."])
+tab_inst, tab_inv, tab_chat, tab_about = st.tabs(["🏢 Panorama Institucional", "👤 Perfil Académico", "🤖 Asistente", "ℹ️ Acerca de..."])
 
 # =======================================================
 # TAB 1: Chat RAG Orquestador
 # =======================================================
 with tab_chat:
+    col_clear, _ = st.columns([1, 4])
+    with col_clear:
+        if st.button("🗑️ Limpiar Conversación"):
+            st.session_state.chat_history = []
+            st.session_state.orchestrator.clear_session(st.session_state.session_id)
+            st.rerun()
+
     chat_container = st.container()
 
     with chat_container:
@@ -224,6 +227,18 @@ with tab_chat:
                     "image": img_data
                 })
 
+                # Inyectar JS para auto-scroll
+                import streamlit.components.v1 as components
+                components.html(
+                    """
+                    <script>
+                        var body = window.parent.document.querySelector(".main");
+                        body.scrollTop = body.scrollHeight;
+                    </script>
+                    """,
+                    height=0,
+                )
+
 # =======================================================
 # TAB 2: Vista de la Institución
 # =======================================================
@@ -235,6 +250,118 @@ with tab_inst:
 # =======================================================
 with tab_inv:
     render_investigador_view(selected_entity)
+
+# =======================================================
+# TAB 4: Acerca de...
+# =======================================================
+with tab_about:
+    st.header("Arquitectura del Sistema Híbrido")
+    st.markdown("Este diagrama describe el flujo de datos global de **Sinapsis AI**, desde la recolección de metadatos hasta la Inteligencia Híbrida del Agente RAG.")
+    
+    mermaid_code = """
+    graph TD
+        %% Ingestion Layer
+        subgraph Data Ingestion
+            A[SIIA / Local DB] --> B(Ingesta Inicial)
+            B --> C{APIs Globales}
+            C --> D[OpenAlex]
+            C --> E[Scopus]
+            C --> F[ORCID]
+        end
+
+        %% Database Layer
+        subgraph Hybrid Knowledge Base
+            D -->|Metadata & Abstract| G[(Neo4j: Knowledge Graph)]
+            E -->|Citations| G
+            F -->|Authored DOIs| G
+            
+            G -.-> |Vectorize texts| H[(Qdrant: Vector DB)]
+            
+            subgraph Graph Nodes
+              G1((Academic)) -.- G
+              G2((Entity)) -.- G
+              G3((APIPaper)) -.- G
+              G4((Topic)) -.- G
+              G5((SDG)) -.- G
+            end
+        end
+
+        %% Pre-computation Layer
+        subgraph Analytical Caching
+            G -->|ETL offline| I[Archivos Parquet]
+            I -->|papers_profesor| J[Local Cache]
+            I -->|institucion_annual| J
+        end
+
+        %% App Layer
+        subgraph Streamlit Interface
+            J --> K[Dashboard de Analítica]
+            K --> L{Vistas}
+            L --> M[Perfil Institucional]
+            L --> N[Perfil Académico]
+            
+            H <--> O[Orquestador RAG]
+            G <--> O
+        end
+
+        %% Agent Tools
+        subgraph Local AI Agent
+            O --> P(Local LLM)
+            O -.-> Q[Cypher Tool]
+            O -.-> R[Semantic Search Tool]
+            O -.-> S[Open Interpreter <br/> Code execution]
+        end
+    """
+    
+    # Renderizamos Mermaid JS usando inyección segura de componentes de Streamlit
+    import streamlit.components.v1 as components
+    html_mermaid = f"""
+    <div class="mermaid">
+    {mermaid_code}
+    </div>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({{ startOnLoad: true, theme: 'default' }});
+    </script>
+    """
+    components.html(html_mermaid, height=950, scrolling=True)
+
+    st.markdown("---")
+    st.header("Pipeline Secuencial de Ingesta de Datos")
+    st.markdown("El proceso de extracción, enriquecimiento y vectorización ocurre en las siguientes fases *offline* antes de ser expuesto al Dashboard:")
+    
+    mermaid_ingestion = """
+    graph TD
+        A([1. Web Scraping / Archivo Local]) -->|siia_scraper.py| B[Lista Base de Académicos JSON]
+        B -->|ingest_apis.py| C{Enriquecimiento Global APIs}
+        C -->|Fetch| D[OpenAlex]
+        C -->|Fetch| E[ORCID / Scopus]
+        D --> F[(Neo4j: Nodos Academic / APIPaper)]
+        E --> F
+        
+        F -->|extract_topics.py| G["Extracción Temática <br/> Nodos Topic"]
+        F -->|"ingest_sdg.py <br/> Local LLM"| H["Clasificación ODS <br/> Nodos SDG"]
+        
+        G --> I[(Neo4j: Grafo de Conocimiento)]
+        H --> I
+        
+        I -->|compute_scholar_metrics.py| J{Motor de Cómputo Analítico}
+        J --> K[Métricas Institucionales]
+        J --> L[Métricas por Investigador]
+        K --> M[(Dataframe en Caché Parquet)]
+        L --> M
+    """
+
+    html_mermaid_ingestion = f"""
+    <div class="mermaid">
+    {mermaid_ingestion}
+    </div>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({{ startOnLoad: true, theme: 'default' }});
+    </script>
+    """
+    components.html(html_mermaid_ingestion, height=850, scrolling=True)
 
 
 # ---- Footer ----

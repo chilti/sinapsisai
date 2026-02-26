@@ -134,12 +134,17 @@ def query_knowledge_graph_cypher(cypher_query: str) -> str:
     con X y también han publicado sobre el concepto Y?', o '¿Cuál es la evolución de citas de este grupo?'.
     
     REGLA: El esquema real de la base de datos tiene **DOS variaciones** de etiquetas (una local y una por API):
-    - Académicos/Autores: usen la etiqueta múltiple `WHERE (a:Academic OR a:Author)`. Atributos: `id`, `name`.
-    - Artículos: usen la etiqueta múltiple `WHERE (p:APIPaper OR p:Paper)`. Atributos: `doi`, `title`, `year`, `citations`.
-    - Entidades/Institución: `(e:Entity)` o `(i:Institution)`. Atributos: `name`.
+    - Académicos/Autores: usen la etiqueta múltiple `(a:Academic|Author)`. Atributos: `id`, `name`.
+    - Artículos: usen la etiqueta múltiple `(p:APIPaper|Paper)`. Atributos: `doi`, `title`, `year`, `citations`.
+    - Entidades/Institución: `(e:Entity)`. Atributos: `name`.
     - Tópicos Temáticos: `(t:Topic)`. Atributos: `id`, `name`, `domain`, `field`, `subfield`.
     - ODS: `(s:SDG)`. Atributos: `id`, `name` (e.g. 'SDG 13').
-    - Relaciones: `(a)-[:AUTHORED]->(p)`, `(a)-[:AFFILIATED_TO]->(e)`, `(p)-[:ADDRESSES]->(s)`, `(p)-[:HAS_TOPIC]->(t)`.
+    
+    RELACIONES IMPORTANTES PRECISAS:
+    - Los autores investigan papers: `(a)-[:AUTHORED]->(p)`
+    - Los autores pertenecen a entidades: `(a)-[:AFFILIATED_TO]->(e)`. **ATENCIÓN:** NO uses esta relación (Entity/Institución) a menos que el usuario limite su pregunta a un instituto o facultad específica. Si pregunta de forma general ("¿Quiénes trabajan en X?"), asume toda la base y omite la relación de Entidad.
+    - Los PAPERS tienen tópicos: `(p:APIPaper)-[:HAS_TOPIC]->(t:Topic)`. LOS AUTORES NO TIENEN TÓPICOS DIRECTAMENTE. Si preguntas qué autores trabajan en un topic o sdg: `MATCH (a:Academic)-[:AUTHORED]->(p:APIPaper)-[:HAS_TOPIC]->(t:Topic)`
+    - Los PAPERS contribuyen a SDGs: `(p:APIPaper)-[:ADDRESSES]->(s:SDG)`. LOS AUTORES NO TIENEN SDGs DIRECTAMENTE.
     
     IMPORTANTE PARA NOMBRES: Los nombres en la base pueden estar como "APELLIDO, NOMBRE" u ordenados distinto. NUNCA busques por coincidencia exacta `{name: '...'}`. 
     SIEMPRE usa la búsqueda relativa ignorando mayúsculas: `WHERE toLower(a.name) CONTAINS toLower('Bucio Carrillo')`

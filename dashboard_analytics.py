@@ -142,7 +142,7 @@ def render_institucion_view(entity_name):
             "ODS_Nombre": "ODS"
         }).sort_values(by="Año", ascending=False)
         
-        st.dataframe(df_display_inst, use_container_width=True, hide_index=True, column_config={"DOI": st.column_config.LinkColumn("Enlace DOI")})
+        st.dataframe(df_display_inst, width="stretch", hide_index=True, column_config={"DOI": st.column_config.LinkColumn("Enlace DOI")})
 
 def render_investigador_view(entity_name):
     st.header(f"👤 Vista por Investigador ({entity_name})")
@@ -244,7 +244,7 @@ def render_investigador_view(entity_name):
                 color_continuous_scale='Blues',
             )
             fig_sun_inv.update_layout(margin=dict(t=10, l=0, r=0, b=10), height=600)
-            st.plotly_chart(fig_sun_inv, use_container_width=True)
+            st.plotly_chart(fig_sun_inv, width="stretch")
 
     
 
@@ -279,7 +279,7 @@ def render_investigador_view(entity_name):
             "ODS_Nombre": "ODS"
         }).sort_values(by="Año", ascending=False)
         
-        st.dataframe(df_display, use_container_width=True, hide_index=True, column_config={"DOI": st.column_config.LinkColumn("Enlace DOI")})
+        st.dataframe(df_display, width="stretch", hide_index=True, column_config={"DOI": st.column_config.LinkColumn("Enlace DOI")})
     
     # 5. Mapa UMAP
     st.markdown("---")

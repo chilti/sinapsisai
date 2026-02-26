@@ -36,13 +36,15 @@ load_dotenv()
 
 pyalex.config.email = os.getenv("EMAIL_ADDRESS", "[EMAIL_ADDRESS]")
 
+from langchain_openai import OpenAIEmbeddings
+
 # --- Config Embeddings ---
 user = os.getenv("LLM_USER")
 password = os.getenv("LLM_PASSWORD")
 base_url = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1/")
 if not base_url.endswith("/"):
     base_url += "/"
-model = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+model_name = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
 auth_url = base_url
 if user and password:
     if "://" in base_url:
@@ -51,15 +53,25 @@ if user and password:
     else:
         auth_url = f"http://{user}:{password}@{base_url}"
 
-http_client = httpx.Client(verify=False, timeout=60)
-EMBEDDINGS_URL = auth_url.rstrip('/') + '/embeddings'
+http_client = httpx.Client(verify=False, timeout=120)
 
-def get_embeddings(texts: list) -> list:
+embeddings_model = OpenAIEmbeddings(
+    model=model_name,
+    base_url=auth_url,
+    api_key="lm-studio",
+    http_client=http_client,
+    check_embedding_ctx_length=False
+)
+
+def get_embeddings(texts: list, batch_size: int = 5) -> list:
     if not texts: return []
-    response = http_client.post(EMBEDDINGS_URL, json={"model": model, "input": texts})
-    response.raise_for_status()
-    data = response.json()
-    return [item["embedding"] for item in sorted(data["data"], key=lambda x: x["index"])]
+    all_embeddings = []
+    # LM Studio puede fallar con batches grandes, procesamos en pequeños lotes de 5
+    for i in range(0, len(texts), batch_size):
+        batch = [str(t) if t else " " for t in texts[i:i+batch_size]]
+        embs = embeddings_model.embed_documents(batch)
+        all_embeddings.extend(embs)
+    return all_embeddings
 
 # --- Inicializar Bases de Datos Diferenciadas ---
 # Colección distinta para embeddings generados por API
@@ -134,7 +146,7 @@ def obtener_metadatos_de_orcid(orcid_url):
 
 # --- Lógica principal de ingesta ---
 
-def process_and_ingest_academics(json_path):
+def process_and_ingest_academics(json_path, force=False):
     if not os.path.exists(json_path):
         print(f"No se encontró el archivo: {json_path}")
         return
@@ -147,14 +159,14 @@ def process_and_ingest_academics(json_path):
         entity_name = data.get('entity', 'UNAM')
         
         # 1. Checar flag previas
-        if data.get('already_in_db', False):
+        if data.get('already_in_db', False) and not force:
             mapped_name = data.get('mapped_name', academic_name)
-            print(f"\n[{academic_name}] Ya existe como '{mapped_name}'. Solo agregando afiliación a '{entity_name}'.")
+            print(f"\n[{academic_name}] Ya existe como '{mapped_name}' (cached en excel). Saltar recoleccion.")
             graph_store.add_academic_affiliation(mapped_name, entity_name)
             continue
             
         # 2. Checar base de datos directo (por si se interrumpió y se vuelve a correr)
-        if hasattr(graph_store, 'check_academic_exists') and graph_store.check_academic_exists(academic_name):
+        if hasattr(graph_store, 'check_academic_exists') and graph_store.check_academic_exists(academic_name) and not force:
             print(f"\n[{academic_name}] Ya existe en Neo4j. Saltando recopilación API y agregando afiliación a '{entity_name}'.")
             graph_store.add_academic_affiliation(academic_name, entity_name)
             continue
@@ -261,7 +273,17 @@ def process_and_ingest_academics(json_path):
 
 if __name__ == "__main__":
     base_json = os.path.join(os.path.dirname(__file__), "profesores_datos.json")
-    if len(sys.argv) > 1:
-        base_json = sys.argv[1]
-    process_and_ingest_academics(base_json)
+    force_run = False
+    
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    flags = [a for a in sys.argv[1:] if a.startswith("--")]
+    
+    if len(args) > 0:
+        base_json = args[0]
+        
+    if "--force" in flags:
+        force_run = True
+        print("⚠️ Flag --force detectada: Se reescribirá la información de académicos existentes.")
+        
+    process_and_ingest_academics(base_json, force=force_run)
     print("\n🎉 Proceso global de ingesta de APIs completado.")
