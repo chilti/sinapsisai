@@ -72,7 +72,8 @@ def translate_to_english(text: str) -> str:
         return text
 
 # Inicialización de las conexiones
-qdrant = QdrantStore()
+qdrant_docs = QdrantStore(collection_name="scientific_papers")
+qdrant_apis = QdrantStore(collection_name="api_papers")
 neo4j = Neo4jGraphStore()
 embeddings_model = OpenAIEmbeddings(
     model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text"),
@@ -92,15 +93,22 @@ def search_scientific_papers_semantic(query: str, limit: int = 5) -> str:
     """
     # Traducir al inglés si es necesario (los papers están en inglés)
     query_en = translate_to_english(query)
-    print(f"🔍 Búsqueda semántica en Qdrant para: '{query_en}'")
+    print(f"🔍 Búsqueda semántica en Qdrant (Híbrida) para: '{query_en}'")
     try:
         query_vector = embeddings_model.embed_query(query_en)
-        results = qdrant.search(query_vector, limit=limit)
         
-        if not results:
+        # Consultar ambas colecciones
+        results_docs = qdrant_docs.search(query_vector, limit=limit)
+        results_apis = qdrant_apis.search(query_vector, limit=limit)
+        
+        # Combinar y ordenar por los de mayor relevancia
+        all_results = sorted(results_docs + results_apis, key=lambda x: x.get("score", 0), reverse=True)
+        top_results = all_results[:limit]
+        
+        if not top_results:
             return "No se encontraron resultados semánticos."
             
-        return json.dumps(results, ensure_ascii=False)
+        return json.dumps(top_results, ensure_ascii=False)
     except Exception as e:
         return f"Error en búsqueda semántica: {str(e)}"
 
