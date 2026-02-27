@@ -81,7 +81,7 @@ def fetch_unclassified_papers():
     """Obtiene los papers de Neo4j que aún no tienen clasificación SDG."""
     query = """
     MATCH (p:Paper)
-    WHERE NOT (p)-[:ADDRESSES]->(:SDG)
+    WHERE COALESCE(p.sdg_processed, false) = false
     RETURN p.doi AS doi, p.title AS title, p.raw_metadata AS metadata
     LIMIT 50
     """
@@ -146,16 +146,23 @@ def run():
             # to avoid picking it up again in fetch_unclassified_papers.
             
             res = clasificar_paper(titulo, abstract)
+            
+            # Marco documento como procesado garantizado, para no volver a intentarlo
+            query_mark = "MATCH (p:Paper {doi: $doi}) SET p.sdg_processed = true"
+            with neo4j.driver.session() as session:
+                session.run(query_mark, doi=doi)
+                
             if res:
                 assign_sdg_to_neo4j(doi, res)
                 
-                # Marco documento como procesado, para no volver a intentarlo si el SDG es null
-                query_mark = "MATCH (p:Paper {doi: $doi}) SET p.sdg_processed = true"
-                with neo4j.driver.session() as session:
-                    session.run(query_mark, doi=doi)
-                print(f"✅ {doi} -> {res.get('sdg_id')}")
+                sdg_result = res.get('sdg_id')
+                if not sdg_result or sdg_result.lower() == "null":
+                    razon = res.get('reasoning', 'Sin justificación')
+                    print(f"✅ {doi} -> null ({razon})")
+                else:
+                    print(f"✅ {doi} -> {sdg_result}")
             else:
-                 print(f"❌ Falló {doi}")
+                 print(f"❌ Falló clasificación LLM para {doi}")
 
 if __name__ == "__main__":
     run()
