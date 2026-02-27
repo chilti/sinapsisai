@@ -221,7 +221,10 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
     for academic_name, data in academicos.items():
         if target_name and target_name.lower() not in academic_name.lower():
             continue
-            
+        
+        print(f"\n[{academic_name}] Procesando...")
+        print(f"  -> {data}")}
+        
         original_name = data.get('original_name', academic_name)
         entity_name = data.get('entity', 'UNAM')
         
