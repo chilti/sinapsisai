@@ -335,7 +335,7 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
             print(f"  ❌ Error generando vectores para {academic_name}: {e}")
 
 if __name__ == "__main__":
-    base_json = os.path.join(os.path.dirname(__file__), "profesores_datos.json")
+    base_json = os.path.join(os.path.dirname(__file__), "profesores_Instituto_de_Ciencias_Nucleares.json")
     force_run = False
     force_local = False
     target_name = None
