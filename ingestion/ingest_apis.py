@@ -108,10 +108,11 @@ def deconstruct_abstract(inverted_abstract):
         return None
 
 def obtener_metadatos_de_scopus(scopus_ids):
+    print(f"  -> {scopus_ids}")
+
     if not scopus_ids: return {}
     if isinstance(scopus_ids, str): scopus_ids = [scopus_ids]
     metadatos = {}
-    print(f"  -> {scopus_ids}")
     for sid in scopus_ids:
         # Extraer ID numérico si viene como URL (https://www.scopus.com/authid/detail.uri?authorId=...)
         if 'authorId=' in sid:
@@ -155,12 +156,13 @@ def _resolve_arxiv_to_doi(arxiv_id: str) -> str | None:
     return None
 
 def obtener_metadatos_de_orcid(orcid_url):
+    print(f"  -> {orcid_url}")
     if not orcid_url or 'http' not in orcid_url: return {}
     orcid_id = orcid_url.rstrip('/').split('/')[-1]
     metadatos = {}
     url = f"https://pub.orcid.org/v3.0/{orcid_id}/works"
     headers = {"Accept": "application/json"}
-    print(f"  -> {url}")
+    
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
