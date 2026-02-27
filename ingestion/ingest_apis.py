@@ -144,12 +144,25 @@ def obtener_metadatos_de_orcid(orcid_url):
         if response.status_code == 200:
             for work_group in response.json().get('group', []):
                 summary = work_group.get('work-summary', [{}])[0]
-                doi = next((eid.get('external-id-value') for eid in summary.get('external-ids', {}).get('external-id', []) if isinstance(eid, dict) and eid.get('external-id-type') == 'doi'), None)
-                pub_date = summary.get('publication-date', {})
+                
+                # Manejar de forma segura external-ids nulo (puede ser None dict en JSON)
+                ext_ids_node = summary.get('external-ids')
+                ext_ids_list = []
+                if ext_ids_node and isinstance(ext_ids_node, dict):
+                    ext_ids_list = ext_ids_node.get('external-id', [])
+                    # ORCID a veces regresa un solo dict si hay 1 solo ID, en lugar de lista
+                    if isinstance(ext_ids_list, dict):
+                        ext_ids_list = [ext_ids_list]
+
+                doi = next((eid.get('external-id-value') for eid in ext_ids_list if isinstance(eid, dict) and eid.get('external-id-type') == 'doi'), None)
+                
+                pub_date = summary.get('publication-date', {}) or {}
+                
                 if doi and doi not in metadatos:
+                    title_node = summary.get('title', {}) or {}
                     metadatos[doi] = {
-                        'Title': summary.get('title', {}).get('title', {}).get('value'),
-                        'Year': pub_date.get('year', {}).get('value') if pub_date else 0,
+                        'Title': title_node.get('title', {}).get('value') if title_node.get('title') else 'Sin Título',
+                        'Year': pub_date.get('year', {}).get('value') if pub_date.get('year') else 0,
                         'DOI': doi,
                         'Source': 'ORCID',
                         'Authors': None,
