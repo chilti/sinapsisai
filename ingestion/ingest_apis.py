@@ -118,7 +118,9 @@ def obtener_metadatos_de_scopus(scopus_ids):
             
         try:
             au = AuthorRetrieval(sid)
-            for pub in au.get_documents():
+            docs = list(au.get_documents())
+            print(f"    [Scopus] ID {sid}: {len(docs)} documentos encontrados. Con DOI: {sum(1 for p in docs if p.doi)}")
+            for pub in docs:
                 if pub.doi and pub.doi not in metadatos:
                     metadatos[pub.doi] = {
                         'Title': pub.title,
@@ -132,6 +134,24 @@ def obtener_metadatos_de_scopus(scopus_ids):
         except Exception as e:
             print(f"    Advertencia en Scopus para {sid}: {e}")
     return metadatos
+
+def _resolve_arxiv_to_doi(arxiv_id: str) -> str | None:
+    """Intenta resolver un arXiv ID a un DOI oficial via OpenAlex."""
+    if not arxiv_id:
+        return None
+    # Normalizar: puede venir como 'arxiv:XXXX.XXXXX' o solo 'XXXX.XXXXX'
+    clean_id = arxiv_id.lower().replace("arxiv:", "").strip()
+    try:
+        url = f"https://api.openalex.org/works/https://arxiv.org/abs/{clean_id}"
+        r = requests.get(url, headers={"User-Agent": "SinapsisAI/1.0"}, timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            doi = data.get("doi", "")
+            if doi:
+                return doi.replace("https://doi.org/", "")
+    except Exception:
+        pass
+    return None
 
 def obtener_metadatos_de_orcid(orcid_url):
     if not orcid_url or 'http' not in orcid_url: return {}
@@ -154,7 +174,18 @@ def obtener_metadatos_de_orcid(orcid_url):
                     if isinstance(ext_ids_list, dict):
                         ext_ids_list = [ext_ids_list]
 
-                doi = next((eid.get('external-id-value') for eid in ext_ids_list if isinstance(eid, dict) and eid.get('external-id-type') == 'doi'), None)
+                # Buscar DOI primero
+                doi = next((eid.get('external-id-value') for eid in ext_ids_list 
+                            if isinstance(eid, dict) and eid.get('external-id-type') == 'doi'), None)
+                
+                # Si no hay DOI, intentar resolver desde arXiv
+                if not doi:
+                    arxiv_id = next((eid.get('external-id-value') for eid in ext_ids_list 
+                                     if isinstance(eid, dict) and eid.get('external-id-type') == 'arxiv'), None)
+                    if arxiv_id:
+                        doi = _resolve_arxiv_to_doi(arxiv_id)
+                        if doi:
+                            print(f"    ✅ arXiv {arxiv_id} → DOI {doi}")
                 
                 pub_date = summary.get('publication-date', {}) or {}
                 
