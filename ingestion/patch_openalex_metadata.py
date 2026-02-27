@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.knowledge_graph import Neo4jGraphStore
 import pyalex
 
-pyalex.config.email = "test@example.com"
+pyalex.config.email = "jlja@ciencias.unam.mx"
 
 def patch_metadata():
     graph_store = Neo4jGraphStore()
@@ -87,7 +87,7 @@ def patch_metadata():
                                id=doi_full, meta=json.dumps(meta))
                     updated_count += 1
                 else:
-                    if(i==0): print(f"\n[!] {clean_doi} no encontrado en la repuesta de OpenAlex. (Muestra de rechazo)", flush=True)
+                    if(i < 60): print(f"\n[!] RECHAZADO: '{clean_doi}' no devuelto por OpenAlex.", flush=True)
                     
         print(f"Lote {i//batch_size + 1}: Actualizados {updated_count}/{total} papers.", end="\r", flush=True)
         time.sleep(0.1)
