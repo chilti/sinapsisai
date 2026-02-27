@@ -75,6 +75,24 @@ def extract_academic_papers():
             source = raw_meta.get('Source') or raw_meta.get('source_title') or raw_meta.get('journal_iso_source_abbreviation') or raw_meta.get('publication_name') or raw_meta.get('SO') or 'Unknown'
             doi_link = "https://doi.org/" + row['paper_id'] if row['paper_id'] and not "urn:" in row['paper_id'] else None
             
+            # Open Access Logic
+            is_oa = False
+            oa_status = 'closed'
+            if 'open_access' in raw_meta and isinstance(raw_meta['open_access'], dict):
+                is_oa = raw_meta['open_access'].get('is_oa', False)
+                oa_status = str(raw_meta['open_access'].get('oa_status', 'closed')).lower()
+            elif 'OA' in raw_meta:
+                 oa_str = str(raw_meta.get('OA', '')).lower()
+                 if 'green' in oa_str: oa_status = 'green'
+                 elif 'gold' in oa_str: oa_status = 'gold'
+                 elif 'hybrid' in oa_str: oa_status = 'hybrid'
+                 elif 'bronze' in oa_str: oa_status = 'bronze'
+                 is_oa = oa_status != 'closed'
+                 
+            is_in_top_10_percent = int(raw_meta.get('is_in_top_10_percent', False) or 0)
+            is_in_top_1_percent = int(raw_meta.get('is_in_top_1_percent', False) or 0)
+            citation_normalized_percentile = float(raw_meta.get('citation_normalized_percentile', 0.0) or 0.0)
+            
             topics = raw_meta.get('OpenAlex_Topics', [])
             if not isinstance(topics, list): topics = []
             
@@ -89,6 +107,11 @@ def extract_academic_papers():
                 'DOI': doi_link,
                 'Link': doi_link,
                 'fwci': fwci,
+                'is_oa': int(is_oa),
+                'oa_status': oa_status,
+                'is_in_top_10_percent': is_in_top_10_percent,
+                'is_in_top_1_percent': is_in_top_1_percent,
+                'citation_normalized_percentile': citation_normalized_percentile,
                 'topics': topics,
                 'ODS_ID': row['sdg_id'] if row['sdg_id'] else None,
                 'ODS_Nombre': row['sdg_name'] if row['sdg_name'] else None,
@@ -130,6 +153,24 @@ def extract_entity_papers():
             source = raw_meta.get('Source') or raw_meta.get('source_title') or raw_meta.get('journal_iso_source_abbreviation') or raw_meta.get('publication_name') or raw_meta.get('SO') or 'Unknown'
             doi_link = "https://doi.org/" + row['paper_id'] if row['paper_id'] and not "urn:" in row['paper_id'] else None
             
+            # Open Access Logic
+            is_oa = False
+            oa_status = 'closed'
+            if 'open_access' in raw_meta and isinstance(raw_meta['open_access'], dict):
+                is_oa = raw_meta['open_access'].get('is_oa', False)
+                oa_status = str(raw_meta['open_access'].get('oa_status', 'closed')).lower()
+            elif 'OA' in raw_meta:
+                 oa_str = str(raw_meta.get('OA', '')).lower()
+                 if 'green' in oa_str: oa_status = 'green'
+                 elif 'gold' in oa_str: oa_status = 'gold'
+                 elif 'hybrid' in oa_str: oa_status = 'hybrid'
+                 elif 'bronze' in oa_str: oa_status = 'bronze'
+                 is_oa = oa_status != 'closed'
+                 
+            is_in_top_10_percent = int(raw_meta.get('is_in_top_10_percent', False) or 0)
+            is_in_top_1_percent = int(raw_meta.get('is_in_top_1_percent', False) or 0)
+            citation_normalized_percentile = float(raw_meta.get('citation_normalized_percentile', 0.0) or 0.0)
+            
             topics = raw_meta.get('OpenAlex_Topics', [])
             if not isinstance(topics, list): topics = []
             
@@ -143,6 +184,11 @@ def extract_entity_papers():
                 'DOI': doi_link,
                 'Link': doi_link,
                 'fwci': fwci,
+                'is_oa': int(is_oa),
+                'oa_status': oa_status,
+                'is_in_top_10_percent': is_in_top_10_percent,
+                'is_in_top_1_percent': is_in_top_1_percent,
+                'citation_normalized_percentile': citation_normalized_percentile,
                 'topics': topics,
                 'ODS_ID': row['sdg_id'] if row['sdg_id'] else None,
                 'ODS_Nombre': row['sdg_name'] if row['sdg_name'] else None,
@@ -152,46 +198,72 @@ def extract_entity_papers():
             
     return pd.DataFrame(records)
 
-def compute_percentiles(df):
-    """Calcula percentiles globales localmente para simular Top 10% y 1% si no existen."""
-    # Como la base local es la "institución", los percentiles son intrainstitucionales
-    df['percentile'] = df['citations'].rank(pct=True) * 100
-    df['is_top_10'] = (df['percentile'] >= 90).astype(int)
-    df['is_top_1'] = (df['percentile'] >= 99).astype(int)
-    return df
-
 def aggregate_metrics(df_papers, group_cols):
-    """Realiza la agregación principal de base para los grupos especificados."""
+    """Realiza la agregación principal de base para los grupos especificados usando los datos nativos de OpenAlex."""
     if df_papers.empty: return pd.DataFrame()
+    
+    # Preparamos las columnas
+    if 'fwci' in df_papers.columns:
+        df_papers['fwci'] = pd.to_numeric(df_papers['fwci'], errors='coerce')
+    if 'is_in_top_10_percent' in df_papers.columns:
+        df_papers['is_in_top_10_percent'] = pd.to_numeric(df_papers['is_in_top_10_percent'], errors='coerce').fillna(0).astype(int)
+    if 'is_in_top_1_percent' in df_papers.columns:
+        df_papers['is_in_top_1_percent'] = pd.to_numeric(df_papers['is_in_top_1_percent'], errors='coerce').fillna(0).astype(int)
+    if 'citation_normalized_percentile' in df_papers.columns:
+        df_papers['citation_normalized_percentile'] = pd.to_numeric(df_papers['citation_normalized_percentile'], errors='coerce').fillna(50.0)
+    
+    if 'oa_status' in df_papers.columns:
+        df_papers['is_oa_gold'] = (df_papers['oa_status'] == 'gold').astype(int)
+        df_papers['is_oa_green'] = (df_papers['oa_status'] == 'green').astype(int)
+        df_papers['is_oa_hybrid'] = (df_papers['oa_status'] == 'hybrid').astype(int)
+        df_papers['is_oa_bronze'] = (df_papers['oa_status'] == 'bronze').astype(int)
+        df_papers['is_oa_closed'] = (df_papers['oa_status'] == 'closed').astype(int)
     
     agg_funcs = {
         'paper_id': 'count',
         'citations': 'sum',
         'fwci': 'mean',
-        'percentile': 'mean',
-        'is_top_10': 'mean',  # Al promediar el int 0/1 nos da la proporcion 0.0-1.0
-        'is_top_1': 'mean'
+        'citation_normalized_percentile': 'mean',
+        'is_in_top_10_percent': 'mean',
+        'is_in_top_1_percent': 'mean',
+        'is_oa': 'mean',
+        'is_oa_gold': 'mean',
+        'is_oa_green': 'mean',
+        'is_oa_hybrid': 'mean',
+        'is_oa_bronze': 'mean',
+        'is_oa_closed': 'mean'
     }
     
     df_agg = df_papers.groupby(group_cols).agg(agg_funcs).reset_index()
     df_agg.rename(columns={
         'paper_id': 'num_documents',
         'fwci': 'fwci_avg',
-        'percentile': 'percentile_avg',
-        'is_top_10': 'pct_top_10',
-        'is_top_1': 'pct_1'
+        'citation_normalized_percentile': 'percentile_avg',
+        'is_in_top_10_percent': 'pct_top_10',
+        'is_in_top_1_percent': 'pct_1',
+        'is_oa': 'pct_open_access',
+        'is_oa_gold': 'pct_oa_gold',
+        'is_oa_green': 'pct_oa_green',
+        'is_oa_hybrid': 'pct_oa_hybrid',
+        'is_oa_bronze': 'pct_oa_bronze',
+        'is_oa_closed': 'pct_oa_closed'
     }, inplace=True)
     
     # pct a base 100
     df_agg['pct_top_10'] *= 100
     df_agg['pct_1'] *= 100
+    df_agg['pct_open_access'] *= 100
+    df_agg['pct_oa_gold'] *= 100
+    df_agg['pct_oa_green'] *= 100
+    df_agg['pct_oa_hybrid'] *= 100
+    df_agg['pct_oa_bronze'] *= 100
+    df_agg['pct_oa_closed'] *= 100
     
     # Llenar nulos
-    df_agg['fwci_avg'] = df_agg['fwci_avg'].fillna(df_agg['citations'] / df_agg['num_documents'].replace(0,1)) # Proxy si no hay FWCI real
+    df_agg['fwci_avg'] = df_agg['fwci_avg'].fillna(df_agg['citations'] / df_agg['num_documents'].replace(0,1))
     df_agg['percentile_avg'] = df_agg['percentile_avg'].fillna(50)
     
     # Calcular indice H para el agrupamiento
-    # Agrupamos la serie de citas original
     h_series = df_papers.groupby(group_cols)['citations'].apply(list).apply(_get_h_index).reset_index(name='h_index')
     
     df_agg = df_agg.merge(h_series, on=group_cols, how='left')
@@ -209,7 +281,6 @@ def process_and_save():
     print(f"✅ {len(df_raw)} publicaciones extraídas.")
     df_raw['year'] = pd.to_numeric(df_raw['year'], errors='coerce')
     df_raw = df_raw.dropna(subset=['year'])
-    df_raw = compute_percentiles(df_raw)
     
     # Exportar listado general de papers de Académicos
     df_raw.to_parquet(CACHE_DIR / 'papers_profesor.parquet', index=False)
@@ -263,8 +334,6 @@ def process_and_save():
     if not df_inst_raw.empty:
         df_inst_raw['year'] = pd.to_numeric(df_inst_raw['year'], errors='coerce')
         df_inst_raw = df_inst_raw.dropna(subset=['year'])
-        df_inst_raw = compute_percentiles(df_inst_raw)
-        
         # Exportar listado general de papers de Institucion
         df_inst_raw.to_parquet(CACHE_DIR / 'papers_institucion.parquet', index=False)
         
