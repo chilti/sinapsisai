@@ -108,12 +108,17 @@ def fetch_unclassified_papers():
 def assign_sdg_to_neo4j(doi, sdg_data):
     """Crea el Nodo SDG y la relación ADDRESSES en Neo4j."""
     sdg_id = str(sdg_data.get('sdg_id', '')).upper().strip()
+    reasoning = sdg_data.get('reasoning', '')
+    
     if not sdg_id or sdg_id == "NULL" or "X" in sdg_id:
-        return # No asignado
+        # Guardar la justificación del rechazo en el nodo Paper
+        query_null = "MATCH (p:Paper {doi: $doi}) SET p.sdg_reasoning = $reasoning"
+        with neo4j.driver.session() as session:
+            session.run(query_null, doi=doi, reasoning=reasoning)
+        return # No asignado a un SDG específico
         
     sdg_name = sdg_data.get('sdg_name', '')
     confidence = sdg_data.get('confidence', '')
-    reasoning = sdg_data.get('reasoning', '')
 
     query = """
     MATCH (p:Paper {doi: $doi})
@@ -122,8 +127,6 @@ def assign_sdg_to_neo4j(doi, sdg_data):
     MERGE (p)-[r:ADDRESSES]->(s)
     SET r.confidence = $confidence, r.reasoning = $reasoning
     """
-    # Si quisieramos marcar que ya fue procesado pero salio nulo, 
-    # prodríamos agregar una bandera en p o crear una relacion a nulo.
     
     with neo4j.driver.session() as session:
         session.run(query, doi=doi, sdg_id=sdg_id, sdg_name=sdg_name, confidence=confidence, reasoning=reasoning)
