@@ -53,6 +53,7 @@ def extract_academic_papers():
            p.year AS year,
            p.citations AS citations,
            p.raw_metadata AS raw_metadata,
+           s.id AS sdg_id,
            s.name AS sdg_name,
            r.confidence AS sdg_confidence,
            r.reasoning AS sdg_reasoning
@@ -89,7 +90,7 @@ def extract_academic_papers():
                 'Link': doi_link,
                 'fwci': fwci,
                 'topics': topics,
-                'ODS_ID': row['sdg_name'] if row['sdg_name'] else None,
+                'ODS_ID': row['sdg_id'] if row['sdg_id'] else None,
                 'ODS_Nombre': row['sdg_name'] if row['sdg_name'] else None,
                 'ODS_Confianza': row['sdg_confidence'] if row['sdg_confidence'] else None,
                 'ODS_Justificacion': row['sdg_reasoning'] if row['sdg_reasoning'] else None
@@ -108,6 +109,7 @@ def extract_entity_papers():
            p.year AS year,
            p.citations AS citations,
            p.raw_metadata AS raw_metadata,
+           s.id AS sdg_id,
            s.name AS sdg_name,
            r.confidence AS sdg_confidence,
            r.reasoning AS sdg_reasoning
@@ -142,7 +144,7 @@ def extract_entity_papers():
                 'Link': doi_link,
                 'fwci': fwci,
                 'topics': topics,
-                'ODS_ID': row['sdg_name'] if row['sdg_name'] else None,
+                'ODS_ID': row['sdg_id'] if row['sdg_id'] else None,
                 'ODS_Nombre': row['sdg_name'] if row['sdg_name'] else None,
                 'ODS_Confianza': row['sdg_confidence'] if row['sdg_confidence'] else None,
                 'ODS_Justificacion': row['sdg_reasoning'] if row['sdg_reasoning'] else None
