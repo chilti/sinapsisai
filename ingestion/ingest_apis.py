@@ -108,8 +108,6 @@ def deconstruct_abstract(inverted_abstract):
         return None
 
 def obtener_metadatos_de_scopus(scopus_ids):
-    print(f"  -> {scopus_ids}")
-
     if not scopus_ids: return {}
     if isinstance(scopus_ids, str): scopus_ids = [scopus_ids]
     metadatos = {}
@@ -156,13 +154,11 @@ def _resolve_arxiv_to_doi(arxiv_id: str) -> str | None:
     return None
 
 def obtener_metadatos_de_orcid(orcid_url):
-    print(f"  -> {orcid_url}")
     if not orcid_url or 'http' not in orcid_url: return {}
     orcid_id = orcid_url.rstrip('/').split('/')[-1]
     metadatos = {}
     url = f"https://pub.orcid.org/v3.0/{orcid_id}/works"
     headers = {"Accept": "application/json"}
-    
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
@@ -221,10 +217,7 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
     for academic_name, data in academicos.items():
         if target_name and target_name.lower() not in academic_name.lower():
             continue
-        
-        print(f"\n[{academic_name}] Procesando...")
-        print(f"  -> {data}")
-
+            
         original_name = data.get('original_name', academic_name)
         entity_name = data.get('entity', 'UNAM')
         
@@ -256,9 +249,7 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
             if doi not in meta_unificada:
                 meta_unificada[doi] = m_data
 
-        print(f"  -> {len(meta_scopus)} artículos únicos encontrados en Scopus. Enriqueciendo...")
-        print(f"  -> {len(meta_orcid)} artículos únicos encontrados en ORCID. Enriqueciendo...")
-        print(f"  -> {len(meta_unificada)} artículos únicos encontrados. Enriqueciendo...")
+        
 
         if not meta_unificada:
             print("  -> Sin publicaciones rastreables.")
@@ -285,6 +276,16 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                     record['Abstract'] = record['Abstract_oa']
                     
                 record['Cited_by'] = work.get('cited_by_count', record.get('Cited_by', 0))
+                
+                # Extraer metricas avanzadas para KPIs
+                record['fwci'] = work.get('fwci', None)
+                record['open_access'] = work.get('open_access', {})
+                if work.get('citation_normalized_percentile'):
+                    perc_data = work['citation_normalized_percentile']
+                    record['citation_normalized_percentile'] = perc_data.get('value', 0.0)
+                    record['is_in_top_1_percent'] = perc_data.get('is_in_top_1_percent', False)
+                    record['is_in_top_10_percent'] = perc_data.get('is_in_top_10_percent', False)
+                
                 topics = []
                 for t in work.get('topics', []):
                     try:
