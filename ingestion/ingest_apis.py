@@ -44,7 +44,7 @@ password = os.getenv("LLM_PASSWORD")
 base_url = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1/")
 if not base_url.endswith("/"):
     base_url += "/"
-model_name = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+model_name = os.getenv("EMBEDDING_MODEL", "text-embedding-nomic-ai-nomic-embed-text-v2-moe")
 auth_url = base_url
 if user and password:
     if "://" in base_url:

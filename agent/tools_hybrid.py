@@ -76,7 +76,7 @@ qdrant_docs = QdrantStore(collection_name="scientific_papers")
 qdrant_apis = QdrantStore(collection_name="api_papers")
 neo4j = Neo4jGraphStore()
 embeddings_model = OpenAIEmbeddings(
-    model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text"),
+    model=os.getenv("EMBEDDING_MODEL", "text-embedding-nomic-ai-nomic-embed-text-v2-moe"),
     base_url=auth_url,
     api_key="lm-studio",
     http_client=sync_client,
