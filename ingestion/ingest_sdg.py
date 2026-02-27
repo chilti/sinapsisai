@@ -80,7 +80,7 @@ def clasificar_paper(titulo, abstract):
 def fetch_unclassified_papers():
     """Obtiene los papers de Neo4j que aún no tienen clasificación SDG."""
     query = """
-    MATCH (p:APIPaper)
+    MATCH (p:Paper)
     WHERE NOT (p)-[:ADDRESSES]->(:SDG)
     RETURN p.doi AS doi, p.title AS title, p.raw_metadata AS metadata
     LIMIT 50
@@ -116,7 +116,7 @@ def assign_sdg_to_neo4j(doi, sdg_data):
     reasoning = sdg_data.get('reasoning', '')
 
     query = """
-    MATCH (p:APIPaper {doi: $doi})
+    MATCH (p:Paper {doi: $doi})
     MERGE (s:SDG {id: $sdg_id})
     ON CREATE SET s.name = $sdg_name
     MERGE (p)-[r:ADDRESSES]->(s)
@@ -150,7 +150,7 @@ def run():
                 assign_sdg_to_neo4j(doi, res)
                 
                 # Marco documento como procesado, para no volver a intentarlo si el SDG es null
-                query_mark = "MATCH (p:APIPaper {doi: $doi}) SET p.sdg_processed = true"
+                query_mark = "MATCH (p:Paper {doi: $doi}) SET p.sdg_processed = true"
                 with neo4j.driver.session() as session:
                     session.run(query_mark, doi=doi)
                 print(f"✅ {doi} -> {res.get('sdg_id')}")

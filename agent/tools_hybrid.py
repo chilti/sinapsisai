@@ -133,18 +133,20 @@ def query_knowledge_graph_cypher(cypher_query: str) -> str:
     Útil para preguntas complejas sobre relaciones, como: '¿Qué autores han colaborado 
     con X y también han publicado sobre el concepto Y?', o '¿Cuál es la evolución de citas de este grupo?'.
     
-    REGLA: El esquema real de la base de datos tiene **DOS variaciones** de etiquetas (una local y una por API):
-    - Académicos/Autores: usen la etiqueta múltiple `(a:Academic|Author)`. Atributos: `id`, `name`.
-    - Artículos: usen la etiqueta múltiple `(p:APIPaper|Paper)`. Atributos: `doi`, `title`, `year`, `citations`.
-    - Entidades/Institución: `(e:Entity)`. Atributos: `name`.
+    REGLA: El esquema real de la base de datos usa etiquetas universales y MULTI-ETIQUETAS para internos de la UNAM:
+    - Autores externos: etiqueta `(a:Author)`. Atributos: `id`, `name`.
+    - Académicos UNAM: etiqueta múltiple `(a:Academic:Author)`. Atributos: `id`, `name`.
+    - Artículos: etiqueta genérica `(p:Paper)`. Atributos: `doi`, `title`, `year`, `citations`. (No existe APIPaper).
+    - Instituciones externas: `(i:Institution)`. Atributos: `name`.
+    - Entidades UNAM: etiqueta múltiple `(e:Entity:Institution)`. Atributos: `name`.
     - Tópicos Temáticos: `(t:Topic)`. Atributos: `id`, `name`, `domain`, `field`, `subfield`.
     - ODS: `(s:SDG)`. Atributos: `id`, `name` (e.g. 'SDG 13').
     
     RELACIONES IMPORTANTES PRECISAS:
-    - Los autores investigan papers: `(a)-[:AUTHORED]->(p)`
-    - Los autores pertenecen a entidades: `(a)-[:AFFILIATED_TO]->(e)`. **ATENCIÓN:** NO uses esta relación (Entity/Institución) a menos que el usuario limite su pregunta a un instituto o facultad específica. Si pregunta de forma general ("¿Quiénes trabajan en X?"), asume toda la base y omite la relación de Entidad.
-    - Los PAPERS tienen tópicos: `(p:APIPaper)-[:HAS_TOPIC]->(t:Topic)`. LOS AUTORES NO TIENEN TÓPICOS DIRECTAMENTE. Si preguntas qué autores trabajan en un topic o sdg: `MATCH (a:Academic)-[:AUTHORED]->(p:APIPaper)-[:HAS_TOPIC]->(t:Topic)`
-    - Los PAPERS contribuyen a SDGs: `(p:APIPaper)-[:ADDRESSES]->(s:SDG)`. LOS AUTORES NO TIENEN SDGs DIRECTAMENTE.
+    - CUALQUIER autor publica papers: `(a:Author)-[:AUTHORED]->(p:Paper)`
+    - Una Entidad UNAM se relaciona con sus académicos: `(a:Academic)-[:AFFILIATED_TO]->(e:Entity)`. **ATENCIÓN:** NO uses esta relación a menos que el usuario limite su pregunta a una entidad específica de la UNAM.
+    - Los PAPERS tienen tópicos: `(p:Paper)-[:HAS_TOPIC]->(t:Topic)`. LOS AUTORES NO TIENEN TÓPICOS DIRECTAMENTE. Si preguntas qué autores trabajan en un topic o sdg: `MATCH (a:Author)-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic)`
+    - Los PAPERS contribuyen a SDGs: `(p:Paper)-[:ADDRESSES]->(s:SDG)`. LOS AUTORES NO TIENEN SDGs DIRECTAMENTE.
     
     IMPORTANTE PARA NOMBRES: Los nombres en la base pueden estar como "APELLIDO, NOMBRE" u ordenados distinto. NUNCA busques por coincidencia exacta `{name: '...'}`. 
     SIEMPRE usa la búsqueda relativa ignorando mayúsculas: `WHERE toLower(a.name) CONTAINS toLower('Bucio Carrillo')`

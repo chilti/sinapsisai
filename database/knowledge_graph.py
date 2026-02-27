@@ -20,7 +20,6 @@ class Neo4jGraphStore:
             "CREATE CONSTRAINT author_id IF NOT EXISTS FOR (a:Author) REQUIRE a.id IS UNIQUE",
             "CREATE CONSTRAINT institution_id IF NOT EXISTS FOR (i:Institution) REQUIRE i.id IS UNIQUE",
             "CREATE CONSTRAINT concept_id IF NOT EXISTS FOR (c:Concept) REQUIRE c.id IS UNIQUE",
-            "CREATE CONSTRAINT api_paper_id IF NOT EXISTS FOR (p:APIPaper) REQUIRE p.id IS UNIQUE",
             "CREATE CONSTRAINT academic_id IF NOT EXISTS FOR (a:Academic) REQUIRE a.id IS UNIQUE",
             "CREATE CONSTRAINT entity_id IF NOT EXISTS FOR (e:Entity) REQUIRE e.name IS UNIQUE"
         ]
@@ -89,8 +88,7 @@ class Neo4jGraphStore:
 
     def add_api_paper(self, paper_data: Dict[str, Any], academic_name: str):
         """
-        Inserta datos de APIs (OpenAlex/Scopus/ORCID) en tablas/labels distintos (APIPaper, Academic).
-        Vincula el nombre completo (Academic) y el artículo por DOI.
+        Inserta datos de APIs (OpenAlex/Scopus/ORCID) vinculando el nombre completo (Academic) y el artículo por DOI.
         Conserva todos los campos crudos en raw_metadata_json.
         """
         import json
@@ -116,10 +114,10 @@ class Neo4jGraphStore:
             params["doi"] = str(uuid.uuid4())
 
         query = """
-        MERGE (a:Academic {id: $academic_name}) // Usar el nombre completo json como ID principal
+        MERGE (a:Academic:Author {id: $academic_name}) // Multietiqueta Academic y Author
         SET a.name = $academic_name
         
-        MERGE (p:APIPaper {id: $doi})
+        MERGE (p:Paper {id: $doi}) // Unificamos a Paper
         SET p.doi = $doi, p.title = $title, p.year = $year, p.citations = $citations,
             p.raw_metadata = $raw_metadata
             
@@ -140,9 +138,9 @@ class Neo4jGraphStore:
             return
 
         query = """
-        MERGE (e:Entity {name: $entity_name})
+        MERGE (e:Entity:Institution {name: $entity_name})
         WITH e
-        MATCH (p:Paper {doi: $doi}) // Buscamos en Label genérico Paper
+        MATCH (p:Paper {doi: $doi})
         MERGE (e)-[:HAS_PAPER]->(p)
         """
         with self.driver.session() as session:
@@ -156,9 +154,9 @@ class Neo4jGraphStore:
         Vincula un Academic con un Entity institucional.
         """
         query = """
-        MERGE (e:Entity {name: $entity_name})
+        MERGE (e:Entity:Institution {name: $entity_name})
         WITH e
-        MATCH (a:Academic {name: $academic_name})
+        MATCH (a:Academic:Author {name: $academic_name})
         MERGE (a)-[:AFFILIATED_TO]->(e)
         """
         with self.driver.session() as session:
@@ -180,3 +178,63 @@ class Neo4jGraphStore:
             except Exception as e:
                 return False
 
+    def get_database_statistics(self) -> dict:
+        """Obtiene un resumen de la cantidad de nodos por etiqueta y relaciones en el grafo."""
+        stats = {"nodes": {}, "relationships": 0}
+        
+        query_nodes = """
+        MATCH (n)
+        WITH labels(n) AS labels, count(n) AS count
+        UNWIND labels AS label
+        RETURN label, sum(count) AS total_count
+        """
+        query_rels = "MATCH ()-[r]->() RETURN count(r) AS total_rels"
+        
+        with self.driver.session() as session:
+            try:
+                result_nodes = session.run(query_nodes)
+                for record in result_nodes:
+                    stats["nodes"][record["label"]] = record["total_count"]
+                    
+                result_rels = session.run(query_rels)
+                rels_record = result_rels.single()
+                if rels_record:
+                    stats["relationships"] = rels_record["total_rels"]
+            except Exception as e:
+                stats["error"] = str(e)
+                
+        return stats
+
+    def get_sample_graph(self, limit: int = 150) -> dict:
+        """Extrae una sub-muestra del grafo para visualización en PyVis interactiva."""
+        query = f"MATCH (n)-[r]->(m) RETURN n, r, m LIMIT {limit}"
+        nodes = {}
+        edges = []
+        with self.driver.session() as session:
+            try:
+                result = session.run(query)
+                for record in result:
+                    n = record["n"]
+                    m = record["m"]
+                    r = record["r"]
+                    
+                    n_id = n.element_id
+                    m_id = m.element_id
+                    
+                    if n_id not in nodes:
+                        nodes[n_id] = {
+                            "id": n_id, 
+                            "label": list(n.labels)[0] if n.labels else "Unknown", 
+                            "title": n.get("name", n.get("title", str(n_id)))
+                        }
+                    if m_id not in nodes:
+                        nodes[m_id] = {
+                            "id": m_id, 
+                            "label": list(m.labels)[0] if m.labels else "Unknown", 
+                            "title": m.get("name", m.get("title", str(m_id)))
+                        }
+                        
+                    edges.append({"source": n_id, "target": m_id, "label": r.type})
+                return {"nodes": list(nodes.values()), "edges": edges}
+            except Exception as e:
+                return {"error": str(e)}

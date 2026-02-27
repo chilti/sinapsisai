@@ -13,7 +13,7 @@ def extract_and_link_topics():
     print("⏳ Iniciando extracción de Tópicos desde Neo4j (APIPapers)...")
     
     query_fetch = """
-    MATCH (p:APIPaper)
+    MATCH (p:Paper)
     WHERE p.raw_metadata IS NOT NULL AND p.topics_extracted IS NULL
     RETURN p.doi AS doi, p.raw_metadata AS metadata
     """
@@ -37,7 +37,7 @@ def extract_and_link_topics():
             topics = meta_json.get('OpenAlex_Topics', [])
             if not isinstance(topics, list) or not topics:
                 # Marcar como procesado aunque no tenga
-                session.run("MATCH (p:APIPaper {doi: $doi}) SET p.topics_extracted = true", doi=doi)
+                session.run("MATCH (p:Paper {doi: $doi}) SET p.topics_extracted = true", doi=doi)
                 continue
                 
             for t in topics:
@@ -52,7 +52,7 @@ def extract_and_link_topics():
                 
                 # Nodos de Topic
                 merge_topic_query = """
-                MATCH (p:APIPaper {doi: $doi})
+                MATCH (p:Paper {doi: $doi})
                 MERGE (t:Topic {id: $topic_id})
                 SET t.name = $topic_name,
                     t.domain = $domain_name,
@@ -67,7 +67,7 @@ def extract_and_link_topics():
                             subfield_name=subfield_name, score=score)
                             
             # Marcar el paper como procesado
-            session.run("MATCH (p:APIPaper {doi: $doi}) SET p.topics_extracted = true", doi=doi)
+            session.run("MATCH (p:Paper {doi: $doi}) SET p.topics_extracted = true", doi=doi)
             updates += 1
             
             if updates % 100 == 0:

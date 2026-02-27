@@ -11,6 +11,10 @@ from dotenv import load_dotenv
 # Asegurar que el directorio raíz está en el path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")))
 
+import pandas as pd
+import plotly.express as px
+from database.knowledge_graph import Neo4jGraphStore
+from database.vector_store import QdrantStore
 from agent.orchestrator import RAGOrchestrator
 from dashboard_analytics import render_institucion_view, render_investigador_view, load_cached_data
 
@@ -73,6 +77,28 @@ def _run_async_in_thread(coro):
         return asyncio.run(coro)
     future = _executor.submit(_worker)
     return future.result()
+
+@st.cache_data(ttl=30)
+def fetch_database_live_stats():
+    """Obtiene los conteos globales de forma cacheada para no saturar las DBs."""
+    try:
+        neo = Neo4jGraphStore()
+        graph_stats = neo.get_database_statistics()
+        graph_sample = neo.get_sample_graph(limit=80)
+        neo.close()
+    except Exception as e:
+        graph_stats = {"error": str(e), "nodes": {}, "relationships": 0}
+        graph_sample = {"error": str(e)}
+        
+    try:
+        qdrant = QdrantStore(collection_name="api_papers")
+        qdrant_stats = qdrant.get_collection_stats()
+        qdrant_schema = qdrant.get_schema_info()
+    except Exception as e:
+        qdrant_stats = {"total_vectors": 0, "error": str(e)}
+        qdrant_schema = {"error": str(e)}
+        
+    return graph_stats, qdrant_stats, graph_sample, qdrant_schema
 
 
 # ---- Inicialización del Orquestador ----
@@ -252,9 +278,132 @@ with tab_inv:
     render_investigador_view(selected_entity)
 
 # =======================================================
-# TAB 4: Acerca de...
+# TAB 4: Acerca de / Estado DB
 # =======================================================
 with tab_about:
+    st.header("🗄️ Estado en Vivo de Bases de Datos")
+    st.markdown("Métricas extraídas en tiempo real reflejando la ingesta actual de documentos semánticos y en el Grafo.")
+    
+    graph_stats, qdrant_stats, graph_sample, qdrant_schema = fetch_database_live_stats()
+    
+    col_q, col_n = st.columns([1, 1.5])
+    
+    with col_q:
+        st.subheader("🔵 Vector Store (Qdrant)")
+        if "error" in qdrant_stats and qdrant_stats["error"]:
+            st.error(f"Error Qdrant: {qdrant_stats['error']}")
+        else:
+            st.metric(label="Embeddings Locales Puros (api_papers)", value=f"{qdrant_stats.get('total_vectors', 0):,}")
+            
+        if "error" not in qdrant_schema:
+            with st.expander("Ver Esquema Vectorial y Payload", expanded=True):
+                st.json(qdrant_schema)
+                
+    with col_n:
+        st.subheader("🟢 Knowledge Graph (Neo4j)")
+        if "error" in graph_stats and graph_stats["error"]:
+            st.error(f"Error Neo4j: {graph_stats['error']}")
+        else:
+            st.metric(label="Total Relaciones (Aristas)", value=f"{graph_stats.get('relationships', 0):,}")
+            
+            nodes = graph_stats.get("nodes", {})
+            if nodes:
+                df_nodes = pd.DataFrame(list(nodes.items()), columns=["Etiqueta", "Nodos Creados"]).sort_values("Nodos Creados", ascending=True)
+                fig_nodes = px.bar(df_nodes, x="Nodos Creados", y="Etiqueta", orientation='h', color="Nodos Creados", color_continuous_scale="Viridis")
+                fig_nodes.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=320)
+                st.plotly_chart(fig_nodes, width="stretch")
+            else:
+                st.warning("No hay nodos persistidos.")
+
+    st.markdown("---")
+    
+    # --- Neo4j Schema ER Diagram ---
+    st.markdown("#### Esquema Conceptual de Neo4j (Metamodelo)")
+    st.markdown("Diagrama de Entidad-Relación que describe cómo se almacena la información estructurada de Sinapsis AI.")
+    schema_mermaid = """
+    erDiagram
+        Author ||--o{ Paper : "AUTHORED"
+        Author }o--|| Institution : "AFFILIATED_WITH"
+        Paper ||--o{ Concept : "HAS_CONCEPT"
+        Paper ||--o{ Topic : "HAS_TOPIC"
+        Paper ||--o{ SDG : "ADDRESSES"
+        
+        Academic ||--|| Author : "is subclass of"
+        Entity ||--|| Institution : "is subclass of"
+        
+        Author {
+            string id PK "Nombre completo"
+            string name
+        }
+        Institution {
+            string name PK "UNAM, ICN, etc."
+        }
+        Paper {
+            string doi PK "DOI o UUID"
+            string title
+            int year
+            int citations
+            string raw_metadata "JSON completo"
+        }
+        Topic {
+            string id PK
+            string name
+        }
+        SDG {
+            string id PK "1 al 17"
+            string name
+        }
+    """
+    
+    html_schema = f"""
+    <div class="mermaid">
+    {schema_mermaid}
+    </div>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({{ startOnLoad: true, theme: 'default' }});
+    </script>
+    """
+    import streamlit.components.v1 as components
+    components.html(html_schema, height=450, scrolling=True)
+                
+    # --- Sample Network Rendering ---
+    if "error" not in graph_sample and "nodes" in graph_sample and graph_sample["nodes"]:
+        st.markdown("#### Muestra Topológica (Grafo de Conocimiento)")
+        st.caption("Visualización interactiva de una porción de las conexiones reales actuales en Neo4j.")
+        from pyvis.network import Network
+        import tempfile
+        
+        net = Network(height='500px', width='100%', bgcolor='#ffffff', font_color='#1e293b')
+        net.force_atlas_2based()
+        
+        for node in graph_sample["nodes"]:
+            color = "#3b82f6"
+            if node["label"] == "Academic": color = "#d946ef"
+            elif node["label"] == "Author": color = "#d946ef"
+            elif node["label"] == "Paper": color = "#10b981"
+            elif node["label"] == "Topic": color = "#f59e0b"
+            elif node["label"] == "SDG": color = "#ef4444"
+            elif node["label"] == "Entity": color = "#6366f1"
+            elif node["label"] == "Institution": color = "#6366f1"
+            
+            # Sanitizar textos por caracteres raros
+            title_text = str(node.get("title", ""))[:45]
+            net.add_node(node["id"], label=title_text, color=color, title=f"{node['label']}: {title_text}")
+            
+        for edge in graph_sample["edges"]:
+            net.add_edge(edge["source"], edge["target"], title=edge["label"])
+            
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".html") as tmp:
+            net.save_graph(tmp.name)
+            with open(tmp.name, "r", encoding="utf-8") as f:
+                html_string = f.read()
+                
+        import streamlit.components.v1 as components
+        components.html(html_string, height=515)
+        
+    st.markdown("---")
+    
     st.header("Arquitectura del Sistema Híbrido")
     st.markdown("Este diagrama describe el flujo de datos global de **Sinapsis AI**, desde la recolección de metadatos hasta la Inteligencia Híbrida del Agente RAG.")
     
@@ -278,9 +427,9 @@ with tab_about:
             G -.-> |Vectorize texts| H[(Qdrant: Vector DB)]
             
             subgraph Graph Nodes
-              G1((Academic)) -.- G
-              G2((Entity)) -.- G
-              G3((APIPaper)) -.- G
+              G1((Academic:Author)) -.- G
+              G2((Entity:Institution)) -.- G
+              G3((Paper)) -.- G
               G4((Topic)) -.- G
               G5((SDG)) -.- G
             end
@@ -309,7 +458,7 @@ with tab_about:
             O --> P(Local LLM)
             O -.-> Q[Cypher Tool]
             O -.-> R[Semantic Search Tool]
-            O -.-> S[Open Interpreter <br/> Code execution]
+            O -.-> S["Open Interpreter <br/> Code execution"]
         end
     """
     
@@ -336,7 +485,7 @@ with tab_about:
         B -->|ingest_apis.py| C{Enriquecimiento Global APIs}
         C -->|Fetch| D[OpenAlex]
         C -->|Fetch| E[ORCID / Scopus]
-        D --> F[(Neo4j: Nodos Academic / APIPaper)]
+        D --> F[(Neo4j: Nodos Academic / Paper)]
         E --> F
         
         F -->|extract_topics.py| G["Extracción Temática <br/> Nodos Topic"]

@@ -72,3 +72,31 @@ class QdrantStore:
             results.append(result)
             
         return results
+
+    def get_collection_stats(self) -> dict:
+        """Obtiene estadísticas de la colección vectorial (número de documentos)."""
+        try:
+            count_result = self.client.count(collection_name=self.collection_name)
+            return {"total_vectors": count_result.count}
+        except Exception as e:
+            return {"total_vectors": 0, "error": str(e)}
+
+    def get_schema_info(self) -> dict:
+        """Devuelve configuración base de métricas del ecosistema vectorial."""
+        try:
+            col_info = self.client.get_collection(self.collection_name)
+            return {
+                "collection_name": self.collection_name,
+                "vector_size": getattr(col_info.config.params.vectors, 'size', getattr(col_info.config.params, 'size', 768)),
+                "distance": str(getattr(col_info.config.params.vectors, 'distance', getattr(col_info.config.params, 'distance', 'Cosine'))).split('.')[-1],
+                "payload_schema": {
+                    "academic_name": "String (Author fullname)",
+                    "doi": "String (Unique Web Identifier)",
+                    "title": "String (Paper Title)",
+                    "year": "Numeric (Publication Year)",
+                    "source": "String (Scopus / ORCID)",
+                    "text": "String (Concat of Title + Abstract for LLM)"
+                }
+            }
+        except Exception as e:
+            return {"error": str(e)}
