@@ -249,7 +249,7 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
             if doi not in meta_unificada:
                 meta_unificada[doi] = m_data
 
-        print(f"  -> {len(meta_unificada)} artículos únicos encontrados. Enriqueciendo...")
+        print(f"  -> {len(meta_unificada)} artículos únicos encontrados. Enriqueciendo..."+len(meta_orcid))
 
         if not meta_unificada:
             print("  -> Sin publicaciones rastreables.")
