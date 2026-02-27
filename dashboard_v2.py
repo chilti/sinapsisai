@@ -420,18 +420,18 @@ with tab_about:
 
         %% Database Layer
         subgraph Hybrid Knowledge Base
-            D -->|Metadata & Abstract| G[(Neo4j: Knowledge Graph)]
+            D -->|Metadata & Abstract| G[("Neo4j: Knowledge Graph")]
             E -->|Citations| G
             F -->|Authored DOIs| G
             
-            G -.-> |Vectorize texts| H[(Qdrant: Vector DB)]
+            G -.-> |Vectorize texts| H[("Qdrant: Vector DB")]
             
             subgraph Graph Nodes
-              G1((Academic:Author)) -.- G
-              G2((Entity:Institution)) -.- G
-              G3((Paper)) -.- G
-              G4((Topic)) -.- G
-              G5((SDG)) -.- G
+              G1(("Academic:Author")) -.- G
+              G2(("Entity:Institution")) -.- G
+              G3(("Paper")) -.- G
+              G4(("Topic")) -.- G
+              G5(("SDG")) -.- G
             end
         end
 
@@ -481,17 +481,17 @@ with tab_about:
     
     mermaid_ingestion = """
     graph TD
-        A([1. Web Scraping / Archivo Local]) -->|siia_scraper.py| B[Lista Base de Académicos JSON]
-        B -->|ingest_apis.py| C{Enriquecimiento Global APIs}
-        C -->|Fetch| D[OpenAlex]
-        C -->|Fetch| E[ORCID / Scopus]
-        D --> F[(Neo4j: Nodos Academic / Paper)]
+        A(["1. Web Scraping / Archivo Local"]) -->|siia_scraper.py| B["Lista Base de Académicos JSON"]
+        B -->|ingest_apis.py| C{"Enriquecimiento Global APIs"}
+        C -->|Fetch| D["OpenAlex"]
+        C -->|Fetch| E["ORCID / Scopus"]
+        D --> F[("Neo4j: Nodos Academic / Paper")]
         E --> F
         
         F -->|extract_topics.py| G["Extracción Temática <br/> Nodos Topic"]
         F -->|"ingest_sdg.py <br/> Local LLM"| H["Clasificación ODS <br/> Nodos SDG"]
         
-        G --> I[(Neo4j: Grafo de Conocimiento)]
+        G --> I[("Neo4j: Grafo de Conocimiento")]
         H --> I
         
         I -->|compute_scholar_metrics.py| J{Motor de Cómputo Analítico}
