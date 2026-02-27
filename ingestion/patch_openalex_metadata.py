@@ -32,46 +32,57 @@ def patch_metadata():
     
     for i in range(0, total, batch_size):
         batch = dois_filtrados[i:i+batch_size]
-        valid_dois = [d[0].replace("https://doi.org/", "") for d in batch]
+        valid_dois = [d[0].replace("https://doi.org/", "").strip().lower() for d in batch]
         
         if not valid_dois: continue
         
+        # Primero intentamos como lote de 20
+        oa_data = {}
         try:
             query_dois = "|".join([f"https://doi.org/{d}" for d in valid_dois])
             works = pyalex.Works().filter(doi=query_dois).get()
-            
-            oa_data = {w['doi'].replace("https://doi.org/", ""): w for w in works if w.get('doi')}
-            
-            with graph_store.driver.session() as session:
-                for doi_full, raw_meta_json in batch:
-                    clean_doi = doi_full.replace("https://doi.org/", "")
-                    if clean_doi in oa_data:
-                        work = oa_data[clean_doi]
-                        # Deserializar
+            oa_data = {w['doi'].replace("https://doi.org/", "").lower(): w for w in works if w.get('doi')}
+        except Exception as e:
+            # Si el lote de 20 falla (usualmente por un DOI 404 malformado), iteramos uno por uno
+            for d in valid_dois:
+                try:
+                    w = pyalex.Works().filter(doi=f"https://doi.org/{d}").get()
+                    if w and w[0].get('doi'):
+                        oa_data[w[0]['doi'].replace("https://doi.org/", "").lower()] = w[0]
+                except:
+                    pass
+        
+        # Una vez traido el mapeo, parchar la base Neo4j        
+        with graph_store.driver.session() as session:
+            for doi_full, raw_meta_json in batch:
+                clean_doi = doi_full.replace("https://doi.org/", "").strip().lower()
+                if clean_doi in oa_data:
+                    work = oa_data[clean_doi]
+                    # Deserializar robusto
+                    if isinstance(raw_meta_json, dict):
+                        meta = raw_meta_json
+                    else:
                         try:
                             meta = json.loads(raw_meta_json)
                         except:
                             continue
-                            
-                        # Actualizar
-                        meta['fwci'] = work.get('fwci', None)
-                        meta['open_access'] = work.get('open_access', {})
-                        if work.get('citation_normalized_percentile'):
-                            perc_data = work['citation_normalized_percentile']
-                            meta['citation_normalized_percentile'] = perc_data.get('value', 0.0)
-                            meta['is_in_top_1_percent'] = perc_data.get('is_in_top_1_percent', False)
-                            meta['is_in_top_10_percent'] = perc_data.get('is_in_top_10_percent', False)
-                            
-                        # Guardar de vuelta
-                        session.run("MATCH (p:Paper {id: $id}) SET p.raw_metadata = $meta", 
-                                   id=doi_full, meta=json.dumps(meta))
-                        updated_count += 1
                         
-            print(f"Lote {i//batch_size + 1}: Actualizados {updated_count}/{total} papers.", end="\r")
-            time.sleep(0.1)
-        except Exception as e:
-            # Algunas consultas a openalex rebotan si un DOI esta mal formado
-            pass
+                    # Actualizar
+                    meta['fwci'] = work.get('fwci', None)
+                    meta['open_access'] = work.get('open_access', {})
+                    if work.get('citation_normalized_percentile'):
+                        perc_data = work['citation_normalized_percentile']
+                        meta['citation_normalized_percentile'] = perc_data.get('value', 0.0)
+                        meta['is_in_top_1_percent'] = perc_data.get('is_in_top_1_percent', False)
+                        meta['is_in_top_10_percent'] = perc_data.get('is_in_top_10_percent', False)
+                        
+                    # Guardar de vuelta
+                    session.run("MATCH (p:Paper {id: $id}) SET p.raw_metadata = $meta", 
+                               id=doi_full, meta=json.dumps(meta))
+                    updated_count += 1
+                    
+        print(f"Lote {i//batch_size + 1}: Actualizados {updated_count}/{total} papers.", end="\r")
+        time.sleep(0.1)
             
     print(f"\n🎉 Parche completado. {updated_count} papers en Neo4j fortalecidos con métricas OpenAlex.")
     graph_store.close()
