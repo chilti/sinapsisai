@@ -223,8 +223,8 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
             continue
         
         print(f"\n[{academic_name}] Procesando...")
-        print(f"  -> {data}")}
-        
+        print(f"  -> {data}")
+
         original_name = data.get('original_name', academic_name)
         entity_name = data.get('entity', 'UNAM')
         
