@@ -67,12 +67,29 @@ def render_institucion_view(entity_name):
             return
             
         total = df_total.iloc[0]
-        # KPIs
+        # KPIs (Fila 1)
+        st.markdown("##### Métricas Generales")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Doc. Totales", f"{int(total.get('num_documents',0)):,}")
         c2.metric("Citas Acumuladas", f"{int(total.get('citations',0)):,}")
         c3.metric("FWCI Promedio", f"{total.get('fwci_avg',0):.2f}")
-        c4.metric("% Top 10%", f"{total.get('pct_top_10',0):.1f}%")
+        c4.metric("% Open Access", f"{total.get('pct_open_access',0):.1f}%")
+        
+        # KPIs (Fila 2)
+        st.markdown("##### Métricas de Excelencia")
+        c5, c6, c7, c8 = st.columns(4)
+        c5.metric("Percentil Promedio", f"{total.get('percentile_avg',50):.1f}")
+        c6.metric("% Top 10%", f"{total.get('pct_top_10',0):.1f}%")
+        c7.metric("% Top 1%", f"{total.get('pct_1',0):.1f}%")
+        
+        # Glosario Metodológico
+        with st.expander("ℹ️ ¿Qué significan estos indicadores?"):
+            st.markdown("""
+            - **FWCI (Field-Weighted Citation Impact):** Relación entre las citas recibidas y el promedio mundial esperado para el mismo año, disciplina y tipo de documento (Mundial = 1.0).
+            - **Percentil Promedio:** Posición promedio global de los artículos respecto a sus citas (donde 99 es el decil de mayor impacto).
+            - **% Top 10% / Top 1%:** Porcentaje de la producción científica que se ubica entre el 10% o 1% más citado a nivel mundial en su campo.
+            - **% Open Access:** Porcentaje de documentos disponibles en acceso abierto (Vía Dorada, Verde, Híbrida o Bronce).
+            """)
 
     if df_annual is not None and not df_annual.empty:
         df_annual = df_annual[df_annual['entity_name'] == entity_name].sort_values('year')
@@ -201,11 +218,28 @@ def render_investigador_view(entity_name):
     # 1. KPIs del Investigador
     inv_data = df_inv_tot[df_inv_tot['academic_name'] == selected_inv].iloc[0]
     st.markdown("---")
+    
+    st.markdown("##### Métricas Generales")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Doc. Totales", f"{int(inv_data.get('num_documents',0))}")
+    c1.metric("Doc. Totales", f"{int(inv_data.get('num_documents',0)):,}")
     c2.metric("Índice H", f"{int(inv_data.get('h_index',0))}")
     c3.metric("Total Citas", f"{int(inv_data.get('citations',0)):,}")
-    c4.metric("FWCI Prom.", f"{inv_data.get('fwci_avg', 0):.2f}")
+    c4.metric("% Open Access", f"{inv_data.get('pct_open_access',0):.1f}%")
+    
+    st.markdown("##### Métricas de Excelencia")
+    c5, c6, c7, c8 = st.columns(4)
+    c5.metric("FWCI Promedio", f"{inv_data.get('fwci_avg', 0):.2f}")
+    c6.metric("Percentil Promedio", f"{inv_data.get('percentile_avg',50):.1f}")
+    c7.metric("% Top 10%", f"{inv_data.get('pct_top_10',0):.1f}%")
+    c8.metric("% Top 1%", f"{inv_data.get('pct_1',0):.1f}%")
+    
+    with st.expander("ℹ️ ¿Qué significan estos indicadores?"):
+        st.markdown("""
+        - **FWCI (Field-Weighted Citation Impact):** Relación entre las citas recibidas y el promedio mundial esperado para el mismo año y disciplina (Mundial = 1.0).
+        - **Percentil Promedio:** Posición promedio de los artículos respecto a sus citas (99 es el mejor decil).
+        - **% Top 10% / Top 1%:** Porcentaje de la producción que se ubica en la cúspide mundial de citación.
+        - **% Open Access:** Porcentaje de documentos publicados bajo estándares de ciencia abierta.
+        """)
 
 
     colizq, colder = st.columns([1, 1])
