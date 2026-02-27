@@ -63,10 +63,26 @@ embeddings_model = OpenAIEmbeddings(
     check_embedding_ctx_length=False
 )
 
-def get_embeddings(texts: list, batch_size: int = 5) -> list:
+def get_embeddings(texts: list, batch_size: int = 5, force_local: bool = False) -> list:
     if not texts: return []
     all_embeddings = []
-    # LM Studio puede fallar con batches grandes, procesamos en pequeños lotes de 5
+    
+    if force_local:
+        try:
+            import lmstudio as lms
+            # Usar la SDK nativa para forzar la carga en memoria si no lo está
+            model = lms.embedding_model(model_name)
+            
+            # El SDK de lms suele soportar batches o iteraciones directas
+            for text in texts:
+                clean_t = str(text) if text else " "
+                emb = model.embed(clean_t)
+                all_embeddings.append(emb)
+            return all_embeddings
+        except ImportError:
+            print("⚠️ Error: La librería 'lmstudio' no está instalada. Ejecuta 'pip install lmstudio'. Cayendo a LangChain...")
+
+    # Fallback / Modo servidor estándar (LangChain OpenAI)
     for i in range(0, len(texts), batch_size):
         batch = [str(t) if t else " " for t in texts[i:i+batch_size]]
         embs = embeddings_model.embed_documents(batch)
@@ -146,7 +162,7 @@ def obtener_metadatos_de_orcid(orcid_url):
 
 # --- Lógica principal de ingesta ---
 
-def process_and_ingest_academics(json_path, force=False):
+def process_and_ingest_academics(json_path, force=False, force_local=False):
     if not os.path.exists(json_path):
         print(f"No se encontró el archivo: {json_path}")
         return
@@ -264,7 +280,7 @@ def process_and_ingest_academics(json_path, force=False):
             embeddings = []
             for i in range(0, len(batch_texts), 32):
                 batch_subset = batch_texts[i:i+32]
-                embeddings.extend(get_embeddings(batch_subset))
+                embeddings.extend(get_embeddings(batch_subset, force_local=force_local))
                 
             vector_store.add_documents(batch_payloads, embeddings)
             print(f"  ✅ Guardado en Qdrant y Neo4j exitosamente para {academic_name}.")
@@ -274,6 +290,7 @@ def process_and_ingest_academics(json_path, force=False):
 if __name__ == "__main__":
     base_json = os.path.join(os.path.dirname(__file__), "profesores_datos.json")
     force_run = False
+    force_local = False
     
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     flags = [a for a in sys.argv[1:] if a.startswith("--")]
@@ -285,5 +302,9 @@ if __name__ == "__main__":
         force_run = True
         print("⚠️ Flag --force detectada: Se reescribirá la información de académicos existentes.")
         
-    process_and_ingest_academics(base_json, force=force_run)
+    if "--local" in flags:
+        force_local = True
+        print("⚠️ Flag --local detectada: Usando SDK nativa de lmstudio para embeddings.")
+        
+    process_and_ingest_academics(base_json, force=force_run, force_local=force_local)
     print("\n🎉 Proceso global de ingesta de APIs completado.")
