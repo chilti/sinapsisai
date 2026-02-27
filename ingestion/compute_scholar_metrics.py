@@ -71,8 +71,8 @@ def extract_academic_papers():
                     pass
             
             fwci = raw_meta.get('fwci', None) 
-            title = raw_meta.get('Title', 'No Title')
-            source = raw_meta.get('Source', 'Unknown')
+            title = raw_meta.get('Title') or raw_meta.get('title') or raw_meta.get('TI') or 'No Title'
+            source = raw_meta.get('Source') or raw_meta.get('source_title') or raw_meta.get('journal_iso_source_abbreviation') or raw_meta.get('publication_name') or raw_meta.get('SO') or 'Unknown'
             doi_link = "https://doi.org/" + row['paper_id'] if row['paper_id'] and not "urn:" in row['paper_id'] else None
             
             topics = raw_meta.get('OpenAlex_Topics', [])
@@ -126,8 +126,8 @@ def extract_entity_papers():
                     pass
             
             fwci = raw_meta.get('fwci', None) 
-            title = raw_meta.get('Title', 'No Title')
-            source = raw_meta.get('Source', 'Unknown')
+            title = raw_meta.get('Title') or raw_meta.get('title') or raw_meta.get('TI') or 'No Title'
+            source = raw_meta.get('Source') or raw_meta.get('source_title') or raw_meta.get('journal_iso_source_abbreviation') or raw_meta.get('publication_name') or raw_meta.get('SO') or 'Unknown'
             doi_link = "https://doi.org/" + row['paper_id'] if row['paper_id'] and not "urn:" in row['paper_id'] else None
             
             topics = raw_meta.get('OpenAlex_Topics', [])
