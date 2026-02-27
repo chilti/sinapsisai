@@ -63,8 +63,14 @@ def patch_metadata():
                         meta = raw_meta_json
                     else:
                         try:
-                            meta = json.loads(raw_meta_json)
-                        except:
+                            # Reemplazar comillas simples si el stringificado de python las dejó (común en repr dicts)
+                            if isinstance(raw_meta_json, str) and raw_meta_json.startswith("{'") and "'" in raw_meta_json:
+                                import ast
+                                meta = ast.literal_eval(raw_meta_json)
+                            else:
+                                meta = json.loads(raw_meta_json)
+                        except Exception as e:
+                            print(f"\n[!] JSON Parse Error para {clean_doi}: {e} | Snippet: {str(raw_meta_json)[:50]}", flush=True)
                             continue
                         
                     # Actualizar
@@ -80,8 +86,10 @@ def patch_metadata():
                     session.run("MATCH (p:Paper {id: $id}) SET p.raw_metadata = $meta", 
                                id=doi_full, meta=json.dumps(meta))
                     updated_count += 1
+                else:
+                    if(i==0): print(f"\n[!] {clean_doi} no encontrado en la repuesta de OpenAlex. (Muestra de rechazo)", flush=True)
                     
-        print(f"Lote {i//batch_size + 1}: Actualizados {updated_count}/{total} papers.", end="\r")
+        print(f"Lote {i//batch_size + 1}: Actualizados {updated_count}/{total} papers.", end="\r", flush=True)
         time.sleep(0.1)
             
     print(f"\n🎉 Parche completado. {updated_count} papers en Neo4j fortalecidos con métricas OpenAlex.")
