@@ -43,9 +43,17 @@ class QdrantStore:
             
         points = []
         for doc, emb in zip(documents, embeddings):
+            # Usar un UUID determinista basado en el DOI (o título si el DOI falla)
+            # Esto previene que los papers de co-autores se registren múltiples veces en Qdrant
+            unique_str = doc.get("doi")
+            if not unique_str or unique_str == "None":
+                unique_str = doc.get("title", str(uuid.uuid4()))
+                
+            deterministic_id = str(uuid.uuid5(uuid.NAMESPACE_URL, unique_str))
+            
             points.append(
                 PointStruct(
-                    id=str(uuid.uuid4()),
+                    id=deterministic_id,
                     vector=emb,
                     payload=doc
                 )
