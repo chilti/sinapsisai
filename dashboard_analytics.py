@@ -126,11 +126,21 @@ def render_institucion_view(entity_name):
         
         st.markdown("---")
         st.subheader("📜 Repositorio de Publicaciones (Institucional)")
-        years_inst = np.flip(np.unique(df_inst_p['year'].dropna()))
-        s_year_inst = st.selectbox("Filtrar publicaciones institucionales por año:", options=["Todos"] + list(years_inst))
         
-        df_display_inst = df_inst_p if s_year_inst == "Todos" else df_inst_p[df_inst_p['year'] == s_year_inst]
+        col_filtro1, col_filtro2 = st.columns(2)
+        with col_filtro1:
+            years_inst = np.flip(np.unique(df_inst_p['year'].dropna()))
+            s_year_inst = st.selectbox("Filtrar por año:", options=["Todos"] + list(years_inst), key="inst_year")
+        with col_filtro2:
+            ods_options_inst = sorted([str(ods) for ods in df_inst_p['ODS_Nombre'].dropna().unique() if str(ods).lower() != "null" and "x" not in str(ods).lower()])
+            s_ods_inst = st.selectbox("Filtrar por ODS:", options=["Todos"] + ods_options_inst, key="inst_ods")
         
+        df_display_inst = df_inst_p.copy()
+        if s_year_inst != "Todos":
+            df_display_inst = df_display_inst[df_display_inst['year'] == s_year_inst]
+        if s_ods_inst != "Todos":
+            df_display_inst = df_display_inst[df_display_inst['ODS_Nombre'] == s_ods_inst]
+            
         df_display_inst = df_display_inst[[
             "year", "Title", "Source", "citations", "DOI", "ODS_Nombre"
         ]].rename(columns={
@@ -263,12 +273,22 @@ def render_investigador_view(entity_name):
         
         st.markdown("---")
         st.subheader("📜 Lista Completa de Publicaciones")
-        years = np.flip(np.unique(df_prof['year'].dropna()))
-        s_year = st.selectbox("Filtrar por año de publicación (o ver todos):", options=["Todos"] + list(years))
         
-        df_display = df_prof if s_year == "Todos" else df_prof[df_prof['year'] == s_year]
+        col_fil_prof1, col_fil_prof2 = st.columns(2)
+        with col_fil_prof1:
+            years_prof = np.flip(np.unique(df_prof['year'].dropna()))
+            s_year_prof = st.selectbox("Filtrar por año:", options=["Todos"] + list(years_prof), key="prof_year")
+        with col_fil_prof2:
+            ods_options_prof = sorted([str(ods) for ods in df_prof['ODS_Nombre'].dropna().unique() if str(ods).lower() != "null" and "x" not in str(ods).lower()])
+            s_ods_prof = st.selectbox("Filtrar por ODS:", options=["Todos"] + ods_options_prof, key="prof_ods")
         
-        df_display = df_display[[
+        df_display_prof = df_prof.copy()
+        if s_year_prof != "Todos":
+            df_display_prof = df_display_prof[df_display_prof['year'] == s_year_prof]
+        if s_ods_prof != "Todos":
+            df_display_prof = df_display_prof[df_display_prof['ODS_Nombre'] == s_ods_prof]
+            
+        df_display_prof = df_display_prof[[
             "year", "Title", "Source", "citations", "DOI", "ODS_Nombre"
         ]].rename(columns={
             "year": "Año",
@@ -279,7 +299,7 @@ def render_investigador_view(entity_name):
             "ODS_Nombre": "ODS"
         }).sort_values(by="Año", ascending=False)
         
-        st.dataframe(df_display, width="stretch", hide_index=True, column_config={"DOI": st.column_config.LinkColumn("Enlace DOI")})
+        st.dataframe(df_display_prof, width="stretch", hide_index=True, column_config={"DOI": st.column_config.LinkColumn("Enlace DOI")})
     
     # 5. Mapa UMAP
     st.markdown("---")
