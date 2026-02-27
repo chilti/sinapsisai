@@ -206,7 +206,7 @@ def obtener_metadatos_de_orcid(orcid_url):
 
 # --- Lógica principal de ingesta ---
 
-def process_and_ingest_academics(json_path, force=False, force_local=False):
+def process_and_ingest_academics(json_path, force=False, force_local=False, target_name=None):
     if not os.path.exists(json_path):
         print(f"No se encontró el archivo: {json_path}")
         return
@@ -215,6 +215,9 @@ def process_and_ingest_academics(json_path, force=False, force_local=False):
         academicos = json.load(f)
 
     for academic_name, data in academicos.items():
+        if target_name and target_name.lower() not in academic_name.lower():
+            continue
+            
         original_name = data.get('original_name', academic_name)
         entity_name = data.get('entity', 'UNAM')
         
@@ -335,9 +338,23 @@ if __name__ == "__main__":
     base_json = os.path.join(os.path.dirname(__file__), "profesores_datos.json")
     force_run = False
     force_local = False
+    target_name = None
     
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    flags = [a for a in sys.argv[1:] if a.startswith("--")]
+    # Parseo manual para soportar --name "Nombre"
+    args = []
+    i = 1
+    while i < len(sys.argv):
+        arg = sys.argv[i]
+        if arg == "--name" and i + 1 < len(sys.argv):
+            target_name = sys.argv[i+1]
+            i += 2
+        elif arg.startswith("--"):
+            i += 1
+        else:
+            args.append(arg)
+            i += 1
+            
+    flags = [a for a in sys.argv[1:] if a.startswith("--") and not a == "--name"]
     
     if len(args) > 0:
         base_json = args[0]
@@ -350,5 +367,8 @@ if __name__ == "__main__":
         force_local = True
         print("⚠️ Flag --local detectada: Usando SDK nativa de lmstudio para embeddings.")
         
-    process_and_ingest_academics(base_json, force=force_run, force_local=force_local)
+    if target_name:
+        print(f"🔎 Filtrando ejecución solo para el académico que coincida con: '{target_name}'")
+        
+    process_and_ingest_academics(base_json, force=force_run, force_local=force_local, target_name=target_name)
     print("\n🎉 Proceso global de ingesta de APIs completado.")
