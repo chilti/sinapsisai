@@ -135,17 +135,22 @@ def main():
     with open(json_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
-    # Identificar quiénes fallaron en el primer pase
-    missing = []
+    # Identificar quiénes fallaron o necesitan scrape manual
+    missing_search = []
+    missing_scrape_only = []
     for k, v in data.items():
-        if "No encontrado" in str(v.get('siia', '')):
-            missing.append(k)
+        siia_val = str(v.get('siia', '')).strip()
+        scopus_val = str(v.get('scopus', '')).strip()
+        orcid_val = str(v.get('orcid', '')).strip()
+        
+        if "No encontrado" in siia_val:
+            missing_search.append(k)
+        elif siia_val.startswith("http") and (not scopus_val or not orcid_val):
+            missing_scrape_only.append(k)
 
-    if not missing:
-        print("🎉 ¡No hay académicos perdidos en este JSON! Todos tienen URL SIIA.")
+    if not missing_search and not missing_scrape_only:
+        print("🎉 ¡No hay académicos pendientes en este JSON! Todos tienen URL SIIA, Scopus y ORCID.")
         return
-
-    print(f"🔎 Encontrados {len(missing)} académicos sin perfil SIIA. Procediendo al reintento agresivo...\n")
 
     options = webdriver.ChromeOptions()
     options.add_argument('--headless')
@@ -156,58 +161,82 @@ def main():
     driver = webdriver.Chrome(options=options)
 
     try:
-        for name_key in missing:
-            entry = data[name_key]
-            original_name = entry.get('original_name', name_key)
-            print(f"▶️ Procesando: {original_name}")
-
-            # Parsear nombres
-            ap_pat, ap_mat, nombre_pila = "", "", ""
-            if ',' in original_name:
-                apellidos, nombres = original_name.split(',', 1)
-                aps = apellidos.split()
-                ap_pat = aps[0] if len(aps) >= 1 else ""
-                ap_mat = " ".join(aps[1:]) if len(aps) >= 2 else ""
-                nombre_pila = nombres.strip()
-            else:
-                parts = original_name.split()
-                if len(parts) >= 3:
-                    ap_pat, ap_mat = parts[0], parts[1]
-                    nombre_pila = " ".join(parts[2:])
-                elif len(parts) == 2:
-                    ap_pat, nombre_pila = parts[0], parts[1]
-                else:
-                    ap_pat = original_name
-
-            # Quitar títulos
-            ap_pat = re.sub(r'^(DR\.|DRA\.)\s*', '', ap_pat, flags=re.IGNORECASE).strip()
-
-            siia_results = buscar_en_siia_con_reintentos(ap_pat, ap_mat, nombre_pila)
-            
-            if not siia_results:
-                print("   ❌ Ni siquiera la búsqueda agresiva entregó hits.")
-                continue
-
-            found = False
-            for res in siia_results:
-                link = res.get('link')
+        # Fase 1: Scrape directo para los que ya tienen URL manual pero les falta ORCID/Scopus
+        if missing_scrape_only:
+            print(f"🔗 Encontrados {len(missing_scrape_only)} académicos con URL manual SIIA pero sin Scopus/ORCID. Extrayendo directo...\n")
+            for name_key in missing_scrape_only:
+                entry = data[name_key]
+                print(f"▶️ Scrape directo de URL manual: {entry.get('original_name', name_key)}")
+                
+                link = entry.get('siia')
+                # Hacemos verify_and_scrape (si el fuzzy falla es porque el link manual es incorrecto)
                 scraped_data = verify_and_scrape_siia(driver, name_key, link)
                 if scraped_data:
-                    data[name_key]['siia'] = link
-                    data[name_key]['scopus'] = scraped_data.get('scopus', '')
-                    data[name_key]['orcid'] = scraped_data.get('orcid', '')
-                    data[name_key]['areas'] = scraped_data.get('areas', [])
-                    found = True
-                    break
+                    data[name_key]['scopus'] = scraped_data.get('scopus', entry.get('scopus', ''))
+                    data[name_key]['orcid'] = scraped_data.get('orcid', entry.get('orcid', ''))
+                    
+                    if not data[name_key].get('areas') and scraped_data.get('areas'):
+                        data[name_key]['areas'] = scraped_data.get('areas')
+                
+                with open(json_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=4, ensure_ascii=False)
+                time.sleep(2)
 
-            if not found:
-                print("   ❌ Se evaluaron hits alternativos pero ninguno cruzó el umbral difuso (70%).")
+        # Fase 2: Reintento agresivo para los que tienen "No encontrado"
+        if missing_search:
+            print(f"\n🔎 Encontrados {len(missing_search)} académicos SIN perfil SIIA. Procediendo al reintento de búsqueda agresivo...\n")
+            for name_key in missing_search:
+                entry = data[name_key]
+                original_name = entry.get('original_name', name_key)
+                print(f"▶️ Procesando Búsqueda: {original_name}")
 
-            # Guardar en vivo tras cada hit para no perder nada si se corta
-            with open(json_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
-            
-            time.sleep(2)
+                # Parsear nombres
+                ap_pat, ap_mat, nombre_pila = "", "", ""
+                if ',' in original_name:
+                    apellidos, nombres = original_name.split(',', 1)
+                    aps = apellidos.split()
+                    ap_pat = aps[0] if len(aps) >= 1 else ""
+                    ap_mat = " ".join(aps[1:]) if len(aps) >= 2 else ""
+                    nombre_pila = nombres.strip()
+                else:
+                    parts = original_name.split()
+                    if len(parts) >= 3:
+                        ap_pat, ap_mat = parts[0], parts[1]
+                        nombre_pila = " ".join(parts[2:])
+                    elif len(parts) == 2:
+                        ap_pat, nombre_pila = parts[0], parts[1]
+                    else:
+                        ap_pat = original_name
+
+                # Quitar títulos
+                ap_pat = re.sub(r'^(DR\.|DRA\.)\s*', '', ap_pat, flags=re.IGNORECASE).strip()
+
+                siia_results = buscar_en_siia_con_reintentos(ap_pat, ap_mat, nombre_pila)
+                
+                if not siia_results:
+                    print("   ❌ Ni siquiera la búsqueda agresiva entregó hits.")
+                    continue
+
+                found = False
+                for res in siia_results:
+                    link = res.get('link')
+                    scraped_data = verify_and_scrape_siia(driver, name_key, link)
+                    if scraped_data:
+                        data[name_key]['siia'] = link
+                        data[name_key]['scopus'] = scraped_data.get('scopus', '')
+                        data[name_key]['orcid'] = scraped_data.get('orcid', '')
+                        data[name_key]['areas'] = scraped_data.get('areas', [])
+                        found = True
+                        break
+
+                if not found:
+                    print("   ❌ Se evaluaron hits alternativos pero ninguno cruzó el umbral difuso (70%).")
+
+                # Guardar en vivo tras cada hit
+                with open(json_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=4, ensure_ascii=False)
+                
+                time.sleep(2)
 
     finally:
         driver.quit()
