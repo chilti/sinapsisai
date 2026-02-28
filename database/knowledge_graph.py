@@ -93,7 +93,7 @@ class Neo4jGraphStore:
             result = session.run(query, name=author_name)
             return [record["coauthor"] for record in result]
 
-    def add_api_paper(self, paper_data: Dict[str, Any], academic_name: str):
+    def add_api_paper(self, paper_data: Dict[str, Any], academic_name: str, orcid: str = None, scopus_id: str = None):
         """
         Inserta datos de APIs (OpenAlex/Scopus/ORCID) vinculando el nombre completo (Academic) y el artículo por DOI.
         Conserva todos los campos crudos en raw_metadata_json.
@@ -112,7 +112,9 @@ class Neo4jGraphStore:
             "year": int(data.get("year", 0)) if data.get("year") else 0,
             "citations": int(data.get("citations", 0)) if data.get("citations") else 0,
             "raw_metadata": data["raw_metadata_json"],
-            "academic_name": academic_name
+            "academic_name": academic_name,
+            "orcid": orcid,
+            "scopus_id": scopus_id
         }
 
         # Si no hay DOI válido, no podemos ligarlos estrictamente o creamos id random
@@ -123,7 +125,16 @@ class Neo4jGraphStore:
         query = """
         MERGE (a:Academic:Author {id: $academic_name}) // Multietiqueta Academic y Author
         SET a.name = $academic_name
-        
+        WITH a
+        CALL {
+            WITH a
+            WITH a WHERE $orcid IS NOT NULL SET a.orcid = $orcid
+        }
+        CALL {
+            WITH a
+            WITH a WHERE $scopus_id IS NOT NULL SET a.scopus_id = $scopus_id
+        }
+        WITH a
         MERGE (p:Paper {id: $doi}) // Unificamos a Paper
         SET p.doi = $doi, p.title = $title, p.year = $year, p.citations = $citations,
             p.raw_metadata = $raw_metadata

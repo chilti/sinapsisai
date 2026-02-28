@@ -201,18 +201,26 @@ def render_investigador_view(entity_name):
     academicos_dict = cargar_lista_academicos()
     academico_info = academicos_dict.get(selected_inv, {})
     
+    # Priorizar IDs del DataFrame (Neo4j) sobre el JSON institucional
+    inv_orcid = inv_data.get('orcid') or academico_info.get("orcid")
+    inv_scopus = inv_data.get('scopus_id') or academico_info.get("scopus")
+
     st.markdown("---")
     st.subheader("🔗 Enlaces de Perfil Académico")
     col_links1, col_links2 = st.columns([3, 1])
     with col_links1:
         if academico_info.get("siia") and "No encont" not in academico_info["siia"]:
             st.markdown(f"- **SIIA-UNAM:** [Ver Perfil de {selected_inv}]({academico_info['siia']})")
-        if academico_info.get("orcid"):
-            st.markdown(f"- **ORCID:** [Ver Perfil]({academico_info['orcid']})")
         
-        lista_scopus_id = academico_info.get("scopus", "")
-        if lista_scopus_id and "http" in lista_scopus_id:
-            st.markdown(f"- **Scopus:** [Ver Perfil]({lista_scopus_id})")
+        if inv_orcid:
+            orcid_link = inv_orcid if "http" in inv_orcid else f"https://orcid.org/{inv_orcid}"
+            st.markdown(f"- **ORCID:** [Ver Perfil]({orcid_link})")
+        
+        if inv_scopus:
+            # Si hay varios, tomamos el primero para el enlace principal
+            sid = str(inv_scopus).split(';')[0].strip()
+            scopus_link = sid if "http" in sid else f"https://www.scopus.com/authid/detail.uri?authorId={sid}"
+            st.markdown(f"- **Scopus:** [Ver Perfil]({scopus_link})")
             
     
 

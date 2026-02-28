@@ -23,37 +23,45 @@ class BibParser:
         """
         Estructura un registro usando las llaves de bibtex (title, author, year, doi, etc).
         """
+        # Normalizar llaves a minúsculas por si acaso
+        rec = {k.lower(): v for k, v in raw_record.items()}
+        
         # Extraer año
-        year_str = raw_record.get('year', '0')
+        year_str = rec.get('year', '0')
         year = int(year_str) if year_str.isdigit() else 0
 
         # Extraer DOI (eliminando URLs si las tiene incrustadas)
-        doi = raw_record.get('doi', '').strip()
+        doi = rec.get('doi', '').strip()
         if 'doi.org/' in doi:
             doi = doi.split('doi.org/')[-1]
             
         # Extraer título
-        title = raw_record.get('title', '').replace('{', '').replace('}', '')
+        title = rec.get('title', '').replace('{', '').replace('}', '')
         
         # Procesar autores (separados por ' and ')
-        authors_raw = raw_record.get('author', '')
+        authors_raw = rec.get('author', '')
         authors_list = [au.strip() for au in authors_raw.split(' and ') if au.strip()]
         
         authors = [{"name": au} for au in authors_list]
         
         # Conceptos 
-        keywords_str = raw_record.get('keywords', '')
+        keywords_str = rec.get('keywords', '')
         keywords = [k.strip() for k in keywords_str.split(',') if k.strip()]
         concepts = [{"name": k} for k in keywords]
         
+        # Priorizar DOI como paper_id para unificar con otras fuentes
+        # Si no hay DOI, usamos el ID del bibtex
+        bib_id = raw_record.get('ID', 'unknown')
+        paper_id = doi if doi else bib_id
+
         processed = {
-            "paper_id": raw_record.get('ID', 'unknown'),
+            "paper_id": paper_id,
             "title": title,
-            "abstract": raw_record.get('abstract', '').replace('{', '').replace('}', ''),
+            "abstract": rec.get('abstract', '').replace('{', '').replace('}', ''),
             "year": year,
             "doi": doi,
-            "journal": raw_record.get('journal', ''),
-            "citations": 0, # En bib usualmente no hay times cited a menos que sea un campo custom
+            "journal": rec.get('journal', ''),
+            "citations": 0,
             "authors": authors,
             "concepts": concepts,
             "institutions": [],

@@ -325,8 +325,9 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                 "citations": record.get("Cited_by", 0),
                 "raw_metadata": record # TODO EL JSON
             }
-            # Guardamos la relación en el grafo
-            graph_store.add_api_paper(neo4j_data, academic_name=academic_name)
+            # Guardamos la relación en el grafo incluyendo metadatos del autor
+            scopus_str = "; ".join(scopus_id) if isinstance(scopus_id, list) else scopus_id
+            graph_store.add_api_paper(neo4j_data, academic_name=academic_name, orcid=orcid, scopus_id=scopus_str)
             time.sleep(0.05)
             
         # Afiliación del académico a su Entidad

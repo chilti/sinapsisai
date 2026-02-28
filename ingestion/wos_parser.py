@@ -76,12 +76,18 @@ class WoSParser:
         """
         Limpia y estructura un registro crudo de WoS agregando la totalidad de la metadata disponible.
         """
+        doi = "".join(raw_record.get('DI', [])).strip()
+        ut_id = "".join(raw_record.get('UT', ['unknown'])).strip()
+        
+        # Priorizar DOI como paper_id
+        paper_id = doi if doi else ut_id
+
         processed = {
-            "paper_id": "".join(raw_record.get('UT', ['unknown'])),
+            "paper_id": paper_id,
             "title": " ".join(raw_record.get('TI', [])),
             "abstract": " ".join(raw_record.get('AB', [])),
             "year": int(raw_record.get('PY', ['0'])[0]) if raw_record.get('PY') and raw_record.get('PY')[0].isdigit() else 0,
-            "doi": "".join(raw_record.get('DI', [])),
+            "doi": doi,
             "journal": " ".join(raw_record.get('SO', [])),
             "citations": int(raw_record.get('TC', ['0'])[0]) if raw_record.get('TC') and raw_record.get('TC')[0].isdigit() else 0,
             "authors": [],

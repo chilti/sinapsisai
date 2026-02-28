@@ -48,6 +48,8 @@ def extract_academic_papers():
     OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
     OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
     RETURN a.name AS academic_name,
+           a.orcid AS orcid,
+           a.scopus_id AS scopus_id,
            collect(DISTINCT e.name) AS entities,
            p.id AS paper_id,
            p.year AS year,
@@ -127,6 +129,8 @@ def extract_academic_papers():
 
             records.append({
                 'academic_name': row['academic_name'],
+                'orcid': row['orcid'],
+                'scopus_id': row['scopus_id'],
                 'entities': ";".join(row['entities']) if row['entities'] else "",
                 'paper_id': row['paper_id'],
                 'year': row['year'],
@@ -291,6 +295,11 @@ def aggregate_metrics(df_papers, group_cols):
         'is_oa_closed': 'mean'
     }
     
+    # Agregar columnas informativas si existen y no están en group_cols
+    for col in ['orcid', 'scopus_id', 'entities']:
+        if col in df_papers.columns and col not in group_cols:
+            agg_funcs[col] = 'first'
+    
     df_agg = df_papers.groupby(group_cols).agg(agg_funcs).reset_index()
     df_agg.rename(columns={
         'paper_id': 'num_documents',
@@ -341,6 +350,8 @@ def process_and_save():
     print(f"✅ {len(df_raw)} publicaciones extraídas.")
     df_raw['year'] = pd.to_numeric(df_raw['year'], errors='coerce')
     df_raw = df_raw.dropna(subset=['year'])
+    # Filtrar años inválidos (0 o muy antiguos) para evitar errores en gráficas temporales
+    df_raw = df_raw[df_raw['year'] >= 1900]
     
     # Exportar listado general de papers de Académicos
     df_raw.to_parquet(CACHE_DIR / 'papers_profesor.parquet', index=False)
@@ -394,6 +405,8 @@ def process_and_save():
     if not df_inst_raw.empty:
         df_inst_raw['year'] = pd.to_numeric(df_inst_raw['year'], errors='coerce')
         df_inst_raw = df_inst_raw.dropna(subset=['year'])
+        # Filtrar años inválidos
+        df_inst_raw = df_inst_raw[df_inst_raw['year'] >= 1900]
         # Exportar listado general de papers de Institucion
         df_inst_raw.to_parquet(CACHE_DIR / 'papers_institucion.parquet', index=False)
         
