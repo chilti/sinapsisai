@@ -51,41 +51,19 @@ st.write(
 # Se separó la línea "E --> F & G" en dos líneas distintas para máxima compatibilidad.
 arquitectura_general_code = """
 graph TD
-    subgraph "Usuario"
-        A[Usuario Final]
-    end
-
-    subgraph "Frontend"
-        B[Interfaz de Streamlit]
-    end
-
-    subgraph "Orquestador, LangChain/LangGraph"
-        C{Agente ReAct}
-        D[LLM, gpt-oss-20b]
-        E[Herramientas, @tool]
-    end
-
-    subgraph "Capa de Microservicios, Backend"
-        F[API de Búsqueda Vectorial]
-        G[API de OpenAlex, Web y Wikipedia]
-    end
-
-    subgraph "Fuentes de Datos"
-        H[(Base de Datos Vectorial - Milvus)]
-        I[(APIs Externas)]
-    end
-
-    A -->|1. Ingresa pregunta| B
-    B -->|2. Invoca al agente| C
-    C -->|3. Piensa y decide herramienta| D
+    A[Usuario Final] -->|1. Ingresa pregunta| B[Interfaz de Streamlit]
+    B -->|2. Invoca al agente| C[Agente ReAct]
+    C -->|3. Piensa y decide herramienta| D[LLM, gpt-oss-20b]
     D -->|4. Devuelve herramienta a usar| C
-    C -->|5. Ejecuta la herramienta seleccionada| E
-    E -->|6. Llama al microservicio apropiado| F
-    E -->|6. Llama al microservicio apropiado| G
-    F -->|7. Consulta datos| H
-    G -->|8. Consulta datos| I
-    H & I -->|9. Devuelven resultados| F & G
-    F & G -->|10. Devuelven JSON a la herramienta| E
+    C -->|5. Ejecuta la herramienta seleccionada| E[Herramientas, @tool]
+    E -->|6. Llama al microservicio apropiado| F[API de Búsqueda Vectorial]
+    E -->|6. Llama al microservicio apropiado| G[API de OpenAlex, Web y Wikipedia]
+    F -->|7. Consulta datos| H[Base de Datos Vectorial - Milvus]
+    G -->|8. Consulta datos| I[APIs Externas]
+    H -->|9. Devuelve resultados| F
+    I -->|9. Devuelve resultados| G
+    F -->|10. Devuelven JSON a la herramienta| E
+    G -->|10. Devuelven JSON a la herramienta| E
     E -->|11. Entrega resultado al agente| C
     C -->|12. Genera respuesta final con el LLM| D
     D -->|13. Devuelve respuesta final al Agente| C
@@ -145,16 +123,15 @@ st.write(
 
 flujo_mcp_code = """
 graph TD
-    A[Agente decide usar una herramienta<br>e.g., buscar_articulos_por_autor] --> B{Se ejecuta la función de la herramienta<br>con los argumentos necesarios<br>e.g., author_name='J. Smith'};
-    B --> C["La función construye la petición HTTP:<br>- URL del endpoint<br>- Payload (JSON con los argumentos)<br>- Headers"];
-    C --> D{"Utiliza la librería `requests`<br>para enviar la petición al microservicio<br>requests.post(url, json=payload)"};
-    D --> E("(Microservicio)");
-    E --> F["El microservicio procesa la petición<br>(e.g., busca en la base de datos)"];
-    F --> G[El microservicio retorna una respuesta<br>normalmente en formato JSON];
-    G --> H{La función en Python recibe la respuesta};
-    H --> I["Se parsea el JSON y se extrae<br>la información relevante (.json()['results'])"];
-    I --> J{Se formatea la información<br>en una cadena de texto legible};
-    J --> K[La función retorna la cadena de texto<br>al Agente ReAct];
-  
+    A[Agente decide usar una herramienta] --> B[Se ejecuta la función de la herramienta]
+    B --> C[La función construye la petición HTTP]
+    C --> D[Utiliza la librería requests]
+    D --> E[Microservicio]
+    E --> F[El microservicio procesa la petición]
+    F --> G[El microservicio retorna una respuesta]
+    G --> H[La función en Python recibe la respuesta]
+    H --> I[Se parsea el JSON y se extrae información]
+    I --> J[Se formatea la información en texto]
+    J --> K[La función retorna el texto al Agente]
 """
 mermaid_chart(flujo_mcp_code, height=650)

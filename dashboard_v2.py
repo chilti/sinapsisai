@@ -322,35 +322,34 @@ with tab_about:
     st.markdown("Diagrama de Entidad-Relación que describe cómo se almacena la información estructurada de Sinapsis AI.")
     schema_mermaid = """
     erDiagram
-        Author ||--o{ Paper : "AUTHORED"
-        Author }o--|| Institution : "AFFILIATED_WITH"
-        Paper ||--o{ Concept : "HAS_CONCEPT"
-        Paper ||--o{ Topic : "HAS_TOPIC"
-        Paper ||--o{ SDG : "ADDRESSES"
+        Author ||--o{ Paper : AUTHORED
+        Author }o--|| Institution : AFFILIATED_WITH
+        Paper ||--o{ Concept : HAS_CONCEPT
+        Paper ||--o{ Topic : HAS_TOPIC
+        Paper ||--o{ SDG : ADDRESSES
         
-        Academic ||--|| Author : "is subclass of"
-        Entity ||--|| Institution : "is subclass of"
+        Academic ||--|| Author : is_subclass_of
+        Entity ||--|| Institution : is_subclass_of
         
         Author {
-            string id PK "Nombre completo"
+            string id
             string name
         }
         Institution {
-            string name PK "UNAM, ICN, etc."
+            string name
         }
         Paper {
-            string doi PK "DOI o UUID"
+            string doi
             string title
             int year
             int citations
-            string raw_metadata "JSON completo"
         }
         Topic {
-            string id PK
+            string id
             string name
         }
         SDG {
-            string id PK "1 al 17"
+            string id
             string name
         }
     """
@@ -409,57 +408,33 @@ with tab_about:
     
     mermaid_code = """
     graph TD
-        %% Ingestion Layer
-        subgraph Data Ingestion
-            A[SIIA / Local DB] --> B(Ingesta Inicial)
-            B --> C{APIs Globales}
-            C --> D[OpenAlex]
-            C --> E[Scopus]
-            C --> F[ORCID]
-        end
-
-        %% Database Layer
-        subgraph Hybrid Knowledge Base
-            D -->|Metadata & Abstract| G[("Neo4j: Knowledge Graph")]
-            E -->|Citations| G
-            F -->|Authored DOIs| G
-            
-            G -.-> |Vectorize texts| H[("Qdrant: Vector DB")]
-            
-            subgraph Graph Nodes
-              G1(("Academic:Author")) -.- G
-              G2(("Entity:Institution")) -.- G
-              G3(("Paper")) -.- G
-              G4(("Topic")) -.- G
-              G5(("SDG")) -.- G
-            end
-        end
-
-        %% Pre-computation Layer
-        subgraph Analytical Caching
-            G -->|ETL offline| I[Archivos Parquet]
-            I -->|papers_profesor| J[Local Cache]
-            I -->|institucion_annual| J
-        end
-
-        %% App Layer
-        subgraph Streamlit Interface
-            J --> K[Dashboard de Analítica]
-            K --> L{Vistas}
-            L --> M[Perfil Institucional]
-            L --> N[Perfil Académico]
-            
-            H <--> O[Orquestador RAG]
-            G <--> O
-        end
-
-        %% Agent Tools
-        subgraph Local AI Agent
-            O --> P(Local LLM)
-            O -.-> Q[Cypher Tool]
-            O -.-> R[Semantic Search Tool]
-            O -.-> S["Open Interpreter <br/> Code execution"]
-        end
+        A[SIIA / Local DB] --> B[Ingesta Inicial]
+        B --> C[APIs Globales]
+        C --> D[OpenAlex]
+        C --> E[Scopus]
+        C --> F[ORCID]
+        
+        D --> G[Neo4j: Knowledge Graph]
+        E --> G
+        F --> G
+        
+        G -.-> H[Qdrant: Vector DB]
+        
+        G --> I[Archivos Parquet]
+        I --> J[Local Cache]
+        
+        J --> K[Dashboard de Analitica]
+        K --> L[Vistas]
+        L --> M[Perfil Institucional]
+        L --> N[Perfil Académico]
+        
+        H <--> O[Orquestador RAG]
+        G <--> O
+        
+        O --> P[Local LLM]
+        O --> Q[Cypher Tool]
+        O --> R[Semantic Search Tool]
+        O --> S[Open Interpreter]
     """
     
     # Renderizamos Mermaid JS usando inyección segura de componentes de Streamlit
@@ -481,23 +456,23 @@ with tab_about:
     
     mermaid_ingestion = """
     graph TD
-        A(["1. Web Scraping / Archivo Local"]) -->|siia_scraper.py| B["Lista Base de Académicos JSON"]
-        B -->|ingest_apis.py| C{"Enriquecimiento Global APIs"}
-        C -->|Fetch| D["OpenAlex"]
-        C -->|Fetch| E["ORCID / Scopus"]
-        D --> F[("Neo4j: Nodos Academic / Paper")]
+        A[1. Web Scraping / Archivo Local] --> B[Lista Base de Académicos JSON]
+        B --> C[Enriquecimiento Global APIs]
+        C --> D[OpenAlex]
+        C --> E[ORCID / Scopus]
+        D --> F[Neo4j: Nodos Academic / Paper]
         E --> F
         
-        F -->|extract_topics.py| G["Extracción Temática <br/> Nodos Topic"]
-        F -->|"ingest_sdg.py <br/> Local LLM"| H["Clasificación ODS <br/> Nodos SDG"]
+        F --> G[Extracción Temática]
+        F --> H[Clasificación ODS]
         
-        G --> I[("Neo4j: Grafo de Conocimiento")]
+        G --> I[Neo4j: Grafo de Conocimiento]
         H --> I
         
-        I -->|compute_scholar_metrics.py| J{Motor de Cómputo Analítico}
+        I --> J[Motor de Cómputo Analítico]
         J --> K[Métricas Institucionales]
         J --> L[Métricas por Investigador]
-        K --> M[(Dataframe en Caché Parquet)]
+        K --> M[Dataframe en Caché Parquet]
         L --> M
     """
 
