@@ -42,14 +42,18 @@ def patch_metadata():
             query_dois = "|".join([f"https://doi.org/{d}" for d in valid_dois])
             works = pyalex.Works().filter(doi=query_dois).get()
             oa_data = {w['doi'].replace("https://doi.org/", "").lower(): w for w in works if w.get('doi')}
-        except Exception as e:
-            # Si el lote de 20 falla (usualmente por un DOI 404 malformado), iteramos uno por uno
+            
+            if not oa_data:
+                raise Exception("PyAlex devolvió 0 resultados en el lote (posible límite de caracteres ignorado).")
+                
+        except Exception as batch_err:
+            print(f"\n[!] Lote falló o vacío ({batch_err}). Probando individuales para rescatar...", flush=True)
             for d in valid_dois:
                 try:
                     w = pyalex.Works().filter(doi=f"https://doi.org/{d}").get()
-                    if w and w[0].get('doi'):
+                    if w and len(w) > 0 and w[0].get('doi'):
                         oa_data[w[0]['doi'].replace("https://doi.org/", "").lower()] = w[0]
-                except:
+                except Exception as single_err:
                     pass
         
         # Una vez traido el mapeo, parchar la base Neo4j        
