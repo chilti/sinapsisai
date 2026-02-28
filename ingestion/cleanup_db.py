@@ -1,4 +1,9 @@
 import os
+import sys
+
+# Asegurar que el directorio raíz del proyecto esté en el path para encontrar 'database'
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from database.knowledge_graph import Neo4jGraphStore
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
