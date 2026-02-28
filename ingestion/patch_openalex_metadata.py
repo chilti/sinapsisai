@@ -55,6 +55,7 @@ def patch_metadata():
                         oa_data[w[0]['doi'].replace("https://doi.org/", "").lower()] = w[0]
                 except Exception as single_err:
                     pass
+                time.sleep(0.1)
         
         # Una vez traido el mapeo, parchar la base Neo4j        
         with graph_store.driver.session() as session:
