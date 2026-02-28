@@ -198,6 +198,7 @@ def render_investigador_view(entity_name):
     selected_inv = st.selectbox("Seleccione un Académico:", investigadores)
 
     # 4. Enlaces de Perfil Externo
+    inv_data = df_inv_tot[df_inv_tot['academic_name'] == selected_inv].iloc[0]
     academicos_dict = cargar_lista_academicos()
     academico_info = academicos_dict.get(selected_inv, {})
     
@@ -225,7 +226,6 @@ def render_investigador_view(entity_name):
     
 
     # 1. KPIs del Investigador
-    inv_data = df_inv_tot[df_inv_tot['academic_name'] == selected_inv].iloc[0]
     st.markdown("---")
     
     st.markdown("##### Métricas Generales")
