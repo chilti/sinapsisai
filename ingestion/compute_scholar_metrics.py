@@ -107,7 +107,7 @@ def extract_academic_papers():
             citation_normalized_percentile = raw_meta.get('citation_normalized_percentile')
             if citation_normalized_percentile is None and 'raw_metadata' in raw_meta:
                 citation_normalized_percentile = raw_meta['raw_metadata'].get('citation_normalized_percentile')
-            citation_normalized_percentile = float(citation_normalized_percentile or 0.0)
+            citation_normalized_percentile = float(citation_normalized_percentile) if citation_normalized_percentile is not None else np.nan
             
             topics = raw_meta.get('OpenAlex_Topics') or raw_meta.get('topics')
             if topics is None and 'raw_metadata' in raw_meta:
@@ -214,7 +214,7 @@ def extract_entity_papers():
             citation_normalized_percentile = raw_meta.get('citation_normalized_percentile')
             if citation_normalized_percentile is None and 'raw_metadata' in raw_meta:
                 citation_normalized_percentile = raw_meta['raw_metadata'].get('citation_normalized_percentile')
-            citation_normalized_percentile = float(citation_normalized_percentile or 0.0)
+            citation_normalized_percentile = float(citation_normalized_percentile) if citation_normalized_percentile is not None else np.nan
             
             topics = raw_meta.get('OpenAlex_Topics') or raw_meta.get('topics')
             if topics is None and 'raw_metadata' in raw_meta:

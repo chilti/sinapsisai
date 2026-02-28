@@ -54,7 +54,7 @@ def mostrar_banners_destacados(df):
 
 def render_institucion_view(entity_name):
     st.header(f"🏢 Vista de la Institución: {entity_name}")
-    st.markdown(f"Panorama Analítico de la Producción de **{entity_name}**")
+    st.markdown(f"Panorama Analítico de la Producción de **{entity_name}**. La producción de la institución fué descargada desde Web of Sciencei. Los indicaddores fueron ectraidos de la base de datos abierta OpenAlex.")
 
     df_annual = load_cached_data("institucion_annual.parquet")
     df_total = load_cached_data("institucion_total.parquet")
@@ -194,6 +194,7 @@ def render_investigador_view(entity_name):
 
     # Selector
     investigadores = sorted(df_inv_tot['academic_name'].unique())
+    st.markdown("La información corresponde a la producción académica que se pudo recoger de las fuentes de información disponibles, lo cual implica que puede haber trabajos con afiliciaciones distintas a la actual.")
     selected_inv = st.selectbox("Seleccione un Académico:", investigadores)
 
     # 4. Enlaces de Perfil Externo
