@@ -38,11 +38,18 @@ class Neo4jGraphStore:
         
         # Preparar data asegurando que metadata sea string de JSON
         data = paper_data.copy()
-        if "raw_metadata" in data and isinstance(data["raw_metadata"], dict):
-            # Limpiar listas para que no den problemas o guardarlo como json puro
-            data["raw_metadata_json"] = json.dumps(data["raw_metadata"], ensure_ascii=False)
-        else:
-            data["raw_metadata_json"] = "{}"
+        raw = data.get("raw_metadata", {}).copy()
+        
+        # Si hay campos planos (como los inyectados por ingest_entity_docs), los movemos a raw_metadata
+        top_level_keys = [
+            "fwci", "citation_normalized_percentile", "is_in_top_1_percent", 
+            "is_in_top_10_percent", "OpenAlex_Topics", "open_access"
+        ]
+        for k in top_level_keys:
+            if k in data:
+                raw[k] = data[k]
+
+        data["raw_metadata_json"] = json.dumps(raw, ensure_ascii=False)
 
         query = """
         MERGE (p:Paper {id: $paper_id})

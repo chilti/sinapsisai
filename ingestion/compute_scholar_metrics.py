@@ -53,10 +53,7 @@ def extract_academic_papers():
            p.year AS year,
            p.citations AS citations,
            p.raw_metadata AS raw_metadata,
-           s.id AS sdg_id,
-           s.name AS sdg_name,
-           r.confidence AS sdg_confidence,
-           r.reasoning AS sdg_reasoning
+           collect({id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs
     """
     
     records = []
@@ -70,7 +67,11 @@ def extract_academic_papers():
                 except:
                     pass
             
-            fwci = raw_meta.get('fwci', None) 
+            # Robust Extraction (handles both ingest_apis and ingest_entity_docs formats)
+            fwci = raw_meta.get('fwci')
+            if fwci is None and 'raw_metadata' in raw_meta:
+                fwci = raw_meta['raw_metadata'].get('fwci')
+
             title = raw_meta.get('Title') or raw_meta.get('title') or raw_meta.get('TI') or 'No Title'
             source = raw_meta.get('Source') or raw_meta.get('source_title') or raw_meta.get('journal_iso_source_abbreviation') or raw_meta.get('publication_name') or raw_meta.get('SO') or 'Unknown'
             doi_link = "https://doi.org/" + row['paper_id'] if row['paper_id'] and not "urn:" in row['paper_id'] else None
@@ -78,9 +79,13 @@ def extract_academic_papers():
             # Open Access Logic
             is_oa = False
             oa_status = 'closed'
-            if 'open_access' in raw_meta and isinstance(raw_meta['open_access'], dict):
-                is_oa = raw_meta['open_access'].get('is_oa', False)
-                oa_status = str(raw_meta['open_access'].get('oa_status', 'closed')).lower()
+            oa_data = raw_meta.get('open_access')
+            if oa_data is None and 'raw_metadata' in raw_meta:
+                oa_data = raw_meta['raw_metadata'].get('open_access')
+
+            if isinstance(oa_data, dict):
+                is_oa = oa_data.get('is_oa', False)
+                oa_status = str(oa_data.get('oa_status', 'closed')).lower()
             elif 'OA' in raw_meta:
                  oa_str = str(raw_meta.get('OA', '')).lower()
                  if 'green' in oa_str: oa_status = 'green'
@@ -89,16 +94,40 @@ def extract_academic_papers():
                  elif 'bronze' in oa_str: oa_status = 'bronze'
                  is_oa = oa_status != 'closed'
                  
-            is_in_top_10_percent = int(raw_meta.get('is_in_top_10_percent', False) or 0)
-            is_in_top_1_percent = int(raw_meta.get('is_in_top_1_percent', False) or 0)
-            citation_normalized_percentile = float(raw_meta.get('citation_normalized_percentile', 0.0) or 0.0)
+            is_in_top_10_percent = raw_meta.get('is_in_top_10_percent')
+            if is_in_top_10_percent is None and 'raw_metadata' in raw_meta:
+                is_in_top_10_percent = raw_meta['raw_metadata'].get('is_in_top_10_percent')
+            is_in_top_10_percent = int(is_in_top_10_percent or 0)
+
+            is_in_top_1_percent = raw_meta.get('is_in_top_1_percent')
+            if is_in_top_1_percent is None and 'raw_metadata' in raw_meta:
+                is_in_top_1_percent = raw_meta['raw_metadata'].get('is_in_top_1_percent')
+            is_in_top_1_percent = int(is_in_top_1_percent or 0)
+
+            citation_normalized_percentile = raw_meta.get('citation_normalized_percentile')
+            if citation_normalized_percentile is None and 'raw_metadata' in raw_meta:
+                citation_normalized_percentile = raw_meta['raw_metadata'].get('citation_normalized_percentile')
+            citation_normalized_percentile = float(citation_normalized_percentile or 0.0)
             
-            topics = raw_meta.get('OpenAlex_Topics', [])
+            topics = raw_meta.get('OpenAlex_Topics') or raw_meta.get('topics')
+            if topics is None and 'raw_metadata' in raw_meta:
+                topics = raw_meta['raw_metadata'].get('OpenAlex_Topics') or raw_meta['raw_metadata'].get('topics')
             if not isinstance(topics, list): topics = []
             
+            # Manejo de ODS (primer ODS para retrocompatibilidad de columnas planas si se requiere, 
+            # pero la lista completa está en 'sdgs')
+            sdg_id, sdg_name, sdg_conf, sdg_reas = None, None, None, None
+            if row['sdgs']:
+                first_sdg = [s for s in row['sdgs'] if s['id'] is not None]
+                if first_sdg:
+                    sdg_id = first_sdg[0]['id']
+                    sdg_name = first_sdg[0]['name']
+                    sdg_conf = first_sdg[0]['confidence']
+                    sdg_reas = first_sdg[0]['reasoning']
+
             records.append({
                 'academic_name': row['academic_name'],
-                'entities': ";".join(row['entities']) if row['entities'] else "UNAM",
+                'entities': ";".join(row['entities']) if row['entities'] else "",
                 'paper_id': row['paper_id'],
                 'year': row['year'],
                 'citations': row['citations'],
@@ -113,10 +142,10 @@ def extract_academic_papers():
                 'is_in_top_1_percent': is_in_top_1_percent,
                 'citation_normalized_percentile': citation_normalized_percentile,
                 'topics': topics,
-                'ODS_ID': row['sdg_id'] if row['sdg_id'] else None,
-                'ODS_Nombre': row['sdg_name'] if row['sdg_name'] else None,
-                'ODS_Confianza': row['sdg_confidence'] if row['sdg_confidence'] else None,
-                'ODS_Justificacion': row['sdg_reasoning'] if row['sdg_reasoning'] else None
+                'ODS_ID': sdg_id,
+                'ODS_Nombre': sdg_name,
+                'ODS_Confianza': sdg_conf,
+                'ODS_Justificacion': sdg_reas
             })
             
     return pd.DataFrame(records)
@@ -132,10 +161,7 @@ def extract_entity_papers():
            p.year AS year,
            p.citations AS citations,
            p.raw_metadata AS raw_metadata,
-           s.id AS sdg_id,
-           s.name AS sdg_name,
-           r.confidence AS sdg_confidence,
-           r.reasoning AS sdg_reasoning
+           collect({id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs
     """
     records = []
     with graph_store.driver.session() as session:
@@ -148,7 +174,11 @@ def extract_entity_papers():
                 except:
                     pass
             
-            fwci = raw_meta.get('fwci', None) 
+            # Robust Extraction (handles both ingest_apis and ingest_entity_docs formats)
+            fwci = raw_meta.get('fwci')
+            if fwci is None and 'raw_metadata' in raw_meta:
+                fwci = raw_meta['raw_metadata'].get('fwci')
+
             title = raw_meta.get('Title') or raw_meta.get('title') or raw_meta.get('TI') or 'No Title'
             source = raw_meta.get('Source') or raw_meta.get('source_title') or raw_meta.get('journal_iso_source_abbreviation') or raw_meta.get('publication_name') or raw_meta.get('SO') or 'Unknown'
             doi_link = "https://doi.org/" + row['paper_id'] if row['paper_id'] and not "urn:" in row['paper_id'] else None
@@ -156,9 +186,13 @@ def extract_entity_papers():
             # Open Access Logic
             is_oa = False
             oa_status = 'closed'
-            if 'open_access' in raw_meta and isinstance(raw_meta['open_access'], dict):
-                is_oa = raw_meta['open_access'].get('is_oa', False)
-                oa_status = str(raw_meta['open_access'].get('oa_status', 'closed')).lower()
+            oa_data = raw_meta.get('open_access')
+            if oa_data is None and 'raw_metadata' in raw_meta:
+                oa_data = raw_meta['raw_metadata'].get('open_access')
+
+            if isinstance(oa_data, dict):
+                is_oa = oa_data.get('is_oa', False)
+                oa_status = str(oa_data.get('oa_status', 'closed')).lower()
             elif 'OA' in raw_meta:
                  oa_str = str(raw_meta.get('OA', '')).lower()
                  if 'green' in oa_str: oa_status = 'green'
@@ -167,13 +201,36 @@ def extract_entity_papers():
                  elif 'bronze' in oa_str: oa_status = 'bronze'
                  is_oa = oa_status != 'closed'
                  
-            is_in_top_10_percent = int(raw_meta.get('is_in_top_10_percent', False) or 0)
-            is_in_top_1_percent = int(raw_meta.get('is_in_top_1_percent', False) or 0)
-            citation_normalized_percentile = float(raw_meta.get('citation_normalized_percentile', 0.0) or 0.0)
+            is_in_top_10_percent = raw_meta.get('is_in_top_10_percent')
+            if is_in_top_10_percent is None and 'raw_metadata' in raw_meta:
+                is_in_top_10_percent = raw_meta['raw_metadata'].get('is_in_top_10_percent')
+            is_in_top_10_percent = int(is_in_top_10_percent or 0)
+
+            is_in_top_1_percent = raw_meta.get('is_in_top_1_percent')
+            if is_in_top_1_percent is None and 'raw_metadata' in raw_meta:
+                is_in_top_1_percent = raw_meta['raw_metadata'].get('is_in_top_1_percent')
+            is_in_top_1_percent = int(is_in_top_1_percent or 0)
+
+            citation_normalized_percentile = raw_meta.get('citation_normalized_percentile')
+            if citation_normalized_percentile is None and 'raw_metadata' in raw_meta:
+                citation_normalized_percentile = raw_meta['raw_metadata'].get('citation_normalized_percentile')
+            citation_normalized_percentile = float(citation_normalized_percentile or 0.0)
             
-            topics = raw_meta.get('OpenAlex_Topics', [])
+            topics = raw_meta.get('OpenAlex_Topics') or raw_meta.get('topics')
+            if topics is None and 'raw_metadata' in raw_meta:
+                topics = raw_meta['raw_metadata'].get('OpenAlex_Topics') or raw_meta['raw_metadata'].get('topics')
             if not isinstance(topics, list): topics = []
             
+            # Manejo de ODS
+            sdg_id, sdg_name, sdg_conf, sdg_reas = None, None, None, None
+            if row['sdgs']:
+                first_sdg = [s for s in row['sdgs'] if s['id'] is not None]
+                if first_sdg:
+                    sdg_id = first_sdg[0]['id']
+                    sdg_name = first_sdg[0]['name']
+                    sdg_conf = first_sdg[0]['confidence']
+                    sdg_reas = first_sdg[0]['reasoning']
+
             records.append({
                 'entity_name': row['entity_name'],
                 'paper_id': row['paper_id'],
@@ -190,10 +247,10 @@ def extract_entity_papers():
                 'is_in_top_1_percent': is_in_top_1_percent,
                 'citation_normalized_percentile': citation_normalized_percentile,
                 'topics': topics,
-                'ODS_ID': row['sdg_id'] if row['sdg_id'] else None,
-                'ODS_Nombre': row['sdg_name'] if row['sdg_name'] else None,
-                'ODS_Confianza': row['sdg_confidence'] if row['sdg_confidence'] else None,
-                'ODS_Justificacion': row['sdg_reasoning'] if row['sdg_reasoning'] else None
+                'ODS_ID': sdg_id,
+                'ODS_Nombre': sdg_name,
+                'ODS_Confianza': sdg_conf,
+                'ODS_Justificacion': sdg_reas
             })
             
     return pd.DataFrame(records)
@@ -210,7 +267,7 @@ def aggregate_metrics(df_papers, group_cols):
     if 'is_in_top_1_percent' in df_papers.columns:
         df_papers['is_in_top_1_percent'] = pd.to_numeric(df_papers['is_in_top_1_percent'], errors='coerce').fillna(0).astype(int)
     if 'citation_normalized_percentile' in df_papers.columns:
-        df_papers['citation_normalized_percentile'] = pd.to_numeric(df_papers['citation_normalized_percentile'], errors='coerce').fillna(50.0)
+        df_papers['citation_normalized_percentile'] = pd.to_numeric(df_papers['citation_normalized_percentile'], errors='coerce')
     
     if 'oa_status' in df_papers.columns:
         df_papers['is_oa_gold'] = (df_papers['oa_status'] == 'gold').astype(int)
@@ -259,9 +316,12 @@ def aggregate_metrics(df_papers, group_cols):
     df_agg['pct_oa_bronze'] *= 100
     df_agg['pct_oa_closed'] *= 100
     
-    # Llenar nulos
-    df_agg['fwci_avg'] = df_agg['fwci_avg'].fillna(df_agg['citations'] / df_agg['num_documents'].replace(0,1))
-    df_agg['percentile_avg'] = df_agg['percentile_avg'].fillna(50)
+    # Llenar nulos - FWCI NO se debe llenar con citas/doc, se queda como NaN si no hay data.
+    df_agg['fwci_avg'] = df_agg['fwci_avg'].replace([np.inf, -np.inf], np.nan)
+    df_agg['percentile_avg'] = df_agg['percentile_avg'].replace([np.inf, -np.inf], np.nan)
+    
+    # Calcular Citations per Paper (CPP)
+    df_agg['citations_per_paper'] = df_agg['citations'] / df_agg['num_documents'].replace(0, 1)
     
     # Calcular indice H para el agrupamiento
     h_series = df_papers.groupby(group_cols)['citations'].apply(list).apply(_get_h_index).reset_index(name='h_index')

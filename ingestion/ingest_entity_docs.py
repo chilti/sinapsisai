@@ -95,13 +95,13 @@ class EntityDocsIngestor:
                 
                 record['citations'] = work.get('cited_by_count', record.get('citations', 0))
                 record.setdefault('raw_metadata', {})
-                record['raw_metadata']['fwci'] = work.get('fwci', None)
-                record['raw_metadata']['open_access'] = work.get('open_access', {})
+                record['fwci'] = work.get('fwci', None)
+                record['open_access'] = work.get('open_access', {})
                 if work.get('citation_normalized_percentile'):
                     perc_data = work['citation_normalized_percentile']
-                    record['raw_metadata']['citation_normalized_percentile'] = perc_data.get('value', 0.0)
-                    record['raw_metadata']['is_in_top_1_percent'] = perc_data.get('is_in_top_1_percent', False)
-                    record['raw_metadata']['is_in_top_10_percent'] = perc_data.get('is_in_top_10_percent', False)
+                    record['citation_normalized_percentile'] = perc_data.get('value', 0.0)
+                    record['is_in_top_1_percent'] = int(perc_data.get('is_in_top_1_percent', False))
+                    record['is_in_top_10_percent'] = int(perc_data.get('is_in_top_10_percent', False))
                 
                 topics = []
                 for t in work.get('topics', []):
@@ -114,7 +114,7 @@ class EntityDocsIngestor:
                         })
                     except:
                         pass
-                record['raw_metadata']['OpenAlex_Topics'] = topics
+                record['OpenAlex_Topics'] = topics
                 
                 if not record.get('abstract') and work.get('abstract_inverted_index'):
                     inverted = work.get('abstract_inverted_index')
