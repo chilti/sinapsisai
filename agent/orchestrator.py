@@ -55,9 +55,8 @@ class RAGOrchestrator:
             
         self.tools = final_tools_list + hybrid_tools + [open_interpreter_tool]
         
-        # Sistema de checkpointer (memoria a corto plazo de langgraph)
-        self.checkpointer = MemorySaver()
-        self.memory_manager = SessionMemoryManager() # Persistencia SQLite
+        # SQLite para historial limpio (solo mensajes humano/asistente, sin ruido de herramientas)
+        self.memory_manager = SessionMemoryManager()
         
         # Prompt por defecto
         self.system_prompt = """
@@ -80,67 +79,80 @@ class RAGOrchestrator:
             ("placeholder", "{messages}")
         ])
         
+        # SIN MemorySaver: el agente es stateless por invocación.
+        # La continuidad se gestiona manualmente inyectando el historial limpio.
         self.agent_executor = create_react_agent(
             self.llm, 
-            self.tools, 
-            checkpointer=self.checkpointer,
+            self.tools,
             prompt=self.prompt_template
         )
 
     async def ask(self, session_id: str, query: str, entity_context: str = None) -> str:
         """
-        Envía un mensaje al agente, manteniendo el estado de la sesión.
+        Envía un mensaje al agente.
+        Construye el contexto de conversación inyectando únicamente el historial
+        limpio (mensajes humano/asistente), sin los resultados de herramientas de
+        turnos anteriores, evitando así contaminación de contexto.
         """
-        contextualized_query = query
-        if entity_context:
-            contextualized_query = f"[Contexto del Sistema: El usuario actualmente está visualizando y consultando sobre la entidad '{entity_context}'].\n\n{query}"
-
-        # Guardamos la pregunta del usuario en el historial
-        self.memory_manager.add_message(session_id, "user", query) # Guardamos el original para la UI
+        # Historial limpio (últimos 6 mensajes = 3 turnos)
+        history = self.memory_manager.get_history(session_id, limit=6)
         
+        # Armar lista de mensajes para el agente
+        messages = []
+        for msg in history:
+            role = "human" if msg["role"] == "user" else "assistant"
+            messages.append({"role": role, "content": msg["content"]})
+        
+        # Añadir la pregunta actual (con contexto de entidad si aplica)
+        current_query = query
+        if entity_context:
+            current_query = f"[Contexto del Sistema: El usuario actualmente está visualizando y consultando sobre la entidad '{entity_context}'].\\n\\n{query}"
+        messages.append({"role": "human", "content": current_query})
+        
+        # Guardar la pregunta del usuario en el historial
+        self.memory_manager.add_message(session_id, "user", query)
+        
+        # Config sin thread_id (el agente es stateless, no usa checkpointer)
         config = {"configurable": {"thread_id": session_id}}
         
-        # Invocamos al agente
         try:
-             # Usamos stream para capturar pasos intermedios si fuera necesario, 
-             # o simplemente extraemos de la lista final de mensajes.
-             results = await self.agent_executor.ainvoke(
-                 {"messages": [{"role": "user", "content": contextualized_query}]},
-                 config=config
-             )
-             
-             all_messages = results['messages']
-             response = all_messages[-1].content
-             
-             # Extraer traza de razonamiento (intermediate steps)
-             intermediate_steps = []
-             for msg in all_messages:
-                 if msg.type == "ai" and msg.tool_calls:
-                     for tc in msg.tool_calls:
-                         intermediate_steps.append({
-                             "type": "tool_call",
-                             "name": tc["name"],
-                             "args": tc["args"]
-                         })
-                 elif msg.type == "tool":
-                     intermediate_steps.append({
+            results = await self.agent_executor.ainvoke(
+                {"messages": messages},
+                config=config
+            )
+            
+            all_messages = results['messages']
+            response = all_messages[-1].content
+            
+            # Extraer traza de razonamiento (solo del turno actual)
+            intermediate_steps = []
+            for msg in all_messages:
+                if msg.type == "ai" and msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        intermediate_steps.append({
+                            "type": "tool_call",
+                            "name": tc["name"],
+                            "args": tc["args"]
+                        })
+                elif msg.type == "tool":
+                    intermediate_steps.append({
                         "type": "tool_result",
                         "name": msg.name,
-                        "content": str(msg.content)[:10000] # Aumentado a 10,000 para evitar truncado excesivo
+                        "content": str(msg.content)[:10000]
                     })
 
-             # Guardamos respuesta en DB
-             self.memory_manager.add_message(session_id, "assistant", response)
-             
-             return {
-                 "answer": response,
-                 "intermediate_steps": intermediate_steps
-             }
-             
+            # Guardar respuesta en el historial limpio
+            self.memory_manager.add_message(session_id, "assistant", response)
+            
+            return {
+                "answer": response,
+                "intermediate_steps": intermediate_steps
+            }
+            
         except Exception as e:
-             error_msg = f"Error en orquestación: {e}"
-             print(error_msg)
-             return error_msg
+            error_msg = f"Error en orquestación: {e}"
+            print(error_msg)
+            return error_msg
              
     def clear_session(self, session_id: str):
         self.memory_manager.clear_session(session_id)
