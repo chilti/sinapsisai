@@ -133,6 +133,20 @@ def search_scientific_papers_semantic(query: str, limit: int = 20) -> str:
         all_results = sorted(results_docs + results_apis, key=lambda x: x.get("score", 0), reverse=True)
         top_results = all_results[:limit]
         
+        # Enriquecer con afiliación si falta (para que el orquestador pueda filtrar)
+        for res in top_results:
+            if 'entity' not in res:
+                author_name = res.get('academic_name')
+                if author_name:
+                    try:
+                        with neo4j.driver.session() as session:
+                            aff_query = "MATCH (a:Author)-[:AFFILIATED_TO]->(e:Entity) WHERE toLower(a.name) CONTAINS toLower($name) RETURN e.name LIMIT 1"
+                            aff_result = session.run(aff_query, name=author_name).single()
+                            if aff_result:
+                                res['entity'] = aff_result["e.name"]
+                    except:
+                        pass
+        
         if not top_results:
             return f"No se encontraron resultados semánticos para '{query_en}'."
             
