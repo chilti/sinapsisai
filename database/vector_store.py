@@ -1,7 +1,7 @@
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue, PayloadSchemaType
 import uuid
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import sys
 
 try:
@@ -22,7 +22,7 @@ class QdrantStore:
         self._ensure_collection_exists()
 
     def _ensure_collection_exists(self):
-        """Verifica si la colección existe, si no, la crea."""
+        """Verifica si la colección existe, si no, la crea. También asegura índices de payload."""
         collections = self.client.get_collections().collections
         exists = any(c.name == self.collection_name for c in collections)
         
@@ -32,6 +32,16 @@ class QdrantStore:
                 collection_name=self.collection_name,
                 vectors_config=VectorParams(size=self.vector_size, distance=Distance.COSINE),
             )
+        
+        # Asegurar índice en el campo 'entity' para filtrado eficiente nativo
+        try:
+            self.client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="entity",
+                field_schema=PayloadSchemaType.KEYWORD
+            )
+        except Exception:
+            pass  # El índice ya existe o no se puede crear — ignorar
 
     def add_documents(self, documents: List[Dict[str, Any]], embeddings: List[List[float]]):
         """
@@ -65,14 +75,28 @@ class QdrantStore:
         )
         print(f"✅ Se insertaron {len(points)} documentos en Qdrant.")
 
-    def search(self, query_vector: List[float], limit: int = 5) -> List[Dict[str, Any]]:
-        """Realiza una búsqueda semántica usando un vector de consulta."""
+    def search(self, query_vector: List[float], limit: int = 5, entity_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Realiza una búsqueda semántica usando un vector de consulta.
+        
+        Args:
+            query_vector: El vector de la consulta.
+            limit: Número máximo de resultados.
+            entity_filter: Si se proporciona, filtra los resultados por entidad usando
+                           el campo 'entity' del payload de Qdrant de forma nativa.
+        """
+        qdrant_filter = None
+        if entity_filter:
+            qdrant_filter = Filter(
+                must=[FieldCondition(key="entity", match=MatchValue(value=entity_filter))]
+            )
+        
         try:
             # En qdrant-client 1.11+, query_points es la API preferida
             if hasattr(self.client, "query_points"):
                 search_result = self.client.query_points(
                     collection_name=self.collection_name,
                     query=query_vector,
+                    query_filter=qdrant_filter,
                     limit=limit
                 ).points
             else:
@@ -80,6 +104,7 @@ class QdrantStore:
                 search_result = self.client.search(
                     collection_name=self.collection_name,
                     query_vector=query_vector,
+                    query_filter=qdrant_filter,
                     limit=limit
                 )
         except Exception as e:
@@ -88,6 +113,7 @@ class QdrantStore:
             search_result = self.client.search(
                 collection_name=self.collection_name,
                 query_vector=query_vector,
+                query_filter=qdrant_filter,
                 limit=limit
             )
         

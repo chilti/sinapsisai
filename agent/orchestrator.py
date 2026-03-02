@@ -66,7 +66,7 @@ class RAGOrchestrator:
         1. **AISLAMIENTO DE CONSULTA**: Trata cada mensaje del usuario como una tarea INDEPENDIENTE. Si el usuario cambia de tema, IGNORA los resultados de herramientas de turnos anteriores. No mezcles datos de la pregunta anterior en la nueva respuesta.
         2. **BÚSQUEDA DUAL OBLIGATORIA**: Para cualquier pregunta sobre pubicaciones, investigaciones o trabajos, SIEMPRE debes usar **dos herramientas en paralelo**:
             a) `query_knowledge_graph_cypher`: Para búsqueda exacta por tópico. Cuando el tópico es amplio (ej. "diabetes"), usa variantes con OR: `WHERE toLower(t.name) CONTAINS 'diabetes' OR toLower(t.name) CONTAINS 'insulin' OR toLower(t.name) CONTAINS 'metabolic'`.
-            b) `search_scientific_papers_semantic`: Para capturar trabajos relevantes cuyo tópico no coincide textualmente. Usa siempre ambas herramientas y combina sus resultados.
+            b) `search_scientific_papers_semantic`: Para capturar trabajos relevantes cuyo tópico no coincide textualmente. Si hay una entidad activa, PASA el nombre exacto de la entidad en el parámetro `entity_context` para filtrar en Qdrant de forma nativa (ej. `entity_context="Instituto de Ciencias Nucleares"`). NO lo incluyas en el query.
         3. **VERIFICACIÓN DE ENTIDAD**: Si se ha seleccionado una 'Entidad UNAM' específica y los resultados semánticos no tienen el campo 'entity', verifica la afiliación de los autores usando `query_knowledge_graph_cypher` antes de descartar trabajos.
         4. **SCHEMA STRICTO (Cypher)**: 
             - Tópicos: `(p:Paper)-[:HAS_TOPIC]->(t:Topic)`. **LOS TÓPICOS ESTÁN EN INGLÉS**. Traduce siempre el término al inglés antes de filtrar.

@@ -6,6 +6,7 @@ from pyalex import Works, Authors
 from langchain_community.tools import DuckDuckGoSearchRun, WikipediaQueryRun
 from langchain_community.utilities import WikipediaAPIWrapper
 from langchain_core.tools import tool
+from typing import Optional
 from database.vector_store import QdrantStore
 from database.knowledge_graph import Neo4jGraphStore
 from langdetect import detect, LangDetectException
@@ -107,7 +108,7 @@ def get_embedding(text: str) -> list:
         raise Exception(f"Fallo en servidor de Embeddings ({url}): {str(e)}")
 
 @tool
-def search_scientific_papers_semantic(query: str, limit: int = 20) -> str:
+def search_scientific_papers_semantic(query: str, limit: int = 20, entity_context: Optional[str] = None) -> str:
     """
     Realiza una búsqueda semántica en la base de datos vectorial (Qdrant).
     Útil para encontrar temas relacionados, conceptos abstractos o papers que hablen 
@@ -118,8 +119,9 @@ def search_scientific_papers_semantic(query: str, limit: int = 20) -> str:
     - CORRECTO: query="diabetes"
     - INCORRECTO: query="Instituto de Ciencias Nucleares diabetes"
     
-    La entidad/institución se usará para filtrar los resultados DESPUÉS de la búsqueda,
-    no como parte de la query semántica.
+    Usa el parámetro entity_context para filtrar por institución de forma nativa y eficiente.
+    Ejemplo: entity_context="Instituto de Ciencias Nucleares"
+    
     La query puede estar en español o inglés — se traducirá automáticamente al inglés.
     """
     # Traducir al inglés si es necesario (los papers están en inglés)
@@ -128,7 +130,7 @@ def search_scientific_papers_semantic(query: str, limit: int = 20) -> str:
     if not query_en or not query_en.strip():
         return "La consulta está vacía o no pudo ser procesada."
 
-    print(f"🔍 Búsqueda semántica en Qdrant (Híbrida) para: '{query_en}'")
+    print(f"🔍 Búsqueda semántica en Qdrant para: '{query_en}'" + (f" [Entidad: {entity_context}]" if entity_context else ""))
     try:
         # Llamada manual al embedding para control total del payload
         query_vector = get_embedding(query_en)
@@ -136,30 +138,16 @@ def search_scientific_papers_semantic(query: str, limit: int = 20) -> str:
         if not query_vector:
             return "Error: No se pudo generar el vector de búsqueda (resultado vacío)."
         
-        # Consultar ambas colecciones
-        results_docs = qdrant_docs.search(query_vector, limit=limit)
-        results_apis = qdrant_apis.search(query_vector, limit=limit)
+        # Consultar ambas colecciones con filtro nativo por entidad si se proporciona
+        results_docs = qdrant_docs.search(query_vector, limit=limit, entity_filter=entity_context)
+        results_apis = qdrant_apis.search(query_vector, limit=limit, entity_filter=entity_context)
         
         # Combinar y ordenar por los de mayor relevancia
         all_results = sorted(results_docs + results_apis, key=lambda x: x.get("score", 0), reverse=True)
         top_results = all_results[:limit]
         
-        # Enriquecer con afiliación si falta (para que el orquestador pueda filtrar)
-        for res in top_results:
-            if 'entity' not in res:
-                author_name = res.get('academic_name')
-                if author_name:
-                    try:
-                        with neo4j.driver.session() as session:
-                            aff_query = "MATCH (a:Author)-[:AFFILIATED_TO]->(e:Entity) WHERE toLower(a.name) CONTAINS toLower($name) RETURN e.name LIMIT 1"
-                            aff_result = session.run(aff_query, name=author_name).single()
-                            if aff_result:
-                                res['entity'] = aff_result["e.name"]
-                    except:
-                        pass
-        
         if not top_results:
-            return f"No se encontraron resultados semánticos para '{query_en}'."
+            return f"No se encontraron resultados semánticos para '{query_en}'" + (f" en la entidad '{entity_context}'." if entity_context else ".")
         
         # Incluir el query traducido en el resultado para trazabilidad en el dashboard
         output = {
