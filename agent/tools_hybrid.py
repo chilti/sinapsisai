@@ -112,7 +112,15 @@ def search_scientific_papers_semantic(query: str, limit: int = 20) -> str:
     Realiza una búsqueda semántica en la base de datos vectorial (Qdrant).
     Útil para encontrar temas relacionados, conceptos abstractos o papers que hablen 
     de algo aunque no compartan palabras clave exactas.
-    La query puede estar en español o inglés — se traducirá automáticamente.
+    
+    IMPORTANTE: La query debe contener ÚNICAMENTE el tema científico o concepto buscado.
+    NUNCA incluyas el nombre de la institución en la query semántica — eso degrada los resultados.
+    - CORRECTO: query="diabetes"
+    - INCORRECTO: query="Instituto de Ciencias Nucleares diabetes"
+    
+    La entidad/institución se usará para filtrar los resultados DESPUÉS de la búsqueda,
+    no como parte de la query semántica.
+    La query puede estar en español o inglés — se traducirá automáticamente al inglés.
     """
     # Traducir al inglés si es necesario (los papers están en inglés)
     query_en = translate_to_english(query)
