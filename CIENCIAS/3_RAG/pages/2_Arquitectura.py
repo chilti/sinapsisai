@@ -57,13 +57,21 @@ graph TD
     D -->|4. Devuelve herramienta a usar| C
     C -->|5. Ejecuta la herramienta seleccionada| E[Herramientas, @tool]
     E -->|6. Llama al microservicio apropiado| F[API de Búsqueda Vectorial]
-    E -->|6. Llama al microservicio apropiado| G[API de OpenAlex, Web y Wikipedia]
-    F -->|7. Consulta datos| H[Base de Datos Vectorial - Milvus]
-    G -->|8. Consulta datos| I[APIs Externas]
+    E -->|6. Búsqueda Web| G[DuckDuckGo Search]
+    E -->|6. Consulta Wikipedia| I[Wikipedia API]
+    E -->|6. Recuperación Directa| J[OpenAlex API]
+    F -->|7. Consulta datos| H[Base de Datos Vectorial - Qdrant]
+    G -->|8. Consulta datos| K[Internet]
+    I -->|8. Consulta datos| K
+    J -->|8. Consulta datos| K
     H -->|9. Devuelve resultados| F
-    I -->|9. Devuelve resultados| G
-    F -->|10. Devuelven JSON a la herramienta| E
-    G -->|10. Devuelven JSON a la herramienta| E
+    K -->|9. Devuelve resultados| G
+    K -->|9. Devuelve resultados| I
+    K -->|9. Devuelve resultados| J
+    F -->|10. Devuelven JSON| E
+    G -->|10. Devuelven JSON| E
+    I -->|10. Devuelven JSON| E
+    J -->|10. Devuelven JSON| E
     E -->|11. Entrega resultado al agente| C
     C -->|12. Genera respuesta final con el LLM| D
     D -->|13. Devuelve respuesta final al Agente| C

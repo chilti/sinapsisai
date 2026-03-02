@@ -135,36 +135,7 @@ def verify_and_scrape_siia(driver, name_to_verify, url):
             'orcid': '',
             'areas': []
         }
-
-        # Búsqueda robusta por texto en tablas
-        try:
-            rows = driver.find_elements(By.TAG_NAME, "tr")
-            for row in rows:
-                cells = row.find_elements(By.TAG_NAME, "td")
-                if len(cells) >= 2:
-                    label = cells[0].text.upper()
-                    if "SCOPUS" in label:
-                        # Extraer links de scopus o texto
-                        links = cells[1].find_elements(By.TAG_NAME, "a")
-                        if links:
-                            for l in links:
-                                href = l.get_attribute("href")
-                                if href and "authorId=" in href:
-                                    data['scopus'].append(href)
-                        # Si no hay links, buscar span o texto
-                        spans = cells[1].find_elements(By.TAG_NAME, "span")
-                        for s in spans:
-                            txt = s.text.strip()
-                            if txt and txt not in data['scopus']:
-                                data['scopus'].append(txt)
-                    elif "ORCID" in label:
-                        try:
-                            orcid_a = cells[1].find_element(By.TAG_NAME, "a")
-                            data['orcid'] = orcid_a.get_attribute("href")
-                        except:
-                            data['orcid'] = cells[1].text.strip()
-        except Exception as e:
-            print(f"    ⚠️ Error en extracción robusta: {e}")
+        
 
         # Fallback a XPaths originales si falló lo anterior
         if not data['scopus']:

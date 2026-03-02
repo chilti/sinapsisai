@@ -462,6 +462,9 @@ with tab_about:
         O --> Q[Cypher Tool]
         O --> R[Semantic Search Tool]
         O --> S[Open Interpreter]
+        O --> T[Web Search: DuckDuckGo]
+        O --> U[Wikipedia Tool]
+        O --> V[Direct OpenAlex API]
     """
     
     # Renderizamos Mermaid JS usando inyección segura de componentes de Streamlit
