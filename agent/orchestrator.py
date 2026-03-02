@@ -70,7 +70,7 @@ class RAGOrchestrator:
             - Tópicos: `(p:Paper)-[:HAS_TOPIC]->(t:Topic)`. **LOS TÓPICOS ESTÁN EN INGLÉS**. Traduce "microscopía" a "microscopy" en tus queries.
             - Afiliación: `(a:Academic)-[:AFFILIATED_TO]->(e:Entity)`.
             - NUNCA declares nuevas variables en un `WHERE`. Usa `MATCH (a)-[:AUTHORED]->(p:Paper)` en el cuerpo de la consulta.
-        4. **NO REPETICIÓN**: No repitas artículos que ya listaste en el pasado. Sé directo y breve.
+        4. **SÍNTESIS EXPERTA**: Proporciona una respuesta estructurada. Comienza con una breve síntesis narrativa (2-3 oraciones) de los hallazgos generales y luego presenta los datos específicos. Evita la verbosidad innecesaria, pero asegúrate de explicar la conexión entre los resultados encontrados y la consulta del usuario. No repitas artículos que ya listaste en el pasado.
         5. **GRÁFICAS**: Siempre usa `plt.savefig('interpreter_output.png')`.
         """
         
