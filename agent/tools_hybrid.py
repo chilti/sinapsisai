@@ -161,23 +161,23 @@ def query_knowledge_graph_cypher(cypher_query: str) -> str:
     Útil para preguntas complejas sobre relaciones, como: '¿Qué autores han colaborado 
     con X y también han publicado sobre el concepto Y?', o '¿Cuál es la evolución de citas de este grupo?'.
     
-    REGLA: El esquema real de la base de datos usa etiquetas universales y MULTI-ETIQUETAS para internos de la UNAM:
+    REGLA: El esquema real de la base de datos usa etiquetas universales:
     - Autores externos: etiqueta `(a:Author)`. Atributos: `id`, `name`.
-    - Académicos UNAM: etiqueta múltiple `(a:Academic:Author)`. Atributos: `id`, `name`.
-    - Artículos: etiqueta genérica `(p:Paper)`. Atributos: `doi`, `title`, `year`, `citations`. (No existe APIPaper).
-    - Instituciones externas: `(i:Institution)`. Atributos: `name`.
+    - Académicos UNAM: etiqueta múltiple `(a:Academic:Author)`. Atributos: `id`, `name`, `orcid`, `scopus_id`, `siia_url`.
+    - Artículos: etiqueta genérica `(p:Paper)`. Atributos: `doi`, `title`, `year`, `citations`.
     - Entidades UNAM: etiqueta múltiple `(e:Entity:Institution)`. Atributos: `name`.
-    - Tópicos Temáticos: `(t:Topic)`. Atributos: `id`, `name`, `domain`, `field`, `subfield`.
-    - ODS: `(s:SDG)`. Atributos: `id`, `name` (e.g. 'SDG 13').
+    - Tópicos Temáticos: `(t:Topic)`. Atributos: `id` (slug en inglés), `name` (nombre en inglés).
     
     RELACIONES IMPORTANTES PRECISAS:
-    - CUALQUIER autor publica papers: `(a:Author)-[:AUTHORED]->(p:Paper)`
-    - Una Entidad UNAM se relaciona con sus académicos: `(a:Academic)-[:AFFILIATED_TO]->(e:Entity)`. **ATENCIÓN:** NO uses esta relación a menos que el usuario limite su pregunta a una entidad específica de la UNAM.
-    - Los PAPERS tienen tópicos: `(p:Paper)-[:HAS_TOPIC]->(t:Topic)`. LOS AUTORES NO TIENEN TÓPICOS DIRECTAMENTE. Si preguntas qué autores trabajan en un topic o sdg: `MATCH (a:Author)-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic)`
-    - Los PAPERS contribuyen a SDGs: `(p:Paper)-[:ADDRESSES]->(s:SDG)`. LOS AUTORES NO TIENEN SDGs DIRECTAMENTE.
+    - Publicación: `(a:Author)-[:AUTHORED]->(p:Paper)`
+    - Afiliación: `(a:Academic)-[:AFFILIATED_TO]->(e:Entity)`
+    - Tópicos: `(p:Paper)-[:HAS_TOPIC]->(t:Topic)`. **IMPORTANTE: Los tópicos están en INGLÉS**. Traduce siempre los términos de búsqueda (ej. de "microscopía" a "microscopy") antes de filtrar `t.name`.
     
-    IMPORTANTE PARA NOMBRES: Los nombres en la base pueden estar como "APELLIDO, NOMBRE" u ordenados distinto. NUNCA busques por coincidencia exacta `{name: '...'}`. 
-    SIEMPRE usa la búsqueda relativa ignorando mayúsculas: `WHERE toLower(a.name) CONTAINS toLower('Bucio Carrillo')`
+    PATRONES DE CONSULTA RECOMENDADOS (SINTAXIS CORRECTA):
+    - Filtrar por entidad y tópico: `MATCH (e:Entity {name: 'Facultad de Ciencias'})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic) WHERE toLower(t.name) CONTAINS 'microscopy' RETURN p.title, a.name`
+    - Búsqueda parcial de nombres: `WHERE toLower(a.name) CONTAINS toLower('Bucio Carrillo')`
+    
+    NUNCA uses patrones como `AND (a)-[:AUTHORED]->(p:Paper)` dentro de un WHERE si intentas definir 'p' por primera vez; usa `MATCH` o comas para declarar variables.
     """
     print(f"🕸️ Ejecutando Cypher en Neo4j: {cypher_query}")
     try:

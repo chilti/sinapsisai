@@ -313,6 +313,7 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                 "title": record.get("Title"),
                 "year": record.get("Year"),
                 "source": record.get("Source"),
+                "entity": entity_name,
                 "text": text_for_embedding
             }
             batch_texts.append(text_for_embedding)
