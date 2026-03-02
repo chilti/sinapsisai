@@ -104,7 +104,7 @@ def get_embedding(text: str) -> list:
         raise Exception(f"Fallo en servidor de Embeddings ({url}): {str(e)}")
 
 @tool
-def search_scientific_papers_semantic(query: str, limit: int = 5) -> str:
+def search_scientific_papers_semantic(query: str, limit: int = 20) -> str:
     """
     Realiza una búsqueda semántica en la base de datos vectorial (Qdrant).
     Útil para encontrar temas relacionados, conceptos abstractos o papers que hablen 
@@ -174,10 +174,10 @@ def query_knowledge_graph_cypher(cypher_query: str) -> str:
     - Tópicos: `(p:Paper)-[:HAS_TOPIC]->(t:Topic)`. **IMPORTANTE: Los tópicos están en INGLÉS**. Traduce siempre los términos de búsqueda (ej. de "microscopía" a "microscopy") antes de filtrar `t.name`.
     
     PATRONES DE CONSULTA RECOMENDADOS (SINTAXIS CORRECTA):
-    - Filtrar por entidad y tópico: `MATCH (e:Entity {name: 'Facultad de Ciencias'})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic) WHERE toLower(t.name) CONTAINS 'microscopy' RETURN p.title, a.name`
+    - Filtrar por entidad y tópico: `MATCH (e:Entity {name: 'Facultad de Ciencias'})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic) WHERE toLower(t.name) CONTAINS 'microscopy' RETURN p.title, a.name ORDER BY p.year DESC LIMIT 20`
     - Búsqueda parcial de nombres: `WHERE toLower(a.name) CONTAINS toLower('Bucio Carrillo')`
     
-    NUNCA uses patrones como `AND (a)-[:AUTHORED]->(p:Paper)` dentro de un WHERE si intentas definir 'p' por primera vez; usa `MATCH` o comas para declarar variables.
+    NUNCA uses patrones como `AND (a)-[:AUTHORED]->(p:Paper)` dentro de un WHERE si intentas definir 'p' por primera vez; usa `MATCH` o comas para declarar variables. SIEMPRE usa `LIMIT 20` por defecto en tus consultas Cypher.
     """
     print(f"🕸️ Ejecutando Cypher en Neo4j: {cypher_query}")
     try:

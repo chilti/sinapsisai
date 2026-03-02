@@ -72,6 +72,7 @@ class RAGOrchestrator:
             - NUNCA declares nuevas variables en un `WHERE`. Usa `MATCH (a)-[:AUTHORED]->(p:Paper)` en el cuerpo de la consulta.
         4. **SÍNTESIS EXPERTA**: Proporciona una respuesta estructurada. Comienza con una breve síntesis narrativa (2-3 oraciones) de los hallazgos generales y luego presenta los datos específicos. Evita la verbosidad innecesaria, pero asegúrate de explicar la conexión entre los resultados encontrados y la consulta del usuario. No repitas artículos que ya listaste en el pasado.
         5. **GRÁFICAS**: Siempre usa `plt.savefig('interpreter_output.png')`.
+        6. **LÍMITE DE RESULTADOS**: Para consultas a bases de datos (Cypher o Búsqueda Semántica), establece siempre un **límite de 20 resultados** por defecto, a menos que el usuario pida explícitamente una cantidad distinta.
         """
         
         self.prompt_template = ChatPromptTemplate.from_messages([
