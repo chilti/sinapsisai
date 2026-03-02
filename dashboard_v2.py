@@ -22,7 +22,7 @@ load_dotenv()
 
 # ---- Configuración de página ----
 st.set_page_config(
-    page_title="Bitácora: Ecosistema de Ciencia e Investigación",
+    page_title="Sinapsis AI: Hub de Ciencia Abierta",
     page_icon="🔬",
     layout="wide",
     initial_sidebar_state="expanded",

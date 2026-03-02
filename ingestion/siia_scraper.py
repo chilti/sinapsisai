@@ -131,33 +131,56 @@ def verify_and_scrape_siia(driver, name_to_verify, url):
         # 4. EXTRAER DATOS
         data = {
             'name': scraped_name,
-            'scopus': '',
+            'scopus': [],
             'orcid': '',
             'areas': []
         }
 
-        # Scopus
+        # Búsqueda robusta por texto en tablas
         try:
-            data['scopus'] = driver.find_element(By.XPATH, '/html/body/center/div/table[2]/tbody/tr[4]/td/span/a').get_attribute('href')
-        except NoSuchElementException:
-            pass
-        
-        # Ojo: a veces Scopus no tiene link sino solo texto en ese row (según el script original scrapeaba span o href)
-        # Vamos a intentar también leer spans dentro del td si es necesario (notebook #2 lo hacía con outerHTML)
+            rows = driver.find_elements(By.TAG_NAME, "tr")
+            for row in rows:
+                cells = row.find_elements(By.TAG_NAME, "td")
+                if len(cells) >= 2:
+                    label = cells[0].text.upper()
+                    if "SCOPUS" in label:
+                        # Extraer links de scopus o texto
+                        links = cells[1].find_elements(By.TAG_NAME, "a")
+                        if links:
+                            for l in links:
+                                href = l.get_attribute("href")
+                                if href and "authorId=" in href:
+                                    data['scopus'].append(href)
+                        # Si no hay links, buscar span o texto
+                        spans = cells[1].find_elements(By.TAG_NAME, "span")
+                        for s in spans:
+                            txt = s.text.strip()
+                            if txt and txt not in data['scopus']:
+                                data['scopus'].append(txt)
+                    elif "ORCID" in label:
+                        try:
+                            orcid_a = cells[1].find_element(By.TAG_NAME, "a")
+                            data['orcid'] = orcid_a.get_attribute("href")
+                        except:
+                            data['orcid'] = cells[1].text.strip()
+        except Exception as e:
+            print(f"    ⚠️ Error en extracción robusta: {e}")
+
+        # Fallback a XPaths originales si falló lo anterior
         if not data['scopus']:
             try:
                 td_element = driver.find_element(By.XPATH, "/html/body/center/div/table[2]/tbody/tr[4]/td")
                 outer_html_td = td_element.get_attribute('outerHTML')
                 tree = html.fromstring(outer_html_td)
-                sub_elements = tree.xpath('./span')
-                scopus_ids = [s.text_content().strip() for s in sub_elements if s.text_content().strip()]
-                data['scopus'] = scopus_ids[0] if scopus_ids else ''
+                sub_elements = tree.xpath('.//span') # Más general
+                for sub_element in sub_elements:
+                   data['scopus'].append(sub_element.text_content().strip())
             except Exception:
                 pass
 
         # Orcid
         try:
-            data['orcid'] = driver.find_element(By.XPATH, '/html/body/center/div/table[2]/tbody/tr[6]/td/span/a').get_attribute('href')
+            data['orcid'] = driver.find_element(By.XPATH, '//html/body/center/div/table[2]/tbody/tr[6]/td/span/a').get_attribute('href')
         except NoSuchElementException:
             pass
 
@@ -184,6 +207,7 @@ def main():
     parser = argparse.ArgumentParser(description="Scraper SIIA para profesores por Entidad UNAM")
     parser.add_argument("--file", type=str, required=True, help="Ruta al archivo Excel con profesores")
     parser.add_argument("--entity", type=str, required=True, help="Nombre de la Entidad (ej. 'Centro de Ciencias de la Complejidad')")
+    parser.add_argument("--force", action="store_true", help="Forzar la búsqueda aunque ya existan en Neo4j")
     args = parser.parse_args()
 
     excel_path = args.file
@@ -245,17 +269,18 @@ def main():
             print(f"\n🔍 Buscando a: {profesor_name} (Original: {original_name})")
             profesores_data[profesor_name] = {'original_name': str(original_name), 'entity': entity_name}
 
-            # LÓGICA FUZZY MATCHING INTERNA
+            # LÓGICA FUZZY MATCHING INTERNA (Saltar si existee en Neo4j, a menos que se use --force)
             is_duplicate = False
-            for neo_name in nombres_existentes:
-                if fuzz.token_sort_ratio(profesor_name, limpiar_nombre(neo_name)) >= 90:
-                    print(f"    🌟 Encontrado en Base de Datos previa como '{neo_name}'! Omite Scraper.")
-                    profesores_data[profesor_name]['already_in_db'] = True
-                    profesores_data[profesor_name]['mapped_name'] = neo_name
-                    is_duplicate = True
-                    break
+            if not args.force:
+                for neo_name in nombres_existentes:
+                    if fuzz.token_sort_ratio(profesor_name, limpiar_nombre(neo_name)) >= 90:
+                        print(f"    🌟 Encontrado en Base de Datos previa como '{neo_name}'! Omite Scraper.")
+                        profesores_data[profesor_name]['already_in_db'] = True
+                        profesores_data[profesor_name]['mapped_name'] = neo_name
+                        is_duplicate = True
+                        break
             
-            if is_duplicate:
+            if is_duplicate and not args.force:
                 continue
                 
             profesores_data[profesor_name]['already_in_db'] = False
@@ -281,7 +306,12 @@ def main():
                 if scraped_data:
                     # Guardamos la data
                     profesores_data[profesor_name]['siia'] = link
-                    profesores_data[profesor_name]['scopus'] = scraped_data.get('scopus', '')
+                    # Unificar scopus como string separado por ;
+                    scopus_data = scraped_data.get('scopus', [])
+                    if isinstance(scopus_data, list):
+                        profesores_data[profesor_name]['scopus'] = "; ".join(scopus_data)
+                    else:
+                        profesores_data[profesor_name]['scopus'] = scopus_data
                     profesores_data[profesor_name]['orcid'] = scraped_data.get('orcid', '')
                     profesores_data[profesor_name]['areas'] = scraped_data.get('areas', [])
                     found = True
