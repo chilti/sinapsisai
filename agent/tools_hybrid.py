@@ -191,10 +191,11 @@ def query_knowledge_graph_cypher(cypher_query: str) -> str:
     - Tópicos: `(p:Paper)-[:HAS_TOPIC]->(t:Topic)`. **IMPORTANTE: Los tópicos están en INGLÉS**. Traduce siempre los términos de búsqueda (ej. de "microscopía" a "microscopy") antes de filtrar `t.name`.
     
     PATRONES DE CONSULTA RECOMENDADOS (SINTAXIS CORRECTA):
-    - Filtrar por entidad y tópico: `MATCH (e:Entity {name: 'Facultad de Ciencias'})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic) WHERE toLower(t.name) CONTAINS 'microscopy' RETURN p.title, a.name ORDER BY p.year DESC LIMIT 20`
+    - Filtrar por entidad y tópico exacto: `MATCH (e:Entity {name: 'Instituto de Ciencias Nucleares'})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic) WHERE toLower(t.name) CONTAINS 'microscopy' RETURN p.title, a.name, p.year ORDER BY p.year DESC LIMIT 20`
+    - Filtrar por tópico AMPLIO (usa OR para cubrir variantes): `WHERE toLower(t.name) CONTAINS 'diabetes' OR toLower(t.name) CONTAINS 'insulin' OR toLower(t.name) CONTAINS 'metabolic'`
     - Búsqueda parcial de nombres: `WHERE toLower(a.name) CONTAINS toLower('Bucio Carrillo')`
     
-    NUNCA uses patrones como `AND (a)-[:AUTHORED]->(p:Paper)` dentro de un WHERE si intentas definir 'p' por primera vez; usa `MATCH` o comas para declarar variables. SIEMPRE usa `LIMIT 20` por defecto en tus consultas Cypher.
+    IMPORTANTE: Esta herramienta solo encuentra trabajos con tópicos etiquetados explícitamente. Usa SIEMPRE en paralelo con `search_scientific_papers_semantic` para encontrar trabajos cuyo tópico no coincide textualmente. SIEMPRE usa `LIMIT 20` por defecto en tus consultas Cypher.
     """
     print(f"🕸️ Ejecutando Cypher en Neo4j: {cypher_query}")
     try:
