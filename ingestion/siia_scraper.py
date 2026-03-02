@@ -259,6 +259,7 @@ def main():
         return
 
     profesores_data = {}
+    no_encontrados = []
 
     try:
         for original_name in lista_nombres:
@@ -291,6 +292,7 @@ def main():
             if not siia_results:
                 print("    -> No se encontraron resultados en el buscador.")
                 profesores_data[profesor_name]['siia'] = 'No encontrado'
+                no_encontrados.append(original_name)
                 time.sleep(2) # Pausa por cortesía al buscador
                 continue
 
@@ -319,6 +321,7 @@ def main():
             
             if not found:
                 profesores_data[profesor_name]['siia'] = 'No encontrado en los hits iniciales'
+                no_encontrados.append(original_name)
 
             # Pausa natural para no abrumar al servidor ni al buscador
             time.sleep(3)
@@ -330,6 +333,10 @@ def main():
     finally:
         driver.quit()
         print(f"\n🎉 Proceso completado. Datos guardados en '{out_json_path}'")
+        if no_encontrados:
+            print(f"\n⚠️ {len(no_encontrados)} Académicos NO encontrados en SIIA:")
+            for nombre in no_encontrados:
+                print(f"   - {nombre}")
 
 if __name__ == "__main__":
     main()
