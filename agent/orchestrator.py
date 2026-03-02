@@ -124,10 +124,10 @@ class RAGOrchestrator:
                          })
                  elif msg.type == "tool":
                      intermediate_steps.append({
-                         "type": "tool_result",
-                         "name": msg.name,
-                         "content": str(msg.content)[:1000] # Limitar tamaño
-                     })
+                        "type": "tool_result",
+                        "name": msg.name,
+                        "content": str(msg.content)[:10000] # Aumentado a 10,000 para evitar truncado excesivo
+                    })
 
              # Guardamos respuesta en DB
              self.memory_manager.add_message(session_id, "assistant", response)

@@ -212,7 +212,8 @@ with tab_chat:
                             if step["type"] == "tool_call":
                                 st.code(f"🛠️ {step['name']}({json.dumps(step['args'], ensure_ascii=False)})")
                             elif step["type"] == "tool_result":
-                                st.caption(f"📥 {step['name']}: {step['content'][:200]}...")
+                                st.caption(f"📥 Resultado de {step['name']}:")
+                                st.code(step["content"], language="json" if any(x in step['name'] for x in ["Alex", "search", "query"]) else None)
                 if message.get("image"):
                     st.image(message["image"])
 
@@ -251,7 +252,7 @@ with tab_chat:
                                         st.code(f"🛠️ Llamando a: {step['name']}\nArgumentos: {json.dumps(step['args'], indent=2, ensure_ascii=False)}")
                                     elif step["type"] == "tool_result":
                                         st.caption(f"📥 Resultado de {step['name']}:")
-                                        st.text(step["content"][:500] + ("..." if len(step["content"]) > 500 else ""))
+                                        st.code(step["content"], language="json" if any(x in step['name'] for x in ["Alex", "search", "query"]) else None)
                     else:
                         response = response_data
                     
