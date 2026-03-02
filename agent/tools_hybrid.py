@@ -75,13 +75,33 @@ def translate_to_english(text: str) -> str:
 qdrant_docs = QdrantStore(collection_name="scientific_papers")
 qdrant_apis = QdrantStore(collection_name="api_papers")
 neo4j = Neo4jGraphStore()
-embeddings_model = OpenAIEmbeddings(
-    model=os.getenv("EMBEDDING_MODEL", "text-embedding-nomic-ai-nomic-embed-text-v2-moe"),
-    base_url=auth_url,
-    api_key="lm-studio",
-    http_client=sync_client,
-    http_async_client=async_client
-)
+
+def get_embedding(text: str) -> list:
+    """
+    Obtiene el vector (embedding) de un texto usando directamente la API (httpx).
+    Evita problemas de compatibilidad de librerías con servidores locales.
+    """
+    url = auth_url.rstrip('/') + '/embeddings'
+    model = os.getenv("EMBEDDING_MODEL", "text-embedding-nomic-ai-nomic-embed-text-v2-moe")
+    
+    # Intentar primero con input como lista (más estándar en OpenAI v1)
+    payload = {
+        "model": model,
+        "input": [text]
+    }
+    
+    try:
+        resp = sync_client.post(url, json=payload, timeout=30)
+        if resp.status_code != 200:
+            # Si falla como lista, intentar como string (algunos modelos locales lo prefieren así)
+            payload["input"] = text
+            resp = sync_client.post(url, json=payload, timeout=30)
+            
+        resp.raise_for_status()
+        data = resp.json()
+        return data["data"][0]["embedding"]
+    except Exception as e:
+        raise Exception(f"Fallo en servidor de Embeddings ({url}): {str(e)}")
 
 @tool
 def search_scientific_papers_semantic(query: str, limit: int = 5) -> str:
@@ -93,9 +113,17 @@ def search_scientific_papers_semantic(query: str, limit: int = 5) -> str:
     """
     # Traducir al inglés si es necesario (los papers están en inglés)
     query_en = translate_to_english(query)
+    
+    if not query_en or not query_en.strip():
+        return "La consulta está vacía o no pudo ser procesada."
+
     print(f"🔍 Búsqueda semántica en Qdrant (Híbrida) para: '{query_en}'")
     try:
-        query_vector = embeddings_model.embed_query(query_en)
+        # Llamada manual al embedding para control total del payload
+        query_vector = get_embedding(query_en)
+        
+        if not query_vector:
+            return "Error: No se pudo generar el vector de búsqueda (resultado vacío)."
         
         # Consultar ambas colecciones
         results_docs = qdrant_docs.search(query_vector, limit=limit)
@@ -106,7 +134,7 @@ def search_scientific_papers_semantic(query: str, limit: int = 5) -> str:
         top_results = all_results[:limit]
         
         if not top_results:
-            return "No se encontraron resultados semánticos."
+            return f"No se encontraron resultados semánticos para '{query_en}'."
             
         return json.dumps(top_results, ensure_ascii=False)
     except Exception as e:

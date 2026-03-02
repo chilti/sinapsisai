@@ -67,11 +67,29 @@ class QdrantStore:
 
     def search(self, query_vector: List[float], limit: int = 5) -> List[Dict[str, Any]]:
         """Realiza una búsqueda semántica usando un vector de consulta."""
-        search_result = self.client.search(
-            collection_name=self.collection_name,
-            query_vector=query_vector,
-            limit=limit
-        )
+        try:
+            # En qdrant-client 1.11+, query_points es la API preferida
+            if hasattr(self.client, "query_points"):
+                search_result = self.client.query_points(
+                    collection_name=self.collection_name,
+                    query=query_vector,
+                    limit=limit
+                ).points
+            else:
+                # Fallback para versiones antiguas
+                search_result = self.client.search(
+                    collection_name=self.collection_name,
+                    query_vector=query_vector,
+                    limit=limit
+                )
+        except Exception as e:
+            # Si falla la búsqueda, intentamos el método search tradicional si existe
+            print(f"DEBUG: Fallo query_points, intentando search... ({e})")
+            search_result = self.client.search(
+                collection_name=self.collection_name,
+                query_vector=query_vector,
+                limit=limit
+            )
         
         results = []
         for hit in search_result:

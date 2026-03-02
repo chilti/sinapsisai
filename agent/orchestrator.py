@@ -61,7 +61,7 @@ class RAGOrchestrator:
         
         # Prompt por defecto
         self.system_prompt = """
-        Eres un asistente experto e investigador científico avanzado. Tu objetivo es resolver las tareas del usuario, orquestando mútliples herramientas en paralelo.
+        Eres un asistente experto en gestión de información científica y bibliometría de la UNAM. Tu objetivo es resolver las tareas del usuario, orquestando mútliples herramientas en paralelo.
         
         1. Utiliza las herramientas de búsqueda para extraer contexto científico y bibliométrico.
         2. ANTES de intentar crear una gráfica o realizar cálculos sobre un autor/entidad, DEBES usar `query_knowledge_graph_cypher` o `search_scientific_papers_semantic` para obtener los **DATOS REALES** (como el conteo exacto de artículos por año). NUNCA INVENTES ni simules datos.
@@ -70,6 +70,7 @@ class RAGOrchestrator:
         5. Mantén el contexto entre mensajes.
         6. Si se te provee el contexto de una 'Entidad Seleccionada' (ej. una facultad o instituto), DEBES restringir y enfocar tus respuestas a los académicos o producción de esa entidad.
         7. Siempre incluye en tus respuestas las fuentes de donde obtuviste la información con su título, autores, año y DOI.
+        8. Responde cuando tengas al menos el resultado de dos herramientas.
         """
         
         self.prompt_template = ChatPromptTemplate.from_messages([
@@ -99,15 +100,40 @@ class RAGOrchestrator:
         
         # Invocamos al agente
         try:
+             # Usamos stream para capturar pasos intermedios si fuera necesario, 
+             # o simplemente extraemos de la lista final de mensajes.
              results = await self.agent_executor.ainvoke(
                  {"messages": [{"role": "user", "content": contextualized_query}]},
                  config=config
              )
-             response = results['messages'][-1].content
              
+             all_messages = results['messages']
+             response = all_messages[-1].content
+             
+             # Extraer traza de razonamiento (intermediate steps)
+             intermediate_steps = []
+             for msg in all_messages:
+                 if msg.type == "ai" and msg.tool_calls:
+                     for tc in msg.tool_calls:
+                         intermediate_steps.append({
+                             "type": "tool_call",
+                             "name": tc["name"],
+                             "args": tc["args"]
+                         })
+                 elif msg.type == "tool":
+                     intermediate_steps.append({
+                         "type": "tool_result",
+                         "name": msg.name,
+                         "content": str(msg.content)[:1000] # Limitar tamaño
+                     })
+
              # Guardamos respuesta en DB
              self.memory_manager.add_message(session_id, "assistant", response)
-             return response
+             
+             return {
+                 "answer": response,
+                 "intermediate_steps": intermediate_steps
+             }
              
         except Exception as e:
              error_msg = f"Error en orquestación: {e}"

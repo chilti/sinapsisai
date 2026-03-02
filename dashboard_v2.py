@@ -6,6 +6,7 @@ import sys
 import random
 import threading
 from PIL import Image
+import json
 from dotenv import load_dotenv
 
 # Asegurar que el directorio raíz está en el path
@@ -170,7 +171,7 @@ with st.sidebar:
             
     selected_entity = st.selectbox("Entidad UNAM", entidades_disponibles)
     
-    st.selectbox("Modelo", ["openai/gpt-oss-20b", "mistral-7b", "llama-3"], index=0)
+    st.selectbox("Modelo", ["openai/gpt-oss-20b"], index=0)
 
 
     st.markdown("---")
@@ -205,6 +206,13 @@ with tab_chat:
         for message in st.session_state.chat_history:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
+                if message.get("reasoning"):
+                    with st.expander("🧠 Ver Razonamiento", expanded=False):
+                        for step in message["reasoning"]:
+                            if step["type"] == "tool_call":
+                                st.code(f"🛠️ {step['name']}({json.dumps(step['args'], ensure_ascii=False)})")
+                            elif step["type"] == "tool_result":
+                                st.caption(f"📥 {step['name']}: {step['content'][:200]}...")
                 if message.get("image"):
                     st.image(message["image"])
 
@@ -229,7 +237,24 @@ with tab_chat:
                     async def ask_agent():
                         return await orchestrator.ask(session_id, prompt, entity_context=selected_entity)
 
-                    response = _run_async_in_thread(ask_agent())
+                    response_data = _run_async_in_thread(ask_agent())
+                    
+                    if isinstance(response_data, dict):
+                        response = response_data.get("answer", "")
+                        intermediate_steps = response_data.get("intermediate_steps", [])
+                        
+                        # Mostrar razonamiento en un expansor antes de la respuesta final
+                        if intermediate_steps:
+                            with st.expander("🧠 Razonamiento del Asistente (Pasos Ejecutados)", expanded=False):
+                                for step in intermediate_steps:
+                                    if step["type"] == "tool_call":
+                                        st.code(f"🛠️ Llamando a: {step['name']}\nArgumentos: {json.dumps(step['args'], indent=2, ensure_ascii=False)}")
+                                    elif step["type"] == "tool_result":
+                                        st.caption(f"📥 Resultado de {step['name']}:")
+                                        st.text(step["content"][:500] + ("..." if len(step["content"]) > 500 else ""))
+                    else:
+                        response = response_data
+                    
                     placeholder.markdown(response)
 
                 except Exception as e:
@@ -250,7 +275,8 @@ with tab_chat:
                 st.session_state.chat_history.append({
                     "role": "assistant",
                     "content": response,
-                    "image": img_data
+                    "image": img_data,
+                    "reasoning": intermediate_steps if 'intermediate_steps' in locals() else []
                 })
 
                 # Inyectar JS para auto-scroll
