@@ -174,12 +174,66 @@ def verify_and_scrape_siia(driver, name_to_verify, url):
         print(f"    ❌ Error general en {url}: {e}")
         return None
 
+def search_by_name(driver, name, entity_name="Manual Search"):
+    """
+    Busca a una sola persona por nombre, extrae su información y la devuelve.
+    """
+    profesor_name = limpiar_nombre(name)
+    if not profesor_name:
+        return None
+        
+    print(f"\n🔍 Buscando a: {profesor_name} (Input: {name})")
+    
+    siia_results = buscar_en_siia_interno(name, profesor_name)
+    if not siia_results:
+        print("    -> No se encontraron resultados en el buscador.")
+        return None
+
+    for res in siia_results:
+        link = res.get('link')
+        if not link: continue
+        
+        print(f"    🌐 Revisando link: {link}")
+        scraped_data = verify_and_scrape_siia(driver, profesor_name, link)
+        
+        if scraped_data:
+            # Unificar scopus como string separado por ;
+            scopus_data = scraped_data.get('scopus', [])
+            if isinstance(scopus_data, list):
+                scraped_data['scopus'] = "; ".join(scopus_data)
+            scraped_data['siia_url'] = link
+            scraped_data['entity'] = entity_name
+            return scraped_data
+            
+    return None
+
 def main():
     parser = argparse.ArgumentParser(description="Scraper SIIA para profesores por Entidad UNAM")
-    parser.add_argument("--file", type=str, required=True, help="Ruta al archivo Excel con profesores")
-    parser.add_argument("--entity", type=str, required=True, help="Nombre de la Entidad (ej. 'Centro de Ciencias de la Complejidad')")
+    parser.add_argument("--file", type=str, help="Ruta al archivo Excel con profesores")
+    parser.add_argument("--entity", type=str, help="Nombre de la Entidad (ej. 'Centro de Ciencias de la Complejidad')")
+    parser.add_argument("--name", type=str, help="Buscar a una sola persona por nombre")
     parser.add_argument("--force", action="store_true", help="Forzar la búsqueda aunque ya existan en Neo4j")
     args = parser.parse_args()
+
+    # 1. Modo búsqueda individual
+    if args.name:
+        options = webdriver.ChromeOptions()
+        options.add_argument('--headless')
+        driver = webdriver.Chrome(options=options)
+        try:
+            res = search_by_name(driver, args.name, args.entity or "Manual Search")
+            if res:
+                print(f"\n✅ Datos encontrados:\n{json.dumps(res, indent=4, ensure_ascii=False)}")
+            else:
+                print(f"\n❌ No se encontró información para '{args.name}'")
+        finally:
+            driver.quit()
+        return
+
+    # 2. Modo archivo (Excel)
+    if not args.file or not args.entity:
+        print("❌ Error: Debes proporcionar --file y --entity, o usar --name.")
+        return
 
     excel_path = args.file
     entity_name = args.entity
@@ -276,19 +330,14 @@ def main():
                 print(f"    🌐 Revisando link: {link}")
                 scraped_data = verify_and_scrape_siia(driver, profesor_name, link)
                 
-                if scraped_data:
-                    # Guardamos la data
-                    profesores_data[profesor_name]['siia'] = link
-                    # Unificar scopus como string separado por ;
-                    scopus_data = scraped_data.get('scopus', [])
-                    if isinstance(scopus_data, list):
-                        profesores_data[profesor_name]['scopus'] = "; ".join(scopus_data)
-                    else:
-                        profesores_data[profesor_name]['scopus'] = scopus_data
-                    profesores_data[profesor_name]['orcid'] = scraped_data.get('orcid', '')
-                    profesores_data[profesor_name]['areas'] = scraped_data.get('areas', [])
-                    found = True
-                    break # Salimos del loop de resultados y vamos al próximo profesor
+            if scraped_data:
+                # Guardamos la data
+                profesores_data[profesor_name]['siia'] = link
+                profesores_data[profesor_name]['scopus'] = scraped_data.get('scopus', '')
+                profesores_data[profesor_name]['orcid'] = scraped_data.get('orcid', '')
+                profesores_data[profesor_name]['areas'] = scraped_data.get('areas', [])
+                found = True
+                break
             
             if not found:
                 profesores_data[profesor_name]['siia'] = 'No encontrado en los hits iniciales'
