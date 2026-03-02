@@ -93,7 +93,7 @@ class Neo4jGraphStore:
             result = session.run(query, name=author_name)
             return [record["coauthor"] for record in result]
 
-    def add_api_paper(self, paper_data: Dict[str, Any], academic_name: str, orcid: str = None, scopus_id: str = None):
+    def add_api_paper(self, paper_data: Dict[str, Any], academic_name: str, orcid: str = None, scopus_id: str = None, siia_url: str = None):
         """
         Inserta datos de APIs (OpenAlex/Scopus/ORCID) vinculando el nombre completo (Academic) y el artículo por DOI.
         Conserva todos los campos crudos en raw_metadata_json.
@@ -114,7 +114,8 @@ class Neo4jGraphStore:
             "raw_metadata": data["raw_metadata_json"],
             "academic_name": academic_name,
             "orcid": orcid,
-            "scopus_id": scopus_id
+            "scopus_id": scopus_id,
+            "siia_url": siia_url
         }
 
         # Si no hay DOI válido, no podemos ligarlos estrictamente o creamos id random
@@ -133,6 +134,10 @@ class Neo4jGraphStore:
         CALL {
             WITH a
             WITH a WHERE $scopus_id IS NOT NULL SET a.scopus_id = $scopus_id
+        }
+        CALL {
+            WITH a
+            WITH a WHERE $siia_url IS NOT NULL AND $siia_url <> '' SET a.siia_url = $siia_url
         }
         WITH a
         MERGE (p:Paper {id: $doi}) // Unificamos a Paper

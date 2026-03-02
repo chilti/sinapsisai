@@ -202,16 +202,17 @@ def render_investigador_view(entity_name):
     academicos_dict = cargar_lista_academicos()
     academico_info = academicos_dict.get(selected_inv, {})
     
-    # Priorizar IDs del DataFrame (Neo4j) sobre el JSON institucional
+    # Priorizar IDs del DataFrame (Neo4j/Parquet) sobre el JSON institucional (obsoleto)
     inv_orcid = inv_data.get('orcid') or academico_info.get("orcid")
     inv_scopus = inv_data.get('scopus_id') or academico_info.get("scopus")
+    inv_siia = inv_data.get('siia_url') or academico_info.get("siia")
 
     st.markdown("---")
     st.subheader("🔗 Enlaces de Perfil Académico")
     col_links1, col_links2 = st.columns([3, 1])
     with col_links1:
-        if academico_info.get("siia") and "No encont" not in academico_info["siia"]:
-            st.markdown(f"- **SIIA-UNAM:** [Ver Perfil de {selected_inv}]({academico_info['siia']})")
+        if inv_siia and "http" in str(inv_siia) and "No encont" not in str(inv_siia):
+            st.markdown(f"- **SIIA-UNAM:** [Ver Perfil de {selected_inv}]({inv_siia})")
         
         if inv_orcid:
             orcid_link = inv_orcid if "http" in inv_orcid else f"https://orcid.org/{inv_orcid}"

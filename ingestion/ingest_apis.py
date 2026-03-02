@@ -236,6 +236,7 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
 
         scopus_id = data.get('scopus', [])
         orcid = data.get('orcid', '')
+        siia_url = data.get('siia', '')
         
         print(f"\n[{academic_name}] Iniciando recopilación API...")
         
@@ -327,7 +328,7 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
             }
             # Guardamos la relación en el grafo incluyendo metadatos del autor
             scopus_str = "; ".join(scopus_id) if isinstance(scopus_id, list) else scopus_id
-            graph_store.add_api_paper(neo4j_data, academic_name=academic_name, orcid=orcid, scopus_id=scopus_str)
+            graph_store.add_api_paper(neo4j_data, academic_name=academic_name, orcid=orcid, scopus_id=scopus_str, siia_url=siia_url)
             time.sleep(0.05)
             
         # Afiliación del académico a su Entidad

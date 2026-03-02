@@ -50,6 +50,7 @@ def extract_academic_papers():
     RETURN a.name AS academic_name,
            a.orcid AS orcid,
            a.scopus_id AS scopus_id,
+           a.siia_url AS siia_url,
            collect(DISTINCT e.name) AS entities,
            p.id AS paper_id,
            p.year AS year,
@@ -131,6 +132,7 @@ def extract_academic_papers():
                 'academic_name': row['academic_name'],
                 'orcid': row['orcid'],
                 'scopus_id': row['scopus_id'],
+                'siia_url': row['siia_url'],
                 'entities': ";".join(row['entities']) if row['entities'] else "",
                 'paper_id': row['paper_id'],
                 'year': row['year'],
@@ -296,7 +298,7 @@ def aggregate_metrics(df_papers, group_cols):
     }
     
     # Agregar columnas informativas si existen y no están en group_cols
-    for col in ['orcid', 'scopus_id', 'entities']:
+    for col in ['orcid', 'scopus_id', 'entities', 'siia_url']:
         if col in df_papers.columns and col not in group_cols:
             agg_funcs[col] = 'first'
     
