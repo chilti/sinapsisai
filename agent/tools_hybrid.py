@@ -1,11 +1,14 @@
-from langchain_core.tools import tool
-from database.vector_store import QdrantStore
-from database.knowledge_graph import Neo4jGraphStore
-from langchain_openai import OpenAIEmbeddings
-from langdetect import detect, LangDetectException
 import json
 import os
 import httpx
+import pyalex
+from pyalex import Works, Authors
+from langchain_community.tools import DuckDuckGoSearchRun, WikipediaQueryRun
+from langchain_community.utilities import WikipediaAPIWrapper
+from langchain_core.tools import tool
+from database.vector_store import QdrantStore
+from database.knowledge_graph import Neo4jGraphStore
+from langdetect import detect, LangDetectException
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -202,9 +205,120 @@ def query_knowledge_graph_cypher(cypher_query: str) -> str:
     except Exception as e:
         return f"Error ejecutando Cypher: {str(e)}"
 
+# --- Nuevas Herramientas de Búsqueda Externa ---
+
+# DuckDuckGo Search
+search_ddg = DuckDuckGoSearchRun()
+
+@tool
+def web_search(query: str) -> str:
+    """
+    Útil para buscar información en internet. 
+    Usar cuando necesites encontrar información actualizada o temas generales 
+    que no estén en la base de datos local.
+    """
+    return search_ddg.run(query)
+
+# Wikipedia
+wikipedia_api_wrapper = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=4000)
+wikipedia_tool_instance = WikipediaQueryRun(api_wrapper=wikipedia_api_wrapper)
+
+@tool
+def wikipedia_search(query: str) -> str:
+    """
+    Consulta Wikipedia para obtener resúmenes informativos sobre conceptos, 
+    instituciones o personajes científicos.
+    """
+    return wikipedia_tool_instance.run(query)
+
+# --- Herramientas OpenAlex (Recuperación Directa) ---
+
+@tool
+def recoverFromOpenAlex(doi: str) -> str:
+    """Recupera por DOI el registro bibliográfico completo y algunos indicadores del documento desde OpenAlex."""
+    try:
+        # Normalizar DOI
+        clean_doi = doi.replace("https://doi.org/", "").strip()
+        work = Works()[f"https://doi.org/{clean_doi}"]
+        return json.dumps(work, ensure_ascii=False)
+    except Exception as e:
+        return f"Error recuperando DOI {doi}: {str(e)}"
+
+@tool
+def recoverFieldFromRecordFromOpenAlex(doi: str, key: str) -> str:
+    """
+    Recupera un campo específico de un registro de OpenAlex usando el DOI.
+    Keys útiles: 'fwci', 'cited_by_count', 'topics', 'concepts', 'sustainable_development_goals', 'abstract_inverted_index'.
+    """
+    try:
+        clean_doi = doi.replace("https://doi.org/", "").strip()
+        work = Works()[f"https://doi.org/{clean_doi}"]
+        if key in work:
+            return json.dumps(work.get(key), ensure_ascii=False)
+        return f"Campo '{key}' no encontrado en el registro."
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+@tool
+def searchAuthorInOpenAlex(fullname: str, n: int = 5) -> str:
+    """
+    Busca los n autores más parecidos en OpenAlex al nombre dado.
+    Útil para encontrar IDs de OpenAlex (Axxxx) de investigadores.
+    """
+    try:
+        autores = Authors().search(fullname).get()
+        resultados = []
+        for autor in autores[:n]:
+            aff = autor.get('affiliations', [{}])[0].get('institution', {}).get('display_name', 'N/A')
+            resultados.append({
+                "id": autor["id"],
+                "nombre": autor["display_name"],
+                "institucion": aff,
+                "trabajos": autor.get("works_count"),
+                "citaciones": autor.get("cited_by_count"),
+                'orcid': autor.get("orcid")
+            })
+        return json.dumps(resultados, ensure_ascii=False)
+    except Exception as e:
+        return f"Error buscando autor: {str(e)}"
+
+@tool
+def recoverAuthorWorksFromOpenAlex(author_id: str, n: int = 10) -> str:
+    """
+    Recupera los primeros n trabajos de un autor en OpenAlex a partir de su author_id (ej. A5023888360).
+    """
+    try:
+        if author_id.startswith("http"):
+            author_id = author_id.split("/")[-1]
+        
+        # Filtrar trabajos por author.id
+        trabajos = Works().filter(**{"author.id": f"https://openalex.org/{author_id}"}).get()
+
+        resultados = []
+        for w in trabajos[:n]:
+            source = w.get('primary_location', {}).get('source', {})
+            revista = source.get('display_name', 'N/A') if source else 'N/A'
+            resultados.append({
+                "id": w["id"],
+                "titulo": w.get("title"),
+                "año": w.get("publication_year"),
+                "revista": revista,
+                "citas": w.get("cited_by_count"),
+                "DOI": w.get("doi")
+            })
+        return json.dumps(resultados, ensure_ascii=False)
+    except Exception as e:
+        return f"Error recuperando trabajos: {str(e)}"
+
 # Lista de herramientas híbridas para exportar
 hybrid_tools = [
     search_scientific_papers_semantic,
     get_author_coauthors_graph,
-    query_knowledge_graph_cypher
+    query_knowledge_graph_cypher,
+    web_search,
+    wikipedia_search,
+    recoverFromOpenAlex,
+    recoverFieldFromRecordFromOpenAlex,
+    searchAuthorInOpenAlex,
+    recoverAuthorWorksFromOpenAlex
 ]
