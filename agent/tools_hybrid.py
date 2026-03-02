@@ -160,8 +160,13 @@ def search_scientific_papers_semantic(query: str, limit: int = 20) -> str:
         
         if not top_results:
             return f"No se encontraron resultados semánticos para '{query_en}'."
-            
-        return json.dumps(top_results, ensure_ascii=False)
+        
+        # Incluir el query traducido en el resultado para trazabilidad en el dashboard
+        output = {
+            "_query_enviado_a_qdrant": query_en,
+            "resultados": top_results
+        }
+        return json.dumps(output, ensure_ascii=False)
     except Exception as e:
         return f"Error en búsqueda semántica: {str(e)}"
 
