@@ -65,3 +65,65 @@ RECTOR_APPROVAL     = "APROBADO: Rector"
 INVESTIG_APPROVAL   = "APROBADO: Investigador_Senior"
 CONSEJERO_APPROVAL  = "APROBADO: Consejero_Universitario"
 ALL_APPROVALS       = [RECTOR_APPROVAL, INVESTIG_APPROVAL, CONSEJERO_APPROVAL]
+
+
+# ── Catálogo dinámico de herramientas de SINAPSIS ────────────────────────────
+
+def get_tools_catalog() -> str:
+    """
+    Genera un catálogo formateado de las herramientas REALES disponibles en SINAPSIS,
+    leyendo directamente desde hybrid_tools + tools_interpreter.
+    Se inyecta en los prompts del Arquitecto y SINAPSIS_Técnico para que sepan
+    exactamente qué pueden usar — sin inventar herramientas inexistentes.
+    """
+    import sys, os
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+
+    try:
+        from agent.tools_hybrid import hybrid_tools
+        from agent.tools_interpreter import execute_python_code
+
+        lines = ["## Herramientas disponibles en SINAPSIS (únicas válidas)\n"]
+
+        for tool in hybrid_tools:
+            name = getattr(tool, "name", None) or getattr(tool, "__name__", str(tool))
+            doc  = (getattr(tool, "description", None) or
+                    getattr(tool, "__doc__", "") or "")
+            # Tomar solo la primera línea del docstring
+            first_line = doc.strip().split("\n")[0].strip() if doc.strip() else "(sin descripción)"
+            lines.append(f"- **`{name}`**: {first_line}")
+
+        # Agregar el intérprete Python
+        lines.append(
+            "- **`Python_CodeExecutor`**: Ejecuta código Python. "
+            "Guarda gráficas con `plt.savefig('interpreter_output.png')`. "
+            "Tiene acceso a pandas, matplotlib, numpy, networkx."
+        )
+
+        lines.append(
+            "\n> ⚠️ RESTRICCIONES ABSOLUTAS: Solo puedes proponer pasos que usen las herramientas "
+            "listadas arriba. NO existe acceso a Scopus, Web of Science, Google Scholar, "
+            "Unpaywall, repositorios institucionales, Docker, Airflow ni ninguna API externa "
+            "no listada. Si un objetivo no puede cumplirse con estas herramientas, indícalo "
+            "explícitamente y propón una alternativa real."
+        )
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return (
+            "## Herramientas disponibles (catálogo básico)\n"
+            "- `query_knowledge_graph_cypher`: Cypher en Neo4j\n"
+            "- `search_scientific_papers_semantic`: Búsqueda semántica en Qdrant\n"
+            "- `get_entity_statistics`: Estadísticas de entidad UNAM\n"
+            "- `get_researcher_profile`: Perfil de investigador\n"
+            "- `get_trending_topics`: Tópicos en tendencia\n"
+            "- `get_author_coauthors_graph`: Red de coautores\n"
+            "- `recoverFromOpenAlex`: Datos bibliométricos por DOI\n"
+            "- `searchAuthorInOpenAlex`: Buscar autor en OpenAlex\n"
+            "- `recoverAuthorWorksFromOpenAlex`: Trabajos de un autor\n"
+            "- `web_search`: Búsqueda DuckDuckGo\n"
+            "- `wikipedia_search`: Búsqueda Wikipedia\n"
+            "- `Python_CodeExecutor`: Ejecuta código Python (pandas, matplotlib, networkx)\n"
+            f"\n(Error al cargar catálogo dinámico: {e})"
+        )

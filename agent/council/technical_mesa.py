@@ -24,6 +24,7 @@ from .council_config import (
     make_model_client,
     SCRIPTS_DIR,
     MAX_TECH_ROUNDS,
+    get_tools_catalog,
 )
 
 SCRIPT_DONE_SIGNAL = "SCRIPT_VALIDADO"
@@ -70,26 +71,23 @@ async def _run_mesa_async(
     on_message: Optional[Callable[[str, str], None]] = None,
 ) -> tuple[str, Path]:
     model_client = make_model_client()
-
-    tools_list = (
-        "query_knowledge_graph_cypher, search_scientific_papers_semantic, "
-        "get_entity_statistics, get_researcher_profile, get_trending_topics, "
-        "get_author_coauthors_graph, recoverFromOpenAlex, searchAuthorInOpenAlex, "
-        "recoverAuthorWorksFromOpenAlex, web_search, wikipedia_search, Python_CodeExecutor"
-    )
+    tools_catalog = get_tools_catalog()  # Catálogo REAL de herramientas
 
     arquitecto = AssistantAgent(
         name="Arquitecto_de_Datos",
         model_client=model_client,
         system_message=(
-            "Eres un Arquitecto de Datos especializado en bibliometría. "
-            "Traduce planes de estudio a pasos técnicos concretos. "
-            "Para Neo4j escribe la query Cypher exacta (usa CONTAINS para nombres de personas). "
-            "Para Qdrant especifica el query semántico y el entity_context. "
-            "Para OpenAlex especifica los campos a extraer. "
-            "Para Python describe el análisis/visualización. "
-            "Usa {ENTITY} como placeholder parametrizable en todas las queries. "
-            "Cuando termines el script técnico completo, escribe: SCRIPT_TÉCNICO_LISTO"
+            f"Eres un Arquitecto de Datos especializado en bibliometría para la entidad {entity}.\n\n"
+            f"{tools_catalog}\n\n"
+            f"REGLAS DE DISEÑO DEL SCRIPT:\n"
+            f"- Solo propón pasos que usen las herramientas listadas arriba. NUNCA inventes otras.\n"
+            f"- Para Neo4j escribe la query Cypher exacta. Usa CONTAINS para nombres de personas.\n"
+            f"  Ejemplo: WHERE toLower(a.name) CONTAINS toLower('apellido')\n"
+            f"- Los tópicos en Neo4j están en inglés. Traduce siempre.\n"
+            f"- Para búsqueda semántica usa search_scientific_papers_semantic con entity_context=\"{{ENTITY}}\".\n"
+            f"- Para análisis usa Python_CodeExecutor con pandas/matplotlib/networkx.\n"
+            f"- Usa {{ENTITY}} como placeholder en TODAS las consultas para que el script sea reutilizable.\n"
+            f"- Cuando termines el script completo, escribe: SCRIPT_TÉCNICO_LISTO"
         ),
     )
 
@@ -97,11 +95,13 @@ async def _run_mesa_async(
         name="SINAPSIS_Técnico",
         model_client=model_client,
         system_message=(
-            f"Eres SINAPSIS en modo técnico. Evalúas el script propuesto por el Arquitecto. "
-            f"Herramientas disponibles: {tools_list}. "
-            f"Para cada paso: indica si puedes ejecutarlo (✅) o no (❌) y por qué. "
-            f"Si no puedes, sugiere una alternativa. "
-            f"Cuando hayas revisado todo y el script esté listo, escribe exactamente: {SCRIPT_DONE_SIGNAL}"
+            f"Eres SINAPSIS en modo revisión técnica.\n\n"
+            f"{tools_catalog}\n\n"
+            f"Revisa el script propuesto por el Arquitecto:\n"
+            f"- Para cada paso: indica ✅ si puedes ejecutarlo o ❌ si no puedes (con motivo claro).\n"
+            f"- Si un paso usa herramientas inexistentes, corrígelo con la alternativa real.\n"
+            f"- Asegúrate de que TODOS los pasos usan SOLO herramientas del catálogo.\n"
+            f"- Cuando el script sea ejecutable al 100%, escribe exactamente: {SCRIPT_DONE_SIGNAL}"
         ),
     )
 

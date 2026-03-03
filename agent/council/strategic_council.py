@@ -25,6 +25,7 @@ from .council_config import (
     RECTOR_APPROVAL,
     INVESTIG_APPROVAL,
     CONSEJERO_APPROVAL,
+    get_tools_catalog,
 )
 
 
@@ -100,13 +101,19 @@ async def _run_council_async(
         termination_condition=termination,
     )
 
+    tools_catalog = get_tools_catalog()
+
     task = (
         f"Diseñen un **Plan de Estudio Bibliométrico** para **{entity}** (UNAM).\n\n"
         f"**Objetivo del estudio**: {objective}\n\n"
-        f"Deliberen desde sus perspectivas. El plan debe incluir:\n"
-        f"1. Objetivos específicos del estudio\n"
+        f"FUENTES DE DATOS DISPONIBLES (son las únicas que se pueden usar):\n"
+        f"{tools_catalog}\n\n"
+        f"Deliberen desde sus perspectivas. El plan DEBE ser ejecutable con las herramientas listadas.\n"
+        f"NO propongan objetivos que requieran Scopus, Web of Science, Google Scholar u otras fuentes externas.\n\n"
+        f"El plan debe incluir:\n"
+        f"1. Objetivos específicos del estudio (alcanzables con las herramientas disponibles)\n"
         f"2. Métricas clave a medir (con justificación)\n"
-        f"3. Fuentes de datos recomendadas\n\n"
+        f"3. Fuentes de datos a usar (solo de la lista de herramientas)\n\n"
         f"Cada uno debe aprobar explícitamente el plan final con su señal de aprobación."
     )
 
@@ -117,7 +124,10 @@ async def _run_council_async(
         if isinstance(message, TaskResult):
             break
         src = getattr(message, "source", "Sistema")
-        content = getattr(message, "content", "")
+        raw_content = getattr(message, "content", "")
+        content = raw_content if isinstance(raw_content, str) else " ".join(
+            b.text if hasattr(b, "text") else str(b) for b in raw_content
+        ) if isinstance(raw_content, list) else str(raw_content)
         all_messages.append(message)
         if content and content.strip():
             plan_text_parts.append(f"**{src}**: {content}")
