@@ -32,11 +32,18 @@ else:
 
 
 def make_model_client() -> OpenAIChatCompletionClient:
-    """Crea un cliente de modelo apuntando a LM Studio."""
+    """Crea un cliente de modelo apuntando a LM Studio (modelo local no-OpenAI)."""
     return OpenAIChatCompletionClient(
         model=_model,
         base_url=_auth_url,
         api_key=os.getenv("LLM_API_KEY", "lm-studio"),
+        model_info={
+            "vision": False,
+            "function_calling": True,
+            "json_output": True,
+            "family": "unknown",
+            "structured_output": False,
+        },
     )
 
 
