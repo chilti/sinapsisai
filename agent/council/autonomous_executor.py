@@ -127,17 +127,20 @@ def _inject_entity(text: str, entity: str) -> str:
     return text.replace("{ENTITY}", entity).replace("{{ENTITY}}", entity)
 
 
-def _save_report(entity: str, report: str) -> Path:
+def _save_report(entity: str, report: str) -> tuple[Path, "Path | None"]:
     slug = re.sub(r"[^\w\-]", "_", entity.lower())[:30]
     date_str = datetime.now().strftime("%Y-%m-%d_%H%M")
-    path = OUTPUT_DIR / f"informe_{slug}_{date_str}.md"
-    path.write_text(
-        f"# Informe Bibliométrico Final\n\n**Entidad**: {entity}\n**Generado**: {date_str}\n\n---\n\n"
-        + report,
-        encoding="utf-8"
+    title = f"Informe Bibliométrico — {entity} ({date_str})"
+    md_content = (
+        f"# Informe Bibliométrico Final\n\n"
+        f"**Entidad**: {entity}\n**Generado**: {date_str}\n\n---\n\n" + report
     )
-    return path
+    md_path = OUTPUT_DIR / f"informe_{slug}_{date_str}.md"
+    md_path.write_text(md_content, encoding="utf-8")
 
+    pdf_path = OUTPUT_DIR / f"informe_{slug}_{date_str}.pdf"
+    ok = _md_to_pdf(md_content, title, pdf_path)
+    return md_path, pdf_path if ok else None
 
 def _content_to_str(content) -> str:
     """Normaliza content que puede ser str o lista de bloques (tool-call messages)."""
@@ -158,6 +161,74 @@ def _content_to_str(content) -> str:
     return str(content)
 
 
+def _md_to_pdf(md_text: str, title: str, pdf_path: Path) -> bool:
+    """
+    Convierte Markdown a PDF. Intenta weasyprint primero; si falla usa fpdf2.
+    Retorna True si se generó el PDF correctamente.
+    """
+    try:
+        import markdown
+        from weasyprint import HTML
+
+        html_body = markdown.markdown(
+            md_text,
+            extensions=["tables", "fenced_code", "nl2br"],
+        )
+        html = f"""
+        <!DOCTYPE html><html><head>
+        <meta charset="utf-8">
+        <title>{title}</title>
+        <style>
+            body {{ font-family: 'Helvetica Neue', Arial, sans-serif;
+                   font-size: 11pt; color: #222; margin: 40px; line-height: 1.6; }}
+            h1 {{ color: #003366; border-bottom: 2px solid #003366; padding-bottom: 6px; }}
+            h2 {{ color: #005299; margin-top: 24px; }}
+            h3 {{ color: #0070cc; }}
+            table {{ border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 10pt; }}
+            th {{ background: #003366; color: white; padding: 6px 10px; text-align: left; }}
+            td {{ border: 1px solid #ccc; padding: 5px 10px; }}
+            tr:nth-child(even) {{ background: #f0f4fa; }}
+            code {{ background: #f5f5f5; padding: 2px 5px; border-radius: 3px;
+                    font-family: monospace; font-size: 9pt; }}
+            blockquote {{ border-left: 4px solid #0070cc; margin: 0; padding: 8px 16px;
+                          background: #f0f7ff; color: #444; }}
+        </style>
+        </head><body>
+        <h1>{title}</h1>
+        {html_body}
+        </body></html>
+        """
+        HTML(string=html).write_pdf(str(pdf_path))
+        return True
+
+    except ImportError:
+        pass  # weasyprint no instalado
+    except Exception as e:
+        import warnings
+        warnings.warn(f"weasyprint falló: {e}")
+
+    # Fallback: fpdf2
+    try:
+        from fpdf import FPDF
+
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+        pdf.set_font("Helvetica", "B", 16)
+        pdf.cell(0, 10, title[:80], ln=True)
+        pdf.set_font("Helvetica", size=10)
+        pdf.ln(4)
+        for line in md_text.split("\n"):
+            # Quitar marcadores Markdown básicos
+            clean = line.lstrip("#").lstrip("*").lstrip("-").strip()
+            if clean:
+                pdf.multi_cell(0, 5, clean)
+        pdf.output(str(pdf_path))
+        return True
+    except Exception:
+        return False
+
+
 # ── Ejecución asíncrona ───────────────────────────────────────────────────────
 
 async def _run_executor_async(
@@ -174,14 +245,21 @@ async def _run_executor_async(
         model_client=model_client,
         tools=tools,
         system_message=(
-            f"Eres SINAPSIS en modo ejecución para la entidad **{entity}**. "
-            f"Ejecuta paso a paso el script bibliométrico usando tus herramientas. "
-            f"Para nombres de personas usa siempre búsqueda parcial (CONTAINS). "
-            f"Para tópicos tradúcelos al inglés y usa variantes con OR. "
-            f"Para gráficas siempre guarda con plt.savefig('interpreter_output.png'). "
-            f"Al terminar TODOS los pasos, escribe '{REPORT_DONE_SIGNAL}' seguido "
-            f"del informe final en Markdown con: síntesis ejecutiva, tablas de datos, "
-            f"interpretación de Rector/Investigador/Consejero y conclusiones."
+            f"Eres SINAPSIS en modo ejecución autónoma para la entidad **{entity}**.\n"
+            f"Tu misión: ejecutar CADA paso del script llamando a las herramientas reales y reportar los RESULTADOS REALES obtenidos.\n\n"
+            f"REGLAS CRÍTICAS:\n"
+            f"1. EJECUTA cada paso — no lo resumas, no lo planees: LLÁMALO con la herramienta correspondiente.\n"
+            f"2. Si un paso dice 'consulta Neo4j', llama a `query_knowledge_graph_cypher` con la query exacta.\n"
+            f"3. Si dice 'búsqueda semántica', llama a `search_semantic` con entity_context='{entity}'.\n"
+            f"4. Si dice 'estadísticas de la entidad', llama a `get_entity_statistics`.\n"
+            f"5. Para Python: escribe el código real y llámalo con `python_executor`. Guarda gráficas con plt.savefig('interpreter_output.png').\n"
+            f"6. NUNCA escribas 'los resultados mostrarían...' — solo escribe resultados REALES de tus herramientas.\n"
+            f"7. Si una query devuelve lista vacía, intenta con términos alternativos antes de reportar sin datos.\n\n"
+            f"Al terminar TODOS los pasos con resultados reales, escribe '{REPORT_DONE_SIGNAL}' seguido del informe en Markdown con:\n"
+            f"## 1. Síntesis ejecutiva (2-3 párrafos con datos reales)\n"
+            f"## 2. Tablas de resultados (copiados de las salidas de herramientas)\n"
+            f"## 3. Interpretación institucional (Rector / Investigador / Consejero)\n"
+            f"## 4. Conclusiones y recomendaciones\n"
         ),
     )
 
@@ -209,8 +287,8 @@ async def _run_executor_async(
                 on_message(src, content)
 
     report_text = "\n\n".join(report_parts) if report_parts else "\n\n".join(all_parts[-5:])
-    saved_path = _save_report(entity, report_text)
-    return report_text, saved_path
+    md_path, pdf_path = _save_report(entity, report_text)
+    return report_text, md_path, pdf_path
 
 
 
@@ -219,6 +297,6 @@ def run_autonomous_executor(
     execution_script: str,
     on_message: Optional[Callable[[str, str], None]] = None,
     on_step: Optional[Callable[[int, int], None]] = None,
-) -> tuple[str, Path]:
-    """Punto de entrada síncrono para Streamlit."""
+) -> tuple[str, Path, Path | None]:
+    """Punto de entrada síncrono para Streamlit. Returns (report_text, md_path, pdf_path)."""
     return asyncio.run(_run_executor_async(entity, execution_script, on_message))

@@ -323,14 +323,16 @@ with tab_council:
 
             # ── Fase 3: Ejecución autónoma ──
             with st.status("⚙️ Fase 3: Ejecución autónoma...", expanded=True):
-                report_text, report_path = run_autonomous_executor(
+                report_text, md_path, pdf_path = run_autonomous_executor(
                     entity=council_entity,
                     execution_script=execution_script,
                     on_message=_on_message,
                 )
                 st.session_state.council_report = report_text
+                st.session_state.council_pdf_path = str(pdf_path) if pdf_path else None
                 st.session_state.council_phase = "done"
-                st.success(f"📊 Informe generado: `{report_path.name}`")
+                pdf_label = f"PDF: `{pdf_path.name}`" if pdf_path else "PDF no generado"
+                st.success(f"📊 Informe guardado · {pdf_label}")
                 st.rerun()
 
         except ImportError as e:
@@ -369,17 +371,39 @@ with tab_council:
         st.subheader("📊 Informe Bibliométrico Final")
         st.markdown(st.session_state.council_report)
 
-        col_dl, col_reset = st.columns([2, 1])
-        with col_dl:
+        # Inicializar pdf_path si no existe en sesión
+        if "council_pdf_path" not in st.session_state:
+            st.session_state.council_pdf_path = None
+
+        col_pdf, col_md, col_reset = st.columns([2, 2, 1])
+
+        # Botón PDF (principal)
+        with col_pdf:
+            pdf_path_str = st.session_state.get("council_pdf_path")
+            if pdf_path_str and Path(pdf_path_str).exists():
+                with open(pdf_path_str, "rb") as f:
+                    st.download_button(
+                        label="📄 Descargar Informe (PDF)",
+                        data=f.read(),
+                        file_name=Path(pdf_path_str).name,
+                        mime="application/pdf",
+                        type="primary",
+                    )
+            else:
+                st.info("PDF no disponible (instala `weasyprint` o `fpdf2` en el servidor)")
+
+        # Botón Markdown (alternativo)
+        with col_md:
             st.download_button(
                 label="📥 Descargar Informe (Markdown)",
                 data=st.session_state.council_report.encode("utf-8"),
                 file_name=f"informe_{council_entity.lower().replace(' ', '_')}.md",
                 mime="text/markdown",
             )
+
         with col_reset:
             if st.button("🔄 Nueva Sesión"):
-                for key in ["council_phase", "council_log", "council_script", "council_report"]:
+                for key in ["council_phase", "council_log", "council_script", "council_report", "council_pdf_path"]:
                     st.session_state.pop(key, None)
                 st.rerun()
 
