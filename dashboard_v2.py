@@ -146,6 +146,21 @@ with st.sidebar:
     st.success("✅ Orquestador: Activo")
     st.info(f"ID Sesión: {st.session_state.session_id}")
 
+    with st.expander("👥 El Consejo Estratégico", expanded=False):
+        st.markdown("""
+        **Composición Plural y Diversa:**
+        
+        *   **Rectora (👩🏽‍🎓)**: Zapoteca, SNI III. Liderazgo, internacionalización e impacto social.
+        *   **Investigador (🔬)**: Primera generación universitaria. Experto en el área y retos de publicación en México.
+        *   **Bibliometra (📊)**: Afromexicana, experta en cienciometría. Vigila rigor y sesgos en bases de datos.
+        *   **Política Científica (🏛️)**: Árabe-mexicano. Conecta hallazgos con financiamiento y políticas públicas.
+        *   **Evaluadora (⚖️)**: Perspectiva crítica post-colonial. Evaluación responsable (DORA y Leiden).
+        *   **Consejera Social (🤝)**: Comunidad campesina. Foco en equidad de género y justicia social.
+        *   **Estudiante (🎓)**: Persona No Binaria, becaria. Perspectiva de nuevas generaciones y acceso abierto.
+        
+        *Mecanismo: Consenso Mayoritario (4 de 7).*
+        """)
+
     st.markdown("---")
     st.subheader("Configuración")
     

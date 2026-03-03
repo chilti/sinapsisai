@@ -178,6 +178,12 @@ def _cleanup_outputs():
 
 
 def _find_generated_images() -> list[Path]:
+    """Encuentra todas las imágenes generadas en el directorio actual."""
+    patterns = ["output_*.png", "interpreter_output.png", "output_*.jpg"]
+    images = []
+    for p in patterns:
+        images.extend(Path(".").glob(p))
+    return sorted(set(images))
 
 
 # ── Conversión a PDF ──────────────────────────────────────────────────────────
