@@ -239,34 +239,61 @@ def _md_to_pdf(md_text: str, title: str, pdf_path: Path, images: list[Path]) -> 
         return True
 
     except ImportError:
-        pass
-    except Exception:
+        print("DEBUG PDF: weasyprint no está instalado.")
+    except Exception as e:
         import traceback
+        print(f"DEBUG PDF: error en weasyprint: {e}")
         traceback.print_exc()
 
     # Fallback: fpdf2
     try:
         from fpdf import FPDF
-        print("DEBUG PDF: fpdf2 importado correctamente.")
+        print("DEBUG PDF: fpdf2 importado correctamente. Usando fallback.")
+        
+        # Sanitizar texto para evitar errores de encoding en fpdf2 (latin-1)
+        def _sanitize(txt: str) -> str:
+            if not txt: return ""
+            # Reemplazar caracteres comunes no-latin1
+            replacements = {
+                "\u2014": "-",  # em-dash
+                "\u2013": "-",  # en-dash
+                "\u201c": '"',  # smart quotes
+                "\u201d": '"',
+                "\u2018": "'",
+                "\u2019": "'",
+                "\u2022": "*",  # bullet
+                "\u2026": "...", # ellipsis
+            }
+            for k, v in replacements.items():
+                txt = txt.replace(k, v)
+            return txt.encode("latin-1", "replace").decode("latin-1")
+
         pdf = FPDF()
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
         pdf.set_font("Helvetica", "B", 16)
-        pdf.cell(0, 10, title[:80], ln=True)
+        
+        safe_title = _sanitize(title[:80])
+        pdf.cell(0, 10, safe_title, ln=True)
         pdf.set_font("Helvetica", size=10)
         pdf.ln(4)
+        
         for line in md_text.split("\n"):
             clean = line.lstrip("#").lstrip("*").lstrip("-").strip()
             if clean:
                 try:
-                    pdf.multi_cell(0, 5, clean.encode("latin-1", "replace").decode("latin-1"))
+                    safe_line = _sanitize(clean)
+                    pdf.multi_cell(0, 5, safe_line)
                 except Exception:
                     pass
         # Insertar imágenes
         for img in images:
             if img.exists() and img.suffix.lower() == ".png":
-                pdf.add_page()
-                pdf.image(str(img), x=15, y=30, w=180)
+                try:
+                    pdf.add_page()
+                    pdf.image(str(img), x=15, y=30, w=180)
+                except Exception as e:
+                    print(f"DEBUG PDF: Error insertando imagen {img}: {e}")
         pdf.output(str(pdf_path))
         return True
     except Exception:
