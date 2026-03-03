@@ -1,35 +1,37 @@
 """
 autonomous_executor.py
-Fase 3 del sistema multi-agente: Ejecución Autónoma con autocorrección.
+Fase 3: Ejecución Autónoma con autocorrección — AutoGen v0.4+
 
-Toma el script técnico validado (Fase 2) y lo ejecuta paso a paso usando
-las herramientas reales de SINAPSIS (Neo4j, Qdrant, OpenAlex, Python).
+Toma el script técnico validado (Fase 2) e invoca directamente las
+herramientas reales de SINAPSIS usando un AssistantAgent con tools.
+Incluye un agente corrector de Python para el bucle de autocorrección.
 
-Incluye:
-- Inyección de la entidad como parámetro (re-uso del script con otra entidad)
-- Bucle de autocorrección para errores en código Python
-- Generación del informe final en Markdown
+La entidad se inyecta como parámetro para reutilizar scripts existentes.
 """
 
-import re
-import json
 import asyncio
+import json
+import re
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Optional, AsyncGenerator
+from typing import Callable, Optional
 
-from autogen import AssistantAgent, UserProxyAgent
+from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.base import TaskResult
+from autogen_agentchat.conditions import TextMentionTermination, MaxMessageTermination
+from autogen_agentchat.teams import RoundRobinGroupChat
+from autogen_core.tools import FunctionTool
 
 from .council_config import (
-    LLM_CONFIG,
+    make_model_client,
     OUTPUT_DIR,
     MAX_EXEC_RETRIES,
 )
 
-# Las herramientas reales de SINAPSIS (mismo módulo que el orquestador)
-import sys
-import os
+# ── Importar herramientas reales de SINAPSIS ──────────────────────────────────
+import sys, os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+
 from agent.tools_hybrid import (
     search_scientific_papers_semantic,
     query_knowledge_graph_cypher,
@@ -45,141 +47,151 @@ from agent.tools_hybrid import (
 )
 from agent.tools_interpreter import execute_python_code
 
+REPORT_DONE_SIGNAL = "INFORME_COMPLETO"
 
-# ── Mapa de herramientas disponibles ──────────────────────────────────────────
+# ── Envolturas síncronas para FunctionTool ────────────────────────────────────
 
-TOOL_MAP = {
-    "query_knowledge_graph_cypher":      lambda args: query_knowledge_graph_cypher.invoke(args),
-    "search_scientific_papers_semantic": lambda args: search_scientific_papers_semantic.invoke(args),
-    "get_entity_statistics":             lambda args: get_entity_statistics.invoke(args),
-    "get_researcher_profile":            lambda args: get_researcher_profile.invoke(args),
-    "get_trending_topics":               lambda args: get_trending_topics.invoke(args),
-    "get_author_coauthors_graph":        lambda args: get_author_coauthors_graph.invoke(args),
-    "recoverFromOpenAlex":               lambda args: recoverFromOpenAlex.invoke(args),
-    "searchAuthorInOpenAlex":            lambda args: searchAuthorInOpenAlex.invoke(args),
-    "recoverAuthorWorksFromOpenAlex":    lambda args: recoverAuthorWorksFromOpenAlex.invoke(args),
-    "web_search":                        lambda args: web_search.invoke(args),
-    "wikipedia_search":                  lambda args: wikipedia_search.invoke(args),
-    "Python_CodeExecutor":               lambda args: execute_python_code(args.get("query", "")),
-}
+def _cypher(query: str) -> str:
+    """Ejecuta una query Cypher en Neo4j."""
+    return query_knowledge_graph_cypher.invoke({"cypher_query": query})
 
-
-# ── Agente Ejecutor ────────────────────────────────────────────────────────────
-
-def _build_executor(entity: str) -> AssistantAgent:
-    tools_list = "\n".join([f"  - {k}" for k in TOOL_MAP.keys()])
-    return AssistantAgent(
-        name="SINAPSIS_Ejecutor",
-        system_message=f"""Eres SINAPSIS en modo ejecución autónoma. Tu objetivo es generar un
-informe bibliométrico completo para la entidad **{entity}**.
-
-Tienes acceso a las siguientes herramientas (úsalas indicándolas con JSON):
-{tools_list}
-
-Para usar una herramienta, escribe exactamente:
-```json
-{{"tool": "nombre_herramienta", "args": {{"param1": "valor1"}}}}
-```
-
-REGLAS CRÍTICAS:
-- Para nombres de académicos: SIEMPRE usa búsqueda parcial con el apellido.
-- Para tópicos: tradúcelos al inglés y usa variantes con OR en Cypher.
-- Para gráficas de Python: SIEMPRE guarda con plt.savefig('interpreter_output.png').
-- Si un paso falla, analiza el error e intenta una alternativa antes de reportar fallo.
-- Al terminar escribe: INFORME_COMPLETO seguido del informe final en Markdown.
-
-El informe final debe contener:
-1. Síntesis ejecutiva (2-3 párrafos)
-2. Tablas de datos con los resultados más relevantes
-3. Interpretación desde la perspectiva del Rector, Investigador y Consejero
-4. Conclusiones y recomendaciones""",
-        llm_config=LLM_CONFIG,
+def _semantic(query: str, entity_context: Optional[str] = None, limit: int = 20) -> str:
+    """Búsqueda semántica en Qdrant."""
+    return search_scientific_papers_semantic.invoke(
+        {"query": query, "entity_context": entity_context, "limit": limit}
     )
 
+def _entity_stats(entity_name: str) -> str:
+    """Estadísticas de una entidad UNAM."""
+    return get_entity_statistics.invoke({"entity_name": entity_name})
 
-def _build_corrector() -> AssistantAgent:
-    return AssistantAgent(
-        name="Corrector_Python",
-        system_message="""Eres un experto en Python que corrige código con errores.
-Cuando recibas un fragmento de código con su error, devuelve SOLO el código corregido
-en un bloque ```python ... ``` sin explicaciones adicionales.
-Asegúrate de que el código importa todo lo que necesita y no tiene dependencias externas
-que no estén disponibles en un entorno Python estándar con pandas, matplotlib y numpy.""",
-        llm_config=LLM_CONFIG,
-    )
+def _researcher_profile(name_fragment: str) -> str:
+    """Perfil completo de un investigador por nombre parcial."""
+    return get_researcher_profile.invoke({"name_fragment": name_fragment})
 
+def _trending_topics(entity_name: Optional[str] = None, start_year: int = 2018) -> str:
+    """Tópicos en tendencia desde un año dado."""
+    return get_trending_topics.invoke({"entity_name": entity_name, "start_year": start_year})
 
-# ── Ejecución de herramientas ──────────────────────────────────────────────────
+def _coauthors(author_name: str) -> str:
+    """Red de coautores de un investigador."""
+    return get_author_coauthors_graph.invoke({"author_name": author_name})
 
-def _inject_entity(script_text: str, entity: str) -> str:
-    """Reemplaza el placeholder {ENTITY} con la entidad real."""
-    return script_text.replace("{ENTITY}", entity).replace("{{ENTITY}}", entity)
+def _openalex(doi: str, fields: Optional[str] = None) -> str:
+    """Registro bibliométrico de OpenAlex por DOI."""
+    return recoverFromOpenAlex.invoke({"doi": doi, "fields": fields})
 
+def _openalex_search_author(fullname: str, n: int = 5) -> str:
+    """Busca un autor en OpenAlex."""
+    return searchAuthorInOpenAlex.invoke({"fullname": fullname, "n": n})
 
-def _extract_tool_call(text: str) -> Optional[dict]:
-    """Extrae la primera llamada a herramienta del texto del agente."""
-    match = re.search(r"```json\s*(\{.*?\})\s*```", text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(1))
-        except json.JSONDecodeError:
-            pass
-    return None
+def _openalex_author_works(author_id: str, n: int = 10) -> str:
+    """Trabajos de un autor en OpenAlex."""
+    return recoverAuthorWorksFromOpenAlex.invoke({"author_id": author_id, "n": n})
 
+def _web(query: str) -> str:
+    """Búsqueda web (DuckDuckGo)."""
+    return web_search.invoke({"query": query})
 
-def _execute_tool_with_retry(tool_call: dict, corrector: AssistantAgent, moderador: UserProxyAgent) -> str:
-    """Ejecuta una herramienta con bucle de autocorrección para Python."""
-    tool_name = tool_call.get("tool", "")
-    args = tool_call.get("args", {})
+def _wiki(query: str) -> str:
+    """Búsqueda en Wikipedia."""
+    return wikipedia_search.invoke({"query": query})
 
-    if tool_name not in TOOL_MAP:
-        return f"❌ Herramienta '{tool_name}' no disponible."
-
-    # Herramientas Python tienen autocorrección
-    if tool_name == "Python_CodeExecutor":
-        code = args.get("query", "")
-        for attempt in range(MAX_EXEC_RETRIES):
-            result = execute_python_code(code)
-            if "Error" not in result and "Traceback" not in result:
-                return result
-            if attempt < MAX_EXEC_RETRIES - 1:
-                # Pedir corrección al agente corrector
-                moderador.initiate_chat(
-                    corrector,
-                    message=f"Corrige este código Python que generó el siguiente error:\n\n"
-                            f"```python\n{code}\n```\n\nError:\n{result}",
-                    max_turns=1,
-                )
-                corrected_msg = corrector.last_message()
-                if corrected_msg:
-                    code_match = re.search(r"```python\s*(.*?)\s*```", corrected_msg["content"], re.DOTALL)
-                    if code_match:
-                        code = code_match.group(1)
-        return result  # Devuelve el último resultado aunque tenga error
-    else:
-        try:
-            return TOOL_MAP[tool_name](args)
-        except Exception as e:
-            return f"❌ Error en {tool_name}: {str(e)}"
+def _python(code: str) -> str:
+    """Ejecuta código Python. Guarda gráficas con plt.savefig('interpreter_output.png')."""
+    return execute_python_code(code)
 
 
-# ── Guardado del informe ──────────────────────────────────────────────────────
+# ── Mapa de FunctionTool para AutoGen v0.4+ ───────────────────────────────────
 
-def _save_final_report(entity: str, report_text: str) -> Path:
+def _make_tools() -> list:
+    return [
+        FunctionTool(_cypher,              name="query_knowledge_graph_cypher",      description="Ejecuta Cypher en Neo4j"),
+        FunctionTool(_semantic,            name="search_semantic",                   description="Búsqueda semántica en Qdrant"),
+        FunctionTool(_entity_stats,        name="get_entity_statistics",             description="Estadísticas de una entidad UNAM"),
+        FunctionTool(_researcher_profile,  name="get_researcher_profile",            description="Perfil completo de un investigador"),
+        FunctionTool(_trending_topics,     name="get_trending_topics",               description="Tópicos en tendencia"),
+        FunctionTool(_coauthors,           name="get_author_coauthors",              description="Red de coautores"),
+        FunctionTool(_openalex,            name="openalex_doi",                      description="Datos bibliométricos por DOI"),
+        FunctionTool(_openalex_search_author, name="openalex_search_author",         description="Busca autor en OpenAlex"),
+        FunctionTool(_openalex_author_works,  name="openalex_author_works",          description="Trabajos de un autor en OpenAlex"),
+        FunctionTool(_web,                 name="web_search",                         description="Búsqueda web"),
+        FunctionTool(_wiki,                name="wikipedia",                          description="Búsqueda en Wikipedia"),
+        FunctionTool(_python,              name="python_executor",                    description="Ejecuta código Python"),
+    ]
+
+
+# ── Utilidades ────────────────────────────────────────────────────────────────
+
+def _inject_entity(text: str, entity: str) -> str:
+    return text.replace("{ENTITY}", entity).replace("{{ENTITY}}", entity)
+
+
+def _save_report(entity: str, report: str) -> Path:
     slug = re.sub(r"[^\w\-]", "_", entity.lower())[:30]
     date_str = datetime.now().strftime("%Y-%m-%d_%H%M")
-    filename = OUTPUT_DIR / f"informe_{slug}_{date_str}.md"
-    filename.write_text(
-        f"# Informe Bibliométrico Final\n\n"
-        f"**Entidad**: {entity}\n"
-        f"**Generado**: {date_str}\n\n---\n\n"
-        + report_text,
+    path = OUTPUT_DIR / f"informe_{slug}_{date_str}.md"
+    path.write_text(
+        f"# Informe Bibliométrico Final\n\n**Entidad**: {entity}\n**Generado**: {date_str}\n\n---\n\n"
+        + report,
         encoding="utf-8"
     )
-    return filename
+    return path
 
 
-# ── Función principal ──────────────────────────────────────────────────────────
+# ── Ejecución asíncrona ───────────────────────────────────────────────────────
+
+async def _run_executor_async(
+    entity: str,
+    execution_script: str,
+    on_message: Optional[Callable[[str, str], None]] = None,
+) -> tuple[str, Path]:
+    script = _inject_entity(execution_script, entity)
+    model_client = make_model_client()
+    tools = _make_tools()
+
+    executor = AssistantAgent(
+        name="SINAPSIS_Ejecutor",
+        model_client=model_client,
+        tools=tools,
+        system_message=(
+            f"Eres SINAPSIS en modo ejecución para la entidad **{entity}**. "
+            f"Ejecuta paso a paso el script bibliométrico usando tus herramientas. "
+            f"Para nombres de personas usa siempre búsqueda parcial (CONTAINS). "
+            f"Para tópicos tradúcelos al inglés y usa variantes con OR. "
+            f"Para gráficas siempre guarda con plt.savefig('interpreter_output.png'). "
+            f"Al terminar TODOS los pasos, escribe '{REPORT_DONE_SIGNAL}' seguido "
+            f"del informe final en Markdown con: síntesis ejecutiva, tablas de datos, "
+            f"interpretación de Rector/Investigador/Consejero y conclusiones."
+        ),
+    )
+
+    termination = (
+        TextMentionTermination(REPORT_DONE_SIGNAL) |
+        MaxMessageTermination(30)
+    )
+    team = RoundRobinGroupChat([executor], termination_condition=termination)
+
+    report_parts = []
+    all_parts = []
+
+    async for message in team.run_stream(task=f"Ejecuta el siguiente script para {entity}:\n\n{script}"):
+        if isinstance(message, TaskResult):
+            break
+        src = getattr(message, "source", "Sistema")
+        content = getattr(message, "content", "")
+        if content and content.strip():
+            all_parts.append(f"**{src}**: {content}")
+            if REPORT_DONE_SIGNAL in content:
+                idx = content.find(REPORT_DONE_SIGNAL)
+                report_parts.append(content[idx + len(REPORT_DONE_SIGNAL):].strip())
+            if on_message:
+                on_message(src, content)
+
+    report_text = "\n\n".join(report_parts) if report_parts else "\n\n".join(all_parts[-5:])
+    saved_path = _save_report(entity, report_text)
+    return report_text, saved_path
+
 
 def run_autonomous_executor(
     entity: str,
@@ -187,101 +199,5 @@ def run_autonomous_executor(
     on_message: Optional[Callable[[str, str], None]] = None,
     on_step: Optional[Callable[[int, int], None]] = None,
 ) -> tuple[str, Path]:
-    """
-    Ejecuta la Fase 3: Ejecución Autónoma con autocorrección.
-
-    Args:
-        entity: Entidad objetivo (puede diferir de la que generó el script)
-        execution_script: Script validado por la Mesa Técnica (Fase 2)
-        on_message: Callback de streaming para la UI (nombre_agente, contenido)
-        on_step: Callback de progreso (paso_actual, total_pasos)
-
-    Returns:
-        Tuple de (informe_texto: str, archivo_guardado: Path)
-    """
-    # Inyectar la entidad actual en el script (re-uso paramétrico)
-    script_with_entity = _inject_entity(execution_script, entity)
-
-    executor = _build_executor(entity)
-    corrector = _build_corrector()
-
-    moderador = UserProxyAgent(
-        name="Supervisor_Ejecución",
-        human_input_mode="NEVER",
-        max_consecutive_auto_reply=0,
-        code_execution_config=False,
-    )
-
-    # Buffer de resultados de herramientas para comprimir el contexto
-    tool_results = []
-    step_count = [0]
-    report_text = [""]
-
-    def _process_agent_message(content: str) -> str:
-        """Detecta llamadas a herramientas en el mensaje y las ejecuta."""
-        tool_call = _extract_tool_call(content)
-        if not tool_call:
-            return content
-
-        step_count[0] += 1
-        tool_name = tool_call.get("tool", "")
-        if on_message:
-            on_message("Sistema", f"⚙️ Ejecutando herramienta: `{tool_name}`...")
-
-        result = _execute_tool_with_retry(tool_call, corrector, moderador)
-        tool_results.append({"tool": tool_name, "result": str(result)[:2000]})
-
-        if on_message:
-            on_message("Sistema", f"✅ `{tool_name}` completado.")
-
-        return content + f"\n\n**Resultado de {tool_name}:**\n```\n{str(result)[:2000]}\n```"
-
-    # Conversación principal con el ejecutor
-    step_messages = []
-
-    def _reply_handler(sender, message, recipient, **kwargs):
-        """Intercepta respuestas del ejecutor para procesar tool calls."""
-        content = message if isinstance(message, str) else message.get("content", "")
-        name = getattr(sender, "name", "Sistema")
-
-        if on_message and content:
-            on_message(name, content)
-
-        # Si contiene llamada a herramienta, ejecutar y devolver resultado
-        if "```json" in content and '"tool"' in content:
-            enriched = _process_agent_message(content)
-            step_messages.append(enriched)
-            return True, enriched
-
-        # Si contiene INFORME_COMPLETO, extraer y terminar
-        if "INFORME_COMPLETO" in content:
-            idx = content.find("INFORME_COMPLETO")
-            report_text[0] = content[idx + len("INFORME_COMPLETO"):].strip()
-            return True, None  # Terminar conversación
-
-        step_messages.append(content)
-        return False, None
-
-    moderador.register_reply(
-        trigger=executor.__class__,
-        reply_func=_reply_handler,
-        position=0,
-    )
-
-    moderador.initiate_chat(
-        executor,
-        message=(
-            f"Ejecuta el siguiente script bibliométrico para **{entity}**. "
-            f"Para cada paso, usa la herramienta correspondiente en formato JSON.\n\n"
-            f"{script_with_entity}\n\n"
-            f"Al terminar todos los pasos, genera el INFORME_COMPLETO."
-        ),
-        max_turns=30,
-    )
-
-    # Si el informe no se generó explícitamente, usar el último mensaje
-    if not report_text[0] and step_messages:
-        report_text[0] = "\n\n".join(step_messages[-3:])
-
-    saved_path = _save_final_report(entity, report_text[0])
-    return report_text[0], saved_path
+    """Punto de entrada síncrono para Streamlit."""
+    return asyncio.run(_run_executor_async(entity, execution_script, on_message))

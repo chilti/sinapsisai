@@ -1,201 +1,135 @@
 """
 strategic_council.py
-Fase 1 del sistema multi-agente: Consejo Estratégico Virtual.
+Fase 1: Consejo Estratégico Virtual — AutoGen v0.4+
 
-Orquesta un GroupChat de AutoGen con tres agentes de perspectivas distintas
-(Rector, Investigador Senior, Consejero Universitario) para deliberar y llegar
-a un consenso bibliométrico sobre una entidad UNAM.
-
-El resultado se guarda como plan_consenso.md en agent/council/output/.
+Usa RoundRobinGroupChat con tres agentes de perspectivas distintas y una
+condición de terminación basada en detección de texto de aprobación.
+La función es síncrona (usa asyncio.run internamente) para compatibilidad con Streamlit.
 """
 
+import asyncio
 import re
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
-from autogen import (
-    AssistantAgent,
-    GroupChat,
-    GroupChatManager,
-    UserProxyAgent,
-)
+from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.base import TaskResult
+from autogen_agentchat.conditions import TextMentionTermination, MaxMessageTermination
+from autogen_agentchat.teams import RoundRobinGroupChat
 
 from .council_config import (
-    LLM_CONFIG,
+    make_model_client,
     OUTPUT_DIR,
-    SCRIPTS_DIR,
     MAX_COUNCIL_ROUNDS,
-    CONSENSUS_SIGNAL,
+    RECTOR_APPROVAL,
+    INVESTIG_APPROVAL,
+    CONSEJERO_APPROVAL,
 )
 
 
-# ── Definición de los agentes del Consejo ─────────────────────────────────────
-
-def _build_rector(entity: str) -> AssistantAgent:
-    return AssistantAgent(
-        name="Rector",
-        system_message=f"""Eres el Rector de la UNAM, responsable de la visión estratégica y política universitaria.
-
-Tu perspectiva al analizar la producción científica de "{entity}":
-- Priorizas la VISIBILIDAD INTERNACIONAL y el IMPACTO SOCIAL de la investigación.
-- Criticas propuestas que sean puramente técnicas y no resalten el PRESTIGIO INSTITUCIONAL.
-- Te interesan los Objetivos de Desarrollo Sostenible (ODS), las colaboraciones internacionales
-  y la presencia en rankings globales.
-- Propones indicadores como: presencia en revistas de alto impacto, colaboraciones con
-  universidades del top-100, publicaciones ligadas a ODS, cobertura de Open Access.
-
-Cuando estés de acuerdo con un plan completo, incluye el texto "APROBADO: Rector" en tu mensaje.""",
-        llm_config=LLM_CONFIG,
-    )
-
-
-def _build_investigador_senior(entity: str) -> AssistantAgent:
-    return AssistantAgent(
-        name="Investigador_Senior",
-        system_message=f"""Eres un Investigador Senior nivel SNI III de "{entity}".
-
-Tu perspectiva al diseñar un estudio bibliométrico:
-- Priorizas la CALIDAD CIENTÍFICA: FWCI, percentil de citas, h-index, revistas arbitradas.
-- Cuestionas indicadores SOLO cuantitativos (número de papers) que no reflejen profundidad.
-- Te importa la coherencia disciplinar: que los tópicos medidos sean relevantes para el área.
-- Defiendes el análisis de redes de coautoría porque revela colaboraciones estratégicas reales.
-- Propones incluir comparativas históricas (evolución por quinquenios) y análisis temático.
-
-Cuando estés de acuerdo con un plan completo, incluye el texto "APROBADO: Investigador_Senior" en tu mensaje.""",
-        llm_config=LLM_CONFIG,
-    )
-
-
-def _build_consejero(entity: str) -> AssistantAgent:
-    return AssistantAgent(
-        name="Consejero_Universitario",
-        system_message=f"""Eres el Consejero Universitario responsable de la ética y normativas de "{entity}".
-
-Tu perspectiva en el diseño del estudio:
-- Garantizas EQUIDAD entre investigadores de diferentes áreas, géneros y antigüedades.
-- Verificas que el estudio cumpla con la política de datos abiertos de la UNAM y ORCID.
-- Señalas si alguna métrica podría discriminar injustamente a investigadores emergentes o
-  de áreas menos financiadas.
-- Propones incluir métricas de diversidad (género, área temática, trayectoria) y transparencia.
-- Te aseguras de que los datos usados sean éticamente obtenidos y estén correctamente atribuidos.
-
-Cuando estés de acuerdo con un plan completo, incluye el texto "APROBADO: Consejero_Universitario" en tu mensaje.""",
-        llm_config=LLM_CONFIG,
-    )
-
-
-# ── Lógica de consenso ────────────────────────────────────────────────────────
-
-def _check_consensus(messages: list) -> bool:
-    """Verifica si los tres agentes han dado su aprobación."""
-    combined = " ".join(m.get("content", "") for m in messages)
-    return all([
-        "APROBADO: Rector" in combined,
-        "APROBADO: Investigador_Senior" in combined,
-        "APROBADO: Consejero_Universitario" in combined,
-    ])
-
-
-def _extract_plan(messages: list) -> str:
-    """Extrae y sintetiza el plan de consenso de la conversación."""
-    lines = []
-    for msg in messages:
-        name = msg.get("name", "")
-        content = msg.get("content", "")
-        if name and content:
-            lines.append(f"### {name}\n{content}\n")
-    return "\n".join(lines)
-
-
-def _save_consensus_plan(entity: str, plan_text: str) -> Path:
-    """Guarda el plan de consenso como Markdown en output/."""
+def _save_consensus_plan(entity: str, messages: list) -> Path:
     slug = re.sub(r"[^\w\-]", "_", entity.lower())[:30]
     date_str = datetime.now().strftime("%Y-%m-%d")
-    filename = OUTPUT_DIR / f"plan_consenso_{slug}_{date_str}.md"
-    filename.write_text(
-        f"# Plan de Consenso Bibliométrico\n\n"
-        f"**Entidad**: {entity}\n"
-        f"**Fecha**: {date_str}\n\n---\n\n"
-        + plan_text,
-        encoding="utf-8"
+    path = OUTPUT_DIR / f"plan_consenso_{slug}_{date_str}.md"
+    
+    lines = [f"# Plan de Consenso Bibliométrico\n\n**Entidad**: {entity}\n**Fecha**: {date_str}\n\n---\n"]
+    for msg in messages:
+        src = getattr(msg, "source", "Sistema")
+        content = getattr(msg, "content", "")
+        if content and content.strip():
+            lines.append(f"### {src}\n{content}\n")
+    
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
+
+
+async def _run_council_async(
+    entity: str,
+    objective: str,
+    on_message: Optional[Callable[[str, str], None]] = None,
+) -> tuple[str, Path]:
+    model_client = make_model_client()
+
+    rector = AssistantAgent(
+        name="Rector",
+        model_client=model_client,
+        system_message=(
+            f"Eres el Rector de la UNAM. Priorizas VISIBILIDAD INTERNACIONAL e IMPACTO SOCIAL "
+            f"de la investigación en {entity}. Criticas propuestas puramente técnicas sin impacto "
+            f"institucional. Te interesan: colaboraciones internacionales, ODS, presencia en rankings, "
+            f"Open Access. Cuando estés convencido del plan completo, escribe exactamente: '{RECTOR_APPROVAL}'."
+        ),
     )
-    return filename
 
+    investigador = AssistantAgent(
+        name="Investigador_Senior",
+        model_client=model_client,
+        system_message=(
+            f"Eres un Investigador SNI III de {entity}. Priorizas CALIDAD CIENTÍFICA: "
+            f"FWCI, h-index, percentil de citas, revistas arbitradas. Cuestionas indicadores "
+            f"solo cuantitativos. Defiendes el análisis de redes de coautoría y evolución histórica. "
+            f"Cuando estés convencido del plan, escribe exactamente: '{INVESTIG_APPROVAL}'."
+        ),
+    )
 
-# ── Función principal ─────────────────────────────────────────────────────────
+    consejero = AssistantAgent(
+        name="Consejero_Universitario",
+        model_client=model_client,
+        system_message=(
+            f"Eres el Consejero responsable de ética y normativas en {entity}. "
+            f"Garantizas equidad entre investigadores de distintas áreas, géneros y antigüedades. "
+            f"Verificas cumplimiento de políticas de datos abiertos UNAM y ORCID. "
+            f"Señalas sesgos y propones métricas de diversidad. "
+            f"Cuando estés convencido del plan, escribe exactamente: '{CONSEJERO_APPROVAL}'."
+        ),
+    )
+
+    # Terminar cuando los 3 han aprobado (detectamos el último en aparecer)
+    termination = (
+        TextMentionTermination(RECTOR_APPROVAL) &
+        TextMentionTermination(INVESTIG_APPROVAL) &
+        TextMentionTermination(CONSEJERO_APPROVAL)
+    ) | MaxMessageTermination(MAX_COUNCIL_ROUNDS)
+
+    team = RoundRobinGroupChat(
+        [rector, investigador, consejero],
+        termination_condition=termination,
+    )
+
+    task = (
+        f"Diseñen un **Plan de Estudio Bibliométrico** para **{entity}** (UNAM).\n\n"
+        f"**Objetivo del estudio**: {objective}\n\n"
+        f"Deliberen desde sus perspectivas. El plan debe incluir:\n"
+        f"1. Objetivos específicos del estudio\n"
+        f"2. Métricas clave a medir (con justificación)\n"
+        f"3. Fuentes de datos recomendadas\n\n"
+        f"Cada uno debe aprobar explícitamente el plan final con su señal de aprobación."
+    )
+
+    all_messages = []
+    plan_text_parts = []
+
+    async for message in team.run_stream(task=task):
+        if isinstance(message, TaskResult):
+            break
+        src = getattr(message, "source", "Sistema")
+        content = getattr(message, "content", "")
+        all_messages.append(message)
+        if content and content.strip():
+            plan_text_parts.append(f"**{src}**: {content}")
+            if on_message:
+                on_message(src, content)
+
+    plan_text = "\n\n".join(plan_text_parts)
+    saved_path = _save_consensus_plan(entity, all_messages)
+    return plan_text, saved_path
+
 
 def run_strategic_council(
     entity: str,
     objective: str,
     on_message: Optional[Callable[[str, str], None]] = None,
 ) -> tuple[str, Path]:
-    """
-    Ejecuta la Fase 1: Deliberación del Consejo Estratégico.
-
-    Args:
-        entity: Nombre de la entidad UNAM (ej. "Instituto de Ciencias Nucleares")
-        objective: Objetivo del estudio que el usuario definió
-        on_message: Callback opcional para streaming a la UI (nombre_agente, contenido)
-
-    Returns:
-        Tuple de (plan_texto: str, archivo_guardado: Path)
-    """
-    rector = _build_rector(entity)
-    investigador = _build_investigador_senior(entity)
-    consejero = _build_consejero(entity)
-
-    # Proxy que inicia la conversación pero no interrumpe (human_input_mode=NEVER)
-    initiator = UserProxyAgent(
-        name="Moderador",
-        human_input_mode="NEVER",
-        max_consecutive_auto_reply=0,
-        code_execution_config=False,
-    )
-
-    # GroupChat con selección automática de turno
-    group_chat = GroupChat(
-        agents=[initiator, rector, investigador, consejero],
-        messages=[],
-        max_round=MAX_COUNCIL_ROUNDS,
-        speaker_selection_method="auto",
-    )
-
-    manager = GroupChatManager(
-        groupchat=group_chat,
-        llm_config=LLM_CONFIG,
-        is_termination_msg=lambda msg: _check_consensus(group_chat.messages),
-    )
-
-    # Hook de streaming hacia la UI
-    if on_message:
-        original_send = manager.send
-
-        def patched_send(message, recipient, **kwargs):
-            if isinstance(message, dict):
-                name = message.get("name", "Sistema")
-                content = message.get("content", "")
-                on_message(name, content)
-            return original_send(message, recipient, **kwargs)
-
-        manager.send = patched_send
-
-    # Mensaje inicial que lanza la deliberación
-    initiator.initiate_chat(
-        manager,
-        message=(
-            f"Necesitamos diseñar un **Plan de Estudio Bibliométrico** para la entidad "
-            f"**{entity}** de la UNAM.\n\n"
-            f"**Objetivo del estudio:** {objective}\n\n"
-            f"Por favor deliberen desde sus perspectivas y lleguen a un plan consensuado "
-            f"que incluya: (1) Objetivos específicos, (2) Métricas clave a medir, "
-            f"(3) Justificación académica e institucional.\n\n"
-            f"La conversación termina solo cuando los tres hayan aprobado el plan con "
-            f"la señal 'APROBADO: [su nombre]'."
-        ),
-    )
-
-    plan_text = _extract_plan(group_chat.messages)
-    saved_path = _save_consensus_plan(entity, plan_text)
-
-    return plan_text, saved_path
+    """Punto de entrada síncrono para Streamlit."""
+    return asyncio.run(_run_council_async(entity, objective, on_message))

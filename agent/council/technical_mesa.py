@@ -1,122 +1,57 @@
 """
 technical_mesa.py
-Fase 2 del sistema multi-agente: Mesa Técnica.
+Fase 2: Mesa Técnica — AutoGen v0.4+
 
-Lee el plan_consenso.md generado por el Consejo y lo traduce a un script
-de ejecución técnica concreto y parametrizable.
+Dos agentes en conversación secuencial:
+1. Arquitecto_de_Datos: traduce el plan a requerimientos técnicos concretos con Cypher/Qdrant/Python.
+2. SINAPSIS_Técnico: valida qué pasos puede ejecutar con sus herramientas actuales.
 
-Los scripts se guardan en agent/council/scripts/ con nombre:
-    {entity_slug}_{fecha}.md
-
-Pueden ser re-ejecutados con cualquier entidad sin repetir la deliberación.
+El script resultante se guarda en scripts/ de forma parametrizable ({ENTITY}).
 """
 
+import asyncio
 import re
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional, Union
 
-from autogen import AssistantAgent, UserProxyAgent, ConversableAgent
+from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.base import TaskResult
+from autogen_agentchat.conditions import TextMentionTermination, MaxMessageTermination
+from autogen_agentchat.teams import RoundRobinGroupChat
 
 from .council_config import (
-    LLM_CONFIG,
+    make_model_client,
     SCRIPTS_DIR,
-    OUTPUT_DIR,
     MAX_TECH_ROUNDS,
 )
 
+SCRIPT_DONE_SIGNAL = "SCRIPT_VALIDADO"
 
-# ── Agentes de la Mesa Técnica ─────────────────────────────────────────────────
-
-def _build_arquitecto() -> AssistantAgent:
-    return AssistantAgent(
-        name="Arquitecto_de_Datos",
-        system_message="""Eres un Arquitecto de Datos especializado en sistemas bibliométricos.
-
-Tu trabajo es leer el Plan de Estudio Bibliométrico aprobado por el Consejo y
-traducirlo a requerimientos técnicos concretos. Para cada objetivo del plan debes
-especificar exactamente:
-
-1. Si usa Neo4j (grafo): escribe la query Cypher necesaria.
-   - Schema disponible: (Academic)-[:AUTHORED]->(Paper), (Academic)-[:AFFILIATED_TO]->(Entity),
-     (Paper)-[:HAS_TOPIC]->(Topic), (Paper)-[:HAS_SDG]->(SDG_Goal)
-   - IMPORTANTE: Los nombres de académicos están en formato 'APELLIDO, NOMBRE' en mayúsculas.
-     Siempre usar CONTAINS para buscar personas.
-
-2. Si usa Qdrant (semántica): especifica el query semántico y si necesita entity_context.
-
-3. Si usa OpenAlex: especifica qué campos extraer (fwci, cited_by_count, topics, etc.)
-
-4. Si necesita Python para cálculo/visualización: describe el análisis.
-
-Formatea tu respuesta como un script de ejecución en secciones claras.
-Usa la variable {{ENTITY}} como placeholder para la entidad, para que el script sea reutilizable.
-
-Termina con: SCRIPT_TÉCNICO_COMPLETO""",
-        llm_config=LLM_CONFIG,
-    )
-
-
-def _build_sinapsis_tecnico() -> AssistantAgent:
-    return AssistantAgent(
-        name="SINAPSIS_Técnico",
-        system_message="""Eres SINAPSIS en modo técnico. Tu trabajo es revisar el script
-propuesto por el Arquitecto y:
-
-1. Confirmar qué pasos puedes ejecutar con tus herramientas actuales:
-   - query_knowledge_graph_cypher (Neo4j)
-   - search_scientific_papers_semantic (Qdrant)
-   - get_entity_statistics, get_researcher_profile, get_trending_topics
-   - recoverFromOpenAlex, searchAuthorInOpenAlex, recoverAuthorWorksFromOpenAlex
-   - get_author_coauthors_graph
-   - Python_CodeExecutor
-   - web_search, wikipedia_search
-
-2. Señalar qué pasos NO puedes ejecutar con las herramientas actuales y por qué.
-   Registra las herramientas faltantes con detalle.
-
-3. Sugerir alternativas para los pasos que no puedes cubrir directamente.
-
-4. Aprobar el script final con: SCRIPT_VALIDADO_POR_SINAPSIS""",
-        llm_config=LLM_CONFIG,
-    )
-
-
-# ── Persistencia del script ────────────────────────────────────────────────────
 
 def _save_execution_script(entity: str, script_text: str) -> Path:
-    """
-    Guarda el script de ejecución como Markdown parametrizable.
-    Nombre: {entity_slug}_{fecha}.md en scripts/
-    """
     slug = re.sub(r"[^\w\-]", "_", entity.lower())[:30]
     date_str = datetime.now().strftime("%Y-%m-%d")
-    filename = SCRIPTS_DIR / f"{slug}_{date_str}.md"
-
-    # Asegurar que la entidad actual aparece como parámetro,
-    # y que el placeholder {ENTITY} está en el script para re-uso
-    content = (
+    path = SCRIPTS_DIR / f"{slug}_{date_str}.md"
+    path.write_text(
         f"# Script de Ejecución Bibliométrica\n\n"
         f"**Entidad por defecto**: {entity}\n"
-        f"**Fecha de creación**: {date_str}\n"
-        f"**Re-ejecución**: Cambia la variable ENTITY al correr con otra entidad.\n\n"
-        f"---\n\n"
-        + script_text
+        f"**Fecha**: {date_str}\n"
+        f"**Re-uso**: reemplaza {{ENTITY}} con otra entidad al ejecutar.\n\n---\n\n"
+        + script_text,
+        encoding="utf-8"
     )
-    filename.write_text(content, encoding="utf-8")
-    return filename
+    return path
 
 
 def load_execution_script(script_path: Union[str, Path]) -> str:
-    """Carga un script guardado previamente."""
     path = Path(script_path)
     if not path.exists():
         raise FileNotFoundError(f"Script no encontrado: {script_path}")
     return path.read_text(encoding="utf-8")
 
 
-def list_saved_scripts() -> list[dict]:
-    """Lista todos los scripts guardados con metadata."""
+def list_saved_scripts() -> list:
     scripts = []
     for f in sorted(SCRIPTS_DIR.glob("*.md"), reverse=True):
         parts = f.stem.rsplit("_", 1)
@@ -129,85 +64,84 @@ def list_saved_scripts() -> list[dict]:
     return scripts
 
 
-# ── Función principal ──────────────────────────────────────────────────────────
+async def _run_mesa_async(
+    entity: str,
+    consensus_plan: str,
+    on_message: Optional[Callable[[str, str], None]] = None,
+) -> tuple[str, Path]:
+    model_client = make_model_client()
+
+    tools_list = (
+        "query_knowledge_graph_cypher, search_scientific_papers_semantic, "
+        "get_entity_statistics, get_researcher_profile, get_trending_topics, "
+        "get_author_coauthors_graph, recoverFromOpenAlex, searchAuthorInOpenAlex, "
+        "recoverAuthorWorksFromOpenAlex, web_search, wikipedia_search, Python_CodeExecutor"
+    )
+
+    arquitecto = AssistantAgent(
+        name="Arquitecto_de_Datos",
+        model_client=model_client,
+        system_message=(
+            "Eres un Arquitecto de Datos especializado en bibliometría. "
+            "Traduce planes de estudio a pasos técnicos concretos. "
+            "Para Neo4j escribe la query Cypher exacta (usa CONTAINS para nombres de personas). "
+            "Para Qdrant especifica el query semántico y el entity_context. "
+            "Para OpenAlex especifica los campos a extraer. "
+            "Para Python describe el análisis/visualización. "
+            "Usa {ENTITY} como placeholder parametrizable en todas las queries. "
+            "Cuando termines el script técnico completo, escribe: SCRIPT_TÉCNICO_LISTO"
+        ),
+    )
+
+    sinapsis = AssistantAgent(
+        name="SINAPSIS_Técnico",
+        model_client=model_client,
+        system_message=(
+            f"Eres SINAPSIS en modo técnico. Evalúas el script propuesto por el Arquitecto. "
+            f"Herramientas disponibles: {tools_list}. "
+            f"Para cada paso: indica si puedes ejecutarlo (✅) o no (❌) y por qué. "
+            f"Si no puedes, sugiere una alternativa. "
+            f"Cuando hayas revisado todo y el script esté listo, escribe exactamente: {SCRIPT_DONE_SIGNAL}"
+        ),
+    )
+
+    termination = (
+        TextMentionTermination(SCRIPT_DONE_SIGNAL) |
+        MaxMessageTermination(MAX_TECH_ROUNDS)
+    )
+
+    team = RoundRobinGroupChat(
+        [arquitecto, sinapsis],
+        termination_condition=termination,
+    )
+
+    task = (
+        f"El Consejo Estratégico aprobó el siguiente plan para **{entity}**:\n\n"
+        f"{consensus_plan}\n\n"
+        f"Arquitecto: traduce este plan a un script técnico con pasos concretos usando {{ENTITY}} "
+        f"como placeholder. SINAPSIS: revisa y valida qué pasos puedes ejecutar."
+    )
+
+    parts = []
+    async for message in team.run_stream(task=task):
+        if isinstance(message, TaskResult):
+            break
+        src = getattr(message, "source", "Sistema")
+        content = getattr(message, "content", "")
+        if content and content.strip():
+            parts.append(f"### {src}\n{content}")
+            if on_message:
+                on_message(src, content)
+
+    script_text = "\n\n".join(parts)
+    saved_path = _save_execution_script(entity, script_text)
+    return script_text, saved_path
+
 
 def run_technical_mesa(
     entity: str,
     consensus_plan: str,
     on_message: Optional[Callable[[str, str], None]] = None,
 ) -> tuple[str, Path]:
-    """
-    Ejecuta la Fase 2: Mesa Técnica.
-
-    Args:
-        entity: Nombre de la entidad UNAM
-        consensus_plan: Texto del plan aprobado por el Consejo (Fase 1)
-        on_message: Callback para streaming a la UI (nombre_agente, contenido)
-
-    Returns:
-        Tuple de (script_texto: str, archivo_guardado: Path)
-    """
-    arquitecto = _build_arquitecto()
-    sinapsis = _build_sinapsis_tecnico()
-
-    # Proxy moderador
-    moderador = UserProxyAgent(
-        name="Moderador_Técnico",
-        human_input_mode="NEVER",
-        max_consecutive_auto_reply=0,
-        code_execution_config=False,
-        is_termination_msg=lambda msg: (
-            "SCRIPT_VALIDADO_POR_SINAPSIS" in msg.get("content", "")
-        ),
-    )
-
-    # Conversación dirigida: Arquitecto → SINAPSIS → Moderador valida
-    messages_log = []
-
-    def _capture(sender, message, recipient, silent):
-        name = getattr(sender, "name", "Sistema")
-        content = message if isinstance(message, str) else message.get("content", "")
-        messages_log.append({"name": name, "content": content})
-        if on_message and content:
-            on_message(name, content)
-
-    arquitecto.register_hook("process_message_before_send", _capture)
-    sinapsis.register_hook("process_message_before_send", _capture)
-
-    # El Arquitecto responde al plan del Consejo
-    moderador.initiate_chat(
-        arquitecto,
-        message=(
-            f"El Consejo Estratégico ha aprobado el siguiente plan para **{entity}**:\n\n"
-            f"{consensus_plan}\n\n"
-            f"Traduce este plan a un script técnico de ejecución usando el placeholder "
-            f"{{ENTITY}} para el nombre de la entidad, de forma que sea reutilizable."
-        ),
-        max_turns=1,
-    )
-
-    arquitecto_output = arquitecto.last_message()["content"] if arquitecto.last_message() else ""
-
-    # SINAPSIS revisa y valida el script del Arquitecto
-    moderador.initiate_chat(
-        sinapsis,
-        message=(
-            f"El Arquitecto de Datos ha propuesto el siguiente script técnico para **{entity}**:\n\n"
-            f"{arquitecto_output}\n\n"
-            f"Revisa qué pasos puedes ejecutar con tus herramientas actuales, identifica "
-            f"herramientas faltantes, y aprueba el script final."
-        ),
-        max_turns=MAX_TECH_ROUNDS,
-    )
-
-    sinapsis_output = sinapsis.last_message()["content"] if sinapsis.last_message() else ""
-
-    # Combinar los outputs para el script final
-    script_text = (
-        f"## Script del Arquitecto de Datos\n\n{arquitecto_output}\n\n"
-        f"---\n\n"
-        f"## Validación SINAPSIS\n\n{sinapsis_output}"
-    )
-
-    saved_path = _save_execution_script(entity, script_text)
-    return script_text, saved_path
+    """Punto de entrada síncrono para Streamlit."""
+    return asyncio.run(_run_mesa_async(entity, consensus_plan, on_message))
