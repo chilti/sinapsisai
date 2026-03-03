@@ -66,13 +66,15 @@ REPORT_DONE_SIGNAL = "INFORME_COMPLETO"
 
 def _cypher(query: str) -> str:
     """Ejecuta una query Cypher en Neo4j. Usa CONTAINS para nombres de personas."""
-    return query_knowledge_graph_cypher.invoke({"cypher_query": query})
+    res = query_knowledge_graph_cypher.invoke({"cypher_query": query})
+    return _truncate_output(res)
 
 def _semantic(query: str, entity_context: Optional[str] = None, limit: int = 20) -> str:
     """Búsqueda semántica en Qdrant."""
-    return search_scientific_papers_semantic.invoke(
+    res = search_scientific_papers_semantic.invoke(
         {"query": query, "entity_context": entity_context, "limit": limit}
     )
+    return _truncate_output(res)
 
 def _entity_stats(entity_name: str) -> str:
     """Estadísticas completas de una entidad UNAM."""
@@ -108,7 +110,8 @@ def _web(query: str) -> str:
 
 def _wiki(query: str) -> str:
     """Búsqueda en Wikipedia."""
-    return wikipedia_search.invoke({"query": query})
+    res = wikipedia_search.invoke({"query": query})
+    return _truncate_output(res)
 
 def _python(code: str) -> str:
     """
@@ -117,7 +120,8 @@ def _python(code: str) -> str:
     2. Guarda gráficas con: plt.savefig('output_NOMBRE.png', dpi=150, bbox_inches='tight')
     3. Usa nombres descriptivos: output_temas.png, output_coautores.png, etc.
     """
-    return execute_python_code(code)
+    res = execute_python_code(code)
+    return _truncate_output(res, max_lines=40, max_chars=5000)
 
 
 def _make_tools() -> list:
@@ -141,6 +145,18 @@ def _make_tools() -> list:
 
 def _inject_entity(text: str, entity: str) -> str:
     return text.replace("{ENTITY}", entity).replace("{{ENTITY}}", entity)
+
+
+def _truncate_output(text: str, max_lines: int = 25, max_chars: int = 3000) -> str:
+    """Trunca el texto para evitar saturar el contexto del LLM."""
+    if not text:
+        return ""
+    lines = text.split("\n")
+    if len(lines) > max_lines:
+        text = "\n".join(lines[:max_lines]) + f"\n\n... [Trunkado: {len(lines)-max_lines} líneas más] ..."
+    if len(text) > max_chars:
+        text = text[:max_chars] + "... [Trunkado por longitud] ..."
+    return text
 
 
 def _content_to_str(content) -> str:
@@ -386,17 +402,29 @@ async def _run_data_collection(
         src = getattr(message, "source", "Sistema")
         content = _content_to_str(getattr(message, "content", ""))
         if content and content.strip():
-            collected_parts.append(content)
+            # Si el mensaje contiene el signal, extraemos el resumen 
             if DATA_DONE_SIGNAL in content:
-                # Si el mensaje contiene el signal, extraemos el resumen 
-                # (puede estar antes o después del signal)
                 clean_content = content.replace(DATA_DONE_SIGNAL, "").strip()
                 if clean_content:
                     data_summary.append(clean_content)
+            
+            # Guardamos para el log, pero para el prompt futuro limitamos el historial
             if on_message:
                 on_message(src, content)
+            
+            # Filtro del histórico: no dejamos que collected_parts crezca sin control
+            # Guardamos los resultados de los pasos para el consejo
+            if "**Resultado [" in content:
+                data_summary.append(content)
+            
+            collected_parts.append(content)
+            # Mantener solo los últimos 4 intercambios en la memoria activa real (si AutoGen no lo hace)
+            if len(collected_parts) > 10:
+                collected_parts.pop(0)
 
-    return "\n\n".join(data_summary) if data_summary else "\n\n".join(collected_parts[-8:])
+    # El data_summary es lo que realmente usará el consejo
+    final_data = "\n\n".join(dict.fromkeys(data_summary)) # eliminar duplicados manteniendo orden
+    return final_data if final_data else "\n\n".join(collected_parts[-5:])
 
 
 # ── Fase 3b: Redacción del informe por el Consejo ─────────────────────────────

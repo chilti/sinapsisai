@@ -217,8 +217,7 @@ tab_inst, tab_inv, tab_chat, tab_council, tab_about = st.tabs([
 with tab_council:
     st.header("🏛️ Consejo Estratégico Virtual")
     st.markdown(
-        "Sistema multi-agente que orquesta un **Rector**, un **Investigador Senior** y un "
-        "**Consejero Universitario** para diseñar y ejecutar estudios bibliométricos de forma autónoma."
+        "Sistema multi-agente que orquesta un comité plural y diverso para diseñar y ejecutar estudios bibliométricos de forma autónoma."
     )
 
     # ── Inicialización del estado de sesión del Consejo ──
