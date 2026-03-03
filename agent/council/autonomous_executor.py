@@ -367,18 +367,16 @@ async def _run_report_writing(
 
     context = (
         f"# Datos recopilados para {entity}\n\n{data_summary}{img_note}\n\n"
-        f"---\n\nRedacten el informe bibliométrico final. Cada uno aporta su perspectiva. "
-        f"Al completar la redacción colectiva, el Rector escribe '{REPORT_DONE_SIGNAL}' "
-        f"seguido del informe completo en Markdown con estas secciones:\n"
-        f"## 1. Síntesis Ejecutiva\n"
-        f"## 2. Producción Científica (tablas con datos reales)\n"
-        f"## 3. Análisis de Redes y Colaboración\n"
-        f"## 4. Tópicos y Tendencias Emergentes\n"
-        f"## 5. Perspectiva Institucional\n"
-        f"   ### Rector: Visibilidad e Impacto Internacional\n"
-        f"   ### Investigador: Calidad Científica\n"
-        f"   ### Consejero: Equidad y Ética\n"
-        f"## 6. Conclusiones y Recomendaciones"
+        f"---\n\n"
+        f"Lean los datos anteriores y redacten juntos el informe bibliométrico final para {entity}.\n\n"
+        f"Cada uno aporta su interpretación desde su rol. La estructura del informe es LIBRE: "
+        f"déjense guiar por lo que los datos realmente revelaron. No completen secciones vacías.\n\n"
+        f"Solo hay tres requisitos mínimos:\n"
+        f"1. Una síntesis ejecutiva honesta con los hallazgos más relevantes.\n"
+        f"2. Los datos reales presentados (tablas, cifras — tal como los recibieron).\n"
+        f"3. Conclusiones accionables para la institución.\n\n"
+        f"Cuando todos hayan aportado, el Rector integra las perspectivas y escribe "
+        f"'{REPORT_DONE_SIGNAL}' seguido del informe final completo en Markdown."
     )
 
     rector = AssistantAgent(
