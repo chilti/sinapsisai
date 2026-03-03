@@ -177,8 +177,9 @@ def get_db_schema() -> str:
         lines.append(
             "Esquema esperado: `:Paper`, `:Academic`, `:Topic`, `:Entity`, `:Journal`\n"
             "Relaciones: `:AUTHORED`, `:HAS_TOPIC`, `:PUBLISHED_IN`, `:AFFILIATED_TO`, `:CITES`\n"
-            "Entidades conocidas (nombres exactos): "
-            '"Facultad de Ciencias", "Instituto de Investigaciones Nucleares"'
+            "> ⚠️ No fue posible obtener los nombres exactos de las entidades disponibles. "
+            "Usa `query_knowledge_graph_cypher` con `MATCH (e:Entity) RETURN e.name LIMIT 20` "
+            "como PRIMER paso del script para conocer las entidades disponibles."
         )
 
     lines.append("")
