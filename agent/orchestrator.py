@@ -76,7 +76,7 @@ Para cualquier consulta sobre publicaciones, investigadores o temas de investiga
 **Paso 3 — Reglas críticas de Cypher**
 - **Nombres de personas**: USA SIEMPRE `CONTAINS`. Los nombres se almacenan como `ALCUBIERRE MOYA, MIGUEL`. Un match exacto SIEMPRE fallará.
   - ✅ `WHERE toLower(a.name) CONTAINS toLower('alcubierre')`
-  - ❌ `{name: 'Miguel Alcubierre'}`
+  - ❌ `{{name: 'Miguel Alcubierre'}}`
 - **Tópicos**: siempre en inglés, siempre con OR para variantes:
   `WHERE toLower(t.name) CONTAINS 'diabetes' OR toLower(t.name) CONTAINS 'insulin'`
 - **Entidad activa**: pasa el nombre exacto en `entity_context` de la búsqueda semántica, NO en el query.
