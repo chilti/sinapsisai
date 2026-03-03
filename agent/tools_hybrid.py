@@ -215,10 +215,16 @@ def query_knowledge_graph_cypher(cypher_query: str) -> str:
     
     PATRONES DE CONSULTA RECOMENDADOS (SINTAXIS CORRECTA):
     - Filtrar por entidad y tópico exacto: `MATCH (e:Entity {name: 'Instituto de Ciencias Nucleares'})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic) WHERE toLower(t.name) CONTAINS 'microscopy' RETURN p.title, a.name, p.year ORDER BY p.year DESC LIMIT 20`
+    - Filtrar papers por entidad (sin tópico): `MATCH (e:Entity)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper) WHERE toLower(e.name) CONTAINS 'ciencias' AND p.year >= 2018 RETURN p.doi, p.title, p.year, p.citations ORDER BY p.year DESC LIMIT 20`
     - Filtrar por tópico AMPLIO (usa OR para cubrir variantes): `WHERE toLower(t.name) CONTAINS 'diabetes' OR toLower(t.name) CONTAINS 'insulin' OR toLower(t.name) CONTAINS 'metabolic'`
     - Búsqueda por nombre de persona (usa CONTAINS, NUNCA match exacto):
       `MATCH (a:Author)-[:AUTHORED]->(p:Paper) WHERE toLower(a.name) CONTAINS toLower('alcubierre') RETURN p.title, a.name, p.year ORDER BY p.year DESC LIMIT 20`
       RAZÓN: Los nombres están almacenados en formato 'APELLIDO PATERNO, NOMBRE' en MAYÚSCULAS (ej. 'ALCUBIERRE MOYA, MIGUEL'). Un match exacto con el nombre coloquial SIEMPRE fallará.
+    
+    ❌ ERRORES PROHIBIDOS — NUNCA hagas esto:
+    - NO uses parámetros Cypher ($variable). Esta herramienta NO acepta un dict de params separado. Incrusta los valores directamente en el string de la query. INCORRECTO: `WHERE a.id IN $ids`. CORRECTO: `WHERE a.id IN ['id1','id2']`
+    - NO uses `(p:Paper)-[:AFFILIATED_TO]->(:Institution)`. Los Papers NO tienen relación AFFILIATED_TO. La afiliación es SIEMPRE a través del académico: `(a:Academic)-[:AFFILIATED_TO]->(e:Entity)`.
+    - NO uses `EXISTS()` con patrones complejos. Usa `MATCH` directos.
     
     IMPORTANTE: Esta herramienta solo encuentra trabajos con tópicos etiquetados explícitamente. Usa SIEMPRE en paralelo con `search_scientific_papers_semantic` para encontrar trabajos cuyo tópico no coincide textualmente. SIEMPRE usa `LIMIT 20` por defecto en tus consultas Cypher.
     """
