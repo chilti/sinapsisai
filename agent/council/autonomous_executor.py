@@ -389,7 +389,7 @@ async def _run_data_collection(
 
     termination = (
         TextMentionTermination(DATA_DONE_SIGNAL) |
-        MaxMessageTermination(35)
+        MaxMessageTermination(20)   # Limite razonable para evitar runs infinitos
     )
     team = RoundRobinGroupChat([executor], termination_condition=termination)
 
@@ -404,29 +404,31 @@ async def _run_data_collection(
         src = getattr(message, "source", "Sistema")
         content = _content_to_str(getattr(message, "content", ""))
         if content and content.strip():
-            # Si el mensaje contiene el signal, extraemos el resumen 
+            # Siempre notificar al dashboard (esto se omitia antes)
+            if on_message:
+                on_message(src, content)
+
+            # Si el mensaje contiene el signal, extraemos el resumen
             if DATA_DONE_SIGNAL in content:
                 clean_content = content.replace(DATA_DONE_SIGNAL, "").strip()
                 if clean_content:
                     data_summary.append(clean_content)
             
             # Capturar tablas de markdown (datos reales)
-            if "|" in content and "-|-" in content:
+            if "|" in content and ("-|-" in content or "---" in content):
                 data_summary.append(content)
             
             # Capturar resultados JSON si parecen contener datos útiles
-            if content.startswith("[") or content.startswith("{"):
-                if len(content) > 100: # Evitar capturar errores cortos
+            if content.strip().startswith("[") or content.strip().startswith("{"):
+                if len(content) > 100:
                     data_summary.append(content)
 
-            # Filtro del histórico: no dejamos que collected_parts crezca sin control
-            # Guardamos los resultados de los pasos para el consejo
+            # Resultados explicitamente marcados por el ejecutor
             if "**Resultado [" in content:
                 data_summary.append(content)
-            
+
             collected_parts.append(content)
-            # Mantener solo los últimos 4 intercambios en la memoria activa real (si AutoGen no lo hace)
-            if len(collected_parts) > 10:
+            if len(collected_parts) > 12:
                 collected_parts.pop(0)
 
     # El data_summary es lo que realmente usará el consejo
@@ -602,8 +604,14 @@ async def _run_executor_async(
 
     data_summary = await _run_data_collection(entity, script, on_message)
 
+    # Siempre notificar la transición, incluso si data_summary está vacío
+    n_chars = len(data_summary)
     if on_message:
-        on_message("Sistema", "✍️ **Fase 3b**: El Consejo interpreta los datos y redacta el informe...")
+        if n_chars > 100:
+            on_message("Sistema", f"✅ **Fase 3a completada**: {n_chars} caracteres de datos recopilados. Iniciando redacción del informe...")
+        else:
+            on_message("Sistema", "⚠️ **Fase 3a con datos limitados**: El ejecutor no generó un resumen completo. El Consejo redactará con la información disponible.")
+        on_message("Sistema", "✍️ **Fase 3b**: El Consejo de 7 expertos interpreta los datos y redacta el informe bibliométrico final...")
 
     report_text = await _run_report_writing(entity, data_summary, on_message)
 
