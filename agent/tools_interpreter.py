@@ -11,14 +11,30 @@ def execute_python_code(query: str) -> str:
     """
     print(f"👨‍💻 Ejecutando código dinámicamente:\n{query[:100]}...")
     
-    # Limpiamos tildes invertidas de markdown si el LLM las incluyó
+    # Limpiamos wrappers comunes si el LLM los incluyó por error
     code = query.strip()
+    
+    # 1. Quitar bloques de markdown
     if code.startswith("```python"):
         code = code[9:]
     elif code.startswith("```"):
          code = code[3:]
     if code.endswith("```"):
         code = code[:-3]
+    code = code.strip()
+
+    # 2. Quitar el wrapper de función si el LLM lo escribió literal
+    # Ejemplo: Python_CodeExecutor("""...""") o python(...)
+    for wrapper in ["Python_CodeExecutor(", "python_executor(", "python("]:
+        if code.startswith(wrapper) and code.endswith(")"):
+            code = code[len(wrapper):-1].strip()
+            # Quitar comillas triples o simples del inicio/fin del bloque interno
+            for quote in ['"""', "'''", '"', "'"]:
+                if code.startswith(quote) and code.endswith(quote):
+                    code = code[len(quote):-len(quote)].strip()
+                    break
+            break
+
     code = code.strip()
 
     f_out = io.StringIO()

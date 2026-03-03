@@ -90,8 +90,8 @@ async def _run_mesa_async(
             f"  WHERE toLower(a.name) CONTAINS toLower('apellido')\n"
             f"- Los tópicos en Neo4j están en inglés. Traduce siempre.\n"
             f"- Para búsqueda semántica usa search_scientific_papers_semantic con entity_context=\"{{ENTITY}}\".\n"
-            f"- Para análisis usa Python_CodeExecutor con pandas/matplotlib/networkx.\n"
-            f"- Usa {{ENTITY}} como placeholder en TODAS las consultas para reutilización.\n"
+            f"- REGLA CRÍTICA: El Python_CodeExecutor NO puede llamar a otras herramientas como query_knowledge_graph_cypher. "
+            f"  Debes extraer los datos primero con la herramienta de Cypher, y luego pasar los resultados al bloque Python."
             f"- Cuando termines el script completo, escribe: SCRIPT_TÉCNICO_LISTO"
         ),
     )
@@ -141,9 +141,19 @@ async def _run_mesa_async(
             if on_message:
                 on_message(src, content)
 
-    script_text = "\n\n".join(parts)
-    saved_path = _save_execution_script(entity, script_text)
-    return script_text, saved_path
+    # Extraemos el último mensaje del Arquitecto (que contiene el script final corregido)
+    # o el bloque de código principal del script.
+    final_script = ""
+    for part in reversed(parts):
+        if "Arquitecto_de_Datos" in part and "###" in part:
+            final_script = part
+            break
+    
+    if not final_script:
+        final_script = "\n\n".join(parts[-4:]) # Al menos los últimos mensajes si no se detecta el rol
+
+    saved_path = _save_execution_script(entity, final_script)
+    return final_script, saved_path
 
 
 def run_technical_mesa(

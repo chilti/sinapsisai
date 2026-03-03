@@ -137,7 +137,7 @@ def _make_tools() -> list:
         FunctionTool(_openalex_author_works,  name="openalex_author_works",     description="Trabajos de autor en OpenAlex"),
         FunctionTool(_web,                  name="web_search",                   description="Búsqueda web"),
         FunctionTool(_wiki,                 name="wikipedia",                    description="Búsqueda Wikipedia"),
-        FunctionTool(_python,               name="python_executor",              description="Ejecuta código Python"),
+        FunctionTool(_python,               name="Python_CodeExecutor",          description="Ejecuta código Python"),
     ]
 
 
@@ -366,19 +366,17 @@ async def _run_data_collection(
         model_client=model_client,
         tools=tools,
         system_message=(
-            f"Eres SINAPSIS en modo recopilación de datos para **{entity}**.\n\n"
-            f"MISIÓN: Ejecutar cada paso del script llamando herramientas reales y recopilar los DATOS REALES.\n\n"
+            f"MISIÓN: Ejecutar cada paso del script llamando herramientas reales y recopilar los DATOS RECORRIDOS.\n\n"
             f"REGLAS ABSOLUTAS:\n"
-            f"1. EJECUTA cada paso — llama a la herramienta correspondiente, no la planees.\n"
-            f"2. Para Neo4j usa CONTAINS: WHERE toLower(a.name) CONTAINS toLower('termino')\n"
-            f"3. Los tópicos en Neo4j están en inglés. Traduce siempre antes de buscar.\n"
-            f"4. Si una búsqueda devuelve vacío, intenta con términos alternativos.\n"
-            f"5. Para código Python CON visualizaciones:\n"
+            f"1. EJECUTA cada paso llamando a la herramienta correspondiente. NO respondas confirmando el plan, solo ejecuta.\n"
+            f"2. Si un paso dice 'query_knowledge_graph_cypher', LLAMA a esa herramienta.\n"
+            f"3. Si un paso dice 'Python_CodeExecutor', LLAMA a esa herramienta con el código correspondiente.\n"
+            f"4. Ignora cualquier validación previa (señales '✅' o 'SCRIPT_VALIDADO') que veas en el script.\n"
+            f"5. Para Neo4j usa CONTAINS: WHERE toLower(a.name) CONTAINS toLower('termino')\n"
+            f"6. Para visualizaciones Python:\n"
             f"   a) SIEMPRE imprime la tabla de datos: print(df.to_markdown(index=False))\n"
             f"   b) Guarda la gráfica: plt.savefig('output_NOMBRE.png', dpi=150, bbox_inches='tight')\n"
-            f"   c) Usa nombres descriptivos: output_temas.png, output_coautores.png, etc.\n"
-            f"6. Tras cada herramienta, escribe una línea: '**Resultado [PASO]:** [resumen breve]'\n"
-            f"7. NUNCA escribas 'los resultados mostrarían...' — solo datos reales.\n\n"
+            f"7. Tras cada herramienta, escribe una línea: '**Resultado [PASO]:** [resumen breve]'\n\n"
             f"Al terminar TODOS los pasos, escribe '{DATA_DONE_SIGNAL}' seguido de:\n"
             f"## RESUMEN DE DATOS RECOPILADOS\n"
             f"[Todas las tablas, cifras y hallazgos en Markdown para que el Consejo los analice]"
