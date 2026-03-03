@@ -224,7 +224,11 @@ with tab_council:
     if "council_phase" not in st.session_state:
         st.session_state.council_phase = "idle"   # idle | running | done
     if "council_log" not in st.session_state:
-        st.session_state.council_log = []          # [(agente, texto), ...]
+        st.session_state.council_log = []          # [(agente, texto), ...] — log completo
+    # Logs por fase para mostrar resultados persistentes organizados
+    for _ph in ["ph1", "ph2", "ph3", "ph4"]:
+        if f"council_log_{_ph}" not in st.session_state:
+            st.session_state[f"council_log_{_ph}"] = []
     if "council_script" not in st.session_state:
         st.session_state.council_script = None
     if "council_script_path" not in st.session_state:
@@ -284,6 +288,8 @@ with tab_council:
     if st.button("▶ Iniciar", disabled=not can_run, type="primary"):
         st.session_state.council_phase = "running"
         st.session_state.council_log = []
+        for _ph in ["ph1", "ph2", "ph3", "ph4"]:
+            st.session_state[f"council_log_{_ph}"] = []
         st.session_state.council_script = None
         st.session_state.council_report = None
         st.rerun()
@@ -295,11 +301,56 @@ with tab_council:
             from agent.council.technical_mesa import run_technical_mesa, load_execution_script
             from agent.council.autonomous_executor import run_autonomous_executor
 
-            log_container = st.container()
+            AGENT_ICONS = {
+                "Rectora": "👩🏾‍🎓",
+                "Investigador_Campo": "🔬",
+                "Bibliometra": "📊",
+                "Politica_Cientifica": "🏛️",
+                "Evaluadora_Ciencia": "⚖️",
+                "Consejera_Social": "🤝",
+                "Estudiante_Posgrado": "🎓",
+                "Arquitecto_de_Datos": "🏗️",
+                "SINAPSIS_Tecnico": "🤖",
+                "SINAPSIS_Ejecutor": "⚙️",
+                "Corrector_Python": "🐍",
+                "Sistema": "💡",
+            }
+
+            # Clasificador de mensajes por fase basado en el agente
+            _PHASE1_AGENTS = {"Rectora", "Investigador_Campo", "Bibliometra",
+                               "Politica_Cientifica", "Evaluadora_Ciencia",
+                               "Consejera_Social", "Estudiante_Posgrado"}
+            _PHASE2_AGENTS = {"Arquitecto_de_Datos", "SINAPSIS_Tecnico"}
+            _PHASE3_AGENTS = {"SINAPSIS_Ejecutor"}
 
             def _on_message(agent_name: str, content: str):
-                if content and content.strip():
-                    st.session_state.council_log.append((agent_name, content))
+                if not content or not content.strip():
+                    return
+                st.session_state.council_log.append((agent_name, content))
+                # Clasificar en el log de la fase correspondiente
+                if agent_name in _PHASE1_AGENTS and not st.session_state.council_log_ph3:
+                    # Si ya hay datos en ph3/ph4 es porque la Rectora está redactando (Fase 4)
+                    st.session_state.council_log_ph1.append((agent_name, content))
+                elif agent_name in _PHASE2_AGENTS:
+                    st.session_state.council_log_ph2.append((agent_name, content))
+                elif agent_name == "SINAPSIS_Ejecutor":
+                    st.session_state.council_log_ph3.append((agent_name, content))
+                elif agent_name == "Sistema":
+                    # Mensajes del sistema: clasificar según fase activa
+                    if "Fase 4" in content or "TERMINAR_REPORTE" in content:
+                        st.session_state.council_log_ph4.append((agent_name, content))
+                    elif "Fase 3" in content:
+                        st.session_state.council_log_ph3.append((agent_name, content))
+                    elif "Fase 2" in content:
+                        st.session_state.council_log_ph2.append((agent_name, content))
+                    else:
+                        st.session_state.council_log_ph1.append((agent_name, content))
+                else:
+                    # Agentes del consejo durante la fase 4 (redacción)
+                    if st.session_state.council_log_ph3:  # Si ya terminó fase 3
+                        st.session_state.council_log_ph4.append((agent_name, content))
+                    else:
+                        st.session_state.council_log_ph1.append((agent_name, content))
 
             # ── Fase 1: Solo para nueva sesión ──
             consensus_plan = ""
@@ -362,44 +413,52 @@ with tab_council:
             st.code(traceback.format_exc())
             st.session_state.council_phase = "idle"
 
-    # ── Log de la conversación ─────────────────────────
-    if st.session_state.council_log:
-        st.markdown("---")
-        st.subheader("🗣️ Transcripción del Consejo")
+    # ── Vista de resultados por fase (persistente) ───────────────────────────────
+    AGENT_ICONS = {
+        "Rectora": "👩�‍🎓",
+        "Investigador_Campo": "🔬",
+        "Bibliometra": "📊",
+        "Politica_Cientifica": "🏛️",
+        "Evaluadora_Ciencia": "⚖️",
+        "Consejera_Social": "🤝",
+        "Estudiante_Posgrado": "🎓",
+        "Arquitecto_de_Datos": "🏗️",
+        "SINAPSIS_Tecnico": "🤖",
+        "SINAPSIS_Ejecutor": "⚙️",
+        "Corrector_Python": "🐍",
+        "Sistema": "💡",
+    }
 
-        AGENT_ICONS = {
-            "Rectora": "👩🏽‍🎓",
-            "Investigador_Campo": "🔬",
-            "Bibliometra": "📊",
-            "Politica_Cientifica": "🏛️",
-            "Evaluadora_Ciencia": "⚖️",
-            "Consejera_Social": "🤝",
-            "Estudiante_Posgrado": "🎓",
-            "Arquitecto_de_Datos": "🏗️",
-            "SINAPSIS_Tecnico": "🤖",
-            "SINAPSIS_Ejecutor": "⚙️",
-            "Corrector_Python": "🐍",
-            "Sistema": "💡",
-        }
-
-        for agent_name, content in st.session_state.council_log:
-            icon = AGENT_ICONS.get(agent_name, "💬")
-            with st.expander(f"{icon} **{agent_name}**", expanded=False):
+    def _render_phase_log(title: str, phase_key: str, expanded: bool = False):
+        """Muestra los mensajes de una fase como un expander persistente."""
+        log = st.session_state.get(phase_key, [])
+        if not log:
+            return
+        with st.expander(title, expanded=expanded):
+            for agent_name, content in log:
+                icon = AGENT_ICONS.get(agent_name, "💬")
+                st.markdown(f"**{icon} {agent_name}**")
                 st.markdown(content)
+                st.divider()
 
-    # ── Informe final ──────────────────────────────────
+    if st.session_state.council_log_ph1:
+        _render_phase_log("🏛️ Fase 1 — Deliberación del Consejo Estratégico", "council_log_ph1")
+    if st.session_state.council_log_ph2:
+        _render_phase_log("🏗️ Fase 2 — Mesa Técnica (Script)", "council_log_ph2")
+    if st.session_state.council_log_ph3:
+        _render_phase_log("⚙️ Fase 3 — Recolección de datos", "council_log_ph3")
+    if st.session_state.council_log_ph4:
+        _render_phase_log("✍️ Fase 4 — Redacción del Informe", "council_log_ph4")
+
+    # ── Informe final + descargas (solo cuando está completo) ────────────────
     if st.session_state.council_phase == "done" and st.session_state.council_report:
         st.markdown("---")
-        st.subheader("📊 Informe Bibliométrico Final")
-        st.markdown(st.session_state.council_report)
+        st.subheader("📊 Fase 5 — Informe Bibliométrico Final")
 
-        # Inicializar pdf_path si no existe en sesión
         if "council_pdf_path" not in st.session_state:
             st.session_state.council_pdf_path = None
 
         col_pdf, col_md, col_reset = st.columns([2, 2, 1])
-
-        # Botón PDF (principal)
         with col_pdf:
             pdf_path_str = st.session_state.get("council_pdf_path")
             if pdf_path_str and Path(pdf_path_str).exists():
@@ -414,7 +473,6 @@ with tab_council:
             else:
                 st.info("PDF no disponible (instala `weasyprint` o `fpdf2` en el servidor)")
 
-        # Botón Markdown (alternativo)
         with col_md:
             st.download_button(
                 label="📥 Descargar Informe (Markdown)",
@@ -425,22 +483,26 @@ with tab_council:
 
         with col_reset:
             if st.button("🔄 Nueva Sesión"):
-                for key in ["council_phase", "council_log", "council_script", "council_report", "council_pdf_path", "council_plan", "council_plan_path"]:
+                keys_to_clear = [
+                    "council_phase", "council_log", "council_script", "council_report",
+                    "council_pdf_path", "council_plan", "council_plan_path",
+                    "council_log_ph1", "council_log_ph2", "council_log_ph3", "council_log_ph4",
+                ]
+                for key in keys_to_clear:
                     st.session_state.pop(key, None)
                 st.rerun()
 
-        # Mostrar el plan de consenso previo si existe
-        if st.session_state.get("council_plan"):
-            with st.expander("📋 Ver Plan de Consenso (Fase 1)", expanded=False):
-                st.markdown(st.session_state.council_plan)
+        # Mostrar imágenes generadas
+        from pathlib import Path as _Path
+        output_imgs = sorted(_Path(".").glob("output_*.png")) + sorted(_Path(".").glob("interpreter_output*.png"))
+        if output_imgs:
+            cols = st.columns(min(len(output_imgs), 3))
+            for i, img in enumerate(output_imgs):
+                with cols[i % 3]:
+                    st.image(str(img), caption=img.stem)
 
-        # Mostrar imágenes generadas si existen
-        img_path = Path("interpreter_output.png")
-        if img_path.exists():
-            st.image(str(img_path), caption="Gráfica generada por el ejecutor")
-
-        # Vista previa del Markdown
-        with st.expander("📝 Ver Informe en Markdown (Vista Previa)", expanded=True):
+        # Informe en expander (único, sin duplicar)
+        with st.expander("📝 Ver Informe Completo", expanded=True):
             st.markdown(st.session_state.council_report)
 
 
@@ -625,7 +687,7 @@ with tab_about:
             string title
             int year
             int citations
-        }
+        }   
         Topic {
             string id
             string name
