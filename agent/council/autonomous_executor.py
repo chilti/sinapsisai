@@ -127,7 +127,7 @@ def _make_tools() -> list:
         FunctionTool(_entity_stats,         name="get_entity_statistics",        description="Estadísticas de entidad UNAM"),
         FunctionTool(_researcher_profile,   name="get_researcher_profile",       description="Perfil de investigador"),
         FunctionTool(_trending_topics,      name="get_trending_topics",          description="Tópicos emergentes"),
-        FunctionTool(_coauthors,            name="get_author_coauthors",         description="Red de coautores"),
+        FunctionTool(_coauthors,            name="get_author_coauthors_graph",   description="Red de coautores"),
         FunctionTool(_openalex,             name="openalex_doi",                 description="Datos bibliométricos por DOI"),
         FunctionTool(_openalex_search_author, name="openalex_search_author",    description="Busca autor en OpenAlex"),
         FunctionTool(_openalex_author_works,  name="openalex_author_works",     description="Trabajos de autor en OpenAlex"),
@@ -178,9 +178,14 @@ def _md_to_pdf(md_text: str, title: str, pdf_path: Path, images: list[Path]) -> 
     Convierte Markdown + imágenes a PDF estilizado.
     Las imágenes se incrustan en base64 para que el PDF sea autocontenido.
     """
+    import sys
+    print(f"DEBUG PDF: Iniciando conversión. Python: {sys.version}")
+    print(f"DEBUG PDF: sys.path: {sys.path[:5]}...")
+
     try:
         import markdown
         from weasyprint import HTML
+        print("DEBUG PDF: weasyprint importado correctamente.")
 
         # Incrustar imágenes en el texto Markdown como base64 si se referencian
         # y añadir las imágenes al final del HTML
@@ -235,13 +240,14 @@ def _md_to_pdf(md_text: str, title: str, pdf_path: Path, images: list[Path]) -> 
 
     except ImportError:
         pass
-    except Exception as e:
-        import warnings
-        warnings.warn(f"weasyprint falló: {e}")
+    except Exception:
+        import traceback
+        traceback.print_exc()
 
     # Fallback: fpdf2
     try:
         from fpdf import FPDF
+        print("DEBUG PDF: fpdf2 importado correctamente.")
         pdf = FPDF()
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
@@ -264,6 +270,8 @@ def _md_to_pdf(md_text: str, title: str, pdf_path: Path, images: list[Path]) -> 
         pdf.output(str(pdf_path))
         return True
     except Exception:
+        import traceback
+        traceback.print_exc()
         return False
 
 
@@ -338,8 +346,11 @@ async def _run_data_collection(
         if content and content.strip():
             collected_parts.append(content)
             if DATA_DONE_SIGNAL in content:
-                idx = content.find(DATA_DONE_SIGNAL)
-                data_summary.append(content[idx + len(DATA_DONE_SIGNAL):].strip())
+                # Si el mensaje contiene el signal, extraemos el resumen 
+                # (puede estar antes o después del signal)
+                clean_content = content.replace(DATA_DONE_SIGNAL, "").strip()
+                if clean_content:
+                    data_summary.append(clean_content)
             if on_message:
                 on_message(src, content)
 
@@ -376,7 +387,8 @@ async def _run_report_writing(
         f"2. Los datos reales presentados (tablas, cifras — tal como los recibieron).\n"
         f"3. Conclusiones accionables para la institución.\n\n"
         f"Cuando todos hayan aportado, el Rector integra las perspectivas y escribe "
-        f"'{REPORT_DONE_SIGNAL}' seguido del informe final completo en Markdown."
+        f"el informe final completo en Markdown. IMPORTANTE: Concluye tu mensaje "
+        f"con la palabra '{REPORT_DONE_SIGNAL}' para que el sistema sepa que has terminado."
     )
 
     rectora = AssistantAgent(
@@ -396,7 +408,8 @@ async def _run_report_writing(
         system_message=(
             f"Eres Investigador del área de {entity} (hombre, primera generación universitaria). "
             f"Analizas calidad científica real: FWCI, h-index, redes, evolución temporal. "
-            f"Señala también la producción que no aparece en las bases de datos."
+            f"Señala también la producción que no aparece en las bases de datos. "
+            f"NO escribas '{REPORT_DONE_SIGNAL}', eso solo lo hace la Rectora al final."
         ),
     )
 
@@ -406,7 +419,8 @@ async def _run_report_writing(
         system_message=(
             f"Eres Dra. en Ciencia de la Ciencia (mujer afromexicana). Analizas los datos con rigor "
             f"metodológico: sesgos de las bases de datos, limitaciones de los indicadores, "
-            f"métodos alternativos. Propón indicadores complementarios al factor de impacto."
+            f"métodos alternativos. Propón indicadores complementarios al factor de impacto. "
+            f"NO escribas '{REPORT_DONE_SIGNAL}', eso solo lo hace la Rectora al final."
         ),
     )
 
@@ -416,7 +430,8 @@ async def _run_report_writing(
         system_message=(
             f"Eres Dr. en Política Científica, ex asesor CONAHCYT (hombre árabe-mexicano). "
             f"Conecta los hallazgos con decisiones de financiamiento, SNI, presupuesto. "
-            f"Alerta sobre el efecto Goodhart y propón recomendaciones de política concreta."
+            f"Alerta sobre el efecto Goodhart y propón recomendaciones de política concreta. "
+            f"NO escribas '{REPORT_DONE_SIGNAL}', eso solo lo hace la Rectora al final."
         ),
     )
 
@@ -426,7 +441,8 @@ async def _run_report_writing(
         system_message=(
             f"Eres especialista en evaluación responsable de la ciencia (mujer, perspectiva post-colonial). "
             f"Aplicas los principios DORA y el Manifiesto de Leiden. "
-            f"Evalúa si el análisis incluye ciencia ciudadana, diversidad lingüística y producción no indexada."
+            f"Evalúa si el análisis incluye ciencia ciudadana, diversidad lingüística y producción no indexada. "
+            f"NO escribas '{REPORT_DONE_SIGNAL}', eso solo lo hace la Rectora al final."
         ),
     )
 
@@ -436,7 +452,8 @@ async def _run_report_writing(
         system_message=(
             f"Eres Consejera de equidad y género (mujer de comunidad campesina). "
             f"Analiza los datos desagregados por género, área y nivel de carrera. "
-            f"Visibiliza a quienes el sistema invisibiliza: técnicos, investigadoras con maternidad, etc."
+            f"Visibiliza a quienes el sistema invisibiliza: técnicos, investigadoras con maternidad, etc. "
+            f"NO escribas '{REPORT_DONE_SIGNAL}', eso solo lo hace la Rectora al final."
         ),
     )
 
@@ -446,7 +463,8 @@ async def _run_report_writing(
         system_message=(
             f"Eres estudiante de doctorado en {entity} con beca CONAHCYT (persona no binaria). "
             f"Representa la perspectiva de quienes construyen su carrera en condiciones precarias. "
-            f"¿Este análisis visibiliza tesis y trabajos no publicados? ¿Promueve el acceso abierto?"
+            f"¿Este análisis visibiliza tesis y trabajos no publicados? ¿Promueve el acceso abierto? "
+            f"NO escribas '{REPORT_DONE_SIGNAL}', eso solo lo hace la Rectora al final."
         ),
     )
 
@@ -470,8 +488,10 @@ async def _run_report_writing(
         if content and content.strip():
             all_parts.append(f"**{src}**: {content}")
             if REPORT_DONE_SIGNAL in content:
-                idx = content.find(REPORT_DONE_SIGNAL)
-                report_parts.append(content[idx + len(REPORT_DONE_SIGNAL):].strip())
+                # Si llegamos al fin, el contenido más rico suele ser el último mensaje 
+                # (la síntesis del Rector). Quitamos el signal y guardamos.
+                clean_report = content.replace(REPORT_DONE_SIGNAL, "").strip()
+                report_parts.append(clean_report)
             if on_message:
                 on_message(src, content)
 
