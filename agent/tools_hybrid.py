@@ -122,10 +122,10 @@ def search_scientific_papers_semantic(query: str, limit: int = 20, entity_contex
     IMPORTANTE: La query debe contener ÚNICAMENTE el tema científico o concepto buscado.
     NUNCA incluyas el nombre de la institución en la query semántica — eso degrada los resultados.
     - CORRECTO: query="diabetes"
-    - INCORRECTO: query="Instituto de Ciencias Nucleares diabetes"
+    - INCORRECTO: query="Instituto de Investigaciones Nucleares diabetes"
 
     Usa el parámetro entity_context para filtrar por institución de forma nativa y eficiente.
-    Ejemplo: entity_context="Instituto de Ciencias Nucleares"
+    Ejemplo: entity_context="Instituto de Investigaciones Nucleares"
 
     La query puede estar en español o inglés — se traducirá automáticamente al inglés.
     """
@@ -219,7 +219,7 @@ def query_knowledge_graph_cypher(cypher_query: str) -> str:
     - Tópicos: `(p:Paper)-[:HAS_TOPIC]->(t:Topic)`. **IMPORTANTE: Los tópicos están en INGLÉS**. Traduce siempre los términos de búsqueda (ej. de "microscopía" a "microscopy") antes de filtrar `t.name`.
     
     PATRONES DE CONSULTA RECOMENDADOS (SINTAXIS CORRECTA):
-    - Filtrar por entidad y tópico exacto: `MATCH (e:Entity {name: 'Instituto de Ciencias Nucleares'})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic) WHERE toLower(t.name) CONTAINS 'microscopy' RETURN p.title, a.name, p.year ORDER BY p.year DESC LIMIT 20`
+    - Filtrar por entidad y tópico exacto: `MATCH (e:Entity {name: 'Instituto de Investigaciones Nucleares'})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic) WHERE toLower(t.name) CONTAINS 'microscopy' RETURN p.title, a.name, p.year ORDER BY p.year DESC LIMIT 20`
     - Filtrar papers por entidad (sin tópico): `MATCH (e:Entity)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper) WHERE toLower(e.name) CONTAINS 'ciencias' AND p.year >= 2018 RETURN p.doi, p.title, p.year, p.citations ORDER BY p.year DESC LIMIT 20`
     - Filtrar por tópico AMPLIO (usa OR para cubrir variantes): `WHERE toLower(t.name) CONTAINS 'diabetes' OR toLower(t.name) CONTAINS 'insulin' OR toLower(t.name) CONTAINS 'metabolic'`
     - Búsqueda por nombre de persona (usa CONTAINS, NUNCA match exacto):

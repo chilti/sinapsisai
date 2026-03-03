@@ -151,6 +151,21 @@ def get_db_schema() -> str:
             props_str = ", ".join(props[:6]) + ("…" if len(props) > 6 else "")
             lines.append(f"- `:{lbl}` → **{cnt:,}** registros | propiedades: `{props_str}`")
 
+        # Listar los nombres reales de las entidades (crucial para que los agentes no inventen nombres)
+        try:
+            entity_res = session.run(
+                "MATCH (e:Entity) RETURN DISTINCT e.name AS name ORDER BY name LIMIT 20"
+            ).data()
+            entity_names = [r["name"] for r in entity_res if r.get("name")]
+            if entity_names:
+                names_str = ", ".join(f'"{n}"' for n in entity_names)
+                lines.append(
+                    f"\n**Entidades cargadas en el grafo** (usa EXACTAMENTE estos nombres en las queries):\n"
+                    + "\n".join(f'  - `"{n}"`' for n in entity_names)
+                )
+        except Exception:
+            pass
+
         lines.append(f"\n**Relaciones disponibles**: {', '.join(f'`:{r}`' for r in rel_types)}")
         lines.append(
             "\n> ✅ Usa `query_knowledge_graph_cypher` para consultar estos datos. "
@@ -161,7 +176,9 @@ def get_db_schema() -> str:
         lines.append(f"### Neo4j\n> ⚠️ No se pudo conectar: {e}")
         lines.append(
             "Esquema esperado: `:Paper`, `:Academic`, `:Topic`, `:Entity`, `:Journal`\n"
-            "Relaciones: `:AUTHORED`, `:HAS_TOPIC`, `:PUBLISHED_IN`, `:AFFILIATED_TO`, `:CITES`"
+            "Relaciones: `:AUTHORED`, `:HAS_TOPIC`, `:PUBLISHED_IN`, `:AFFILIATED_TO`, `:CITES`\n"
+            "Entidades conocidas (nombres exactos): "
+            '"Facultad de Ciencias", "Instituto de Investigaciones Nucleares"'
         )
 
     lines.append("")
