@@ -106,9 +106,10 @@ def get_db_schema() -> str:
 
     # ── Neo4j ──────────────────────────────────────────────────────────────────
     try:
-        from database.graph_store import get_neo4j_driver
-
-        driver = get_neo4j_driver()
+        from database.knowledge_graph import Neo4jGraphStore
+        
+        neo = Neo4jGraphStore()
+        driver = neo.driver
         with driver.session() as session:
             # Contar nodos por etiqueta
             count_q = """

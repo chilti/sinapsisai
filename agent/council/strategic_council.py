@@ -77,7 +77,7 @@ async def _run_council_async(
             f"SNI III. Priorizas visibilidad internacional, impacto en comunidades vulnerables, ODS y "
             f"alianzas estratégicas. Cuestionas métricas que benefician solo a quienes publican en inglés. "
             f"Cuando el plan te convenza, escribe exactamente: '{RECTORA_APPROVAL}'. "
-            f"Si ves que 4 o más colegas ya aprobaron, puedes declarar: '{CONSENSUS_SIGNAL}'."
+            f"Si ves que 4 o más colegas ya aprobaron con sus códigos, puedes declarar el fin escribiendo: 'FIN_DELIBERACION'."
         ),
     )
 
@@ -164,7 +164,7 @@ async def _run_council_async(
 
     # ── Terminación: mayoría (4/7) o tope de mensajes ─────────────────────────
     termination = (
-        TextMentionTermination(CONSENSUS_SIGNAL) |
+        TextMentionTermination("FIN_DELIBERACION") |
         MaxMessageTermination(MAX_COUNCIL_ROUNDS)
     )
 
@@ -209,7 +209,9 @@ async def _run_council_async(
         ) if isinstance(raw, list) else str(raw)
         all_messages.append(message)
         if content and content.strip():
-            plan_text_parts.append(f"**{src}**: {content}")
+            # No incluir el mensaje inicial de la tarea en el plan de consenso
+            if "Diseñen un **Plan de Estudio Bibliométrico**" not in content:
+                plan_text_parts.append(f"### Perspectiva de {src}\n\n{content}")
             if on_message:
                 on_message(src, content)
 

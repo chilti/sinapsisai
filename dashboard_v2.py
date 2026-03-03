@@ -312,11 +312,13 @@ with tab_council:
                             objective=council_objective,
                             on_message=_on_message,
                         ))()
-                    ) if False else run_strategic_council(
+                    consensus_plan, plan_path = run_strategic_council(
                         entity=council_entity,
                         objective=council_objective,
                         on_message=_on_message,
                     )
+                    st.session_state.council_plan = consensus_plan
+                    st.session_state.council_plan_path = str(plan_path)
                     st.success(f"✅ Plan aprobado · guardado en `{plan_path.name}`")
 
             # ── Fase 2: Solo para nueva sesión ──
@@ -422,9 +424,14 @@ with tab_council:
 
         with col_reset:
             if st.button("🔄 Nueva Sesión"):
-                for key in ["council_phase", "council_log", "council_script", "council_report", "council_pdf_path"]:
+                for key in ["council_phase", "council_log", "council_script", "council_report", "council_pdf_path", "council_plan", "council_plan_path"]:
                     st.session_state.pop(key, None)
                 st.rerun()
+
+        # Mostrar el plan de consenso previo si existe
+        if st.session_state.get("council_plan"):
+            with st.expander("📋 Ver Plan de Consenso (Fase 1)", expanded=False):
+                st.markdown(st.session_state.council_plan)
 
         # Mostrar imágenes generadas si existen
         img_path = Path("interpreter_output.png")
