@@ -92,10 +92,10 @@ async def _run_mesa_async(
     )
 
     sinapsis = AssistantAgent(
-        name="SINAPSIS_Técnico",
+        name="SINAPSIS_Tecnico",
         model_client=model_client,
         system_message=(
-            f"Eres SINAPSIS en modo revisión técnica.\n\n"
+            f"Eres SINAPSIS en modo revision tecnica.\n\n"
             f"{tools_catalog}\n\n"
             f"Revisa el script propuesto por el Arquitecto:\n"
             f"- Para cada paso: indica ✅ si puedes ejecutarlo o ❌ si no puedes (con motivo claro).\n"

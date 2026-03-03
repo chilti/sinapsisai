@@ -352,7 +352,7 @@ with tab_council:
             "Investigador_Senior": "🔬",
             "Consejero_Universitario": "📋",
             "Arquitecto_de_Datos": "🏗️",
-            "SINAPSIS_Técnico": "🤖",
+            "SINAPSIS_Tecnico": "🤖",
             "SINAPSIS_Ejecutor": "⚙️",
             "Corrector_Python": "🐍",
             "Sistema": "💡",
