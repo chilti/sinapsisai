@@ -331,18 +331,26 @@ with tab_council:
                 execution_script = load_execution_script(selected_script_path)
                 st.session_state.council_script = execution_script
 
-            # ── Fase 3: Ejecución autónoma ──
-            with st.status("⚙️ Fase 3: Ejecución autónoma...", expanded=True):
+            # ── Fase 3: Recopilación de datos (Ejecutor autónomo) ──
+            with st.status("⚙️ Fase 3: Recopilación de datos autónoma...", expanded=True):
                 report_text, md_path, pdf_path = run_autonomous_executor(
                     entity=council_entity,
                     execution_script=execution_script,
                     on_message=_on_message,
                 )
+
+            # ── Fase 4: Redacción del informe por el Consejo ──
+            with st.status("✍️ Fase 4: Redacción del informe por el Consejo...", expanded=False):
+                # La redacción es parte de run_autonomous_executor; aquí consolidamos el resultado
                 st.session_state.council_report = report_text
                 st.session_state.council_pdf_path = str(pdf_path) if pdf_path else None
-                st.session_state.council_phase = "done"
                 pdf_label = f"PDF: `{pdf_path.name}`" if pdf_path else "PDF no generado"
-                st.success(f"📊 Informe guardado · {pdf_label}")
+                st.success(f"� Informe redactado · {pdf_label}")
+
+            # ── Fase 5: Publicación y descarga ──
+            with st.status("📤 Fase 5: Publicación del informe...", expanded=False):
+                st.session_state.council_phase = "done"
+                st.success(f"✅ Informe listo · {pdf_label}")
                 st.rerun()
 
         except ImportError as e:

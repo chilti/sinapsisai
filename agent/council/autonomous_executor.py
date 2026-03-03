@@ -352,7 +352,7 @@ def _save_report(entity: str, report: str) -> tuple[Path, "Path | None"]:
     return md_path, pdf_path if ok else None
 
 
-# ── Fase 3a: Recopilación de datos ───────────────────────────────────────────
+# ── Fase 3: Recopilación de datos ───────────────────────────────────────────
 
 async def _run_data_collection(
     entity: str,
@@ -436,7 +436,7 @@ async def _run_data_collection(
     return final_data if final_data else "\n\n".join(collected_parts[-5:])
 
 
-# ── Fase 3b: Redacción del informe por el Consejo ─────────────────────────────
+# ── Fase 4: Redacción del informe por el Consejo ─────────────────────────────
 
 async def _run_report_writing(
     entity: str,
@@ -600,7 +600,7 @@ async def _run_executor_async(
     script = _inject_entity(execution_script, entity)
 
     if on_message:
-        on_message("Sistema", "📊 **Fase 3a**: SINAPSIS recopilando datos con herramientas reales...")
+        on_message("Sistema", "📊 **Fase 3: Recopilación de datos**: SINAPSIS ejecutando consultas y scripts...")
 
     data_summary = await _run_data_collection(entity, script, on_message)
 
@@ -611,7 +611,7 @@ async def _run_executor_async(
             on_message("Sistema", f"✅ **Fase 3a completada**: {n_chars} caracteres de datos recopilados. Iniciando redacción del informe...")
         else:
             on_message("Sistema", "⚠️ **Fase 3a con datos limitados**: El ejecutor no generó un resumen completo. El Consejo redactará con la información disponible.")
-        on_message("Sistema", "✍️ **Fase 3b**: El Consejo de 7 expertos interpreta los datos y redacta el informe bibliométrico final...")
+        on_message("Sistema", "✍️ **Fase 4: Redacción del Informe**: El Consejo de 7 expertos interpreta los datos y redacta el informe bibliométrico final...")
 
     report_text = await _run_report_writing(entity, data_summary, on_message)
 
