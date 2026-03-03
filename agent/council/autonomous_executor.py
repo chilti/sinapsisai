@@ -139,6 +139,25 @@ def _save_report(entity: str, report: str) -> Path:
     return path
 
 
+def _content_to_str(content) -> str:
+    """Normaliza content que puede ser str o lista de bloques (tool-call messages)."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif hasattr(block, "text"):
+                parts.append(block.text)
+            elif hasattr(block, "content"):
+                parts.append(str(block.content))
+            else:
+                parts.append(str(block))
+        return " ".join(parts)
+    return str(content)
+
+
 # ── Ejecución asíncrona ───────────────────────────────────────────────────────
 
 async def _run_executor_async(
@@ -179,7 +198,8 @@ async def _run_executor_async(
         if isinstance(message, TaskResult):
             break
         src = getattr(message, "source", "Sistema")
-        content = getattr(message, "content", "")
+        raw_content = getattr(message, "content", "")
+        content = _content_to_str(raw_content)
         if content and content.strip():
             all_parts.append(f"**{src}**: {content}")
             if REPORT_DONE_SIGNAL in content:
@@ -191,6 +211,7 @@ async def _run_executor_async(
     report_text = "\n\n".join(report_parts) if report_parts else "\n\n".join(all_parts[-5:])
     saved_path = _save_report(entity, report_text)
     return report_text, saved_path
+
 
 
 def run_autonomous_executor(

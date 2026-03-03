@@ -36,7 +36,10 @@ def _save_consensus_plan(entity: str, messages: list) -> Path:
     lines = [f"# Plan de Consenso Bibliométrico\n\n**Entidad**: {entity}\n**Fecha**: {date_str}\n\n---\n"]
     for msg in messages:
         src = getattr(msg, "source", "Sistema")
-        content = getattr(msg, "content", "")
+        raw_content = getattr(msg, "content", "")
+        content = raw_content if isinstance(raw_content, str) else " ".join(
+            b.text if hasattr(b, "text") else str(b) for b in raw_content
+        ) if isinstance(raw_content, list) else str(raw_content)
         if content and content.strip():
             lines.append(f"### {src}\n{content}\n")
     

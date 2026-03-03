@@ -127,7 +127,10 @@ async def _run_mesa_async(
         if isinstance(message, TaskResult):
             break
         src = getattr(message, "source", "Sistema")
-        content = getattr(message, "content", "")
+        raw_content = getattr(message, "content", "")
+        content = raw_content if isinstance(raw_content, str) else " ".join(
+            b.text if hasattr(b, "text") else str(b) for b in raw_content
+        ) if isinstance(raw_content, list) else str(raw_content)
         if content and content.strip():
             parts.append(f"### {src}\n{content}")
             if on_message:
