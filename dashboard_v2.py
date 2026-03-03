@@ -187,7 +187,206 @@ with st.sidebar:
 st.title("Sinapsis AI: Hub de Ciencia Abierta")
 st.markdown("Inteligencia Bibliométrica Híbrida")
 
-tab_inst, tab_inv, tab_chat, tab_about = st.tabs(["🏢 Panorama Institucional", "👤 Perfil Académico", "🤖 Asistente", "ℹ️ Acerca de..."])
+tab_inst, tab_inv, tab_chat, tab_council, tab_about = st.tabs([
+    "🏢 Panorama Institucional",
+    "👤 Perfil Académico",
+    "🤖 Asistente",
+    "🏛️ Consejo Estratégico",
+    "ℹ️ Acerca de..."
+])
+
+# =======================================================
+# TAB: Consejo Estratégico Virtual (Multi-Agente AutoGen)
+# =======================================================
+with tab_council:
+    st.header("🏛️ Consejo Estratégico Virtual")
+    st.markdown(
+        "Sistema multi-agente que orquesta un **Rector**, un **Investigador Senior** y un "
+        "**Consejero Universitario** para diseñar y ejecutar estudios bibliométricos de forma autónoma."
+    )
+
+    # ── Inicialización del estado de sesión del Consejo ──
+    if "council_phase" not in st.session_state:
+        st.session_state.council_phase = "idle"   # idle | running | done
+    if "council_log" not in st.session_state:
+        st.session_state.council_log = []          # [(agente, texto), ...]
+    if "council_script" not in st.session_state:
+        st.session_state.council_script = None
+    if "council_script_path" not in st.session_state:
+        st.session_state.council_script_path = None
+    if "council_report" not in st.session_state:
+        st.session_state.council_report = None
+
+    # ── Panel de control ───────────────────────────────
+    col_mode, col_entity = st.columns([2, 2])
+
+    with col_mode:
+        mode = st.radio(
+            "Modo",
+            ["🆕 Nueva sesión", "♻️ Re-ejecutar script existente"],
+            horizontal=True,
+        )
+
+    with col_entity:
+        council_entity = st.selectbox(
+            "Entidad objetivo",
+            entidades_disponibles,
+            key="council_entity_select",
+        )
+
+    # ── Configuración según modo ───────────────────────
+    council_objective = ""
+    selected_script_path = None
+
+    if mode == "🆕 Nueva sesión":
+        council_objective = st.text_area(
+            "Objetivo del estudio",
+            placeholder="Ej: Analiza las redes de colaboración y los temas emergentes del ICN entre 2019-2024...",
+            height=100,
+        )
+    else:
+        # Cargar scripts guardados
+        try:
+            from agent.council.technical_mesa import list_saved_scripts
+            saved_scripts = list_saved_scripts()
+        except Exception:
+            saved_scripts = []
+
+        if saved_scripts:
+            script_options = {s["filename"]: s["path"] for s in saved_scripts}
+            selected_script_name = st.selectbox("Script guardado", list(script_options.keys()))
+            selected_script_path = script_options[selected_script_name]
+            st.caption(f"📁 `{selected_script_path}`")
+        else:
+            st.warning("No hay scripts guardados aún. Ejecuta una Nueva sesión primero.")
+
+    # ── Botón de inicio ────────────────────────────────
+    can_run = (
+        (mode == "🆕 Nueva sesión" and council_objective.strip()) or
+        (mode == "♻️ Re-ejecutar script existente" and selected_script_path)
+    )
+
+    if st.button("▶ Iniciar", disabled=not can_run, type="primary"):
+        st.session_state.council_phase = "running"
+        st.session_state.council_log = []
+        st.session_state.council_script = None
+        st.session_state.council_report = None
+        st.rerun()
+
+    # ── Ejecución ──────────────────────────────────────
+    if st.session_state.council_phase == "running":
+        try:
+            from agent.council.strategic_council import run_strategic_council
+            from agent.council.technical_mesa import run_technical_mesa, load_execution_script
+            from agent.council.autonomous_executor import run_autonomous_executor
+
+            log_container = st.container()
+
+            def _on_message(agent_name: str, content: str):
+                if content and content.strip():
+                    st.session_state.council_log.append((agent_name, content))
+
+            # ── Fase 1: Solo para nueva sesión ──
+            consensus_plan = ""
+            if mode == "🆕 Nueva sesión":
+                with st.status("🎓 Fase 1: Deliberación del Consejo Estratégico...", expanded=True):
+                    consensus_plan, plan_path = _run_async_in_thread(
+                        asyncio.coroutine(lambda: run_strategic_council(
+                            entity=council_entity,
+                            objective=council_objective,
+                            on_message=_on_message,
+                        ))()
+                    ) if False else run_strategic_council(
+                        entity=council_entity,
+                        objective=council_objective,
+                        on_message=_on_message,
+                    )
+                    st.success(f"✅ Plan aprobado · guardado en `{plan_path.name}`")
+
+            # ── Fase 2: Solo para nueva sesión ──
+            execution_script = ""
+            if mode == "🆕 Nueva sesión":
+                with st.status("🏗️ Fase 2: Mesa Técnica...", expanded=True):
+                    execution_script, script_path = run_technical_mesa(
+                        entity=council_entity,
+                        consensus_plan=consensus_plan,
+                        on_message=_on_message,
+                    )
+                    st.session_state.council_script = execution_script
+                    st.session_state.council_script_path = str(script_path)
+                    st.success(f"💾 Script guardado: `{script_path.name}`")
+            else:
+                # Cargar script existente
+                execution_script = load_execution_script(selected_script_path)
+                st.session_state.council_script = execution_script
+
+            # ── Fase 3: Ejecución autónoma ──
+            with st.status("⚙️ Fase 3: Ejecución autónoma...", expanded=True):
+                report_text, report_path = run_autonomous_executor(
+                    entity=council_entity,
+                    execution_script=execution_script,
+                    on_message=_on_message,
+                )
+                st.session_state.council_report = report_text
+                st.session_state.council_phase = "done"
+                st.success(f"📊 Informe generado: `{report_path.name}`")
+                st.rerun()
+
+        except ImportError as e:
+            st.error(f"❌ AutoGen no está instalado. Ejecuta: `pip install pyautogen`\n\n{e}")
+            st.session_state.council_phase = "idle"
+        except Exception as e:
+            st.error(f"❌ Error durante la ejecución: {e}")
+            import traceback
+            st.code(traceback.format_exc())
+            st.session_state.council_phase = "idle"
+
+    # ── Log de la conversación ─────────────────────────
+    if st.session_state.council_log:
+        st.markdown("---")
+        st.subheader("🗣️ Transcripción del Consejo")
+
+        AGENT_ICONS = {
+            "Rector": "🎓",
+            "Investigador_Senior": "🔬",
+            "Consejero_Universitario": "📋",
+            "Arquitecto_de_Datos": "🏗️",
+            "SINAPSIS_Técnico": "🤖",
+            "SINAPSIS_Ejecutor": "⚙️",
+            "Corrector_Python": "🐍",
+            "Sistema": "💡",
+        }
+
+        for agent_name, content in st.session_state.council_log:
+            icon = AGENT_ICONS.get(agent_name, "💬")
+            with st.expander(f"{icon} **{agent_name}**", expanded=False):
+                st.markdown(content)
+
+    # ── Informe final ──────────────────────────────────
+    if st.session_state.council_phase == "done" and st.session_state.council_report:
+        st.markdown("---")
+        st.subheader("📊 Informe Bibliométrico Final")
+        st.markdown(st.session_state.council_report)
+
+        col_dl, col_reset = st.columns([2, 1])
+        with col_dl:
+            st.download_button(
+                label="📥 Descargar Informe (Markdown)",
+                data=st.session_state.council_report.encode("utf-8"),
+                file_name=f"informe_{council_entity.lower().replace(' ', '_')}.md",
+                mime="text/markdown",
+            )
+        with col_reset:
+            if st.button("🔄 Nueva Sesión"):
+                for key in ["council_phase", "council_log", "council_script", "council_report"]:
+                    st.session_state.pop(key, None)
+                st.rerun()
+
+        # Mostrar imágenes generadas si existen
+        img_path = Path("interpreter_output.png")
+        if img_path.exists():
+            st.image(str(img_path), caption="Gráfica generada por el ejecutor")
+
 
 # =======================================================
 # TAB 1: Chat RAG Orquestador
