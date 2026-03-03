@@ -416,6 +416,10 @@ with tab_council:
         if img_path.exists():
             st.image(str(img_path), caption="Gráfica generada por el ejecutor")
 
+        # Vista previa del Markdown
+        with st.expander("📝 Ver Informe en Markdown (Vista Previa)", expanded=True):
+            st.markdown(st.session_state.council_report)
+
 
 # =======================================================
 # TAB 1: Chat RAG Orquestador

@@ -513,16 +513,22 @@ async def _run_report_writing(
         src = getattr(message, "source", "Sistema")
         content = _content_to_str(getattr(message, "content", ""))
         if content and content.strip():
-            all_parts.append(f"**{src}**: {content}")
+            all_parts.append(f"### Perspectiva de {src}\n\n{content}")
             if REPORT_DONE_SIGNAL in content:
                 # Si llegamos al fin, el contenido más rico suele ser el último mensaje 
-                # (la síntesis del Rector). Quitamos el signal y guardamos.
+                # (la síntesis de la Rectora). Usamos un umbral de longitud para validar.
                 clean_report = content.replace(REPORT_DONE_SIGNAL, "").strip()
-                report_parts.append(clean_report)
+                if len(clean_report) > 300: # Mínimo unos párrafos
+                    report_parts.append(clean_report)
             if on_message:
                 on_message(src, content)
 
-    return "\n\n".join(report_parts) if report_parts else "\n\n".join(all_parts[-5:])
+    if report_parts:
+        return report_parts[-1]
+    
+    # Si no hubo síntesis final, unimos todo el diálogo
+    deliberation = "\n\n---\n\n".join(all_parts)
+    return f"## Crónica y Deliberación del Consejo\n\n{deliberation}"
 
 
 # ── Función principal ─────────────────────────────────────────────────────────
