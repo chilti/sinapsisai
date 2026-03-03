@@ -111,17 +111,22 @@ def get_embedding(text: str) -> list:
 def search_scientific_papers_semantic(query: str, limit: int = 20, entity_context: Optional[str] = None) -> str:
     """
     Realiza una búsqueda semántica en la base de datos vectorial (Qdrant).
-    Útil para encontrar temas relacionados, conceptos abstractos o papers que hablen 
+    Útil para encontrar temas relacionados, conceptos abstractos o papers que hablen
     de algo aunque no compartan palabras clave exactas.
-    
+
+    Las colecciones disponibles en Qdrant son EXACTAMENTE dos:
+    - `scientific_papers`: papers académicos (la principal).
+    - `api_papers`: papers obtenidos de APIs externas.
+    NO existe ninguna otra colección. Esta herramienta busca en ambas automáticamente.
+
     IMPORTANTE: La query debe contener ÚNICAMENTE el tema científico o concepto buscado.
     NUNCA incluyas el nombre de la institución en la query semántica — eso degrada los resultados.
     - CORRECTO: query="diabetes"
     - INCORRECTO: query="Instituto de Ciencias Nucleares diabetes"
-    
+
     Usa el parámetro entity_context para filtrar por institución de forma nativa y eficiente.
     Ejemplo: entity_context="Instituto de Ciencias Nucleares"
-    
+
     La query puede estar en español o inglés — se traducirá automáticamente al inglés.
     """
     # Traducir al inglés si es necesario (los papers están en inglés)

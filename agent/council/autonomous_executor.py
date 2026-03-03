@@ -180,27 +180,31 @@ def _content_to_str(content) -> str:
     return str(content)
 
 
+# Directorio raíz del proyecto (dos niveles arriba de autonomous_executor.py)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
 def _cleanup_outputs():
     """Limpia imágenes de ejecuciones previas para evitar confusión."""
     patterns = ["output_*.png", "interpreter_output.png", "output_*.jpg"]
     count = 0
     for p in patterns:
-        for f in Path(".").glob(p):
+        for f in list(_PROJECT_ROOT.glob(p)):
             try:
                 f.unlink()
                 count += 1
             except Exception:
                 pass
     if count > 0:
-        print(f"🧹 Limpieza: {count} archivos temporales eliminados.")
+        print(f"\U0001f9f9 Limpieza: {count} archivos eliminados de {_PROJECT_ROOT}")
 
 
 def _find_generated_images() -> list[Path]:
-    """Encuentra todas las imágenes generadas en el directorio actual."""
+    """Encuentra todas las imágenes generadas en el directorio raíz del proyecto."""
     patterns = ["output_*.png", "interpreter_output.png", "output_*.jpg"]
     images = []
     for p in patterns:
-        images.extend(Path(".").glob(p))
+        images.extend(_PROJECT_ROOT.glob(p))
     return sorted(set(images))
 
 
