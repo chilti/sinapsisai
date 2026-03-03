@@ -5,6 +5,7 @@ import os
 import sys
 import random
 import threading
+from pathlib import Path
 from PIL import Image
 import json
 from dotenv import load_dotenv
