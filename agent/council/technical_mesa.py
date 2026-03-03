@@ -25,6 +25,7 @@ from .council_config import (
     SCRIPTS_DIR,
     MAX_TECH_ROUNDS,
     get_tools_catalog,
+    get_db_schema,
 )
 
 SCRIPT_DONE_SIGNAL = "SCRIPT_VALIDADO"
@@ -72,21 +73,25 @@ async def _run_mesa_async(
 ) -> tuple[str, Path]:
     model_client = make_model_client()
     tools_catalog = get_tools_catalog()  # Catálogo REAL de herramientas
+    db_schema = get_db_schema()          # Esquema real de Neo4j + Qdrant
 
     arquitecto = AssistantAgent(
         name="Arquitecto_de_Datos",
         model_client=model_client,
         system_message=(
             f"Eres un Arquitecto de Datos especializado en bibliometría para la entidad {entity}.\n\n"
+            f"{db_schema}\n\n"
             f"{tools_catalog}\n\n"
             f"REGLAS DE DISEÑO DEL SCRIPT:\n"
-            f"- Solo propón pasos que usen las herramientas listadas arriba. NUNCA inventes otras.\n"
-            f"- Para Neo4j escribe la query Cypher exacta. Usa CONTAINS para nombres de personas.\n"
-            f"  Ejemplo: WHERE toLower(a.name) CONTAINS toLower('apellido')\n"
+            f"- Usa PRIMERO los datos que ya existen en Neo4j/Qdrant (ver esquema arriba).\n"
+            f"- Solo llama a OpenAlex/Scopus/web para datos que NO estén en las bases.\n"
+            f"- Solo propón pasos que usen las herramientas listadas. NUNCA inventes otras.\n"
+            f"- Para Neo4j usa CONTAINS para nombres de personas:\n"
+            f"  WHERE toLower(a.name) CONTAINS toLower('apellido')\n"
             f"- Los tópicos en Neo4j están en inglés. Traduce siempre.\n"
             f"- Para búsqueda semántica usa search_scientific_papers_semantic con entity_context=\"{{ENTITY}}\".\n"
             f"- Para análisis usa Python_CodeExecutor con pandas/matplotlib/networkx.\n"
-            f"- Usa {{ENTITY}} como placeholder en TODAS las consultas para que el script sea reutilizable.\n"
+            f"- Usa {{ENTITY}} como placeholder en TODAS las consultas para reutilización.\n"
             f"- Cuando termines el script completo, escribe: SCRIPT_TÉCNICO_LISTO"
         ),
     )

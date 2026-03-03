@@ -26,6 +26,7 @@ from .council_config import (
     INVESTIG_APPROVAL,
     CONSEJERO_APPROVAL,
     get_tools_catalog,
+    get_db_schema,
 )
 
 
@@ -102,18 +103,21 @@ async def _run_council_async(
     )
 
     tools_catalog = get_tools_catalog()
+    db_schema = get_db_schema()
 
     task = (
         f"Diseñen un **Plan de Estudio Bibliométrico** para **{entity}** (UNAM).\n\n"
         f"**Objetivo del estudio**: {objective}\n\n"
-        f"FUENTES DE DATOS DISPONIBLES (son las únicas que se pueden usar):\n"
+        f"{db_schema}\n\n"
+        f"FUENTES DE DATOS DISPONIBLES (herramientas que puede usar SINAPSIS):\n"
         f"{tools_catalog}\n\n"
         f"Deliberen desde sus perspectivas. El plan DEBE ser ejecutable con las herramientas listadas.\n"
-        f"NO propongan objetivos que requieran Scopus, Web of Science, Google Scholar u otras fuentes externas.\n\n"
+        f"Prioricen datos que YA EXISTEN en Neo4j/Qdrant antes de proponer llamadas a APIs externas.\n"
+        f"NO propongan objetivos que requieran Scopus, Web of Science u otras fuentes no listadas.\n\n"
         f"El plan debe incluir:\n"
-        f"1. Objetivos específicos del estudio (alcanzables con las herramientas disponibles)\n"
+        f"1. Objetivos específicos del estudio (alcanzables con los datos disponibles)\n"
         f"2. Métricas clave a medir (con justificación)\n"
-        f"3. Fuentes de datos a usar (solo de la lista de herramientas)\n\n"
+        f"3. Fuentes de datos a usar (priorizando Neo4j y Qdrant)\n\n"
         f"Cada uno debe aprobar explícitamente el plan final con su señal de aprobación."
     )
 

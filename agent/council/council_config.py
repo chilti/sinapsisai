@@ -67,6 +67,123 @@ CONSEJERO_APPROVAL  = "APROBADO: Consejero_Universitario"
 ALL_APPROVALS       = [RECTOR_APPROVAL, INVESTIG_APPROVAL, CONSEJERO_APPROVAL]
 
 
+# ── Esquema dinámico de las bases de datos ────────────────────────────────────
+
+def get_db_schema() -> str:
+    """
+    Introspecciona Neo4j y Qdrant en tiempo real y devuelve un resumen del
+    esquema/contenido de las bases de datos.
+
+    Inyectar esto en los prompts permite que los agentes sepan:
+    - Qué nodos y relaciones existen en Neo4j (no hay que importar lo que ya está)
+    - Qué colecciones y campos payload tiene Qdrant
+    - Cuántos registros hay (para estimar la cobertura)
+    """
+    import sys, os
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+
+    lines = ["## Estado actual de las bases de datos\n"]
+
+    # ── Neo4j ──────────────────────────────────────────────────────────────────
+    try:
+        from database.graph_store import get_neo4j_driver
+
+        driver = get_neo4j_driver()
+        with driver.session() as session:
+            # Contar nodos por etiqueta
+            count_q = """
+            CALL apoc.meta.stats() YIELD labels
+            RETURN labels
+            """
+            try:
+                result = session.run(count_q).single()
+                label_counts = result["labels"] if result else {}
+            except Exception:
+                # APOC no disponible: fallback manual
+                labels_res = session.run("CALL db.labels() YIELD label RETURN label").data()
+                label_counts = {}
+                for row in labels_res:
+                    lbl = row["label"]
+                    cnt = session.run(f"MATCH (n:{lbl}) RETURN count(n) AS c").single()["c"]
+                    label_counts[lbl] = cnt
+
+            # Tipos de relaciones
+            rels_res = session.run(
+                "CALL db.relationshipTypes() YIELD relationshipType RETURN relationshipType"
+            ).data()
+            rel_types = [r["relationshipType"] for r in rels_res]
+
+            # Propiedades clave (muestra de un nodo por etiqueta)
+            sample_props = {}
+            for lbl in list(label_counts.keys())[:8]:  # máx 8 etiquetas
+                try:
+                    row = session.run(f"MATCH (n:{lbl}) RETURN keys(n) AS k LIMIT 1").single()
+                    if row:
+                        sample_props[lbl] = row["k"]
+                except Exception:
+                    pass
+
+        lines.append("### Neo4j (Grafo de Conocimiento)")
+        lines.append("**Nodos disponibles** (ya no necesitan importarse desde APIs externas):")
+        for lbl, cnt in sorted(label_counts.items(), key=lambda x: -x[1]):
+            props = sample_props.get(lbl, [])
+            props_str = ", ".join(props[:6]) + ("…" if len(props) > 6 else "")
+            lines.append(f"- `:{lbl}` → **{cnt:,}** registros | propiedades: `{props_str}`")
+
+        lines.append(f"\n**Relaciones disponibles**: {', '.join(f'`:{r}`' for r in rel_types)}")
+        lines.append(
+            "\n> ✅ Usa `query_knowledge_graph_cypher` para consultar estos datos. "
+            "**No es necesario llamar a OpenAlex/Scopus para datos que ya están aquí.**"
+        )
+
+    except Exception as e:
+        lines.append(f"### Neo4j\n> ⚠️ No se pudo conectar: {e}")
+        lines.append(
+            "Esquema esperado: `:Paper`, `:Academic`, `:Topic`, `:Entity`, `:Journal`\n"
+            "Relaciones: `:AUTHORED`, `:HAS_TOPIC`, `:PUBLISHED_IN`, `:AFFILIATED_TO`, `:CITES`"
+        )
+
+    lines.append("")
+
+    # ── Qdrant ─────────────────────────────────────────────────────────────────
+    try:
+        from qdrant_client import QdrantClient
+
+        host  = os.getenv("QDRANT_HOST", "localhost")
+        port  = int(os.getenv("QDRANT_PORT", "6333"))
+        qclient = QdrantClient(host=host, port=port)
+
+        collections = qclient.get_collections().collections
+        lines.append("### Qdrant (Búsqueda Semántica)")
+        for col in collections:
+            info = qclient.get_collection(col.name)
+            count = info.points_count
+            # Obtener campos payload de muestra
+            try:
+                sample = qclient.scroll(col.name, limit=1, with_payload=True)[0]
+                payload_keys = list(sample[0].payload.keys()) if sample else []
+            except Exception:
+                payload_keys = []
+            keys_str = ", ".join(f"`{k}`" for k in payload_keys[:8])
+            lines.append(
+                f"- **`{col.name}`**: {count:,} vectores | "
+                f"payload: {keys_str or '(desconocido)'}"
+            )
+        lines.append(
+            "\n> ✅ Usa `search_scientific_papers_semantic` con `entity_context` "
+            "para búsquedas por significado en Qdrant."
+        )
+
+    except Exception as e:
+        lines.append(f"### Qdrant\n> ⚠️ No se pudo conectar: {e}")
+        lines.append(
+            "Colección esperada: `papers` con payload: "
+            "`title`, `abstract`, `entity`, `year`, `doi`, `authors`"
+        )
+
+    return "\n".join(lines)
+
+
 # ── Catálogo dinámico de herramientas de SINAPSIS ────────────────────────────
 
 def get_tools_catalog() -> str:
@@ -93,11 +210,15 @@ def get_tools_catalog() -> str:
             first_line = doc.strip().split("\n")[0].strip() if doc.strip() else "(sin descripción)"
             lines.append(f"- **`{name}`**: {first_line}")
 
-        # Agregar el intérprete Python
+        # Agregar el intérprete Python con todas sus bibliotecas disponibles
         lines.append(
-            "- **`Python_CodeExecutor`**: Ejecuta código Python. "
-            "Guarda gráficas con `plt.savefig('interpreter_output.png')`. "
-            "Tiene acceso a pandas, matplotlib, numpy, networkx."
+            "- **`Python_CodeExecutor`**: Ejecuta código Python con acceso a:\n"
+            "  - **Análisis de datos**: pandas, numpy, scikit-learn\n"
+            "  - **Visualización**: matplotlib, plotly\n"
+            "  - **Redes**: networkx\n"
+            "  - **Bibliometría**: pyalex (OpenAlex API), pybliometrics (Scopus — requiere API key configurada)\n"
+            "  - **Machine Learning**: umap-learn, somoclu\n"
+            "  - Guarda gráficas con `plt.savefig('interpreter_output.png')` o `fig.write_image('interpreter_output.png')`"
         )
 
         lines.append(
@@ -124,6 +245,6 @@ def get_tools_catalog() -> str:
             "- `recoverAuthorWorksFromOpenAlex`: Trabajos de un autor\n"
             "- `web_search`: Búsqueda DuckDuckGo\n"
             "- `wikipedia_search`: Búsqueda Wikipedia\n"
-            "- `Python_CodeExecutor`: Ejecuta código Python (pandas, matplotlib, networkx)\n"
+            "- `Python_CodeExecutor`: Ejecuta código Python (plotly, pandas, matplotlib, networkx, pyalex, pybliometrics, umap-learn, scikit-learn, somoclu)\n"
             f"\n(Error al cargar catálogo dinámico: {e})"
         )
