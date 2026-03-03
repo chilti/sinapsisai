@@ -162,13 +162,22 @@ def _content_to_str(content) -> str:
     return str(content)
 
 
-def _find_generated_images() -> list[Path]:
-    """Encuentra todas las imágenes generadas en el directorio actual."""
+def _cleanup_outputs():
+    """Limpia imágenes de ejecuciones previas para evitar confusión."""
     patterns = ["output_*.png", "interpreter_output.png", "output_*.jpg"]
-    images = []
+    count = 0
     for p in patterns:
-        images.extend(Path(".").glob(p))
-    return sorted(set(images))
+        for f in Path(".").glob(p):
+            try:
+                f.unlink()
+                count += 1
+            except Exception:
+                pass
+    if count > 0:
+        print(f"🧹 Limpieza: {count} archivos temporales eliminados.")
+
+
+def _find_generated_images() -> list[Path]:
 
 
 # ── Conversión a PDF ──────────────────────────────────────────────────────────
@@ -408,14 +417,14 @@ async def _run_report_writing(
         f"---\n\n"
         f"Lean los datos anteriores y redacten juntos el informe bibliométrico final para {entity}.\n\n"
         f"Cada uno aporta su interpretación desde su rol. La estructura del informe es LIBRE: "
-        f"déjense guiar por lo que los datos realmente revelaron. No completen secciones vacías.\n\n"
+        f"déjense guiar por lo que los datos realmente revelaron. No completen secciones vacías. "
+        f"Eviten usar frases genéricas.\n\n"
         f"Solo hay tres requisitos mínimos:\n"
         f"1. Una síntesis ejecutiva honesta con los hallazgos más relevantes.\n"
         f"2. Los datos reales presentados (tablas, cifras — tal como los recibieron).\n"
         f"3. Conclusiones accionables para la institución.\n\n"
-        f"Cuando todos hayan aportado, el Rector integra las perspectivas y escribe "
-        f"el informe final completo en Markdown. IMPORTANTE: Concluye tu mensaje "
-        f"con la palabra '{REPORT_DONE_SIGNAL}' para que el sistema sepa que has terminado."
+        f"Cuando todos hayan aportado su visión, la Rectora redactará el informe final completo "
+        f"y terminará su mensaje con el código: **TERMINAR_REPORTE** (esto cerrará la sesión)."
     )
 
     rectora = AssistantAgent(
@@ -424,8 +433,8 @@ async def _run_report_writing(
         system_message=(
             f"Eres la Rectora de la UNAM (mujer zapoteca, SNI III). Interpretas los datos de {entity} "
             f"desde visibilidad internacional, impacto comunitario y ODS. "
-            f"Cuando todos hayan aportado su análisis, escribe '{REPORT_DONE_SIGNAL}' seguido del "
-            f"informe final completo en Markdown, integrando TODAS las perspectivas del Consejo."
+            f"Cuando todos hayan aportado su análisis, escribe el informe final completo en Markdown "
+            f"integrando TODAS las perspectivas, y CUBRE el reporte cerrando con: 'TERMINAR_REPORTE'."
         ),
     )
 
@@ -496,7 +505,7 @@ async def _run_report_writing(
     )
 
     termination = (
-        TextMentionTermination(REPORT_DONE_SIGNAL) |
+        TextMentionTermination("TERMINAR_REPORTE") |
         MaxMessageTermination(21)   # 3 rondas × 7 agentes
     )
     team = RoundRobinGroupChat(
@@ -514,11 +523,11 @@ async def _run_report_writing(
         content = _content_to_str(getattr(message, "content", ""))
         if content and content.strip():
             all_parts.append(f"### Perspectiva de {src}\n\n{content}")
-            if REPORT_DONE_SIGNAL in content:
-                # Si llegamos al fin, el contenido más rico suele ser el último mensaje 
-                # (la síntesis de la Rectora). Usamos un umbral de longitud para validar.
-                clean_report = content.replace(REPORT_DONE_SIGNAL, "").strip()
-                if len(clean_report) > 300: # Mínimo unos párrafos
+            # Si contiene el signal de terminación (TERMINAR_REPORTE)
+            if "TERMINAR_REPORTE" in content:
+                # Extraemos el reporte (quitando el signal)
+                clean_report = content.replace("TERMINAR_REPORTE", "").strip()
+                if len(clean_report) > 500: # Exigimos más contenido para la síntesis
                     report_parts.append(clean_report)
             if on_message:
                 on_message(src, content)
@@ -526,9 +535,15 @@ async def _run_report_writing(
     if report_parts:
         return report_parts[-1]
     
-    # Si no hubo síntesis final, unimos todo el diálogo
-    deliberation = "\n\n---\n\n".join(all_parts)
-    return f"## Crónica y Deliberación del Consejo\n\n{deliberation}"
+    # Fallback robusto: Deliberación completa
+    if all_parts:
+        deliberation = "\n\n---\n\n".join(all_parts)
+        return (
+            f"## Resumen de Deliberación Colectiva\n\n"
+            f"Debido a que no se emitió una síntesis final, se presenta la deliberación completa de los expertos:\n\n"
+            f"{deliberation}"
+        )
+    return "No se pudo generar el informe. El Consejo no emitió comentarios."
 
 
 # ── Función principal ─────────────────────────────────────────────────────────
@@ -538,6 +553,7 @@ async def _run_executor_async(
     execution_script: str,
     on_message: Optional[Callable[[str, str], None]] = None,
 ) -> tuple[str, Path, "Path | None"]:
+    _cleanup_outputs() # Limpiar antes de empezar
     script = _inject_entity(execution_script, entity)
 
     if on_message:
