@@ -14,7 +14,7 @@ Pueden ser re-ejecutados con cualquier entidad sin repetir la deliberación.
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 
 from autogen import AssistantAgent, UserProxyAgent, ConversableAgent
 
@@ -107,7 +107,7 @@ def _save_execution_script(entity: str, script_text: str) -> Path:
     return filename
 
 
-def load_execution_script(script_path: str | Path) -> str:
+def load_execution_script(script_path: Union[str, Path]) -> str:
     """Carga un script guardado previamente."""
     path = Path(script_path)
     if not path.exists():
