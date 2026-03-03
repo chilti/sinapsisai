@@ -2,9 +2,8 @@
 strategic_council.py
 Fase 1: Consejo Estratégico Virtual — AutoGen v0.4+
 
-Usa RoundRobinGroupChat con tres agentes de perspectivas distintas y una
-condición de terminación basada en detección de texto de aprobación.
-La función es síncrona (usa asyncio.run internamente) para compatibilidad con Streamlit.
+Consejo de 7 agentes con diversidad de expertise, género, etnia y nivel social.
+Mecanismo de terminación: mayoría (4/7) declarada mediante CONSENSO_MAYORITARIO.
 """
 
 import asyncio
@@ -22,29 +21,39 @@ from .council_config import (
     make_model_client,
     OUTPUT_DIR,
     MAX_COUNCIL_ROUNDS,
-    RECTOR_APPROVAL,
-    INVESTIG_APPROVAL,
-    CONSEJERO_APPROVAL,
+    RECTORA_APPROVAL,
+    INVESTIGADOR_APPROVAL,
+    BIBLIOMETRA_APPROVAL,
+    POLITICA_APPROVAL,
+    EVALUADORA_APPROVAL,
+    CONSEJERA_APPROVAL,
+    ESTUDIANTE_APPROVAL,
+    CONSENSUS_SIGNAL,
     get_tools_catalog,
     get_db_schema,
 )
+
+ALL_APPROVAL_SIGNALS = [
+    RECTORA_APPROVAL, INVESTIGADOR_APPROVAL, BIBLIOMETRA_APPROVAL,
+    POLITICA_APPROVAL, EVALUADORA_APPROVAL, CONSEJERA_APPROVAL, ESTUDIANTE_APPROVAL,
+]
 
 
 def _save_consensus_plan(entity: str, messages: list) -> Path:
     slug = re.sub(r"[^\w\-]", "_", entity.lower())[:30]
     date_str = datetime.now().strftime("%Y-%m-%d")
     path = OUTPUT_DIR / f"plan_consenso_{slug}_{date_str}.md"
-    
+
     lines = [f"# Plan de Consenso Bibliométrico\n\n**Entidad**: {entity}\n**Fecha**: {date_str}\n\n---\n"]
     for msg in messages:
         src = getattr(msg, "source", "Sistema")
-        raw_content = getattr(msg, "content", "")
-        content = raw_content if isinstance(raw_content, str) else " ".join(
-            b.text if hasattr(b, "text") else str(b) for b in raw_content
-        ) if isinstance(raw_content, list) else str(raw_content)
+        raw = getattr(msg, "content", "")
+        content = raw if isinstance(raw, str) else " ".join(
+            b.text if hasattr(b, "text") else str(b) for b in raw
+        ) if isinstance(raw, list) else str(raw)
         if content and content.strip():
             lines.append(f"### {src}\n{content}\n")
-    
+
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
 
@@ -55,70 +64,136 @@ async def _run_council_async(
     on_message: Optional[Callable[[str, str], None]] = None,
 ) -> tuple[str, Path]:
     model_client = make_model_client()
+    tools_catalog = get_tools_catalog()
+    db_schema = get_db_schema()
 
-    rector = AssistantAgent(
-        name="Rector",
+    # ── 7 agentes del Consejo ──────────────────────────────────────────────────
+
+    rectora = AssistantAgent(
+        name="Rectora",
         model_client=model_client,
         system_message=(
-            f"Eres el Rector de la UNAM. Priorizas VISIBILIDAD INTERNACIONAL e IMPACTO SOCIAL "
-            f"de la investigación en {entity}. Criticas propuestas puramente técnicas sin impacto "
-            f"institucional. Te interesan: colaboraciones internacionales, ODS, presencia en rankings, "
-            f"Open Access. Cuando estés convencido del plan completo, escribe exactamente: '{RECTOR_APPROVAL}'."
+            f"Eres la Rectora de la UNAM. Eres mujer zapoteca, la primera indígena en ocupar este cargo, "
+            f"SNI III. Priorizas visibilidad internacional, impacto en comunidades vulnerables, ODS y "
+            f"alianzas estratégicas. Cuestionas métricas que benefician solo a quienes publican en inglés. "
+            f"Cuando el plan te convenza, escribe exactamente: '{RECTORA_APPROVAL}'. "
+            f"Si ves que 4 o más colegas ya aprobaron, puedes declarar: '{CONSENSUS_SIGNAL}'."
         ),
     )
 
     investigador = AssistantAgent(
-        name="Investigador_Senior",
+        name="Investigador_Campo",
         model_client=model_client,
         system_message=(
-            f"Eres un Investigador SNI III de {entity}. Priorizas CALIDAD CIENTÍFICA: "
-            f"FWCI, h-index, percentil de citas, revistas arbitradas. Cuestionas indicadores "
-            f"solo cuantitativos. Defiendes el análisis de redes de coautoría y evolución histórica. "
-            f"Cuando estés convencido del plan, escribe exactamente: '{INVESTIG_APPROVAL}'."
+            f"Eres Investigador SNI II especialista en el área de {entity}. "
+            f"Eres hombre, primera generación universitaria de familia obrera. "
+            f"Conoces los retos reales de publicar desde México: falta de financiamiento, "
+            f"sesgo de revistas internacionales, sobrecarga docente. "
+            f"Priorizas representar fielmente la producción real del instituto, no solo la 'visible'. "
+            f"Cuando el plan sea realista y honesto, escribe: '{INVESTIGADOR_APPROVAL}'."
         ),
     )
 
-    consejero = AssistantAgent(
-        name="Consejero_Universitario",
+    bibliometra = AssistantAgent(
+        name="Bibliometra",
         model_client=model_client,
         system_message=(
-            f"Eres el Consejero responsable de ética y normativas en {entity}. "
-            f"Garantizas equidad entre investigadores de distintas áreas, géneros y antigüedades. "
-            f"Verificas cumplimiento de políticas de datos abiertos UNAM y ORCID. "
-            f"Señalas sesgos y propones métricas de diversidad. "
-            f"Cuando estés convencido del plan, escribe exactamente: '{CONSEJERO_APPROVAL}'."
+            f"Eres Dra. en Ciencia de la Ciencia y bibliometría. Eres mujer afromexicana. "
+            f"Dominas indicadores: FWCI, h-index, indicadores de co-citación, mapas de ciencia, "
+            f"análisis de redes de conocimiento y altmetrics. "
+            f"Señalas cuando se confunde correlación con causalidad en métricas, cuando las bases "
+            f"de datos tienen sesgos (Scopus solo indexa ciertos idiomas/regiones), y propones "
+            f"métodos alternativos. Cuando el plan sea metodológicamente sólido: '{BIBLIOMETRA_APPROVAL}'."
         ),
     )
 
-    # Terminar cuando los 3 han aprobado (detectamos el último en aparecer)
+    politica = AssistantAgent(
+        name="Politica_Cientifica",
+        model_client=model_client,
+        system_message=(
+            f"Eres Dr. en Política Científica, ex asesor de CONAHCYT y la OCDE. "
+            f"Eres hombre de origen árabe-mexicano. "
+            f"Analizas cómo los resultados bibliométricos se usan (o mal usan) para tomar decisiones "
+            f"de financiamiento, evaluación del SNI, presupuesto universitario y rendición de cuentas. "
+            f"Alertas sobre el efecto Goodhart: cuando una métrica se convierte en objetivo, deja de "
+            f"ser buena métrica. Propones conectar los hallazgos con políticas concretas. "
+            f"Cuando el plan tenga relevancia política real: '{POLITICA_APPROVAL}'."
+        ),
+    )
+
+    evaluadora = AssistantAgent(
+        name="Evaluadora_Ciencia",
+        model_client=model_client,
+        system_message=(
+            f"Eres especialista en evaluación de la ciencia desde perspectivas críticas y post-coloniales. "
+            f"Eres mujer latinoamericana. Conoces DORA (San Francisco Declaration on Research Assessment), "
+            f"el Manifiesto de Leiden y la Declaración de Madrid sobre evaluación responsable. "
+            f"Cuestionas el fetichismo del factor de impacto y propones evaluaciones que incluyan ciencia "
+            f"ciudadana, impacto social, diversidad lingüística y producción no indexada. "
+            f"Cuando el plan evalúe la ciencia de forma responsable: '{EVALUADORA_APPROVAL}'."
+        ),
+    )
+
+    consejera = AssistantAgent(
+        name="Consejera_Social",
+        model_client=model_client,
+        system_message=(
+            f"Eres Consejera universitaria especializada en equidad, género y justicia social. "
+            f"Eres mujer joven de una comunidad semicampesina que llegó a la universidad con beca. "
+            f"Representas a quienes la ciencia a menudo invisibiliza: investigadoras que pausaron "
+            f"carreras por maternidad, personal técnico que no aparece en publicaciones, comunidades "
+            f"que son objeto de estudio pero no co-autoras. "
+            f"Propones desagregar todas las métricas por género, área y nivel de carrera. "
+            f"Cuando el plan garantice equidad real: '{CONSEJERA_APPROVAL}'."
+        ),
+    )
+
+    estudiante = AssistantAgent(
+        name="Estudiante_Posgrado",
+        model_client=model_client,
+        system_message=(
+            f"Eres estudiante de doctorado en {entity}, con beca CONAHCYT. "
+            f"Eres persona no binaria. Représentas la perspectiva de quienes están construyendo "
+            f"su carrera científica en condiciones precarias: becas insuficientes, contratos temporales, "
+            f"presión de publicar o perecer. "
+            f"Preguntas: ¿este análisis bibliométrico ayudará a los estudiantes? ¿reconoce las tesis "
+            f"y trabajos no publicados? ¿promueve el acceso abierto? "
+            f"Cuando el plan sea justo para las nuevas generaciones: '{ESTUDIANTE_APPROVAL}'."
+        ),
+    )
+
+    # ── Terminación: mayoría (4/7) o tope de mensajes ─────────────────────────
     termination = (
-        TextMentionTermination(RECTOR_APPROVAL) &
-        TextMentionTermination(INVESTIG_APPROVAL) &
-        TextMentionTermination(CONSEJERO_APPROVAL)
-    ) | MaxMessageTermination(MAX_COUNCIL_ROUNDS)
+        TextMentionTermination(CONSENSUS_SIGNAL) |
+        MaxMessageTermination(MAX_COUNCIL_ROUNDS)
+    )
 
     team = RoundRobinGroupChat(
-        [rector, investigador, consejero],
+        [rectora, investigador, bibliometra, politica, evaluadora, consejera, estudiante],
         termination_condition=termination,
     )
 
-    tools_catalog = get_tools_catalog()
-    db_schema = get_db_schema()
+    # ── Tarea inicial ──────────────────────────────────────────────────────────
+    db_schema_text = db_schema
+    tools_text = tools_catalog
+
+    approval_instructions = (
+        f"Cuando estés convencido/a del plan, escribe tu señal de aprobación. "
+        f"Cualquier miembro puede declarar '{CONSENSUS_SIGNAL}' si observa que 4 o más ya aprobaron."
+    )
 
     task = (
         f"Diseñen un **Plan de Estudio Bibliométrico** para **{entity}** (UNAM).\n\n"
         f"**Objetivo del estudio**: {objective}\n\n"
-        f"{db_schema}\n\n"
-        f"FUENTES DE DATOS DISPONIBLES (herramientas que puede usar SINAPSIS):\n"
-        f"{tools_catalog}\n\n"
-        f"Deliberen desde sus perspectivas. El plan DEBE ser ejecutable con las herramientas listadas.\n"
-        f"Prioricen datos que YA EXISTEN en Neo4j/Qdrant antes de proponer llamadas a APIs externas.\n"
-        f"NO propongan objetivos que requieran Scopus, Web of Science u otras fuentes no listadas.\n\n"
-        f"El plan debe incluir:\n"
-        f"1. Objetivos específicos del estudio (alcanzables con los datos disponibles)\n"
-        f"2. Métricas clave a medir (con justificación)\n"
-        f"3. Fuentes de datos a usar (priorizando Neo4j y Qdrant)\n\n"
-        f"Cada uno debe aprobar explícitamente el plan final con su señal de aprobación."
+        f"{db_schema_text}\n\n"
+        f"**Herramientas disponibles para el análisis**:\n{tools_text}\n\n"
+        f"Deliberen desde sus perspectivas únicas. El plan DEBE:\n"
+        f"- Ser ejecutable con los datos y herramientas listados arriba\n"
+        f"- Priorizar datos que YA EXISTEN en Neo4j/Qdrant\n"
+        f"- Proponer métricas diversas (no solo factor de impacto)\n"
+        f"- Considerar equidad, sesgos y diversidad en el análisis\n"
+        f"- Ser útil para quienes toman decisiones de política científica\n\n"
+        f"{approval_instructions}"
     )
 
     all_messages = []
@@ -128,10 +203,10 @@ async def _run_council_async(
         if isinstance(message, TaskResult):
             break
         src = getattr(message, "source", "Sistema")
-        raw_content = getattr(message, "content", "")
-        content = raw_content if isinstance(raw_content, str) else " ".join(
-            b.text if hasattr(b, "text") else str(b) for b in raw_content
-        ) if isinstance(raw_content, list) else str(raw_content)
+        raw = getattr(message, "content", "")
+        content = raw if isinstance(raw, str) else " ".join(
+            b.text if hasattr(b, "text") else str(b) for b in raw
+        ) if isinstance(raw, list) else str(raw)
         all_messages.append(message)
         if content and content.strip():
             plan_text_parts.append(f"**{src}**: {content}")

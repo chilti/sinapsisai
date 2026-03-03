@@ -379,43 +379,83 @@ async def _run_report_writing(
         f"'{REPORT_DONE_SIGNAL}' seguido del informe final completo en Markdown."
     )
 
-    rector = AssistantAgent(
-        name="Rector",
+    rectora = AssistantAgent(
+        name="Rectora",
         model_client=model_client,
         system_message=(
-            f"Eres el Rector de la UNAM. Interpretas los datos bibliométricos de {entity} "
-            f"desde la perspectiva de visibilidad internacional, impacto social y ODS. "
-            f"Cuando los demás hayan aportado, escribe '{REPORT_DONE_SIGNAL}' seguido del "
-            f"informe completo integrando TODAS las perspectivas."
+            f"Eres la Rectora de la UNAM (mujer zapoteca, SNI III). Interpretas los datos de {entity} "
+            f"desde visibilidad internacional, impacto comunitario y ODS. "
+            f"Cuando todos hayan aportado su análisis, escribe '{REPORT_DONE_SIGNAL}' seguido del "
+            f"informe final completo en Markdown, integrando TODAS las perspectivas del Consejo."
         ),
     )
 
     investigador = AssistantAgent(
-        name="Investigador_Senior",
+        name="Investigador_Campo",
         model_client=model_client,
         system_message=(
-            f"Eres Investigador SNI III de {entity}. Analizas los datos desde la calidad "
-            f"científica: FWCI, h-index, redes de coautoría, evolución temporal. "
-            f"Aporta análisis técnico concreto con los números de los datos recibidos."
+            f"Eres Investigador del área de {entity} (hombre, primera generación universitaria). "
+            f"Analizas calidad científica real: FWCI, h-index, redes, evolución temporal. "
+            f"Señala también la producción que no aparece en las bases de datos."
         ),
     )
 
-    consejero = AssistantAgent(
-        name="Consejero_Universitario",
+    bibliometra = AssistantAgent(
+        name="Bibliometra",
         model_client=model_client,
         system_message=(
-            f"Eres el Consejero Universitario de {entity}. Evalúas los datos desde equidad, "
-            f"diversidad de áreas, género y ética de los datos abiertos. "
-            f"Señala sesgos en los datos y propón indicadores complementarios."
+            f"Eres Dra. en Ciencia de la Ciencia (mujer afromexicana). Analizas los datos con rigor "
+            f"metodológico: sesgos de las bases de datos, limitaciones de los indicadores, "
+            f"métodos alternativos. Propón indicadores complementarios al factor de impacto."
+        ),
+    )
+
+    politica = AssistantAgent(
+        name="Politica_Cientifica",
+        model_client=model_client,
+        system_message=(
+            f"Eres Dr. en Política Científica, ex asesor CONAHCYT (hombre árabe-mexicano). "
+            f"Conecta los hallazgos con decisiones de financiamiento, SNI, presupuesto. "
+            f"Alerta sobre el efecto Goodhart y propón recomendaciones de política concreta."
+        ),
+    )
+
+    evaluadora = AssistantAgent(
+        name="Evaluadora_Ciencia",
+        model_client=model_client,
+        system_message=(
+            f"Eres especialista en evaluación responsable de la ciencia (mujer, perspectiva post-colonial). "
+            f"Aplicas los principios DORA y el Manifiesto de Leiden. "
+            f"Evalúa si el análisis incluye ciencia ciudadana, diversidad lingüística y producción no indexada."
+        ),
+    )
+
+    consejera = AssistantAgent(
+        name="Consejera_Social",
+        model_client=model_client,
+        system_message=(
+            f"Eres Consejera de equidad y género (mujer de comunidad campesina). "
+            f"Analiza los datos desagregados por género, área y nivel de carrera. "
+            f"Visibiliza a quienes el sistema invisibiliza: técnicos, investigadoras con maternidad, etc."
+        ),
+    )
+
+    estudiante = AssistantAgent(
+        name="Estudiante_Posgrado",
+        model_client=model_client,
+        system_message=(
+            f"Eres estudiante de doctorado en {entity} con beca CONAHCYT (persona no binaria). "
+            f"Representa la perspectiva de quienes construyen su carrera en condiciones precarias. "
+            f"¿Este análisis visibiliza tesis y trabajos no publicados? ¿Promueve el acceso abierto?"
         ),
     )
 
     termination = (
         TextMentionTermination(REPORT_DONE_SIGNAL) |
-        MaxMessageTermination(15)
+        MaxMessageTermination(21)   # 3 rondas × 7 agentes
     )
     team = RoundRobinGroupChat(
-        [investigador, consejero, rector],
+        [investigador, bibliometra, politica, evaluadora, consejera, estudiante, rectora],
         termination_condition=termination,
     )
 

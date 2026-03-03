@@ -350,9 +350,13 @@ with tab_council:
         st.subheader("🗣️ Transcripción del Consejo")
 
         AGENT_ICONS = {
-            "Rector": "🎓",
-            "Investigador_Senior": "🔬",
-            "Consejero_Universitario": "📋",
+            "Rectora": "👩🏽‍🎓",
+            "Investigador_Campo": "🔬",
+            "Bibliometra": "📊",
+            "Politica_Cientifica": "🏛️",
+            "Evaluadora_Ciencia": "⚖️",
+            "Consejera_Social": "🤝",
+            "Estudiante_Posgrado": "🎓",
             "Arquitecto_de_Datos": "🏗️",
             "SINAPSIS_Tecnico": "🤖",
             "SINAPSIS_Ejecutor": "⚙️",

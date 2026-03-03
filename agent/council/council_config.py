@@ -60,11 +60,31 @@ MAX_COUNCIL_ROUNDS = 25     # Turnos máximos en el GroupChat del Consejo
 MAX_TECH_ROUNDS    = 10     # Turnos máximos en la Mesa Técnica
 MAX_EXEC_RETRIES   = 3      # Reintentos del corrector de Python
 
-# Cada agente incluye esta frase para indicar aprobación
-RECTOR_APPROVAL     = "APROBADO: Rector"
-INVESTIG_APPROVAL   = "APROBADO: Investigador_Senior"
-CONSEJERO_APPROVAL  = "APROBADO: Consejero_Universitario"
-ALL_APPROVALS       = [RECTOR_APPROVAL, INVESTIG_APPROVAL, CONSEJERO_APPROVAL]
+# ── Señales de aprobación del Consejo (7 agentes) ────────────────────────────
+# Cada agente escribe su señal para indicar que aprueba el plan.
+# Terminación: cualquier agente puede declarar CONSENSO_MAYORITARIO cuando
+# percibe que al menos 4/7 miembros han expresado aprobación.
+
+RECTORA_APPROVAL       = "APROBADO: Rectora"
+INVESTIGADOR_APPROVAL  = "APROBADO: Investigador_Campo"
+BIBLIOMETRA_APPROVAL   = "APROBADO: Bibliometra"
+POLITICA_APPROVAL      = "APROBADO: Politica_Cientifica"
+EVALUADORA_APPROVAL    = "APROBADO: Evaluadora_Ciencia"
+CONSEJERA_APPROVAL     = "APROBADO: Consejera_Social"
+ESTUDIANTE_APPROVAL    = "APROBADO: Estudiante_Posgrado"
+
+# Señal de fin: mayoría alcanzada (4/7)
+CONSENSUS_SIGNAL = "CONSENSO_MAYORITARIO"
+
+ALL_APPROVALS = [
+    RECTORA_APPROVAL, INVESTIGADOR_APPROVAL, BIBLIOMETRA_APPROVAL,
+    POLITICA_APPROVAL, EVALUADORA_APPROVAL, CONSEJERA_APPROVAL, ESTUDIANTE_APPROVAL,
+]
+
+# Compatibilidad hacia atrás (usado en autonomous_executor Fase 3b)
+RECTOR_APPROVAL    = RECTORA_APPROVAL
+INVESTIG_APPROVAL  = INVESTIGADOR_APPROVAL
+CONSEJERO_APPROVAL = CONSEJERA_APPROVAL
 
 
 # ── Esquema dinámico de las bases de datos ────────────────────────────────────
