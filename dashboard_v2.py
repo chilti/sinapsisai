@@ -306,12 +306,6 @@ with tab_council:
             consensus_plan = ""
             if mode == "🆕 Nueva sesión":
                 with st.status("🎓 Fase 1: Deliberación del Consejo Estratégico...", expanded=True):
-                    consensus_plan, plan_path = _run_async_in_thread(
-                        asyncio.coroutine(lambda: run_strategic_council(
-                            entity=council_entity,
-                            objective=council_objective,
-                            on_message=_on_message,
-                        ))()
                     consensus_plan, plan_path = run_strategic_council(
                         entity=council_entity,
                         objective=council_objective,
