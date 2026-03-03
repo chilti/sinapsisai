@@ -146,14 +146,27 @@ def search_scientific_papers_semantic(query: str, limit: int = 20, entity_contex
         all_results = sorted(results_docs + results_apis, key=lambda x: x.get("score", 0), reverse=True)
         top_results = all_results[:limit]
         
+        # Fallback: si el filtro por entidad retornó 0, buscar sin filtro
+        fallback_used = False
+        if not top_results and entity_context:
+            print(f"⚠️ Filtro por entidad '{entity_context}' sin resultados. Reintentando sin filtro...")
+            results_docs = qdrant_docs.search(query_vector, limit=limit)
+            results_apis = qdrant_apis.search(query_vector, limit=limit)
+            all_results = sorted(results_docs + results_apis, key=lambda x: x.get("score", 0), reverse=True)
+            top_results = all_results[:limit]
+            fallback_used = True
+        
         if not top_results:
             return f"No se encontraron resultados semánticos para '{query_en}'" + (f" en la entidad '{entity_context}'." if entity_context else ".")
         
         # Incluir el query traducido en el resultado para trazabilidad en el dashboard
         output = {
             "_query_enviado_a_qdrant": query_en,
-            "resultados": top_results
+            "_entity_filter": entity_context or "ninguno",
         }
+        if fallback_used:
+            output["_advertencia"] = f"El campo 'entity' no está poblado en Qdrant para '{entity_context}'. Se muestran resultados globales. Re-ingesta necesaria."
+        output["resultados"] = top_results
         return json.dumps(output, ensure_ascii=False)
     except Exception as e:
         return f"Error en búsqueda semántica: {str(e)}"
@@ -162,15 +175,24 @@ def search_scientific_papers_semantic(query: str, limit: int = 20, entity_contex
 def get_author_coauthors_graph(author_name: str) -> str:
     """
     Consulta el Grafo de Conocimiento (Neo4j) para encontrar coautores de un investigador.
-    Útil para mapear redes de colaboración y líneas de investigación compartidas.
+    Ústil para mapear redes de colaboración y líneas de investigación compartidas.
+    Usa búsqueda parcial: proporciona solo el apellido o parte del nombre.
     """
-    print(f"🕸️ Consultando grafo de coautoría para: '{author_name}'")
-    coauthors = neo4j.get_author_coauthors(author_name)
+    print(f"✨️ Consultando grafo de coautoría para: '{author_name}'")
+    with neo4j.driver.session() as session:
+        result = session.run(
+            "MATCH (a1:Author)-[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(a2:Author) "
+            "WHERE toLower(a1.name) CONTAINS toLower($name) AND a1 <> a2 "
+            "RETURN DISTINCT a2.name AS coauthor, count(p) AS shared_papers "
+            "ORDER BY shared_papers DESC LIMIT 20",
+            name=author_name
+        )
+        coauthors = [{"coauthor": r["coauthor"], "shared_papers": r["shared_papers"]} for r in result]
     
     if not coauthors:
-        return f"No se encontró información de coautores para {author_name} en el grafo."
+        return f"No se encontró información de coautores para '{author_name}'. Verifica que el apellido esté correcto."
         
-    return json.dumps({"author": author_name, "coauthors": coauthors}, ensure_ascii=False)
+    return json.dumps({"author_query": author_name, "coauthors": coauthors}, ensure_ascii=False)
 
 @tool
 def query_knowledge_graph_cypher(cypher_query: str) -> str:
@@ -194,7 +216,9 @@ def query_knowledge_graph_cypher(cypher_query: str) -> str:
     PATRONES DE CONSULTA RECOMENDADOS (SINTAXIS CORRECTA):
     - Filtrar por entidad y tópico exacto: `MATCH (e:Entity {name: 'Instituto de Ciencias Nucleares'})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic) WHERE toLower(t.name) CONTAINS 'microscopy' RETURN p.title, a.name, p.year ORDER BY p.year DESC LIMIT 20`
     - Filtrar por tópico AMPLIO (usa OR para cubrir variantes): `WHERE toLower(t.name) CONTAINS 'diabetes' OR toLower(t.name) CONTAINS 'insulin' OR toLower(t.name) CONTAINS 'metabolic'`
-    - Búsqueda parcial de nombres: `WHERE toLower(a.name) CONTAINS toLower('Bucio Carrillo')`
+    - Búsqueda por nombre de persona (usa CONTAINS, NUNCA match exacto):
+      `MATCH (a:Author)-[:AUTHORED]->(p:Paper) WHERE toLower(a.name) CONTAINS toLower('alcubierre') RETURN p.title, a.name, p.year ORDER BY p.year DESC LIMIT 20`
+      RAZÓN: Los nombres están almacenados en formato 'APELLIDO PATERNO, NOMBRE' en MAYÚSCULAS (ej. 'ALCUBIERRE MOYA, MIGUEL'). Un match exacto con el nombre coloquial SIEMPRE fallará.
     
     IMPORTANTE: Esta herramienta solo encuentra trabajos con tópicos etiquetados explícitamente. Usa SIEMPRE en paralelo con `search_scientific_papers_semantic` para encontrar trabajos cuyo tópico no coincide textualmente. SIEMPRE usa `LIMIT 20` por defecto en tus consultas Cypher.
     """
@@ -236,30 +260,26 @@ def wikipedia_search(query: str) -> str:
 # --- Herramientas OpenAlex (Recuperación Directa) ---
 
 @tool
-def recoverFromOpenAlex(doi: str) -> str:
-    """Recupera por DOI el registro bibliográfico completo y algunos indicadores del documento desde OpenAlex."""
+def recoverFromOpenAlex(doi: str, fields: Optional[str] = None) -> str:
+    """Recupera el registro bibliográfico de un paper desde OpenAlex usando su DOI.
+    
+    Args:
+        doi: El DOI del paper (con o sin prefijo https://doi.org/).
+        fields: Opcional. Campo específico a extraer. 
+                Keys útiles: 'fwci', 'cited_by_count', 'topics', 'concepts', 
+                'sustainable_development_goals', 'abstract_inverted_index', 'open_access'.
+                Si no se especifica, retorna el registro completo.
+    """
     try:
-        # Normalizar DOI
         clean_doi = doi.replace("https://doi.org/", "").strip()
         work = Works()[f"https://doi.org/{clean_doi}"]
+        if fields:
+            if fields in work:
+                return json.dumps(work.get(fields), ensure_ascii=False)
+            return f"Campo '{fields}' no encontrado. Campos disponibles: {list(work.keys())}"
         return json.dumps(work, ensure_ascii=False)
     except Exception as e:
         return f"Error recuperando DOI {doi}: {str(e)}"
-
-@tool
-def recoverFieldFromRecordFromOpenAlex(doi: str, key: str) -> str:
-    """
-    Recupera un campo específico de un registro de OpenAlex usando el DOI.
-    Keys útiles: 'fwci', 'cited_by_count', 'topics', 'concepts', 'sustainable_development_goals', 'abstract_inverted_index'.
-    """
-    try:
-        clean_doi = doi.replace("https://doi.org/", "").strip()
-        work = Works()[f"https://doi.org/{clean_doi}"]
-        if key in work:
-            return json.dumps(work.get(key), ensure_ascii=False)
-        return f"Campo '{key}' no encontrado en el registro."
-    except Exception as e:
-        return f"Error: {str(e)}"
 
 @tool
 def searchAuthorInOpenAlex(fullname: str, n: int = 5) -> str:
@@ -312,15 +332,174 @@ def recoverAuthorWorksFromOpenAlex(author_id: str, n: int = 10) -> str:
     except Exception as e:
         return f"Error recuperando trabajos: {str(e)}"
 
+
+# --- Herramientas de Propósito General (Fase 2) ---
+
+@tool
+def get_entity_statistics(entity_name: str) -> str:
+    """
+    Obtiene estadísticas completas de producción científica para una entidad UNAM.
+    Retorna: total de papers, total de académicos, top 10 tópicos más frecuentes,
+    rango de años de publicación y los 5 papers más citados.
+    Usar cuando el usuario pregunte por el perfil o productividad de una institución.
+    """
+    print(f"📊 Calculando estadísticas para entidad: '{entity_name}'")
+    try:
+        with neo4j.driver.session() as session:
+            # Total papers y académicos
+            counts = session.run("""
+                MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)
+                RETURN count(DISTINCT p) AS total_papers, count(DISTINCT a) AS total_academics,
+                       min(p.year) AS year_min, max(p.year) AS year_max
+            """, entity=entity_name).single()
+
+            # Top tópicos
+            topics = session.run("""
+                MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic)
+                RETURN t.name AS topic, count(p) AS papers
+                ORDER BY papers DESC LIMIT 10
+            """, entity=entity_name).data()
+
+            # Top 5 más citados
+            top_cited = session.run("""
+                MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)
+                WHERE p.citations IS NOT NULL AND p.citations > 0
+                RETURN p.title AS title, p.year AS year, p.citations AS citations, a.name AS author
+                ORDER BY citations DESC LIMIT 5
+            """, entity=entity_name).data()
+
+        if not counts or counts["total_papers"] == 0:
+            return f"No se encontraron datos para la entidad '{entity_name}'."
+
+        result = {
+            "entidad": entity_name,
+            "total_papers": counts["total_papers"],
+            "total_académicos": counts["total_academics"],
+            "rango_años": f"{counts['year_min']} – {counts['year_max']}",
+            "top_tópicos": topics,
+            "papers_más_citados": top_cited
+        }
+        return json.dumps(result, ensure_ascii=False)
+    except Exception as e:
+        return f"Error calculando estadísticas: {str(e)}"
+
+
+@tool
+def get_researcher_profile(name_fragment: str) -> str:
+    """
+    Recupera el perfil académico completo de un investigador de la UNAM buscando 
+    por nombre parcial (apellido o parte del nombre es suficiente).
+    Retorna: entidad afiliada, total de papers, top 5 tópicos, coautores principales,
+    ORCID, Scopus ID y enlace SIIA.
+    Usar cuando el usuario pregunte por un investigador específico.
+    """
+    print(f"👤 Buscando perfil del investigador: '{name_fragment}'")
+    try:
+        with neo4j.driver.session() as session:
+            # Datos básicos del investigador
+            profile = session.run("""
+                MATCH (a:Academic)-[:AFFILIATED_TO]->(e:Entity)
+                WHERE toLower(a.name) CONTAINS toLower($name)
+                RETURN a.name AS name, a.orcid AS orcid, a.scopus_id AS scopus_id,
+                       a.siia_url AS siia_url, e.name AS entity
+                LIMIT 3
+            """, name=name_fragment).data()
+
+            if not profile:
+                return f"No se encontró ningún investigador con '{name_fragment}'. Intenta con el apellido paterno."
+
+            results = []
+            for p in profile:
+                academic_name = p["name"]
+
+                # Total papers y rango de años
+                paper_stats = session.run("""
+                    MATCH (a:Academic {name: $name})-[:AUTHORED]->(p:Paper)
+                    RETURN count(p) AS total, min(p.year) AS year_min, max(p.year) AS year_max,
+                           sum(p.citations) AS total_citations
+                """, name=academic_name).single()
+
+                # Top tópicos
+                topics = session.run("""
+                    MATCH (a:Academic {name: $name})-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic)
+                    RETURN t.name AS topic, count(p) AS papers ORDER BY papers DESC LIMIT 5
+                """, name=academic_name).data()
+
+                # Top coautores
+                coauthors = session.run("""
+                    MATCH (a1:Author)-[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(a2:Author)
+                    WHERE a1.name = $name AND a1 <> a2
+                    RETURN a2.name AS coauthor, count(p) AS shared ORDER BY shared DESC LIMIT 5
+                """, name=academic_name).data()
+
+                results.append({
+                    "nombre": p["name"],
+                    "entidad": p["entity"],
+                    "orcid": p.get("orcid"),
+                    "scopus_id": p.get("scopus_id"),
+                    "siia_url": p.get("siia_url"),
+                    "total_papers": paper_stats["total"] if paper_stats else 0,
+                    "rango_años": f"{paper_stats['year_min']} – {paper_stats['year_max']}" if paper_stats and paper_stats["year_min"] else "N/A",
+                    "citas_totales": paper_stats["total_citations"] if paper_stats else 0,
+                    "top_tópicos": topics,
+                    "coautores_principales": coauthors
+                })
+
+        return json.dumps(results, ensure_ascii=False)
+    except Exception as e:
+        return f"Error recuperando perfil: {str(e)}"
+
+
+@tool
+def get_trending_topics(entity_name: Optional[str] = None, start_year: int = 2018) -> str:
+    """
+    Retorna los tópicos de investigación con mayor crecimiento en publicaciones
+    desde start_year. Opcionalmente filtrado por entidad UNAM.
+    Útil para identificar áreas emergentes o tendencias en producción científica.
+    """
+    print(f"📈 Calculando tópicos con tendencia desde {start_year}" + (f" para '{entity_name}'" if entity_name else ""))
+    try:
+        with neo4j.driver.session() as session:
+            if entity_name:
+                query = """
+                    MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic)
+                    WHERE p.year >= $year
+                    RETURN t.name AS topic, count(p) AS papers, collect(DISTINCT p.year) AS years
+                    ORDER BY papers DESC LIMIT 15
+                """
+                data = session.run(query, entity=entity_name, year=start_year).data()
+            else:
+                query = """
+                    MATCH (p:Paper)-[:HAS_TOPIC]->(t:Topic)
+                    WHERE p.year >= $year
+                    RETURN t.name AS topic, count(p) AS papers, collect(DISTINCT p.year) AS years
+                    ORDER BY papers DESC LIMIT 15
+                """
+                data = session.run(query, year=start_year).data()
+
+        if not data:
+            return "No se encontraron datos de tópicos para los filtros indicados."
+
+        return json.dumps({
+            "desde_año": start_year,
+            "entidad": entity_name or "Todas las entidades",
+            "tópicos_tendencia": data
+        }, ensure_ascii=False)
+    except Exception as e:
+        return f"Error calculando tendencias: {str(e)}"
+
+
 # Lista de herramientas híbridas para exportar
 hybrid_tools = [
     search_scientific_papers_semantic,
     get_author_coauthors_graph,
     query_knowledge_graph_cypher,
+    get_entity_statistics,
+    get_researcher_profile,
+    get_trending_topics,
     web_search,
     wikipedia_search,
-    recoverFromOpenAlex,
-    recoverFieldFromRecordFromOpenAlex,
+    recoverFromOpenAlex,        # Consolida recoverFromOpenAlex + recoverFieldFromRecordFromOpenAlex
     searchAuthorInOpenAlex,
     recoverAuthorWorksFromOpenAlex
 ]
