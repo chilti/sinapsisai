@@ -89,7 +89,9 @@ def _trending_topics(entity_name: Optional[str] = None, start_year: int = 2018) 
     return get_trending_topics.invoke({"entity_name": entity_name, "start_year": start_year})
 
 def _coauthors(author_name: str) -> str:
-    """Red de coautores de un investigador."""
+    """Extrae la red de coautores de un INVESTIGADOR (persona). NO uses nombres de instituciones."""
+    if not author_name or any(x in author_name.lower() for x in ["facultad", "instituto", "universidad", "unam"]):
+        return f"Error: '{author_name}' parece una institución. Esta herramienta requiere el nombre de un INVESTIGADOR (persona)."
     return get_author_coauthors_graph.invoke({"author_name": author_name})
 
 def _openalex(doi: str, fields: Optional[str] = None) -> str:
@@ -131,7 +133,7 @@ def _make_tools() -> list:
         FunctionTool(_entity_stats,         name="get_entity_statistics",        description="Estadísticas de entidad UNAM"),
         FunctionTool(_researcher_profile,   name="get_researcher_profile",       description="Perfil de investigador"),
         FunctionTool(_trending_topics,      name="get_trending_topics",          description="Tópicos emergentes"),
-        FunctionTool(_coauthors,            name="get_author_coauthors_graph",   description="Red de coautores"),
+        FunctionTool(_coauthors,            name="get_author_coauthors_graph",   description="Red de coautores de un INVESTIGADOR (persona)"),
         FunctionTool(_openalex,             name="openalex_doi",                 description="Datos bibliométricos por DOI"),
         FunctionTool(_openalex_search_author, name="openalex_search_author",    description="Busca autor en OpenAlex"),
         FunctionTool(_openalex_author_works,  name="openalex_author_works",     description="Trabajos de autor en OpenAlex"),
@@ -406,10 +408,15 @@ async def _run_data_collection(
                 if clean_content:
                     data_summary.append(clean_content)
             
-            # Guardamos para el log, pero para el prompt futuro limitamos el historial
-            if on_message:
-                on_message(src, content)
+            # Capturar tablas de markdown (datos reales)
+            if "|" in content and "-|-" in content:
+                data_summary.append(content)
             
+            # Capturar resultados JSON si parecen contener datos útiles
+            if content.startswith("[") or content.startswith("{"):
+                if len(content) > 100: # Evitar capturar errores cortos
+                    data_summary.append(content)
+
             # Filtro del histórico: no dejamos que collected_parts crezca sin control
             # Guardamos los resultados de los pasos para el consejo
             if "**Resultado [" in content:

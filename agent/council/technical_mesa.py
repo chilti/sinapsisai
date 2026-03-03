@@ -90,6 +90,7 @@ async def _run_mesa_async(
             f"  WHERE toLower(a.name) CONTAINS toLower('apellido')\n"
             f"- Los tópicos en Neo4j están en inglés. Traduce siempre.\n"
             f"- Para búsqueda semántica usa search_scientific_papers_semantic con entity_context=\"{{ENTITY}}\".\n"
+            f"- La herramienta get_author_coauthors_graph RÉQUIERE el nombre de un INVESTIGADOR (persona), NO el nombre de una institución.\n"
             f"- REGLA CRÍTICA: El Python_CodeExecutor NO puede llamar a otras herramientas como query_knowledge_graph_cypher. "
             f"  Debes extraer los datos primero con la herramienta de Cypher, y luego pasar los resultados al bloque Python."
             f"- Cuando termines el script completo, escribe: SCRIPT_TÉCNICO_LISTO"
