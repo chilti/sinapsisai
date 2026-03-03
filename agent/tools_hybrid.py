@@ -500,14 +500,139 @@ def get_trending_topics(entity_name: Optional[str] = None, start_year: int = 201
         return f"Error calculando tendencias: {str(e)}"
 
 
+
+@tool
+def get_coauthorship_network_for_entity(entity_name: str, start_year: int = 2015, limit_nodes: int = 50) -> str:
+    """
+    Construye la red de coautoría de TODOS los investigadores de una entidad UNAM.
+    Devuelve JSON con `nodes` (autores) y `edges` (colaboraciones) listo para usar con networkx.
+
+    Usa entity_name con el nombre EXACTO de la entidad en el grafo (ej. "Facultad de Ciencias").
+    El análisis incluye colaboraciones tanto con otros académicos de la misma entidad como con autores externos.
+
+    Retorna:
+    - nodes: lista de {id, name, papers_count, is_internal}
+    - edges: lista de {source, target, shared_papers, topics}
+    """
+    print(f"🕸️ Construyendo red de coautoría para: {entity_name}")
+    try:
+        with neo4j.driver.session() as session:
+            # Nodos: autores internos de la entidad con sus papers
+            nodes_q = """
+            MATCH (e:Entity)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)
+            WHERE toLower(e.name) CONTAINS toLower($entity) AND p.year >= $year
+            RETURN a.name AS name, count(DISTINCT p) AS papers_count
+            ORDER BY papers_count DESC
+            LIMIT $limit
+            """
+            nodes_raw = session.run(nodes_q, entity=entity_name, year=start_year, limit=limit_nodes).data()
+            if not nodes_raw:
+                return f"No se encontraron autores para '{entity_name}' desde {start_year}."
+
+            internal_names = {r["name"] for r in nodes_raw}
+            nodes = [{"id": r["name"], "name": r["name"], "papers_count": r["papers_count"], "is_internal": True}
+                     for r in nodes_raw]
+
+            # Aristas: pares de autores que comparten papers
+            edges_q = """
+            MATCH (e:Entity)<-[:AFFILIATED_TO]-(a1:Academic)-[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(a2:Author)
+            WHERE toLower(e.name) CONTAINS toLower($entity) AND p.year >= $year
+              AND id(a1) < id(a2)
+            RETURN a1.name AS source, a2.name AS target,
+                   count(DISTINCT p) AS shared_papers,
+                   collect(DISTINCT p.year)[..3] AS sample_years
+            ORDER BY shared_papers DESC
+            LIMIT 200
+            """
+            edges_raw = session.run(edges_q, entity=entity_name, year=start_year).data()
+
+            # Añadir autores externos como nodos adicionales
+            external = {e["target"] for e in edges_raw if e["target"] not in internal_names}
+            for ext_name in list(external)[:20]:  # Máx 20 externos para no saturar
+                nodes.append({"id": ext_name, "name": ext_name, "papers_count": 0, "is_internal": False})
+
+            result = {
+                "entity": entity_name,
+                "desde_año": start_year,
+                "nodes_count": len(nodes),
+                "edges_count": len(edges_raw),
+                "nodes": nodes,
+                "edges": edges_raw,
+            }
+            return json.dumps(result, ensure_ascii=False)
+
+    except Exception as e:
+        return f"Error construyendo red de coautoría: {str(e)}"
+
+
+@tool
+def get_topic_evolution(entity_name: str, start_year: int = 2018, end_year: int = 2024) -> str:
+    """
+    Retorna la evolución año-a-año de los temas de investigación de una entidad.
+    Útil para detectar qué temas están creciendo, estabilizándose o declinando.
+
+    Devuelve tabla con: topic_name, year, paper_count, avg_citations.
+    Incluye un campo `trend` con variación porcentual respecto al año anterior.
+
+    Usa entity_name con el nombre EXACTO de la entidad en el grafo.
+    """
+    print(f"📊 Calculando evolución temática para '{entity_name}' ({start_year}-{end_year})")
+    try:
+        with neo4j.driver.session() as session:
+            query = """
+            MATCH (e:Entity)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic)
+            WHERE toLower(e.name) CONTAINS toLower($entity)
+              AND p.year >= $start_year AND p.year <= $end_year
+            RETURN t.name AS topic, p.year AS year,
+                   count(DISTINCT p) AS paper_count,
+                   round(avg(coalesce(p.citations, 0)), 2) AS avg_citations
+            ORDER BY topic, year
+            """
+            data = session.run(
+                query, entity=entity_name, start_year=start_year, end_year=end_year
+            ).data()
+
+        if not data:
+            return f"No se encontraron datos temáticos para '{entity_name}' en el rango {start_year}-{end_year}."
+
+        # Calcular tendencia: variación vs año anterior por topic
+        from collections import defaultdict
+        by_topic = defaultdict(dict)
+        for row in data:
+            by_topic[row["topic"]][row["year"]] = row["paper_count"]
+
+        enriched = []
+        for row in data:
+            topic = row["topic"]
+            year = row["year"]
+            prev = by_topic[topic].get(year - 1)
+            if prev and prev > 0:
+                trend = round((row["paper_count"] - prev) / prev * 100, 1)
+            else:
+                trend = None
+            enriched.append({**row, "trend_pct_vs_prev_year": trend})
+
+        return json.dumps({
+            "entity": entity_name,
+            "rango": f"{start_year}-{end_year}",
+            "total_registros": len(enriched),
+            "data": enriched,
+        }, ensure_ascii=False)
+
+    except Exception as e:
+        return f"Error calculando evolución temática: {str(e)}"
+
+
 # Lista de herramientas híbridas para exportar
 hybrid_tools = [
     search_scientific_papers_semantic,
     get_author_coauthors_graph,
+    get_coauthorship_network_for_entity,
     query_knowledge_graph_cypher,
     get_entity_statistics,
     get_researcher_profile,
     get_trending_topics,
+    get_topic_evolution,
     web_search,
     wikipedia_search,
     recoverFromOpenAlex,        # Consolida recoverFromOpenAlex + recoverFieldFromRecordFromOpenAlex
