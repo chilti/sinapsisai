@@ -146,13 +146,15 @@ def verify_and_scrape_siia(driver, name_to_verify, url):
                 sub_elements = tree.xpath('.//span') # Más general
                 for sub_element in sub_elements:
                    data['scopus'].append(sub_element.text_content().strip())
-            except Exception:
+            except Exception as e:
+                print(f"    ❌ Error al extraer Scopus: {e}")
                 pass
 
         # Orcid
         try:
             data['orcid'] = driver.find_element(By.XPATH, '//html/body/center/div/table[2]/tbody/tr[6]/td/span/a').get_attribute('href')
-        except NoSuchElementException:
+        except NoSuchElementException as e:
+            print(f"    ❌ Error al extraer ORCID: {e}")
             pass
 
         # Áreas Temáticas
@@ -165,7 +167,8 @@ def verify_and_scrape_siia(driver, name_to_verify, url):
                 area_text = sub_element.text_content().strip()
                 if area_text:
                     data['areas'].append(area_text)
-        except Exception:
+        except Exception as e:
+            print(f"    ❌ Error al extraer áreas: {e}")
             pass 
 
         return data
