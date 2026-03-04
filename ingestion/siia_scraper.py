@@ -333,14 +333,14 @@ def main():
                 print(f"    🌐 Revisando link: {link}")
                 scraped_data = verify_and_scrape_siia(driver, profesor_name, link)
                 
-            if scraped_data:
-                # Guardamos la data
-                profesores_data[profesor_name]['siia'] = link
-                profesores_data[profesor_name]['scopus'] = scraped_data.get('scopus', '')
-                profesores_data[profesor_name]['orcid'] = scraped_data.get('orcid', '')
-                profesores_data[profesor_name]['areas'] = scraped_data.get('areas', [])
-                found = True
-                break
+                if scraped_data:
+                    # Guardamos la data
+                    profesores_data[profesor_name]['siia'] = link
+                    profesores_data[profesor_name]['scopus'] = scraped_data.get('scopus', '')
+                    profesores_data[profesor_name]['orcid'] = scraped_data.get('orcid', '')
+                    profesores_data[profesor_name]['areas'] = scraped_data.get('areas', [])
+                    found = True
+                    break
             
             if not found:
                 profesores_data[profesor_name]['siia'] = 'No encontrado en los hits iniciales'
