@@ -232,6 +232,9 @@ def obtener_metadatos_de_orcid(orcid_url):
     except Exception as e:
         print(f"    Advertencia en ORCID para {orcid_id}: {e}")
     
+    if metadatos:
+        print(f"    [ORCID] ID {orcid_id}: {len(metadatos)} documentos encontrados.")
+        
     return metadatos
 
 # --- Lógica principal de ingesta ---
