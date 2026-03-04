@@ -626,6 +626,114 @@ def get_topic_evolution(entity_name: str, start_year: int = 2018, end_year: int 
         return f"Error calculando evolución temática: {str(e)}"
 
 
+@tool
+def get_sdg_distribution(
+    entity_name: str,
+    start_year: int = 2018,
+    end_year: int = 2026
+) -> str:
+    """
+    Distribución de publicaciones por Objetivo de Desarrollo Sostenible (ODS/SDG) para
+    una entidad UNAM. Requiere que los nodos :SDG y la relación :ADDRESSES estén
+    materializados en Neo4j (usar ingest_sdg.py o materialize_sdg_relations.py).
+
+    Retorna:
+    - Conteo de papers por SDG
+    - Evolución temporal (papers por SDG por año)
+    - Top 5 investigadores más activos en cada SDG
+    - Temas (topics) dominantes por SDG
+    """
+    try:
+        graph = Neo4jGraphStore()
+
+        # 1. Distribución global por SDG
+        dist_query = """
+        MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)
+              -[:ADDRESSES]->(s:SDG)
+        WHERE p.year >= $start AND p.year <= $end
+        RETURN s.id AS sdg_id,
+               s.name AS sdg_name,
+               count(DISTINCT p) AS papers,
+               count(DISTINCT a) AS researchers,
+               avg(COALESCE(toFloat(p.citations), 0)) AS avg_citations
+        ORDER BY papers DESC
+        """
+
+        # 2. Evolución temporal
+        evol_query = """
+        MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)
+              -[:ADDRESSES]->(s:SDG)
+        WHERE p.year >= $start AND p.year <= $end
+        RETURN s.id AS sdg_id, s.name AS sdg_name, p.year AS year,
+               count(DISTINCT p) AS papers
+        ORDER BY s.id, p.year
+        """
+
+        # 3. Top investigadores por SDG
+        top_query = """
+        MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)
+              -[:ADDRESSES]->(s:SDG)
+        WHERE p.year >= $start AND p.year <= $end
+        RETURN s.id AS sdg_id, a.name AS researcher, count(DISTINCT p) AS papers
+        ORDER BY s.id, papers DESC
+        """
+
+        params = {"entity": entity_name, "start": start_year, "end": end_year}
+
+        with graph.driver.session() as session:
+            dist_rows   = [dict(r) for r in session.run(dist_query,   **params)]
+            evol_rows   = [dict(r) for r in session.run(evol_query,   **params)]
+            top_rows    = [dict(r) for r in session.run(top_query,    **params)]
+
+        graph.close()
+
+        if not dist_rows:
+            return json.dumps({
+                "entity": entity_name,
+                "mensaje": "No se encontraron relaciones :ADDRESSES con nodos :SDG. "
+                           "Ejecuta ingest_sdg.py o materialize_sdg_relations.py primero.",
+                "distribucion": []
+            }, ensure_ascii=False)
+
+        # Agrupar top investigadores por SDG
+        from collections import defaultdict
+        top_by_sdg: dict = defaultdict(list)
+        for r in top_rows:
+            if len(top_by_sdg[r["sdg_id"]]) < 5:
+                top_by_sdg[r["sdg_id"]].append(
+                    {"researcher": r["researcher"], "papers": r["papers"]}
+                )
+
+        # Agrupar evolución por SDG
+        evol_by_sdg: dict = defaultdict(list)
+        for r in evol_rows:
+            evol_by_sdg[r["sdg_id"]].append({"year": r["year"], "papers": r["papers"]})
+
+        # Ensamblar resultado
+        distribucion = []
+        for row in dist_rows:
+            sid = row["sdg_id"]
+            distribucion.append({
+                "sdg_id":        sid,
+                "sdg_name":      row["sdg_name"],
+                "papers":        row["papers"],
+                "researchers":   row["researchers"],
+                "avg_citations": round(float(row["avg_citations"] or 0), 2),
+                "top_researchers": top_by_sdg.get(sid, []),
+                "evolucion":       evol_by_sdg.get(sid, []),
+            })
+
+        return json.dumps({
+            "entity":   entity_name,
+            "rango":    f"{start_year}-{end_year}",
+            "total_sdgs_con_papers": len(distribucion),
+            "distribucion": distribucion,
+        }, ensure_ascii=False)
+
+    except Exception as e:
+        return f"Error en get_sdg_distribution: {str(e)}"
+
+
 # Lista de herramientas híbridas para exportar
 hybrid_tools = [
     search_scientific_papers_semantic,
@@ -636,6 +744,7 @@ hybrid_tools = [
     get_researcher_profile,
     get_trending_topics,
     get_topic_evolution,
+    get_sdg_distribution,
     web_search,
     wikipedia_search,
     recoverFromOpenAlex,        # Consolida recoverFromOpenAlex + recoverFieldFromRecordFromOpenAlex

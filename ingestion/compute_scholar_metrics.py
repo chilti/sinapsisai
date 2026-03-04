@@ -39,6 +39,51 @@ def _get_h_index(citations_list):
             break
     return h
 
+CURRENT_YEAR = 2026
+
+def compute_citation_velocity(counts_by_year, pub_year) -> dict:
+    """
+    Deriva métricas de trayectoria de citas a partir de counts_by_year de OpenAlex.
+    Retorna: velocity (citas/año), recent_cites_3yr, early_impact (año de pub +1),
+             peak_year y half_life (año en que se acumuló el 50% de las citas).
+    """
+    if not isinstance(counts_by_year, list) or not counts_by_year:
+        return {'velocity': np.nan, 'recent_cites_3yr': 0,
+                'early_impact': 0, 'peak_year': pub_year, 'half_life': np.nan}
+    try:
+        pub_year = int(pub_year)
+    except (TypeError, ValueError):
+        return {'velocity': np.nan, 'recent_cites_3yr': 0,
+                'early_impact': 0, 'peak_year': pub_year, 'half_life': np.nan}
+
+    age   = max(1, CURRENT_YEAR - pub_year)
+    total = sum(y.get('cited_by_count', 0) for y in counts_by_year)
+    recent = sum(y.get('cited_by_count', 0) for y in counts_by_year
+                 if y.get('year', 0) >= CURRENT_YEAR - 3)
+    early  = sum(y.get('cited_by_count', 0) for y in counts_by_year
+                 if y.get('year', 0) <= pub_year + 1)
+    peak_entry = max(counts_by_year, key=lambda x: x.get('cited_by_count', 0), default={})
+    peak_year  = peak_entry.get('year', pub_year)
+
+    # Vida media: año en que se acumula el 50% de las citas
+    half_life = np.nan
+    if total > 0:
+        sorted_by_year = sorted(counts_by_year, key=lambda x: x.get('year', 0))
+        cumsum = 0
+        for entry in sorted_by_year:
+            cumsum += entry.get('cited_by_count', 0)
+            if cumsum >= total / 2:
+                half_life = CURRENT_YEAR - entry.get('year', CURRENT_YEAR)
+                break
+
+    return {
+        'velocity':         round(total / age, 3),
+        'recent_cites_3yr': int(recent),
+        'early_impact':     int(early),
+        'peak_year':        int(peak_year),
+        'half_life':        half_life,
+    }
+
 def extract_academic_papers():
     """Descarga los metadatos completos de todas las publicaciones por Académico."""
     graph_store = Neo4jGraphStore()
@@ -322,12 +367,75 @@ def aggregate_metrics(df_papers, group_cols):
         df_papers['citation_normalized_percentile'] = pd.to_numeric(df_papers['citation_normalized_percentile'], errors='coerce')
     
     if 'oa_status' in df_papers.columns:
-        df_papers['is_oa_gold'] = (df_papers['oa_status'] == 'gold').astype(int)
-        df_papers['is_oa_green'] = (df_papers['oa_status'] == 'green').astype(int)
+        df_papers['is_oa_gold']   = (df_papers['oa_status'] == 'gold').astype(int)
+        df_papers['is_oa_green']  = (df_papers['oa_status'] == 'green').astype(int)
         df_papers['is_oa_hybrid'] = (df_papers['oa_status'] == 'hybrid').astype(int)
         df_papers['is_oa_bronze'] = (df_papers['oa_status'] == 'bronze').astype(int)
         df_papers['is_oa_closed'] = (df_papers['oa_status'] == 'closed').astype(int)
-    
+
+    # ── Nuevos campos de alto impacto ───────────────────────────────
+    # Velocidad de citas por paper
+    if 'counts_by_year' in df_papers.columns and 'year' in df_papers.columns:
+        vel_data = df_papers.apply(
+            lambda r: compute_citation_velocity(
+                r.get('counts_by_year', []), r.get('year', CURRENT_YEAR)
+            ), axis=1, result_type='expand'
+        )
+        for col in ['velocity', 'recent_cites_3yr', 'early_impact', 'half_life']:
+            df_papers[col] = vel_data[col]
+    else:
+        for col in ['velocity', 'recent_cites_3yr', 'early_impact', 'half_life']:
+            df_papers[col] = np.nan
+
+    # APC
+    for col in ['apc_paid_usd', 'apc_list_usd']:
+        if col in df_papers.columns:
+            df_papers[col] = pd.to_numeric(df_papers[col], errors='coerce').fillna(0)
+        else:
+            df_papers[col] = 0.0
+    df_papers['has_apc'] = (df_papers['apc_paid_usd'] > 0).astype(int)
+
+    # Colaboración
+    if 'countries_distinct_count' in df_papers.columns:
+        df_papers['countries_distinct_count'] = pd.to_numeric(df_papers['countries_distinct_count'], errors='coerce').fillna(0)
+        df_papers['is_international'] = (df_papers['countries_distinct_count'] >= 2).astype(int)
+    else:
+        df_papers['countries_distinct_count'] = 0.0
+        df_papers['is_international'] = 0
+
+    if 'author_count' in df_papers.columns:
+        df_papers['author_count'] = pd.to_numeric(df_papers['author_count'], errors='coerce').fillna(0)
+    else:
+        df_papers['author_count'] = 0.0
+
+    # Indexación y acceso
+    for bool_col in ['journal_is_in_doaj', 'journal_is_core', 'is_retracted', 'any_repository_has_fulltext']:
+        if bool_col in df_papers.columns:
+            df_papers[bool_col] = df_papers[bool_col].fillna(False).astype(int)
+        else:
+            df_papers[bool_col] = 0
+
+    if 'indexed_in' in df_papers.columns:
+        df_papers['in_pubmed'] = df_papers['indexed_in'].apply(
+            lambda x: int('pubmed' in (x or [])) if isinstance(x, list) else 0
+        )
+        df_papers['in_doaj'] = df_papers['indexed_in'].apply(
+            lambda x: int('doaj' in (x or [])) if isinstance(x, list) else 0
+        )
+    else:
+        df_papers['in_pubmed'] = 0
+        df_papers['in_doaj']   = 0
+
+    if 'language' in df_papers.columns:
+        df_papers['is_english'] = (df_papers['language'].fillna('').str.lower() == 'en').astype(int)
+    else:
+        df_papers['is_english'] = 0
+
+    if 'license' in df_papers.columns:
+        df_papers['is_cc_by'] = (df_papers['license'].fillna('').str.lower().str.contains('cc-by', na=False)).astype(int)
+    else:
+        df_papers['is_cc_by'] = 0
+
     agg_funcs = {
         'paper_id': 'count',
         'citations': 'sum',
@@ -340,7 +448,30 @@ def aggregate_metrics(df_papers, group_cols):
         'is_oa_green': 'mean',
         'is_oa_hybrid': 'mean',
         'is_oa_bronze': 'mean',
-        'is_oa_closed': 'mean'
+        'is_oa_closed': 'mean',
+        # Velocidad de citas
+        'velocity':          'mean',
+        'recent_cites_3yr':  'sum',
+        'early_impact':      'mean',
+        'half_life':         'mean',
+        # APC
+        'apc_paid_usd': 'sum',
+        'apc_list_usd': 'sum',
+        'has_apc':      'mean',
+        # Colaboración
+        'is_international':       'mean',
+        'countries_distinct_count': 'mean',
+        'author_count':           'mean',
+        # Indexación / visibilidad
+        'in_pubmed':             'mean',
+        'in_doaj':               'mean',
+        'journal_is_in_doaj':    'mean',
+        'journal_is_core':       'mean',
+        'is_retracted':          'mean',
+        'any_repository_has_fulltext': 'mean',
+        # Idioma y licencia
+        'is_english': 'mean',
+        'is_cc_by':   'mean',
     }
     
     # Agregar columnas informativas si existen y no están en group_cols
@@ -350,29 +481,48 @@ def aggregate_metrics(df_papers, group_cols):
     
     df_agg = df_papers.groupby(group_cols).agg(agg_funcs).reset_index()
     df_agg.rename(columns={
-        'paper_id': 'num_documents',
-        'fwci': 'fwci_avg',
+        'paper_id':                       'num_documents',
+        'fwci':                           'fwci_avg',
         'citation_normalized_percentile': 'percentile_avg',
-        'is_in_top_10_percent': 'pct_top_10',
-        'is_in_top_1_percent': 'pct_1',
-        'is_oa': 'pct_open_access',
-        'is_oa_gold': 'pct_oa_gold',
-        'is_oa_green': 'pct_oa_green',
-        'is_oa_hybrid': 'pct_oa_hybrid',
-        'is_oa_bronze': 'pct_oa_bronze',
-        'is_oa_closed': 'pct_oa_closed'
+        'is_in_top_10_percent':           'pct_top_10',
+        'is_in_top_1_percent':            'pct_1',
+        'is_oa':                          'pct_open_access',
+        'is_oa_gold':                     'pct_oa_gold',
+        'is_oa_green':                    'pct_oa_green',
+        'is_oa_hybrid':                   'pct_oa_hybrid',
+        'is_oa_bronze':                   'pct_oa_bronze',
+        'is_oa_closed':                   'pct_oa_closed',
+        # Velocidad
+        'velocity':          'velocity_avg',
+        'half_life':         'half_life_avg',
+        # APC
+        'has_apc':           'pct_apc',
+        # Colaboración
+        'is_international':         'pct_international',
+        'countries_distinct_count': 'avg_countries',
+        'author_count':             'avg_author_count',
+        # Indexación
+        'in_pubmed':                'pct_pubmed',
+        'in_doaj':                  'pct_doaj_indexed',
+        'journal_is_in_doaj':       'pct_doaj_journal',
+        'journal_is_core':          'pct_core_journal',
+        'is_retracted':             'pct_retracted',
+        'any_repository_has_fulltext': 'pct_repository',
+        # Idioma / licencia
+        'is_english':        'pct_english',
+        'is_cc_by':          'pct_cc_by',
     }, inplace=True)
-    
+
     # pct a base 100
-    df_agg['pct_top_10'] *= 100
-    df_agg['pct_1'] *= 100
-    df_agg['pct_open_access'] *= 100
-    df_agg['pct_oa_gold'] *= 100
-    df_agg['pct_oa_green'] *= 100
-    df_agg['pct_oa_hybrid'] *= 100
-    df_agg['pct_oa_bronze'] *= 100
-    df_agg['pct_oa_closed'] *= 100
-    
+    pct_cols = ['pct_top_10', 'pct_1', 'pct_open_access', 'pct_oa_gold', 'pct_oa_green',
+                'pct_oa_hybrid', 'pct_oa_bronze', 'pct_oa_closed',
+                'pct_apc', 'pct_international', 'pct_pubmed', 'pct_doaj_indexed',
+                'pct_doaj_journal', 'pct_core_journal', 'pct_retracted',
+                'pct_repository', 'pct_english', 'pct_cc_by']
+    for col in pct_cols:
+        if col in df_agg.columns:
+            df_agg[col] *= 100
+
     # Llenar nulos - FWCI NO se debe llenar con citas/doc, se queda como NaN si no hay data.
     df_agg['fwci_avg'] = df_agg['fwci_avg'].replace([np.inf, -np.inf], np.nan)
     df_agg['percentile_avg'] = df_agg['percentile_avg'].replace([np.inf, -np.inf], np.nan)
