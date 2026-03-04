@@ -5921,5 +5921,1927 @@
             "Earth-surface processes",
             "Geology"
         ]
+    },
+    "ARCINIEGA DURAN, GUSTAVO ALFREDO": {
+        "original_name": "ARCINIEGA DURAN, GUSTAVO ALFREDO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=101787",
+        "scopus": [
+            "14071255500"
+        ],
+        "orcid": "https://orcid.org/0000-0002-9960-2882",
+        "areas": [
+            "Astronomy and astrophysics",
+            "Physics, interdisciplinary",
+            "Physics, nuclear",
+            "Physics, particles and fields",
+            "Astronomy and astrophysics",
+            "Mathematical Physics",
+            "Mathematics (miscellaneous)",
+            "Nuclear and high energy physics"
+        ]
+    },
+    "RAMIREZ RAMOS, CARLOS": {
+        "original_name": "RAMIREZ RAMOS, CARLOS",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=100447",
+        "scopus": [],
+        "orcid": "",
+        "areas": [
+            "Materials science, multidisciplinary",
+            "Mathematical and computational biology",
+            "Physics, condensed matter",
+            "Physics, multidisciplinary",
+            "Computer science applications",
+            "Condensed matter physics",
+            "Electronic, Optical and Magnetic Materials",
+            "Materials Chemistry",
+            "Physics and astronomy (miscellaneous)"
+        ]
+    },
+    "SERKIN, LEONID": {
+        "original_name": "SERKIN, LEONID",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=98788",
+        "scopus": [],
+        "orcid": "",
+        "areas": [
+            "Astronomy & astrophysics",
+            "Instruments & instrumentation",
+            "Mathematics",
+            "Physics, multidisciplinary",
+            "Physics, nuclear",
+            "Physics, particles & fields",
+            "Physics, particles and fields",
+            "Engineering (miscellaneous)",
+            "Instrumentation",
+            "Nuclear and High Energy Physics",
+            "Physics and astronomy (miscellaneous)"
+        ]
+    },
+    "LEDESMA ALONSO, RENE": {
+        "original_name": "LEDESMA ALONSO, RENE",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=107977",
+        "scopus": [
+            "0000-0001-5690-5034"
+        ],
+        "orcid": "",
+        "areas": [
+            "Engineering, biomedical",
+            "Engineering, mechanical",
+            "Environmental sciences",
+            "Environmental studies",
+            "Mechanics",
+            "Agricultural and biological sciences (miscellaneous)",
+            "Biomedical Engineering",
+            "Energy (miscellaneous)",
+            "Energy engineering and power technology",
+            "Mechanical Engineering"
+        ]
+    },
+    "VALDES SOUTO, FRANCISCO": {
+        "original_name": "VALDES SOUTO, FRANCISCO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=123197",
+        "scopus": [
+            "57190186512"
+        ],
+        "orcid": "",
+        "areas": [
+            "Computer science, software engineering",
+            "Business and international management",
+            "Computer science (miscellaneous)",
+            "Software"
+        ]
+    },
+    "PEREZ DE LA CRUZ, GONZALO": {
+        "original_name": "PEREZ DE LA CRUZ, GONZALO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128635",
+        "scopus": [
+            "35786668800"
+        ],
+        "orcid": "",
+        "areas": [
+            "Biochemistry and molecular biology",
+            "Cell biology",
+            "Chemistry, medicinal",
+            "Food science and technology",
+            "Multidisciplinary sciences",
+            "Neurosciences",
+            "Nutrition and dietetics",
+            "Pharmacology and pharmacy",
+            "Statistics and probability",
+            "Biochemistry",
+            "Biochemistry, genetics and molecular biology (miscellaneous)",
+            "Cell Biology",
+            "Clinical biochemistry",
+            "Computer science applications",
+            "Food science",
+            "Multidisciplinary",
+            "Pharmaceutical science",
+            "Social Sciences (miscellaneous)",
+            "Statistics and probability"
+        ]
+    },
+    "SANCHEZ LOPEZ, MARIA DEL ROCIO": {
+        "original_name": "SANCHEZ LOPEZ, MARIA DEL ROCIO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128598",
+        "scopus": [
+            "55390677700"
+        ],
+        "orcid": "",
+        "areas": [
+            "Computer science, theory and methods",
+            "Jcs 2008",
+            "Mathematics",
+            "Mathematics, applied",
+            "Applied Mathematics",
+            "Computer science (miscellaneous)",
+            "Discrete mathematics and combinatorics",
+            "Mathematics (miscellaneous)",
+            "Theoretical Computer Science"
+        ]
+    },
+    "BONFIL SANDERS, MARIA DEL CONSUELO": {
+        "original_name": "BONFIL SANDERS, MARIA DEL CONSUELO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126214",
+        "scopus": [
+            "59342874000",
+            "6508093205"
+        ],
+        "orcid": "https://orcid.org/0000-0002-1195-6230",
+        "areas": [
+            "Agriculture, multidisciplinary",
+            "Biodiversity conservation",
+            "Ecology",
+            "Environmental studies",
+            "Forestry",
+            "Geography",
+            "Plant sciences",
+            "Agricultural and biological sciences (miscellaneous)",
+            "Ecology",
+            "Ecology, evolution, behavior and systematics",
+            "Environmental Science (miscellaneous)",
+            "Forestry",
+            "Nature and Landscape Conservation",
+            "Plant Science",
+            "Water science and technology"
+        ]
+    },
+    "NOVELO MALDONADO, EBERTO": {
+        "original_name": "NOVELO MALDONADO, EBERTO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127795",
+        "scopus": [
+            "19337692700",
+            "55993766600",
+            "57220050951"
+        ],
+        "orcid": "",
+        "areas": [
+            "Agricultural engineering",
+            "Biodiversity conservation",
+            "Biotechnology and applied microbiology",
+            "Marine & freshwater biology",
+            "Marine and freshwater biology",
+            "Microbiology",
+            "Plant sciences",
+            "Soil science",
+            "Toxicology",
+            "Agronomy and Crop Science",
+            "Aquatic Science",
+            "Biotechnology",
+            "Ecology, evolution, behavior and systematics",
+            "Environmental engineering",
+            "Medicine (miscellaneous)",
+            "Plant Science",
+            "Pollution",
+            "Water science and technology"
+        ]
+    },
+    "VAZQUEZ DE LA ROSA, JAIME FABIAN": {
+        "original_name": "VAZQUEZ DE LA ROSA, JAIME FABIAN",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=112271",
+        "scopus": [
+            "56421521900",
+            "57223644405"
+        ],
+        "orcid": "",
+        "areas": [
+            "Engineering, electrical and electronic",
+            "Instruments and instrumentation",
+            "Materials science, ceramics",
+            "Physics, applied",
+            "Radiology, nuclear medicine and medical imaging",
+            "Spectroscopy",
+            "Atomic and molecular physics, and optics",
+            "Ceramics and Composites",
+            "Condensed matter physics",
+            "Control and Systems Engineering",
+            "Electrical and electronic engineering",
+            "Physics and astronomy (miscellaneous)",
+            "Radiology, Nuclear Medicine and Imaging"
+        ]
+    },
+    "AVALOS HERNANDEZ, OMAR": {
+        "original_name": "AVALOS HERNANDEZ, OMAR",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128866",
+        "scopus": [
+            "26632754800"
+        ],
+        "orcid": "",
+        "areas": [
+            "Biology",
+            "Entomology",
+            "Forestry",
+            "Physics, multidisciplinary",
+            "Psychology, clinical",
+            "Veterinary sciences",
+            "Zoology",
+            "Agricultural and biological sciences (miscellaneous)",
+            "Agronomy and Crop Science",
+            "Animal Science and Zoology",
+            "Education",
+            "Forestry",
+            "Insect Science",
+            "Psychiatry and mental health",
+            "Veterinary (miscellaneous)"
+        ]
+    },
+    "JIMENEZ RAMIREZ, JAIME": {
+        "original_name": "JIMENEZ RAMIREZ, JAIME",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=125749",
+        "scopus": [
+            "6506761097",
+            "8840499800"
+        ],
+        "orcid": "https://orcid.org/0000-0002-2979-8891",
+        "areas": [
+            "Agronomy",
+            "Biology",
+            "Cell biology",
+            "Plant sciences",
+            "Agricultural and Biological Sciences (miscellaneous)",
+            "Agronomy and crop science",
+            "Horticulture",
+            "Plant science"
+        ]
+    },
+    "HERNANDEZ QUIROZ, FRANCISCO": {
+        "original_name": "HERNANDEZ QUIROZ, FRANCISCO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=75223",
+        "scopus": [
+            "23392688800"
+        ],
+        "orcid": "https://orcid.org/0000-0002-9748-0201",
+        "areas": [
+            "Computer science, artificial intelligence",
+            "Computer science, theory & methods",
+            "Computer science, theory and methods",
+            "Logic",
+            "Physics, multidisciplinary",
+            "Applied mathematics",
+            "Artificial intelligence",
+            "Computer networks and communications",
+            "Computer Science (miscellaneous)",
+            "Hardware and architecture",
+            "Philosophy",
+            "Physics and astronomy (miscellaneous)"
+        ]
+    },
+    "GONZALEZ HUESCA, LOURDES DEL CARMEN": {
+        "original_name": "GONZALEZ HUESCA, LOURDES DEL CARMEN",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=96872",
+        "scopus": [
+            "35213217100",
+            "57761335300"
+        ],
+        "orcid": "https://orcid.org/0000-0002-4956-1162",
+        "areas": [
+            "Computer science, theory and methods",
+            "Genetics and heredity",
+            "Logic",
+            "Pediatrics",
+            "Computer Science (miscellaneous)",
+            "Genetics",
+            "Mathematics (miscellaneous)",
+            "Pediatrics, Perinatology and Child Health",
+            "Philosophy",
+            "Software"
+        ]
+    },
+    "PERALTA HERNANDEZ, LILIANA": {
+        "original_name": "PERALTA HERNANDEZ, LILIANA",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=165239",
+        "scopus": [],
+        "orcid": "",
+        "areas": [
+            "Mathematics",
+            "Mathematics, applied",
+            "Physics, multidisciplinary",
+            "Statistics and probability",
+            "Education",
+            "Engineering (miscellaneous)",
+            "Mathematics (miscellaneous)",
+            "Statistics and probability"
+        ]
+    },
+    "ROMERO MARTINEZ, MARTIN": {
+        "original_name": "ROMERO MARTINEZ, MARTIN",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=75380",
+        "scopus": [],
+        "orcid": "",
+        "areas": []
+    },
+    "DEL CASTILLO VAZQUEZ, ROXANA MITZAYE": {
+        "original_name": "DEL CASTILLO VAZQUEZ, ROXANA MITZAYE",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "No encontrado"
+    },
+    "TORRES RAMIREZ, NAYELI": {
+        "original_name": "TORRES RAMIREZ, NAYELI",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=148328",
+        "scopus": [
+            "55894408300"
+        ],
+        "orcid": "https://orcid.org/0000-0002-7515-9740",
+        "areas": [
+            "Anatomy and morphology",
+            "Biochemistry and molecular biology",
+            "Biophysics",
+            "Cell biology",
+            "Endocrinology and metabolism",
+            "Microbiology",
+            "Multidisciplinary sciences",
+            "Mycology",
+            "Obstetrics and gynecology",
+            "Oncology",
+            "Pathology",
+            "Polymer science",
+            "Anatomy",
+            "Biochemistry",
+            "Cell biology",
+            "Food science",
+            "Medicine (miscellaneous)",
+            "Microbiology (medical)",
+            "Multidisciplinary",
+            "Obstetrics and gynecology",
+            "Pathology and forensic medicine",
+            "Pharmacology",
+            "Plant science",
+            "Structural biology"
+        ]
+    },
+    "ROJO CEBREROS, ANGEL HUMBERTO": {
+        "original_name": "ROJO CEBREROS, ANGEL HUMBERTO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=168943",
+        "scopus": [],
+        "orcid": "",
+        "areas": []
+    },
+    "SANCHEZ FERRER, JOSE CARLOS": {
+        "original_name": "SANCHEZ FERRER, JOSE CARLOS",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=107972",
+        "scopus": [
+            "55340926000"
+        ],
+        "orcid": "",
+        "areas": [
+            "Criminology and penology",
+            "Multidisciplinary sciences",
+            "Psychiatry",
+            "Public, environmental and occupational health",
+            "Zoology",
+            "Animal science and zoology",
+            "Arts and humanities (miscellaneous)",
+            "Clinical psychology",
+            "Multidisciplinary",
+            "Psychiatry and mental health",
+            "Public health, environmental and occupational health"
+        ]
+    },
+    "YANEZ ARENAS, CARLOS ALBERTO": {
+        "original_name": "YAÑEZ ARENAS, CARLOS ALBERTO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=123253",
+        "scopus": [
+            "36020727700"
+        ],
+        "orcid": "https://orcid.org/0000-0002-6299-275X",
+        "areas": [
+            "Biodiversity conservation",
+            "Biology",
+            "Ecology",
+            "Environmental sciences",
+            "Evolutionary biology",
+            "Geography, physical",
+            "Marine and freshwater biology",
+            "Medicine, general and internal",
+            "Meteorology and atmospheric sciences",
+            "Multidisciplinary sciences",
+            "Plant sciences",
+            "Tropical medicine",
+            "Veterinary sciences",
+            "Zoology",
+            "Agricultural and Biological Sciences (miscellaneous)",
+            "Animal science and zoology",
+            "Aquatic science",
+            "Atmospheric Science",
+            "Ecological Modeling",
+            "Ecology",
+            "Ecology, evolution, behavior and systematics",
+            "Environmental engineering",
+            "Medicine (miscellaneous)",
+            "Multidisciplinary",
+            "Nature and landscape conservation",
+            "Pharmacology, toxicology and pharmaceutics (miscellaneous)",
+            "Plant science",
+            "Public Health, Environmental and Occupational Health",
+            "Veterinary (miscellaneous)"
+        ]
+    },
+    "ESPINOSA ESPINOSA, MOISES ISAAC": {
+        "original_name": "ESPINOSA ESPINOSA, MOISES ISAAC",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=97561",
+        "scopus": [],
+        "orcid": "",
+        "areas": [
+            "Physics, applied",
+            "Physics and astronomy (miscellaneous)"
+        ]
+    },
+    "LATOURNERIE CERVERA, JOSE ROMAN": {
+        "original_name": "LATOURNERIE CERVERA, JOSE ROMAN",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=125806",
+        "scopus": [
+            "54684448800",
+            "55936375800"
+        ],
+        "orcid": "",
+        "areas": [
+            "Fisheries",
+            "Marine & freshwater biology",
+            "Marine and freshwater biology",
+            "Aquatic Science",
+            "Ecology",
+            "Oceanography"
+        ]
+    },
+    "CASTILLO ARGUERO, SILVIA": {
+        "original_name": "CASTILLO ARGUERO, SILVIA",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=125979",
+        "scopus": [
+            "24474369300",
+            "59206288100",
+            "7005555699"
+        ],
+        "orcid": "",
+        "areas": [
+            "Biodiversity conservation",
+            "Chemistry, applied",
+            "Ecology",
+            "Environmental sciences",
+            "Forestry",
+            "Microbiology",
+            "Multidisciplinary sciences",
+            "Mycology",
+            "Plant sciences",
+            "Soil science",
+            "Agricultural and Biological Sciences (miscellaneous)",
+            "Chemistry (miscellaneous)",
+            "Ecology",
+            "Ecology, evolution, behavior and systematics",
+            "Environmental science (miscellaneous)",
+            "Forestry",
+            "Multidisciplinary",
+            "Nature and landscape conservation",
+            "Plant science",
+            "Soil Science"
+        ]
+    },
+    "MOLINA BRITO, BERTHA": {
+        "original_name": "MOLINA BRITO, BERTHA",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128013",
+        "scopus": [
+            "8951944500"
+        ],
+        "orcid": "https://orcid.org/0000-0002-7249-4201",
+        "areas": [
+            "Biochemistry and molecular biology",
+            "Crystallography",
+            "Chemistry, inorganic and nuclear",
+            "Chemistry, multidisciplinary",
+            "Chemistry, organic",
+            "Chemistry, physical",
+            "Engineering, electrical and electronic",
+            "Environmental sciences",
+            "Genetics and heredity",
+            "Materials science, multidisciplinary",
+            "Mathematical and computational biology",
+            "Physics, applied",
+            "Physics, atomic, molecular & chemical",
+            "Physics, atomic, molecular and chemical",
+            "Physics, condensed matter",
+            "Spectroscopy",
+            "Atomic and Molecular Physics, and Optics",
+            "Computer Science Applications",
+            "Condensed matter physics",
+            "Chemical Engineering (miscellaneous)",
+            "Electrical and electronic engineering",
+            "Electronic, optical and magnetic materials",
+            "Energy (miscellaneous)",
+            "Health, Toxicology and Mutagenesis",
+            "Inorganic chemistry",
+            "Instrumentation",
+            "Materials chemistry",
+            "Materials science (miscellaneous)",
+            "Medicine (miscellaneous)",
+            "Organic chemistry",
+            "Physics and Astronomy (miscellaneous)"
+        ]
+    },
+    "AREVALO LOPEZ, EUGENIA PAOLA": {
+        "original_name": "AREVALO LOPEZ, EUGENIA PAOLA",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=100064",
+        "scopus": [
+            "57204883589"
+        ],
+        "orcid": "https://orcid.org/0000-0001-5513-2623",
+        "areas": [
+            "Chemistry, inorganic and nuclear",
+            "Chemistry, multidisciplinary",
+            "Materials science, ceramics",
+            "Materials science, coatings and films",
+            "Materials science, multidisciplinary",
+            "Metallurgy and metallurgical engineering",
+            "Physics, applied",
+            "Physics, condensed matter",
+            "Physics, multidisciplinary",
+            "Condensed matter physics",
+            "Chemistry (miscellaneous)",
+            "Electrical and electronic engineering",
+            "Electronic, optical and magnetic materials",
+            "Inorganic chemistry",
+            "Materials chemistry",
+            "Metals and alloys",
+            "Physics and astronomy (miscellaneous)",
+            "Surfaces, coatings and films"
+        ]
+    },
+    "LOPEZ PATINO, JUAN": {
+        "original_name": "LOPEZ PATIÑO, JUAN",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=106849",
+        "scopus": [
+            "56562991100"
+        ],
+        "orcid": "",
+        "areas": [
+            "Electrochemistry",
+            "Metallurgy and metallurgical engineering",
+            "Physics, fluids and plasmas",
+            "Spectroscopy",
+            "Condensed matter physics",
+            "Energy Engineering and Power Technology",
+            "Instrumentation",
+            "Physics and Astronomy (miscellaneous)"
+        ]
+    },
+    "MONTES DE OCA BALDERAS, MARCO ANTONIO": {
+        "original_name": "MONTES DE OCA BALDERAS, MARCO ANTONIO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "No encontrado"
+    },
+    "ALCALA CORONA, SERGIO ANTONIO": {
+        "original_name": "ALCALA CORONA, SERGIO ANTONIO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=97873",
+        "scopus": [
+            "56543806600"
+        ],
+        "orcid": "",
+        "areas": [
+            "Biology",
+            "Computer science, theory & methods",
+            "Ecology",
+            "Genetics and heredity",
+            "Immunology",
+            "Computational mathematics",
+            "Computer Science (miscellaneous)",
+            "Ecology",
+            "Genetics",
+            "Immunology and allergy",
+            "Multidisciplinary"
+        ]
+    },
+    "LEDESMA DURAN, ALDO": {
+        "original_name": "LEDESMA DURAN, ALDO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=101795",
+        "scopus": [
+            "57189034152"
+        ],
+        "orcid": "https://orcid.org/0000-0003-3258-5616",
+        "areas": [
+            "Biophysics",
+            "Chemistry, physical",
+            "Materials science, multidisciplinary",
+            "Mathematical and computational biology",
+            "Mathematics, applied",
+            "Mathematics, interdisciplinary applications",
+            "Mechanics",
+            "Multidisciplinary sciences",
+            "Physics, atomic, molecular and chemical",
+            "Physics, mathematical",
+            "Physics, multidisciplinary",
+            "Atomic and molecular physics, and optics",
+            "Condensed matter physics",
+            "Chemistry (miscellaneous)",
+            "Energy (miscellaneous)",
+            "Mathematics (miscellaneous)",
+            "Modeling and simulation",
+            "Multidisciplinary",
+            "Physical and theoretical chemistry",
+            "Physics and astronomy (miscellaneous)",
+            "Surfaces, Coatings and Films"
+        ]
+    },
+    "HERNANDEZ GONZALEZ, EDNA MAGDALENA": {
+        "original_name": "HERNANDEZ GONZALEZ, EDNA MAGDALENA",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=101757",
+        "scopus": [
+            "55757952000"
+        ],
+        "orcid": "https://orcid.org/0000-0002-0866-4042",
+        "areas": [
+            "Chemistry, multidisciplinary",
+            "Chemistry, physical",
+            "Engineering, multidisciplinary",
+            "Materials science, multidisciplinary",
+            "Optics",
+            "Physics, multidisciplinary",
+            "Physics, nuclear",
+            "Spectroscopy",
+            "Atomic and Molecular Physics, and Optics",
+            "Engineering (miscellaneous)",
+            "Instrumentation",
+            "Materials Science (miscellaneous)",
+            "Mechanical Engineering",
+            "Nuclear and High Energy Physics",
+            "Physics and astronomy (miscellaneous)",
+            "Surfaces, Coatings and Films"
+        ]
+    },
+    "AGUIRRE OLIVAS, DILIA": {
+        "original_name": "AGUIRRE OLIVAS, DILIA",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=151677",
+        "scopus": [
+            "0000-0002-1276-7183"
+        ],
+        "orcid": "",
+        "areas": [
+            "Neurosciences",
+            "Optics",
+            "Atomic and molecular physics, and optics",
+            "Molecular biology"
+        ]
+    },
+    "DURAN RAMIREZ, CARLOS ALBERTO": {
+        "original_name": "DURAN RAMIREZ, CARLOS ALBERTO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=112999",
+        "scopus": [
+            "42361208300"
+        ],
+        "orcid": "",
+        "areas": [
+            "Biodiversity conservation",
+            "Biology",
+            "Forestry",
+            "Microbiology",
+            "Water resources",
+            "Zoology",
+            "Agricultural and biological sciences (miscellaneous)",
+            "Animal science and zoology",
+            "Forestry",
+            "Geography, planning and development",
+            "Microbiology"
+        ]
+    },
+    "CORNEJO LATORRE, CRISTIAN": {
+        "original_name": "CORNEJO LATORRE, CRISTIAN",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=159614",
+        "scopus": [],
+        "orcid": "",
+        "areas": [
+            "Animal science and zoology"
+        ]
+    },
+    "SANCHEZ SALDANA, LUIS JORGE": {
+        "original_name": "SANCHEZ SALDAÑA, LUIS JORGE",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=145752",
+        "scopus": [
+            "57191171968"
+        ],
+        "orcid": "",
+        "areas": [
+            "Mathematics",
+            "Algebra and number theory",
+            "Discrete mathematics and combinatorics",
+            "Geometry and Topology",
+            "Mathematics (miscellaneous)"
+        ]
+    },
+    "SANCHEZ RUEDA, FERNANDO": {
+        "original_name": "SANCHEZ RUEDA, FERNANDO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=107986",
+        "scopus": [],
+        "orcid": "",
+        "areas": [
+            "Materials science, ceramics",
+            "Physics, condensed matter",
+            "Ceramics and Composites",
+            "Electronic, optical and magnetic materials"
+        ]
+    },
+    "SOLANO ZAVALETA, ISRAEL": {
+        "original_name": "SOLANO ZAVALETA, ISRAEL",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=125138",
+        "scopus": [
+            "35068736400"
+        ],
+        "orcid": "https://orcid.org/0000-0002-9195-6301",
+        "areas": [
+            "Biodiversity conservation",
+            "Ecology",
+            "Endocrinology and metabolism",
+            "Evolutionary biology",
+            "Forestry",
+            "Geography",
+            "Multidisciplinary sciences",
+            "Ornithology",
+            "Zoology",
+            "Animal Science and Zoology",
+            "Ecology",
+            "Ecology, evolution, behavior and systematics",
+            "Multidisciplinary",
+            "Nature and landscape conservation",
+            "Urban studies"
+        ]
+    },
+    "GUERRA MARTINEZ, FRANCISCO DE JESUS": {
+        "original_name": "GUERRA MARTINEZ, FRANCISCO DE JESUS",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=157612",
+        "scopus": [
+            "57202913228"
+        ],
+        "orcid": "https://orcid.org/0000-0003-1290-9249",
+        "areas": [
+            "Biodiversity conservation",
+            "Ecology",
+            "Environmental studies",
+            "Forestry",
+            "Ecology",
+            "Ecology, evolution, behavior and systematics",
+            "Forestry",
+            "Global and planetary change"
+        ]
+    },
+    "SIGALA REGALADO, ITZEL": {
+        "original_name": "SIGALA REGALADO, ITZEL",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=105396",
+        "scopus": [
+            "57188711830"
+        ],
+        "orcid": "",
+        "areas": [
+            "Biodiversity conservation",
+            "Biology",
+            "Geology",
+            "Geosciences, multidisciplinary",
+            "Limnology",
+            "Water resources",
+            "Aquatic science",
+            "Earth and planetary sciences (miscellaneous)",
+            "Earth-Surface Processes",
+            "Ecology",
+            "Ecology, evolution, behavior and systematics",
+            "Physiology (medical)",
+            "Water science and technology"
+        ]
+    },
+    "CANO SANTANA, ZENON": {
+        "original_name": "CANO SANTANA, ZENON",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126178",
+        "scopus": [
+            "56002744500",
+            "57217157963",
+            "6507153267"
+        ],
+        "orcid": "https://orcid.org/0000-0003-4860-6696",
+        "areas": [
+            "Agriculture, multidisciplinary",
+            "Agronomy",
+            "Biodiversity conservation",
+            "Biology",
+            "Ecology",
+            "Entomology",
+            "Environmental sciences",
+            "Food science and technology",
+            "Forestry",
+            "Pharmacology and pharmacy",
+            "Plant sciences",
+            "Zoology",
+            "Agricultural and Biological Sciences (miscellaneous)",
+            "Agronomy and crop science",
+            "Animal Science and Zoology",
+            "Complementary and Alternative Medicine",
+            "Ecology",
+            "Ecology, Evolution, Behavior and Systematics",
+            "Environmental science (miscellaneous)",
+            "Forestry",
+            "Horticulture",
+            "Insect science",
+            "Medicine (miscellaneous)",
+            "Nature and landscape conservation",
+            "Plant Science",
+            "Urban studies"
+        ]
+    },
+    "NERI MEDINA, ELEAZAR": {
+        "original_name": "NERI MEDINA, ELEAZAR",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=99606",
+        "scopus": [
+            "26428319000"
+        ],
+        "orcid": "",
+        "areas": [
+            "Optics",
+            "Pharmacology and pharmacy",
+            "Physics, multidisciplinary",
+            "Atomic and Molecular Physics, and Optics",
+            "Physics and astronomy (miscellaneous)",
+            "Toxicology"
+        ]
+    },
+    "JAUREZ ROSAS, JESSICA ANGELICA": {
+        "original_name": "JAUREZ ROSAS, JESSICA ANGELICA",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=101725",
+        "scopus": [
+            "57188684346",
+            "57188684346"
+        ],
+        "orcid": "",
+        "areas": [
+            "Mathematics",
+            "Mathematics, applied",
+            "Control and systems engineering",
+            "Mathematics (miscellaneous)"
+        ]
+    },
+    "NUNEZ ZIMBRON, JESUS ANGEL": {
+        "original_name": "NUÑEZ ZIMBRON, JESUS ANGEL",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=101693",
+        "scopus": [
+            "57190886478"
+        ],
+        "orcid": "",
+        "areas": [
+            "Mathematics",
+            "Geometry and topology",
+            "Mathematics (miscellaneous)"
+        ]
+    },
+    "VILLANUEVA OLEA, RAFAEL": {
+        "original_name": "VILLANUEVA OLEA, RAFAEL",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=124813",
+        "scopus": [
+            "55022657700"
+        ],
+        "orcid": "",
+        "areas": [
+            "Geology",
+            "Paleontology",
+            "Earth and planetary sciences (miscellaneous)",
+            "Paleontology"
+        ]
+    },
+    "GONZALEZ FLORES, JAMES ENRIQUE": {
+        "original_name": "GONZALEZ FLORES, JAMES ENRIQUE",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=113094",
+        "scopus": [
+            "56960460100"
+        ],
+        "orcid": "https://orcid.org/0000-0002-7329-4025",
+        "areas": [
+            "Biochemistry and molecular biology",
+            "Biology",
+            "Biotechnology and applied microbiology",
+            "Genetics and heredity",
+            "Microbiology",
+            "Multidisciplinary sciences",
+            "Mycology",
+            "Obstetrics and gynecology",
+            "Biochemistry",
+            "Ecology, evolution, behavior and systematics",
+            "Immunology and microbiology (miscellaneous)",
+            "Medicine (miscellaneous)",
+            "Microbiology",
+            "Microbiology (medical)",
+            "Multidisciplinary",
+            "Obstetrics and gynecology",
+            "Paleontology",
+            "Plant science"
+        ]
+    },
+    "KIERE, LYNNA MARIE": {
+        "original_name": "KIERE, LYNNA MARIE",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=172431",
+        "scopus": [],
+        "orcid": "",
+        "areas": []
+    },
+    "ESCANDON RIVERA, SONIA MARLEN": {
+        "original_name": "ESCANDON RIVERA, SONIA MARLEN",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=122319",
+        "scopus": [
+            "55232440500"
+        ],
+        "orcid": "https://orcid.org/0000-0001-7949-176X",
+        "areas": [
+            "Chemistry, medicinal",
+            "Chemistry, multidisciplinary",
+            "Integrative and complementary medicine",
+            "Pharmacology and pharmacy",
+            "Plant sciences",
+            "Complementary and alternative medicine",
+            "Drug discovery",
+            "Horticulture",
+            "Pharmaceutical science",
+            "Pharmacology",
+            "Pharmacology, toxicology and pharmaceutics (miscellaneous)",
+            "Plant science"
+        ]
+    },
+    "ALVAREZ OSPINA, HARRY": {
+        "original_name": "ALVAREZ OSPINA, HARRY",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=125149",
+        "scopus": [
+            "57212218812"
+        ],
+        "orcid": "https://orcid.org/0000-0003-0577-4163",
+        "areas": [
+            "Environmental sciences",
+            "Geochemistry and geophysics",
+            "Marine and freshwater biology",
+            "Meteorology and atmospheric sciences",
+            "Multidisciplinary sciences",
+            "Aquatic science",
+            "Atmospheric science",
+            "Environmental science (miscellaneous)",
+            "Geochemistry and petrology",
+            "Geophysics",
+            "Management, monitoring, policy and law",
+            "Medicine (miscellaneous)",
+            "Multidisciplinary",
+            "Pollution",
+            "Urban studies"
+        ]
+    },
+    "CAMPOS CERDA, FELIPE": {
+        "original_name": "CAMPOS CERDA, FELIPE",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=172214",
+        "scopus": [
+            "36473083600"
+        ],
+        "orcid": "",
+        "areas": [
+            "Plant sciences",
+            "Ecology, evolution, behavior and systematics",
+            "Insect science"
+        ]
+    },
+    "COLLAZO ORTEGA, MARGARITA": {
+        "original_name": "COLLAZO ORTEGA, MARGARITA",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=66524",
+        "scopus": [
+            "55155588600"
+        ],
+        "orcid": "",
+        "areas": [
+            "Chemistry, organic",
+            "Ecology",
+            "Environmental sciences",
+            "Marine and freshwater biology",
+            "Multidisciplinary sciences",
+            "Plant sciences",
+            "Ecology",
+            "Ecology, evolution, behavior and systematics",
+            "Medicine (miscellaneous)",
+            "Multidisciplinary",
+            "Plant science",
+            "Polymers and plastics",
+            "Waste management and disposal"
+        ]
+    },
+    "ORTIZ SOSA, ROSALINDA": {
+        "original_name": "ORTIZ SOSA, ROSALINDA",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=147164",
+        "scopus": [
+            "55102742800"
+        ],
+        "orcid": "https://orcid.org/0000-0002-8416-3258",
+        "areas": [
+            "Dermatology",
+            "Computer science applications",
+            "Dermatology",
+            "Electrical and Electronic Engineering",
+            "Physics and astronomy (miscellaneous)"
+        ]
+    },
+    "MARTINEZ GORDILLO, MARTHA JUANA": {
+        "original_name": "MARTINEZ GORDILLO, MARTHA JUANA",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127002",
+        "scopus": [
+            "24376705900",
+            "55846660300",
+            "56013690800"
+        ],
+        "orcid": "",
+        "areas": [
+            "Biochemistry and molecular biology",
+            "Biodiversity conservation",
+            "Chemistry, multidisciplinary",
+            "Environmental sciences",
+            "Genetics and heredity",
+            "Geosciences, multidisciplinary",
+            "Integrative and complementary medicine",
+            "Multidisciplinary sciences",
+            "Pharmacology and pharmacy",
+            "Plant sciences",
+            "Biochemistry",
+            "Complementary and alternative medicine",
+            "Chemistry (miscellaneous)",
+            "Ecology, evolution, behavior and systematics",
+            "Geography, planning and development",
+            "Geology",
+            "History and philosophy of science",
+            "Organic chemistry",
+            "Pharmaceutical science",
+            "Pharmacology",
+            "Pharmacology (medical)",
+            "Plant science"
+        ]
+    },
+    "FERNANDEZ MORELOS, JUAN CARLOS": {
+        "original_name": "FERNANDEZ MORELOS, JUAN CARLOS",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=101750",
+        "scopus": [
+            "57072256900"
+        ],
+        "orcid": "",
+        "areas": [
+            "Mathematics",
+            "Neurosciences",
+            "Analysis",
+            "Applied mathematics",
+            "Cellular and molecular neuroscience",
+            "Discrete mathematics and combinatorics",
+            "Geometry and topology"
+        ]
+    },
+    "MAYEN ESTRADA, ROSAURA": {
+        "original_name": "MAYEN ESTRADA, ROSAURA",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=125843",
+        "scopus": [
+            "56013548400",
+            "6508080903"
+        ],
+        "orcid": "https://orcid.org/0000-0002-3156-1295",
+        "areas": [
+            "Biodiversity conservation",
+            "Biology",
+            "Entomology",
+            "Forestry",
+            "Geosciences, multidisciplinary",
+            "Marine & freshwater biology",
+            "Marine and freshwater biology",
+            "Microbiology",
+            "Water resources",
+            "Zoology",
+            "Agricultural and biological sciences (miscellaneous)",
+            "Animal science and zoology",
+            "Aquatic Science",
+            "Earth-Surface Processes",
+            "Ecology",
+            "Ecology, Evolution, Behavior and Systematics",
+            "Forestry",
+            "Geography, planning and development",
+            "Insect Science",
+            "Microbiology",
+            "Microbiology (medical)",
+            "Water science and technology"
+        ]
+    },
+    "SUAREZ ATILANO, MARCO ALEJANDRO": {
+        "original_name": "SUAREZ ATILANO, MARCO ALEJANDRO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=119892",
+        "scopus": [
+            "55165385600"
+        ],
+        "orcid": "",
+        "areas": [
+            "Biodiversity conservation",
+            "Ecology",
+            "Genetics and heredity",
+            "Geography, physical",
+            "Plant sciences",
+            "Zoology",
+            "Animal science and zoology",
+            "Ecology",
+            "Ecology, evolution, behavior and systematics",
+            "Nature and landscape conservation",
+            "Plant science"
+        ]
+    },
+    "MONTALVAN SORROSA, DANAI": {
+        "original_name": "MONTALVAN SORROSA, DANAI",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=161013",
+        "scopus": [
+            "0000-0002-0219-5601"
+        ],
+        "orcid": "",
+        "areas": [
+            "Biophysics",
+            "Chemistry, multidisciplinary",
+            "Biomaterials",
+            "Physiology"
+        ]
+    },
+    "CARO BORRERO, ANGELA PIEDAD": {
+        "original_name": "CARO BORRERO, ANGELA PIEDAD",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=121243",
+        "scopus": [
+            "55511408100"
+        ],
+        "orcid": "https://orcid.org/0000-0001-7352-5447",
+        "areas": [
+            "Biodiversity conservation",
+            "Ecology",
+            "Economics",
+            "Entomology",
+            "Environmental sciences",
+            "Environmental studies",
+            "Forestry",
+            "Geography",
+            "Limnology",
+            "Marine and freshwater biology",
+            "Pharmacology and pharmacy",
+            "Water resources",
+            "Agronomy and crop science",
+            "Aquatic science",
+            "Ecology",
+            "Ecology, evolution, behavior and systematics",
+            "Environmental engineering",
+            "Environmental science (miscellaneous)",
+            "Forestry",
+            "Geography, planning and development",
+            "Insect Science",
+            "Toxicology",
+            "Urban studies",
+            "Waste management and disposal",
+            "Water Science and Technology"
+        ]
+    },
+    "CAMPOS CORDERO, JUDITH": {
+        "original_name": "CAMPOS CORDERO, JUDITH",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=102911",
+        "scopus": [],
+        "orcid": "",
+        "areas": [
+            "Mathematics",
+            "Mathematics (miscellaneous)"
+        ]
+    },
+    "ROMERO LOPEZ, YAIR": {
+        "original_name": "ROMERO LOPEZ, YAIR",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=155951",
+        "scopus": [
+            "56501728200"
+        ],
+        "orcid": "https://orcid.org/0000-0002-8707-025X",
+        "areas": [
+            "Biochemistry and molecular biology",
+            "Biology",
+            "Biophysics",
+            "Cell biology",
+            "Medicine, general and internal",
+            "Respiratory system",
+            "Applied mathematics",
+            "Biochemistry (medical)",
+            "Biochemistry, genetics and molecular biology (miscellaneous)",
+            "Clinical biochemistry",
+            "Critical care and intensive care medicine",
+            "Medicine (miscellaneous)",
+            "Organic chemistry",
+            "Spectroscopy"
+        ]
+    },
+    "MARTINEZ VILLEGAS, JORGE ARTURO": {
+        "original_name": "MARTINEZ VILLEGAS, JORGE ARTURO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=109281",
+        "scopus": [
+            "55172971500"
+        ],
+        "orcid": "https://orcid.org/0000-0003-0734-6146",
+        "areas": [
+            "Biodiversity conservation",
+            "Ecology",
+            "Forestry",
+            "Plant sciences",
+            "Ecology, evolution, behavior and systematics",
+            "Plant Science",
+            "Urban studies"
+        ]
+    },
+    "PAEZ GOMEZ, OMAR": {
+        "original_name": "PAEZ GOMEZ, OMAR",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=168436",
+        "scopus": [],
+        "orcid": "",
+        "areas": []
+    },
+    "HERNANDEZ SANTAMARIA, VICTOR": {
+        "original_name": "HERNANDEZ SANTAMARIA, VICTOR",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=166577",
+        "scopus": [],
+        "orcid": "",
+        "areas": [
+            "Engineering, electrical and electronic",
+            "Mathematics",
+            "Mathematics, applied",
+            "Analysis",
+            "Applied mathematics",
+            "Control and optimization",
+            "Control and systems engineering",
+            "Discrete mathematics and combinatorics",
+            "Mathematics (miscellaneous)",
+            "Modeling and simulation"
+        ]
+    },
+    "CARBALLO ONTIVEROS, MARCO ANTONIO": {
+        "original_name": "CARBALLO ONTIVEROS, MARCO ANTONIO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=107938",
+        "scopus": [
+            "57190443834"
+        ],
+        "orcid": "",
+        "areas": [
+            "Food science & technology",
+            "Genetics and heredity",
+            "Virology",
+            "Education",
+            "Genetics",
+            "Health, toxicology and mutagenesis",
+            "Insect science",
+            "Medicine (miscellaneous)"
+        ]
+    },
+    "GRANADOS PELAEZ, CARLOS": {
+        "original_name": "GRANADOS PELAEZ, CARLOS",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=146518",
+        "scopus": [
+            "57200444495"
+        ],
+        "orcid": "",
+        "areas": [
+            "Biodiversity conservation",
+            "Forestry",
+            "Geosciences, multidisciplinary",
+            "Forestry",
+            "Geography, planning and development",
+            "Water science and technology"
+        ]
+    },
+    "LIRA HERNANDEZ, BEATRIZ IRENE": {
+        "original_name": "LIRA HERNANDEZ, BEATRIZ IRENE",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=154897",
+        "scopus": [],
+        "orcid": "",
+        "areas": [
+            "Plant sciences",
+            "Plant science"
+        ]
+    },
+    "ZEPEDA MARTINEZ, VERONICA NOEMI": {
+        "original_name": "ZEPEDA MARTINEZ, VERONICA NOEMI",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=117132",
+        "scopus": [
+            "55428623400"
+        ],
+        "orcid": "",
+        "areas": [
+            "Ecology",
+            "Environmental sciences",
+            "Multidisciplinary sciences",
+            "Plant sciences",
+            "Ecology",
+            "Ecology, evolution, behavior and systematics",
+            "Library and information sciences",
+            "Plant science"
+        ]
+    },
+    "MARQUEZ VALADEZ, BERENICE": {
+        "original_name": "MARQUEZ VALADEZ, BERENICE",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=172496",
+        "scopus": [],
+        "orcid": "",
+        "areas": []
+    },
+    "JIMENEZ ANDRADE, JOSE LUIS": {
+        "original_name": "JIMENEZ ANDRADE, JOSE LUIS",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=95445",
+        "scopus": [
+            "0000-0003-3453-7159"
+        ],
+        "orcid": "",
+        "areas": [
+            "Computer science, interdisciplinary applications",
+            "Environmental sciences",
+            "Geosciences, multidisciplinary",
+            "Information science and library science",
+            "Medicine, general and internal",
+            "Physics, multidisciplinary",
+            "Psychiatry",
+            "Public, environmental and occupational health",
+            "Arts and humanities (miscellaneous)",
+            "Earth and planetary sciences (miscellaneous)",
+            "Engineering (miscellaneous)",
+            "Environmental engineering",
+            "Geotechnical Engineering and Engineering Geology",
+            "Health, toxicology and mutagenesis",
+            "Library and information sciences",
+            "Media technology",
+            "Medicine (miscellaneous)",
+            "Multidisciplinary",
+            "Physics and astronomy (miscellaneous)",
+            "Social sciences (miscellaneous)"
+        ]
+    },
+    "GUERRERO JIMENEZ, GERARDO": {
+        "original_name": "GUERRERO JIMENEZ, GERARDO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "No encontrado"
+    },
+    "BORREGO KIM, PATRICIA": {
+        "original_name": "BORREGO KIM, PATRICIA",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=161643",
+        "scopus": [],
+        "orcid": "",
+        "areas": [
+            "Fisheries",
+            "Marine and freshwater biology",
+            "Agronomy and crop science",
+            "Aquatic science"
+        ]
+    },
+    "LOPEZ APARICIO, JEHU": {
+        "original_name": "LOPEZ APARICIO, JEHU",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=119091",
+        "scopus": [
+            "56781480500"
+        ],
+        "orcid": "",
+        "areas": [
+            "Biotechnology and applied microbiology",
+            "Engineering, biomedical",
+            "Engineering, multidisciplinary",
+            "Instruments and instrumentation",
+            "Optics",
+            "Applied mathematics",
+            "Artificial intelligence",
+            "Biomedical engineering",
+            "Electrical and electronic engineering",
+            "Engineering (miscellaneous)",
+            "Instrumentation",
+            "Medicine (miscellaneous)"
+        ]
+    },
+    "MIJANGOS DE LA CRUZ, VICTOR GERMAN": {
+        "original_name": "MIJANGOS DE LA CRUZ, VICTOR GERMAN",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=115976",
+        "scopus": [
+            "55935666500"
+        ],
+        "orcid": "",
+        "areas": [
+            "Computer science, artificial intelligence",
+            "Computer science, theory & methods",
+            "Physics, multidisciplinary",
+            "Computer Science (miscellaneous)",
+            "Computer vision and pattern recognition",
+            "Electrical and electronic engineering",
+            "Engineering (miscellaneous)"
+        ]
+    },
+    "SIL BERRA, LUZ MARIA": {
+        "original_name": "SIL BERRA, LUZ MARIA",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=115729",
+        "scopus": [
+            "57206243405"
+        ],
+        "orcid": "",
+        "areas": [
+            "Biodiversity conservation",
+            "Forestry",
+            "Zoology",
+            "Agricultural and biological sciences (miscellaneous)",
+            "Animal science and zoology",
+            "Forestry"
+        ]
+    },
+    "GARCIA CASTILLO, MIRNA GRISEL": {
+        "original_name": "GARCIA CASTILLO, MIRNA GRISEL",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=159674",
+        "scopus": [
+            "57199306287"
+        ],
+        "orcid": "",
+        "areas": [
+            "Marine and freshwater biology",
+            "Microbiology",
+            "Mycology",
+            "Zoology",
+            "Animal science and zoology",
+            "Earth and planetary sciences (miscellaneous)",
+            "Ecology, evolution, behavior and systematics",
+            "Immunology and microbiology (miscellaneous)",
+            "Microbiology"
+        ]
+    },
+    "GONZALEZ ROBERT, GERARDO": {
+        "original_name": "GONZALEZ ROBERT, GERARDO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=156257",
+        "scopus": [],
+        "orcid": "",
+        "areas": [
+            "Jcs 2008",
+            "Mathematics",
+            "Algebra and number theory",
+            "Mathematics (miscellaneous)"
+        ]
+    },
+    "ALCANTARA MARTINEZ, ILHUICE NEMI": {
+        "original_name": "ALCANTARA MARTINEZ, ILHUICE NEMI",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=158053",
+        "scopus": [],
+        "orcid": "",
+        "areas": [
+            "Immunology",
+            "Microbiology",
+            "Ecology",
+            "Immunology and allergy"
+        ]
+    },
+    "GONZALEZ MIRELES, JOSE EDUARDO": {
+        "original_name": "GONZALEZ MIRELES, JOSE EDUARDO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=108139",
+        "scopus": [
+            "57191503087"
+        ],
+        "orcid": "",
+        "areas": [
+            "Astronomy and astrophysics",
+            "Materials science, multidisciplinary",
+            "Physics, condensed matter",
+            "Chemistry (miscellaneous)",
+            "Physics and astronomy (miscellaneous)",
+            "Space and planetary science"
+        ]
+    },
+    "ESQUIVEL HERNANDEZ, DIEGO ARMANDO": {
+        "original_name": "ESQUIVEL HERNANDEZ, DIEGO ARMANDO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=158123",
+        "scopus": [
+            "57189068118",
+            "57833367800"
+        ],
+        "orcid": "https://orcid.org/0000-0002-3636-4514",
+        "areas": [
+            "Biology",
+            "Biotechnology and applied microbiology",
+            "Chemistry, medicinal",
+            "Chemistry, multidisciplinary",
+            "Endocrinology and metabolism",
+            "Environmental sciences",
+            "Food science and technology",
+            "Mathematical and computational biology",
+            "Microbiology",
+            "Multidisciplinary sciences",
+            "Agricultural and biological sciences (miscellaneous)",
+            "Applied microbiology and biotechnology",
+            "Bioengineering",
+            "Computational mathematics",
+            "Computer Science Applications",
+            "Drug discovery",
+            "Ecology",
+            "Endocrinology, diabetes and metabolism",
+            "Environmental engineering",
+            "Food science",
+            "Gastroenterology",
+            "Medicine (miscellaneous)",
+            "Microbiology (medical)",
+            "Multidisciplinary"
+        ]
+    },
+    "CRUZ ROMO, JESUS LIZARDO": {
+        "original_name": "CRUZ ROMO, JESUS LIZARDO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=170315",
+        "scopus": [],
+        "orcid": "",
+        "areas": []
+    },
+    "JACOME RAMIREZ, ALEJANDRO RODRIGO": {
+        "original_name": "JACOME RAMIREZ, ALEJANDRO RODRIGO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=155864",
+        "scopus": [
+            "36450377500",
+            "59308336000"
+        ],
+        "orcid": "https://orcid.org/0000-0002-6367-1907",
+        "areas": [
+            "Evolutionary biology",
+            "Genetics and heredity",
+            "Multidisciplinary sciences",
+            "Public, environmental and occupational health",
+            "Ecology, evolution, behavior and systematics",
+            "Genetics",
+            "Multidisciplinary",
+            "Public health, environmental and occupational health"
+        ]
+    },
+    "DURRUTY LAGUNES, CLAUDIA VERONICA": {
+        "original_name": "DURRUTY LAGUNES, CLAUDIA VERONICA",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=91790",
+        "scopus": [
+            "56990059400"
+        ],
+        "orcid": "",
+        "areas": [
+            "Fisheries",
+            "Marine and freshwater biology",
+            "Microbiology",
+            "Agronomy and crop science",
+            "Microbiology (medical)",
+            "Museology",
+            "Oceanography"
+        ]
+    },
+    "GARCIA VAZQUEZ, PATRICIO RICARDO": {
+        "original_name": "GARCIA VAZQUEZ, PATRICIO RICARDO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=110450",
+        "scopus": [],
+        "orcid": "",
+        "areas": []
+    },
+    "ORTIZ ALCANTARA, JOANNA MARIA": {
+        "original_name": "ORTIZ ALCANTARA, JOANNA MARIA",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=95715",
+        "scopus": [],
+        "orcid": "",
+        "areas": [
+            "Biotechnology and applied microbiology",
+            "Microbiology",
+            "Virology",
+            "Applied microbiology and biotechnology",
+            "Biomedical engineering",
+            "Genetics",
+            "Medicine (miscellaneous)",
+            "Microbiology (medical)",
+            "Museology",
+            "Waste management and disposal"
+        ]
+    },
+    "MARTINEZ AGUIRRE, MAYTE ABIGAIL": {
+        "original_name": "MARTINEZ AGUIRRE, MAYTE ABIGAIL",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=154939",
+        "scopus": [],
+        "orcid": "",
+        "areas": [
+            "Chemistry, multidisciplinary",
+            "Chemistry, organic",
+            "Chemistry, physical",
+            "Optics",
+            "Veterinary sciences",
+            "Catalysis",
+            "Chemistry (miscellaneous)",
+            "Organic chemistry",
+            "Physical and theoretical chemistry",
+            "Veterinary (miscellaneous)"
+        ]
+    },
+    "VARGAS ROCHA, BRENDA CASANDRA": {
+        "original_name": "VARGAS ROCHA, BRENDA CASANDRA",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=112075",
+        "scopus": [
+            "57194947554"
+        ],
+        "orcid": "",
+        "areas": [
+            "Chemistry, inorganic and nuclear",
+            "Chemistry, multidisciplinary",
+            "Engineering, chemical",
+            "Materials science, multidisciplinary",
+            "Physics, applied",
+            "Physics, atomic, molecular and chemical",
+            "Biochemistry",
+            "Biomaterials",
+            "Condensed matter physics",
+            "Chemical engineering (miscellaneous)",
+            "Inorganic chemistry",
+            "Physical and theoretical chemistry",
+            "Physics and astronomy (miscellaneous)"
+        ]
+    },
+    "NAVA SEDENO, JOSUE MANIK": {
+        "original_name": "NAVA SEDEÑO, JOSUE MANIK",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=158388",
+        "scopus": [
+            "57193444797"
+        ],
+        "orcid": "",
+        "areas": [
+            "Biology",
+            "Mathematical and computational biology",
+            "Multidisciplinary sciences",
+            "Physics, mathematical",
+            "Physics, multidisciplinary",
+            "Urology and nephrology",
+            "Agricultural and biological sciences (miscellaneous)",
+            "Condensed matter physics",
+            "Modeling and simulation",
+            "Multidisciplinary",
+            "Nephrology",
+            "Physics and astronomy (miscellaneous)"
+        ]
+    },
+    "MARTINEZ SANDOVAL, LEONARDO IGNACIO": {
+        "original_name": "MARTINEZ SANDOVAL, LEONARDO IGNACIO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=106727",
+        "scopus": [
+            "57016827000"
+        ],
+        "orcid": "",
+        "areas": [
+            "Computer science, information systems",
+            "Mathematics",
+            "Mathematics, applied",
+            "Applied mathematics",
+            "Discrete mathematics and combinatorics",
+            "Geometry and topology",
+            "Information systems",
+            "Logic",
+            "Mathematics (miscellaneous)",
+            "Theoretical computer science"
+        ]
+    },
+    "TERAN PAEZ, JUAN DIEGO": {
+        "original_name": "TERAN PAEZ, JUAN DIEGO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=156648",
+        "scopus": [],
+        "orcid": "",
+        "areas": [
+            "Medicine, general and internal",
+            "Medicine (miscellaneous)"
+        ]
+    },
+    "RICALDE SANCHEZ, FEDERICO": {
+        "original_name": "RICALDE SANCHEZ, FEDERICO",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=109341",
+        "scopus": [],
+        "orcid": "",
+        "areas": []
+    },
+    "ESTRADA NIETO, AMADEO LUIS": {
+        "original_name": "ESTRADA NIETO, AMADEO LUIS",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=111917",
+        "scopus": [],
+        "orcid": "",
+        "areas": []
+    },
+    "GONZALEZ FERNANDEZ, ANDREA": {
+        "original_name": "GONZALEZ FERNANDEZ, ANDREA",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "No encontrado"
+    },
+    "VAZQUEZ SALVADOR, NALLELY": {
+        "original_name": "VAZQUEZ SALVADOR, NALLELY",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=158440",
+        "scopus": [
+            "56118278700"
+        ],
+        "orcid": "",
+        "areas": [
+            "Water resources",
+            "Public health, environmental and occupational health",
+            "Water science and technology"
+        ]
+    },
+    "ROSAS HUERTA, JOSE LUIS": {
+        "original_name": "ROSAS HUERTA, JOSE LUIS",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=156564",
+        "scopus": [
+            "0000-0002-8870-0313"
+        ],
+        "orcid": "",
+        "areas": [
+            "Chemistry, inorganic and nuclear",
+            "Engineering, electrical and electronic",
+            "Materials science, coatings and films",
+            "Materials science, multidisciplinary",
+            "Metallurgy and metallurgical engineering",
+            "Physics, condensed matter",
+            "Physics, multidisciplinary",
+            "Condensed matter physics",
+            "Chemistry (miscellaneous)",
+            "Electrical and electronic engineering",
+            "Electronic, optical and magnetic materials",
+            "Inorganic chemistry",
+            "Materials chemistry",
+            "Metals and alloys",
+            "Physics and astronomy (miscellaneous)"
+        ]
     }
 }

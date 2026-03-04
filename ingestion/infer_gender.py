@@ -50,7 +50,8 @@ def extract_first_name(full_name: str) -> str | None:
     """
     Extrae el primer nombre de un nombre completo.
     Maneja formatos 'Apellido, Nombre' y 'Nombre Apellido'.
-    Devuelve None si el resultado es un número o una sola letra.
+    Devuelve None si el resultado es una inicial, abreviatura,
+    nombre de un solo componente, o tiene menos de 3 letras.
     """
     if not full_name or not isinstance(full_name, str):
         return None
@@ -59,16 +60,30 @@ def extract_first_name(full_name: str) -> str | None:
     # Formato "Apellido, Nombre Segundo"
     if ',' in name:
         parts = name.split(',', 1)
-        first = parts[1].strip().split()[0] if len(parts) > 1 else ""
+        given = parts[1].strip() if len(parts) > 1 else ""
+        # El primer token de los given names
+        tokens = given.split()
+        first = tokens[0] if tokens else ""
     else:
-        # Formato "Nombre Apellido"
-        first = name.split()[0]
+        tokens = name.split()
+        if len(tokens) < 2:
+            # Solo un token → no es un nombre completo
+            return None
+        first = tokens[0]
 
     # Limpiar caracteres no alfabéticos excepto guión
     first = re.sub(r"[^a-záéíóúüñA-ZÁÉÍÓÚÜÑ\-]", "", first)
 
-    if len(first) <= 1 or first.isdigit():
+    # Rechazar iniciales (1-2 letras) o si tiene puntos (M. → vacío tras clean)
+    if len(first) < 3:
         return None
+
+    # Rechazar si el primer token original terminaba en punto (inicial como "Ma.")
+    raw_first = (name.split(',', 1)[1].strip().split()[0]
+                 if ',' in name else name.split()[0])
+    if raw_first.endswith('.') or raw_first.endswith('.'):
+        return None
+
     return first
 
 # ─── Llamada a la API ────────────────────────────────────────────────────────
