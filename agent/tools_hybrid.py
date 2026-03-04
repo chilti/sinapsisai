@@ -734,6 +734,151 @@ def get_sdg_distribution(
         return f"Error en get_sdg_distribution: {str(e)}"
 
 
+@tool
+def get_international_collaboration_stats(
+    entity_name: str,
+    start_year: int = 2015,
+    end_year: int = 2026,
+) -> str:
+    """
+    Estadísticas de colaboración internacional de una entidad UNAM.
+
+    Retorna:
+    - Top 30 países colaboradores (papers conjuntos, número de coautores)
+    - Evolución temporal de la colaboración internacional (papers por año)
+    - % papers con colaboración internacional
+    - Top investigadores más activos en colaboración internacional
+
+    Funciona en dos modos:
+    1. Modo grafo: usa nodos :Author con country_code (requiere patch_author_affiliations.py)
+    2. Modo fallback: lee campo `countries` de raw_metadata al nivel del paper
+    """
+    try:
+        graph = Neo4jGraphStore()
+        params = {"entity": entity_name, "start": start_year, "end": end_year}
+
+        with graph.driver.session() as session:
+            # Detectar si los :Author externos tienen country_code
+            probe = session.run(
+                "MATCH (a:Author) WHERE NOT (a:Academic) AND a.country_code IS NOT NULL "
+                "RETURN count(a) AS n LIMIT 1"
+            )
+            has_country_code = (probe.single()["n"] > 0)
+
+        if has_country_code:
+            # ── Modo grafo (datos de :Author enriquecidos) ──────────────────────
+            top_q = """
+            MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)
+                  -[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(ext:Author)
+            WHERE NOT (ext:Academic)
+              AND ext.country_code IS NOT NULL
+              AND p.year >= $start AND p.year <= $end
+            RETURN ext.country_code AS country,
+                   count(DISTINCT p) AS papers,
+                   count(DISTINCT ext) AS coauthors,
+                   collect(DISTINCT a.name)[..5] AS researchers
+            ORDER BY papers DESC LIMIT 30
+            """
+            evol_q = """
+            MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)
+                  -[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(ext:Author)
+            WHERE NOT (ext:Academic)
+              AND ext.country_code IS NOT NULL
+              AND p.year >= $start AND p.year <= $end
+            RETURN p.year AS year, count(DISTINCT p) AS intl_papers
+            ORDER BY year
+            """
+            total_q = """
+            MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)
+                  -[:AUTHORED]->(p:Paper)
+            WHERE p.year >= $start AND p.year <= $end
+            RETURN count(DISTINCT p) AS total
+            """
+            intl_q = """
+            MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)
+                  -[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(ext:Author)
+            WHERE NOT (ext:Academic) AND ext.country_code IS NOT NULL
+              AND p.year >= $start AND p.year <= $end
+            RETURN count(DISTINCT p) AS intl_papers
+            """
+            with graph.driver.session() as session:
+                top_rows  = [dict(r) for r in session.run(top_q,  **params)]
+                evol_rows = [dict(r) for r in session.run(evol_q, **params)]
+                total     = session.run(total_q, **params).single()["total"]
+                intl      = session.run(intl_q,  **params).single()["intl_papers"]
+            mode = "graph"
+
+        else:
+            # ── Modo fallback (campo 'countries' en raw_metadata del paper) ─────
+            raw_q = """
+            MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)
+                  -[:AUTHORED]->(p:Paper)
+            WHERE p.raw_metadata IS NOT NULL
+              AND p.year >= $start AND p.year <= $end
+            RETURN p.id AS doi, p.year AS year, a.name AS researcher,
+                   p.raw_metadata AS meta
+            """
+            import json, ast
+            from collections import Counter
+
+            with graph.driver.session() as session:
+                raw_rows = [dict(r) for r in session.run(raw_q, **params)]
+
+            country_papers: dict  = {}   # country → set of dois
+            country_researchers: dict = {}  # country → set of researchers
+            evol_map: dict = {}           # year → set of intl dois
+            total = len({r["doi"] for r in raw_rows})
+            intl_dois: set = set()
+
+            for r in raw_rows:
+                try:
+                    meta = json.loads(r["meta"]) if isinstance(r["meta"], str) else r["meta"]
+                except Exception:
+                    try:
+                        meta = ast.literal_eval(r["meta"])
+                    except Exception:
+                        meta = {}
+                countries = meta.get("countries", []) or []
+                if len(countries) >= 2 or (countries and "MX" not in countries):
+                    intl_dois.add(r["doi"])
+                    y = int(r["year"])
+                    evol_map.setdefault(y, set()).add(r["doi"])
+                    for c in countries:
+                        if c and c != "MX":
+                            country_papers.setdefault(c, set()).add(r["doi"])
+                            country_researchers.setdefault(c, set()).add(r["researcher"])
+
+            top_rows = sorted(
+                [{"country": c, "papers": len(dois),
+                  "coauthors": len(country_researchers.get(c, set())),
+                  "researchers": list(country_researchers.get(c, set()))[:5]}
+                 for c, dois in country_papers.items()],
+                key=lambda x: -x["papers"]
+            )[:30]
+            evol_rows = [{"year": y, "intl_papers": len(dois)}
+                         for y, dois in sorted(evol_map.items())]
+            intl = len(intl_dois)
+            mode = "fallback (paper-level countries)"
+
+        graph.close()
+
+        pct_intl = round(intl / max(total, 1) * 100, 1)
+
+        return json.dumps({
+            "entity":          entity_name,
+            "rango":           f"{start_year}-{end_year}",
+            "modo":            mode,
+            "total_papers":    total,
+            "intl_papers":     intl,
+            "pct_internacional": pct_intl,
+            "top_paises":      top_rows,
+            "evolucion_temporal": evol_rows,
+        }, ensure_ascii=False)
+
+    except Exception as e:
+        return f"Error en get_international_collaboration_stats: {str(e)}"
+
+
 # Lista de herramientas híbridas para exportar
 hybrid_tools = [
     search_scientific_papers_semantic,
@@ -745,6 +890,7 @@ hybrid_tools = [
     get_trending_topics,
     get_topic_evolution,
     get_sdg_distribution,
+    get_international_collaboration_stats,
     web_search,
     wikipedia_search,
     recoverFromOpenAlex,        # Consolida recoverFromOpenAlex + recoverFieldFromRecordFromOpenAlex
