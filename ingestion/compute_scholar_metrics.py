@@ -604,7 +604,7 @@ def process_and_save():
     df_raw['year'] = pd.to_numeric(df_raw['year'], errors='coerce')
     df_raw = df_raw.dropna(subset=['year'])
     # Filtrar años inválidos (0 o muy antiguos) para evitar errores en gráficas temporales
-    df_raw = df_raw[df_raw['year'] >= 1900]
+    df_raw = df_raw[df_raw['year'] >= 1900] 
     
     # Exportar listado general de papers de Académicos
     df_raw.to_parquet(CACHE_DIR / 'papers_profesor.parquet', index=False)

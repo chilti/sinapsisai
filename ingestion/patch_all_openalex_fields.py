@@ -30,6 +30,7 @@ import json
 import time
 import argparse
 import ast
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 try:
     sys.stdout.reconfigure(encoding='utf-8')
@@ -204,35 +205,49 @@ def patch_all_fields(entity_filter: str = None, dry_run: bool = False, skip_exis
         graph_store.close()
         return
 
-    batch_size = 20
+    batch_size = 50   # Procesar en grupos de 50, pero fetch individual a OpenAlex
     updated = 0
     skipped = 0
     errors  = 0
+    first_skip_printed = False
     total   = len(valid)
+
+    def _fetch_one(doi_str: str):
+        """Trae un work de OpenAlex por DOI. Retorna (doi_clean, work_dict) o (doi_clean, None)."""
+        clean = doi_str.replace("https://doi.org/", "").strip().lower()
+        url   = f"https://doi.org/{clean}"
+        try:
+            results = pyalex.Works().filter(doi=url).get()
+            if results:
+                return clean, results[0]
+        except Exception as e:
+            pass
+        # Segundo intento con identificador directo
+        try:
+            work = pyalex.Works()[url]
+            if work and work.get('doi'):
+                return clean, work
+        except Exception:
+            pass
+        return clean, None
 
     for i in range(0, total, batch_size):
         batch = valid[i:i + batch_size]
         clean_dois = [d[0].replace("https://doi.org/", "").strip().lower() for d in batch]
 
-        # Fetch lote desde OpenAlex
+        # Fetch paralelo (máx 5 hilos para respetar el rate limit de OpenAlex
         oa_data = {}
-        try:
-            doi_query = "|".join([f"https://doi.org/{d}" for d in clean_dois])
-            works = pyalex.Works().filter(doi=doi_query).get()
-            oa_data = {w['doi'].replace("https://doi.org/", "").lower(): w
-                       for w in works if w.get('doi')}
-            if not oa_data:
-                raise ValueError("0 resultados en lote")
-        except Exception as batch_err:
-            # Fallback: uno por uno
-            for d in clean_dois:
-                try:
-                    w = pyalex.Works().filter(doi=f"https://doi.org/{d}").get()
-                    if w and w[0].get('doi'):
-                        oa_data[w[0]['doi'].replace("https://doi.org/", "").lower()] = w[0]
-                except Exception:
-                    pass
-                time.sleep(0.15)
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            futures = {pool.submit(_fetch_one, d): d for d in clean_dois}
+            for fut in as_completed(futures):
+                doi_clean, work = fut.result()
+                if work:
+                    oa_data[doi_clean] = work
+                time.sleep(0.05)
+
+        if not oa_data and not first_skip_printed:
+            print(f"\n  ⚠️  Primer lote sin resultados de OpenAlex. DOI de ejemplo: {clean_dois[0]!r}", flush=True)
+            first_skip_printed = True
 
         # Parchar en Neo4j
         with graph_store.driver.session() as session:
@@ -257,7 +272,6 @@ def patch_all_fields(entity_filter: str = None, dry_run: bool = False, skip_exis
         pct = int((i + len(batch)) / total * 100)
         print(f"  [{pct:3d}%] actualizados={updated}  omitidos={skipped}  errores={errors}",
               end="\r", flush=True)
-        time.sleep(0.1)
 
     print(f"\n\n✅ Parche completado.")
     print(f"   Actualizados : {updated}")
