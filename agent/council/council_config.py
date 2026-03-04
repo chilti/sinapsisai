@@ -262,6 +262,25 @@ def get_tools_catalog() -> str:
         )
 
         lines.append(
+            "\n## Datos pre-calculados disponibles (Parquet en `data/cache/`)\n\n"
+            "Puedes cargarlos directamente con `pd.read_parquet('data/cache/<archivo>')` en el Python_CodeExecutor.\n\n"
+            "| Archivo | Alcance | Columnas clave |\n"
+            "|---|---|---|\n"
+            "| `papers_profesor.parquet` | **Todos los papers de cada académico**, "
+            "incluyendo los producidos en OTRAS instituciones antes o durante su adscripción actual. "
+            "Útil para perfil completo de carrera. | academic_name, entities, year, citations, Title, Source, DOI, fwci, is_oa, oa_status, is_in_top_10_percent, ODS_ID, ODS_Nombre, topics |\n"
+            "| `investigador_total.parquet` | Igual que anterior pero **agrupado por investigador** (métricas totales). | academic_name, entities, num_documents, citations, h_index, fwci_avg, percentile_avg, pct_top_10, pct_1, pct_open_access |\n"
+            "| `investigador_annual.parquet` | Igual pero **por año**, para trayectorias temporales. | academic_name, entities, year, num_documents, citations, h_index |\n"
+            "| `institucion_total.parquet` | Papers de la institución de `ingest_entity_docs.py` (WoS). "
+            "**Solo incluye papers producidos BAJO la afiliación institucional actual**. "
+            "Más riguroso para reportes oficiales. | entity_name, year, citations, Title, fwci, is_oa, ODS_ID |\n"
+            "| `institucion_annual.parquet` | Igual pero **agrupado por año**. | entity_name, year, num_documents, citations |\n"
+            "| `topics_investigador.parquet` | Jerarquía temática (OpenAlex) por investigador. | academic_name, domain, field, subfield, topic, value |\n\n"
+            "> ⚠️ **Diferencia clave**: `papers_profesor` incluye toda la carrera del investigador (puede haber papers de otras instituciones). "
+            "`institucion_total` solo incluye papers con afiliación explícita a la entidad — es más conservador y apropiado para reportes oficiales de producción institucional."
+        )
+
+        lines.append(
             "\n> ⚠️ RESTRICCIONES ABSOLUTAS: Solo puedes proponer pasos que usen las herramientas "
             "listadas arriba. NO existe acceso a Scopus, Web of Science, Google Scholar, "
             "Unpaywall, repositorios institucionales, Docker, Airflow ni ninguna API externa "
