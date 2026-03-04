@@ -33,7 +33,8 @@ def cleanup_databases():
     try:
         # Asumiendo configuración estándar de Qdrant
         client = QdrantClient(host="localhost", port=6333)
-        collections = ["papers", "api_papers", "entities"] # Ajustar según nombres reales
+        collections = ["scientific_papers", "api_papers"]  # Nombres reales de las colecciones
+
         for col in collections:
             try:
                 client.delete_collection(collection_name=col)
