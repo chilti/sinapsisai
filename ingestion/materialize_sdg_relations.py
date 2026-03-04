@@ -100,34 +100,72 @@ def materialize(batch_size: int = 500, dry_run: bool = False):
                 )
         print("  ✅ Nodos SDG listos.")
 
-    # 2. Obtener papers con sdgs_processed
-    print("\n🔍 Consultando papers con sdgs_processed...")
+    # 2. Obtener papers con raw_metadata (que puede contener SDGs de OpenAlex)
+    print("\n🔍 Consultando papers con raw_metadata...")
     with neo.driver.session() as session:
         rows = session.run(
             """
             MATCH (p:Paper)
-            WHERE p.sdgs_processed IS NOT NULL
-            RETURN p.doi AS doi, p.sdgs_processed AS sdgs
+            WHERE p.raw_metadata IS NOT NULL
+            RETURN p.doi AS doi, p.raw_metadata AS raw_meta
             """
         ).data()
 
-    print(f"  → {len(rows):,} papers con sdgs_processed encontrados.")
+    print(f"  → {len(rows):,} papers con raw_metadata encontrados.")
 
-    # 3. Crear relaciones RELEVANT_TO
+    # 3. Extraer SDGs desde raw_metadata y crear relaciones RELEVANT_TO
+    # OpenAlex guarda los SDGs bajo la clave `sustainable_development_goals`
+    # Formato: [{"id": "https://metadata.un.org/sdg/3", "display_name": "...", "score": 0.9}]
     created = 0
     skipped = 0
     errors = 0
+    no_sdg = 0
 
     for i in range(0, len(rows), batch_size):
         batch = rows[i:i+batch_size]
-        
+
         with neo.driver.session() as session:
             for row in batch:
                 doi = row.get("doi")
-                sdg_ids = _parse_sdg_list(row.get("sdgs"))
+                raw_meta = row.get("raw_meta", "{}")
+
+                # Parsear JSON
+                try:
+                    if isinstance(raw_meta, str):
+                        meta = json.loads(raw_meta)
+                    elif isinstance(raw_meta, dict):
+                        meta = raw_meta
+                    else:
+                        skipped += 1
+                        continue
+                except Exception:
+                    skipped += 1
+                    continue
+
+                # Extraer SDGs: acepta lista de dicts {"id": "https://.../sdg/3"} o lista de ints
+                raw_sdgs = meta.get("sustainable_development_goals", [])
+                sdg_ids = []
+                for s in raw_sdgs:
+                    if isinstance(s, dict):
+                        # Extraer el número del URL o del campo id
+                        sdg_url = s.get("id", "") or s.get("display_name", "")
+                        # Formato OpenAlex: "https://metadata.un.org/sdg/3"
+                        parts = str(sdg_url).rstrip("/").split("/")
+                        for part in reversed(parts):
+                            try:
+                                n = int(part)
+                                if 1 <= n <= 17:
+                                    sdg_ids.append(n)
+                                    break
+                            except ValueError:
+                                continue
+                    elif isinstance(s, (int, float)):
+                        n = int(s)
+                        if 1 <= n <= 17:
+                            sdg_ids.append(n)
 
                 if not doi or not sdg_ids:
-                    skipped += 1
+                    no_sdg += 1
                     continue
 
                 if dry_run:
@@ -151,14 +189,22 @@ def materialize(batch_size: int = 500, dry_run: bool = False):
                     errors += 1
                     print(f"  ❌ Error en {doi}: {e}")
 
-        pct = min(100, round((i + len(batch)) / len(rows) * 100))
-        print(f"  Progreso: {pct}% — relaciones {'simuladas' if dry_run else 'creadas'}: {created:,}")
+        if len(rows) > 0:
+            pct = min(100, round((i + len(batch)) / len(rows) * 100))
+            print(f"  Progreso: {pct}% — relaciones {'simuladas' if dry_run else 'creadas'}: {created:,}")
 
     print(f"\n🎉 Proceso completado:")
     print(f"  ✅ Relaciones RELEVANT_TO {'que se crearían' if dry_run else 'creadas/verificadas'}: {created:,}")
-    print(f"  ⏭️  Papers sin SDG o sin DOI: {skipped:,}")
+    print(f"  ⏭️  Papers sin SDG en raw_metadata: {no_sdg:,}")
+    print(f"  ⚠️  Papers con raw_metadata inválido: {skipped:,}")
     if errors:
-        print(f"  ❌ Errores: {errors:,}")
+        print(f"  ❌ Errores Neo4j: {errors:,}")
+    if created == 0 and no_sdg == len(rows):
+        print(
+            "\n⚠️  Ningún paper tiene `sustainable_development_goals` en su raw_metadata.\n"
+            "   Esto significa que OpenAlex no devolvió datos SDG durante la ingesta original.\n"
+            "   Alternativa: ejecutar `ingest_sdg.py` para clasificar con LLM."
+        )
 
 
 def add_indexes(dry_run: bool):
