@@ -47,6 +47,7 @@ def extract_academic_papers():
     MATCH (a:Academic)-[:AUTHORED]->(p)
     OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
     OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
+    OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
     RETURN a.name AS academic_name,
            a.orcid AS orcid,
            a.scopus_id AS scopus_id,
@@ -56,7 +57,8 @@ def extract_academic_papers():
            p.year AS year,
            p.citations AS citations,
            p.raw_metadata AS raw_metadata,
-           collect({id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs
+           collect(DISTINCT {id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs,
+           collect(DISTINCT {topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}) AS graph_topics
     """
     
     records = []
@@ -115,6 +117,13 @@ def extract_academic_papers():
             topics = raw_meta.get('OpenAlex_Topics') or raw_meta.get('topics')
             if topics is None and 'raw_metadata' in raw_meta:
                 topics = raw_meta['raw_metadata'].get('OpenAlex_Topics') or raw_meta['raw_metadata'].get('topics')
+            # Fallback: usar los nodos :Topic del grafo si raw_metadata no tiene topics
+            if not isinstance(topics, list) or not topics:
+                graph_topics = row.get('graph_topics', []) or []
+                topics = [
+                    {'topic': gt['topic'], 'domain': gt.get('domain', ''), 'field': gt.get('field', ''), 'subfield': gt.get('subfield', '')}
+                    for gt in graph_topics if gt.get('topic')
+                ]
             if not isinstance(topics, list): topics = []
             
             # Manejo de ODS (primer ODS para retrocompatibilidad de columnas planas si se requiere, 
@@ -379,15 +388,18 @@ def process_and_save():
     if topics_list:
         df_topics = pd.DataFrame(topics_list)
         df_topics['count'] = 1
-        # Sumamos por investigador y jerarquía
         df_topics_agg = df_topics.groupby(['academic_name', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
-        df_topics_agg.to_parquet(CACHE_DIR / 'topics_investigador.parquet', index=False)
-        # Limpiamos remanentes
-        if os.path.exists(CACHE_DIR / 'concepts_investigador.parquet'):
-            os.remove(CACHE_DIR / 'concepts_investigador.parquet')
-        if os.path.exists(CACHE_DIR / 'concepts_institucion.parquet'):
-            os.remove(CACHE_DIR / 'concepts_institucion.parquet')
-    
+    else:
+        # Escribir parquet vacío para que el dashboard muestre mensaje en vez de None
+        print("⚠️  No se encontraron tópicos en raw_metadata ni en nodos :Topic del grafo.")
+        df_topics_agg = pd.DataFrame(columns=['academic_name', 'domain', 'field', 'subfield', 'topic', 'value'])
+    df_topics_agg.to_parquet(CACHE_DIR / 'topics_investigador.parquet', index=False)
+    # Limpiar archivos de versiones anteriores si existen
+    if os.path.exists(CACHE_DIR / 'concepts_investigador.parquet'):
+        os.remove(CACHE_DIR / 'concepts_investigador.parquet')
+    if os.path.exists(CACHE_DIR / 'concepts_institucion.parquet'):
+        os.remove(CACHE_DIR / 'concepts_institucion.parquet')
+
     # 2. AGREGARES A NIVEL INVESTIGADOR
     print("⏳ Agregando métricas a nivel Investigador...")
     # Agregamos 'entities' para conservar las afiliaciones en el agrupamiento
