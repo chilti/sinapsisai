@@ -23,7 +23,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException, WebDriverException
 from lxml import html
 import argparse
 
@@ -95,7 +95,16 @@ def verify_and_scrape_siia(driver, name_to_verify, url):
     verifica el nombre extraído vs el buscado y extrae ORCID, Scopus y Áreas.
     """
     try:
-        driver.get(url)
+        try:
+            driver.get(url)
+        except TimeoutException:
+            print(f"    ⏱️ Timeout al cargar la página. Saltando.")
+            return None
+        except WebDriverException as e:
+            if 'Read timed out' in str(e) or 'timeout' in str(e).lower():
+                print(f"    ⏱️ Timeout de conexión al SIIA. Saltando.")
+                return None
+            raise
 
         # 1. GESTIÓN DEL MODAL (HTML / BOOTSTRAP)
         try:
@@ -150,11 +159,10 @@ def verify_and_scrape_siia(driver, name_to_verify, url):
                 print(f"    ❌ Error al extraer Scopus: {e}")
                 pass
 
-        # Orcid
+        # Orcid (puede no estar presente, se omite silenciosamente)
         try:
             data['orcid'] = driver.find_element(By.XPATH, '//html/body/center/div/table[2]/tbody/tr[6]/td/span/a').get_attribute('href')
-        except NoSuchElementException as e:
-            print(f"    ❌ Error al extraer ORCID: {e}")
+        except NoSuchElementException:
             pass
 
         # Áreas Temáticas
@@ -222,7 +230,9 @@ def main():
     if args.name:
         options = webdriver.ChromeOptions()
         options.add_argument('--headless')
+        options.add_argument('--no-proxy-server')
         driver = webdriver.Chrome(options=options)
+        driver.set_page_load_timeout(40)
         try:
             res = search_by_name(driver, args.name, args.entity or "Manual Search")
             if res:
@@ -277,11 +287,13 @@ def main():
     options.add_argument('--headless')
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    options.add_argument('--log-level=3') # silenciar logs innecesarios
+    options.add_argument('--log-level=3')  # silenciar logs innecesarios
+    options.add_argument('--no-proxy-server')  # evitar proxies locales que causan timeout
     
     print("⏳ Iniciando WebDriver de Chrome...")
     try:
         driver = webdriver.Chrome(options=options)
+        driver.set_page_load_timeout(40)  # 40s máximo por página (SIIA es lento pero no infinito)
     except Exception as e:
         print(f"❌ Falló inicio de ChromeDriver: {e}")
         return

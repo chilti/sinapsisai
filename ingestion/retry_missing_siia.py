@@ -91,30 +91,42 @@ def verify_and_scrape_siia(driver, name_to_verify, url):
 
         data = {
             'name': scraped_name,
-            'scopus': '',
+            'scopus': [],
             'orcid': '',
             'areas': []
         }
 
-        # Scopus
+        # Scopus — igual que siia_scraper.py: lista de spans por texto, no href
         try:
-            data['scopus'] = driver.find_element(By.XPATH, '/html/body/center/div/table[2]/tbody/tr[4]/td/span/a').get_attribute('href')
-        except NoSuchElementException:
-            try:
-                td_element = driver.find_element(By.XPATH, "/html/body/center/div/table[2]/tbody/tr[4]/td")
-                outer_html_td = td_element.get_attribute('outerHTML')
-                tree = html.fromstring(outer_html_td)
-                sub_elements = tree.xpath('./span')
-                scopus_ids = [s.text_content().strip() for s in sub_elements if s.text_content().strip()]
-                data['scopus'] = scopus_ids[0] if scopus_ids else ''
-            except Exception:
-                pass
+            td_element = driver.find_element(By.XPATH, "/html/body/center/div/table[2]/tbody/tr[4]/td")
+            outer_html_td = td_element.get_attribute('outerHTML')
+            tree = html.fromstring(outer_html_td)
+            sub_elements = tree.xpath('.//span')  # Más general
+            for sub_element in sub_elements:
+                data['scopus'].append(sub_element.text_content().strip())
+        except Exception as e:
+            print(f"      ❌ Error al extraer Scopus: {e}")
 
-        # Orcid
+        # ORCID
         try:
-            data['orcid'] = driver.find_element(By.XPATH, '/html/body/center/div/table[2]/tbody/tr[6]/td/span/a').get_attribute('href')
+            data['orcid'] = driver.find_element(
+                By.XPATH, '//html/body/center/div/table[2]/tbody/tr[6]/td/span/a'
+            ).get_attribute('href')
         except NoSuchElementException:
             pass
+
+        # Áreas Temáticas
+        try:
+            td_element = driver.find_element(By.XPATH, "/html/body/center/div/table[3]/tbody/tr[2]/td")
+            outer_html_td = td_element.get_attribute('outerHTML')
+            tree = html.fromstring(outer_html_td)
+            sub_elements = tree.xpath('./span')
+            for sub_element in sub_elements:
+                area_text = sub_element.text_content().strip()
+                if area_text:
+                    data['areas'].append(area_text)
+        except Exception as e:
+            print(f"      ❌ Error al extraer áreas: {e}")
 
         return data
     except Exception as e:
@@ -172,9 +184,9 @@ def main():
                 # Hacemos verify_and_scrape (si el fuzzy falla es porque el link manual es incorrecto)
                 scraped_data = verify_and_scrape_siia(driver, name_key, link)
                 if scraped_data:
-                    data[name_key]['scopus'] = scraped_data.get('scopus', entry.get('scopus', ''))
+                    sc = scraped_data.get('scopus', [])
+                    data[name_key]['scopus'] = "; ".join(sc) if isinstance(sc, list) else sc
                     data[name_key]['orcid'] = scraped_data.get('orcid', entry.get('orcid', ''))
-                    
                     if not data[name_key].get('areas') and scraped_data.get('areas'):
                         data[name_key]['areas'] = scraped_data.get('areas')
                 
@@ -222,8 +234,9 @@ def main():
                     link = res.get('link')
                     scraped_data = verify_and_scrape_siia(driver, name_key, link)
                     if scraped_data:
+                        sc = scraped_data.get('scopus', [])
                         data[name_key]['siia'] = link
-                        data[name_key]['scopus'] = scraped_data.get('scopus', '')
+                        data[name_key]['scopus'] = "; ".join(sc) if isinstance(sc, list) else sc
                         data[name_key]['orcid'] = scraped_data.get('orcid', '')
                         data[name_key]['areas'] = scraped_data.get('areas', [])
                         found = True
