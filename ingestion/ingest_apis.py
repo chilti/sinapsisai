@@ -278,27 +278,105 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                     
                 record['Cited_by'] = work.get('cited_by_count', record.get('Cited_by', 0))
                 
-                # Extraer metricas avanzadas para KPIs
+                # ── KPIs de impacto ────────────────────────────────────────────
                 record['fwci'] = work.get('fwci', None)
                 record['open_access'] = work.get('open_access', {})
                 if work.get('citation_normalized_percentile'):
                     perc_data = work['citation_normalized_percentile']
                     record['citation_normalized_percentile'] = perc_data.get('value', 0.0)
-                    record['is_in_top_1_percent'] = perc_data.get('is_in_top_1_percent', False)
+                    record['is_in_top_1_percent']  = perc_data.get('is_in_top_1_percent', False)
                     record['is_in_top_10_percent'] = perc_data.get('is_in_top_10_percent', False)
-                
+                cyp = work.get('cited_by_percentile_year') or {}
+                record['cited_by_percentile_year_min'] = cyp.get('min')
+                record['cited_by_percentile_year_max'] = cyp.get('max')
+
+                # ── Trayectoria de citas (para velocidad, vida media) ──────────
+                record['counts_by_year']       = work.get('counts_by_year', [])
+                record['referenced_works_count'] = work.get('referenced_works_count', 0)
+                record['referenced_works']     = work.get('referenced_works', [])  # para :CITES
+
+                # ── Costes APC ─────────────────────────────────────────────────
+                record['apc_paid_usd'] = (work.get('apc_paid') or {}).get('value_usd', 0) or 0
+                record['apc_list_usd'] = (work.get('apc_list') or {}).get('value_usd', 0) or 0
+
+                # ── Colaboración e autoría ──────────────────────────────────────
+                _auths = work.get('authorships', [])
+                record['author_count']            = len(_auths)
+                record['countries_distinct_count'] = work.get('countries_distinct_count', 0)
+                record['institutions_distinct_count'] = work.get('institutions_distinct_count', 0)
+                record['countries'] = list({c for a in _auths for c in a.get('countries', [])})
+                # Detalle de coautores externos (país + institución) para §9
+                record['coauthor_institutions'] = [
+                    {
+                        'author': (a.get('author') or {}).get('display_name'),
+                        'orcid':  (a.get('author') or {}).get('orcid'),
+                        'position': a.get('author_position'),
+                        'is_corresponding': a.get('is_corresponding', False),
+                        'countries': a.get('countries', []),
+                        'institutions': [
+                            {'name': i.get('display_name'), 'ror': i.get('ror'),
+                             'country': i.get('country_code'), 'type': i.get('type')}
+                            for i in a.get('institutions', [])
+                        ]
+                    }
+                    for a in _auths
+                ]
+
+                # ── Acceso abierto avanzado ────────────────────────────────────
+                _loc = work.get('primary_location') or {}
+                record['license']                  = _loc.get('license')
+                record['any_repository_has_fulltext'] = (work.get('open_access') or {}).get('any_repository_has_fulltext', False)
+                record['oa_url']                   = (work.get('open_access') or {}).get('oa_url')
+                record['locations_count']          = work.get('locations_count', 0)
+
+                # ── Indexación y visibilidad ───────────────────────────────────
+                record['indexed_in']   = work.get('indexed_in', [])
+                record['is_retracted'] = work.get('is_retracted', False)
+                record['language']     = work.get('language', 'en')
+                record['type']         = work.get('type', 'article')
+
+                # ── Revista / fuente ───────────────────────────────────────────
+                _src = _loc.get('source') or {}
+                record['journal_is_oa']      = _src.get('is_oa', False)
+                record['journal_is_in_doaj'] = _src.get('is_in_doaj', False)
+                record['journal_is_core']    = _src.get('is_core', False)
+                record['issn']               = _src.get('issn_l')
+                record['journal_type']       = _src.get('type')  # 'journal', 'repository', etc.
+
+                # ── Tópico primario (jerarquía completa) ───────────────────────
+                pt = work.get('primary_topic') or {}
+                record['primary_topic_name']     = pt.get('display_name')
+                record['primary_topic_score']    = pt.get('score')
+                record['primary_topic_field']    = (pt.get('field') or {}).get('display_name')
+                record['primary_topic_subfield'] = (pt.get('subfield') or {}).get('display_name')
+                record['primary_topic_domain']   = (pt.get('domain') or {}).get('display_name')
+
+                # ── Topics (hasta 3, con jerarquía) ───────────────────────────
                 topics = []
                 for t in work.get('topics', []):
                     try:
                         topics.append({
-                            'domain': t.get('domain', {}).get('display_name'),
-                            'field': t.get('field', {}).get('display_name'),
-                            'subfield': t.get('subfield', {}).get('display_name'),
-                            'topic': t.get('display_name')
+                            'domain':   (t.get('domain') or {}).get('display_name'),
+                            'field':    (t.get('field') or {}).get('display_name'),
+                            'subfield': (t.get('subfield') or {}).get('display_name'),
+                            'topic':    t.get('display_name'),
+                            'score':    t.get('score'),
                         })
-                    except:
+                    except Exception:
                         pass
                 record['OpenAlex_Topics'] = topics
+
+                # ── Keywords (hasta 15) ────────────────────────────────────────
+                record['keywords'] = [k.get('display_name') for k in work.get('keywords', [])[:15]]
+
+                # ── ODS desde OpenAlex (puede estar vacío) ─────────────────────
+                record['sustainable_development_goals'] = [
+                    {'id': s.get('id', '').rstrip('/').split('/')[-1],
+                     'display_name': s.get('display_name'),
+                     'score': s.get('score')}
+                    for s in work.get('sustainable_development_goals', [])
+                ]
+
                 record['Source'] += ' + OpenAlex'
             except Exception:
                 pass # Si OpenAlex falla, seguimos con los datos base
@@ -309,12 +387,20 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                 
             payload_qdrant = {
                 "academic_name": academic_name,
-                "doi": doi,
-                "title": record.get("Title"),
-                "year": record.get("Year"),
-                "source": record.get("Source"),
-                "entity": entity_name,
-                "text": text_for_embedding
+                "doi":           doi,
+                "title":         record.get("Title"),
+                "year":          record.get("Year"),
+                "source":        record.get("Source"),
+                "entity":        entity_name,
+                "text":          text_for_embedding,
+                # Nuevos campos filtrables en búsqueda semántica
+                "is_oa":         (record.get("open_access") or {}).get("is_oa", False),
+                "oa_status":     (record.get("open_access") or {}).get("oa_status", "closed"),
+                "language":      record.get("language", "en"),
+                "fwci":          record.get("fwci"),
+                "country_codes": record.get("countries", []),
+                "indexed_in":    record.get("indexed_in", []),
+                "primary_topic_domain": record.get("primary_topic_domain"),
             }
             batch_texts.append(text_for_embedding)
             batch_payloads.append(payload_qdrant)
