@@ -50,38 +50,75 @@ Sistema de Inteligencia Bibliométrica Híbrida y Orquestador RAG para entidades
    EMAIL_ADDRESS=correo_contacto_openalex@ejemplo.com
    ```
 
-## 🔄 Flujo de Ingesta (Setup de una Entidad)
+## 🔄 Flujo de Ingesta (Setup de una Nueva Instancia / Entidad)
 
-Para cargar información de una entidad, debes ejecutar de manera secuencial los siguientes scripts de ingesta:
+Para cargar información de una nueva institución (por ejemplo, **"Facultad de Ciencias"**), debes ejecutar de manera secuencial los siguientes scripts de ingesta y enriquecimiento.
 
-1. **Ingestar Artículos Locales Iniciales**
+### 1. Ingesta Inicial y Lista de Académicos
+1. **Ingestar Artículos Locales Iniciales (Web of Science / Scopus export)**
+   Carga una lista base de publicaciones institucionales.
    ```bash
-   python .\ingestion\ingest_entity_docs.py --file "data/NombreEntidad.txt" --entity "Nombre Entidad"
+   python ingestion/ingest_entity_docs.py --file "data/Facultad_Ciencias_wos.txt" --entity "Facultad de Ciencias"
    ```
-2. **Scraping del Padrón de Investigadores (Por ejemplo: SIIA)**
+2. **Scraping del Padrón de Investigadores (SIIA)**
+   Extrae perfiles de investigadores desde un Excel de entrada.
    ```bash
-   python .\ingestion\siia_scraper.py --file '.\data\Lista_Investigadores.xlsx' --entity "Nombre Entidad"
+   python ingestion/siia_scraper.py --file "data/Lista_Facultad_Ciencias.xlsx" --entity "Facultad de Ciencias"
    ```
-3. **Ingestar y Enriquecer con APIs Globales**
-   Descarga la metadata rica, DOIs faltantes y métricas abstractas desde OpenAlex, Scopus, ORCID usando el JSON arrojado por el Scraping.
+   *(Generará un archivo JSON como `profesores_Facultad_de_Ciencias.json`)*
+
+### 2. Enriquecimiento Primario (APIs)
+3. **Ingestar y Enriquecer con APIs Globales (OpenAlex, OAK, Scopus)**
+   Descarga metadata detallada para los artículos de cada investigador en el JSON.
    ```bash
-   python .\ingestion\ingest_apis.py .\ingestion\profesores_Entidad_Resultados.json 
+   python ingestion/ingest_apis.py ingestion/profesores_Facultad_de_Ciencias.json
    ```
-4. **Extraer Nodos de Tópicos (Graph Transformation)**
-   Extrae la información temática de la API de OpenAlex y la despliega como Nodos Temáticos `(t:Topic)` explícitos conectados por relaciones en Neo4j.
+
+### 3. Generación de Indicadores Secundarios (Nuevos campos)
+4. **Completar campos de OpenAlex en toda la DB**
+   Asegura que todos los papers tengan los ~60 indicadores nuevos (velocidad de citas, APC, licencias OA, colaboración).
    ```bash
-   python .\ingestion\extract_topics.py
+   python ingestion/patch_all_openalex_fields.py --entity "Facultad de Ciencias"
    ```
-5. **Auto-Clasificación ODS con LLM Local**
-   Se conecta a un modelo de lenguaje local (ej. LM Studio por defecto en puerto 1234) para inferir y asignar el ODS (Sustainable Development Goal) principal del Abstract del artículo iterando Neo4j.
+5. **Inferir Género de Investigadores**
+   Utiliza Genderize.io para etiquetar el género de los académicos cargados.
    ```bash
-   python .\ingestion\ingest_sdg.py
+   python ingestion/infer_gender.py --entity "Facultad de Ciencias"
    ```
-6. **Computar las Métricas Analíticas y Tableros (Caché Parquet)**
-   Precalcula el Sunburst, dimensiones UMAP y conteos históricos para alimentar el Dashboard sin demoras. Utiliza el módulo de interfaz `viz_ods.py` en la generación.
+6. **Parchear Afiliaciones de Coautores**
+   Enriquece los nodos de autores externos (`:Author`) con países e instituciones. Vital para métricas de colaboración internacional.
    ```bash
-   python .\ingestion\compute_scholar_metrics.py
+   python ingestion/patch_author_affiliations.py --entity "Facultad de Ciencias"
    ```
+
+### 4. Estructuración del Grafo Temático y Relacional
+7. **Extraer Nodos Temáticos**
+   Extrae campos `primary_topic` y genera nodos `(:Topic)` y relaciones `(:TopicHierarchy)`.
+   ```bash
+   python ingestion/extract_topics.py
+   ```
+8. **Auto-Clasificación ODS con LLM Local**
+   Se conecta al LLM (ej. LM Studio en puerto 1234) para inferir y asignar el ODS principal del Abstract de cada artículo.
+   ```bash
+   python ingestion/ingest_sdg.py
+   ```
+9. **Materializar Red de Citas**
+   Crea las relaciones explícitas `(p1:Paper)-[:CITES]->(p2:Paper)` usando el array `referenced_works` de OpenAlex.
+   ```bash
+   python ingestion/materialize_citations.py --entity "Facultad de Ciencias"
+   ```
+
+### 5. Finalización y Caché para el Dashboard
+10. **Parchear Payload en Qdrant (Para búsqueda semántica avanzada)**
+    Actualiza la base de datos vectorial con los nuevos campos filtrables (idioma, OA, países, FWCI).
+    ```bash
+    python ingestion/patch_qdrant_payload.py --both
+    ```
+11. **Computar las Métricas Analíticas y Tableros (Caché Parquet)**
+    Precalcula métricas de excelencia (Top 10%, Gini, Velocidad), Sunburst temático, KPIs por investigador/institución y proyeción UMAP. Esto genera los `.parquet` leídos por el dashboard hiper-rápido.
+    ```bash
+    python ingestion/compute_scholar_metrics.py
+    ```
 
 ## 📊 Interfaz Dashboard
 
