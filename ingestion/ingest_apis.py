@@ -109,12 +109,35 @@ def deconstruct_abstract(inverted_abstract):
 
 def obtener_metadatos_de_scopus(scopus_ids):
     if not scopus_ids: return {}
-    if isinstance(scopus_ids, str): scopus_ids = [scopus_ids]
+    
+    # Si viene como representación de lista en string "['123', '456']"
+    import ast
+    if isinstance(scopus_ids, str):
+        try:
+            parsed = ast.literal_eval(scopus_ids)
+            if isinstance(parsed, list):
+                scopus_ids = parsed
+            else:
+                scopus_ids = [scopus_ids]
+        except Exception:
+            # Si falla, podría ser separado por comas
+            scopus_ids = [s.strip() for s in scopus_ids.split(',')]
+            
+    if not isinstance(scopus_ids, list):
+        scopus_ids = [scopus_ids]
+
     metadatos = {}
     for sid in scopus_ids:
+        if not sid: continue
+        sid = str(sid).strip()
         # Extraer ID numérico si viene como URL (https://www.scopus.com/authid/detail.uri?authorId=...)
         if 'authorId=' in sid:
             sid = sid.split('authorId=')[-1].split('&')[0]
+        # Extraer usando nuestra regex limpia por si hay basura
+        import re
+        match = re.search(r'\d{8,12}', sid)
+        if match:
+            sid = match.group(0)
             
         try:
             au = AuthorRetrieval(sid)
