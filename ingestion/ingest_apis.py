@@ -210,6 +210,12 @@ def obtener_metadatos_de_orcid(orcid_url):
                         if doi:
                             print(f"    ✅ arXiv {arxiv_id} → DOI {doi}")
                 
+                # Si sigue sin haber DOI, usar el put-code interno de ORCID como ID único
+                if not doi:
+                    put_code = summary.get('put-code')
+                    if put_code:
+                        doi = f"orcid-work:{put_code}"
+
                 pub_date = summary.get('publication-date', {}) or {}
                 
                 if doi and doi not in metadatos:
@@ -225,6 +231,7 @@ def obtener_metadatos_de_orcid(orcid_url):
                     }
     except Exception as e:
         print(f"    Advertencia en ORCID para {orcid_id}: {e}")
+    
     return metadatos
 
 # --- Lógica principal de ingesta ---
