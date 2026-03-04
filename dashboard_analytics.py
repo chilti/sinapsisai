@@ -13,11 +13,18 @@ BASE_PATH = os.path.dirname(os.path.abspath(__file__))
 CACHE_DIR = os.path.join(BASE_PATH, 'data', 'cache')
 
 @st.cache_data
-def load_cached_data(filename):
+def load_cached_data(filename, _mtime=None):
+    """Carga un parquet del cache. _mtime se usa como cache buster (ignorado internamente)."""
     path = os.path.join(CACHE_DIR, filename)
     if os.path.exists(path):
         return pd.read_parquet(path)
     return None
+
+def get_cached_data(filename):
+    """Wrapper que pasa el mtime del archivo para invalidar el cache de Streamlit automáticamente."""
+    path = os.path.join(CACHE_DIR, filename)
+    mtime = os.path.getmtime(path) if os.path.exists(path) else None
+    return load_cached_data(filename, _mtime=mtime)
 
 def cargar_lista_academicos(ruta_json="ingestion/profesores_Instituto_de_Ciencias_Nucleares.json"):
     path = os.path.join(BASE_PATH, ruta_json)
@@ -174,10 +181,10 @@ def render_institucion_view(entity_name):
 def render_investigador_view(entity_name):
     st.header(f"👤 Vista por Investigador ({entity_name})")
 
-    df_inv_tot = load_cached_data("investigador_total.parquet")
-    df_inv_ann = load_cached_data("investigador_annual.parquet")
-    df_umap = load_cached_data("umap_investigadores.parquet")
-    df_topics = load_cached_data("topics_investigador.parquet")
+    df_inv_tot = get_cached_data("investigador_total.parquet")
+    df_inv_ann = get_cached_data("investigador_annual.parquet")
+    df_umap    = get_cached_data("umap_investigadores.parquet")
+    df_topics  = get_cached_data("topics_investigador.parquet")
 
     if df_inv_tot is None or df_inv_tot.empty:
         st.warning("Aún no hay métricas de investigadores calculadas.")
