@@ -124,26 +124,26 @@ class Neo4jGraphStore:
             params["doi"] = str(uuid.uuid4())
 
         query = """
-        MERGE (a:Academic:Author {id: $academic_name}) // Multietiqueta Academic y Author
+        MERGE (a:Academic:Author {id: $academic_name})
         SET a.name = $academic_name
         WITH a
-        CALL {
-            WITH a
-            WITH a WHERE $orcid IS NOT NULL SET a.orcid = $orcid
+        CALL (a) {
+            WITH a WHERE $orcid IS NOT NULL
+            SET a.orcid = $orcid
         }
-        CALL {
-            WITH a
-            WITH a WHERE $scopus_id IS NOT NULL SET a.scopus_id = $scopus_id
+        CALL (a) {
+            WITH a WHERE $scopus_id IS NOT NULL
+            SET a.scopus_id = $scopus_id
         }
-        CALL {
-            WITH a
-            WITH a WHERE $siia_url IS NOT NULL AND $siia_url <> '' SET a.siia_url = $siia_url
+        CALL (a) {
+            WITH a WHERE $siia_url IS NOT NULL AND $siia_url <> ''
+            SET a.siia_url = $siia_url
         }
         WITH a
-        MERGE (p:Paper {id: $doi}) // Unificamos a Paper
+        MERGE (p:Paper {id: $doi})
         SET p.doi = $doi, p.title = $title, p.year = $year, p.citations = $citations,
             p.raw_metadata = $raw_metadata
-            
+
         MERGE (a)-[:AUTHORED]->(p)
         """
         
