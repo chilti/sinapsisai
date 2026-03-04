@@ -149,7 +149,7 @@ def render_institucion_view(entity_name):
         st.markdown(html_code_inst, unsafe_allow_html=True)
         
         st.markdown("---")
-        st.subheader("📜 Repositorio de Publicaciones (Institucional)")
+        st.subheader("📜 Publicaciones")
         
         col_filtro1, col_filtro2 = st.columns(2)
         with col_filtro1:

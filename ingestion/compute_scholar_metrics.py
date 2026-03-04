@@ -84,7 +84,62 @@ def compute_citation_velocity(counts_by_year, pub_year) -> dict:
         'half_life':        half_life,
     }
 
+def compute_interdisciplinarity(topics_series) -> dict:
+    """
+    Calcula métricas temáticas de un grupo de papers (serie de listas de topics).
+    - gini_topics:       Gini sobre distribución de cuentas por topic (0=mono, 1=disperso)
+    - domain_diversity:  Número de dominios distintos cubiertos (0-4)
+    - unique_topics:     Número de topics únicos
+    - top_topic:         Topic más frecuente
+    - top_domain:        Dominio más frecuente
+    """
+    from collections import Counter
+    topic_counts   = Counter()
+    domain_counts  = Counter()
+
+    for topics in topics_series:
+        if not isinstance(topics, list):
+            continue
+        for t in topics:
+            if not isinstance(t, dict):
+                continue
+            topic_name  = t.get('topic')
+            domain_name = t.get('domain')
+            if topic_name:
+                topic_counts[topic_name]  += 1
+            if domain_name:
+                domain_counts[domain_name] += 1
+
+    if not topic_counts:
+        return {
+            'gini_topics': np.nan, 'domain_diversity': 0,
+            'unique_topics': 0, 'top_topic': None, 'top_domain': None
+        }
+
+    # Gini sobre counts de topics
+    counts = np.array(sorted(topic_counts.values()), dtype=float)
+    n = len(counts)
+    if n > 1:
+        cum = np.cumsum(counts)
+        gini = 1 - (2 * cum.sum() - counts.sum() + counts[-1]) / (n * counts.sum())
+        gini = round(float(np.clip(gini, 0, 1)), 4)
+    else:
+        gini = 0.0
+
+    top_topic  = topic_counts.most_common(1)[0][0]
+    top_domain = domain_counts.most_common(1)[0][0] if domain_counts else None
+
+    return {
+        'gini_topics':     gini,
+        'domain_diversity': len(domain_counts),
+        'unique_topics':   len(topic_counts),
+        'top_topic':       top_topic,
+        'top_domain':      top_domain,
+    }
+
+
 def extract_academic_papers():
+
     """Descarga los metadatos completos de todas las publicaciones por Académico."""
     graph_store = Neo4jGraphStore()
     
@@ -594,8 +649,37 @@ def process_and_save():
     df_inv_annual.to_parquet(CACHE_DIR / 'investigador_annual.parquet', index=False)
     
     df_inv_tot = aggregate_metrics(df_raw, ['academic_name', 'entities'])
+
+    # ── Interdisciplinariedad por investigador ─────────────────────────────────
+    print("⏳ Calculando índice de interdisciplinariedad por investigador...")
+    if 'topics' in df_raw.columns:
+        inter_rows = []
+        for ac_name, grp in df_raw.groupby('academic_name'):
+            idx = compute_interdisciplinarity(grp['topics'])
+            idx['academic_name'] = ac_name
+            inter_rows.append(idx)
+        if inter_rows:
+            df_inter = pd.DataFrame(inter_rows)
+            df_inv_tot = df_inv_tot.merge(df_inter, on='academic_name', how='left')
+
     df_inv_tot.to_parquet(CACHE_DIR / 'investigador_total.parquet', index=False)
     
+    # ── Keywords por investigador ──────────────────────────────────────────────
+    print("⏳ Calculando keywords por investigador...")
+    if 'keywords' in df_raw.columns:
+        from collections import Counter
+        kw_rows = []
+        for ac_name, grp in df_raw.groupby('academic_name'):
+            cnt = Counter()
+            for kws in grp['keywords']:
+                if isinstance(kws, list):
+                    cnt.update([k for k in kws if k])
+            for kw, freq in cnt.most_common(50):
+                kw_rows.append({'academic_name': ac_name, 'keyword': kw, 'freq': freq})
+        if kw_rows:
+            pd.DataFrame(kw_rows).to_parquet(CACHE_DIR / 'keywords_investigador.parquet', index=False)
+            print(f"  → keywords_investigador.parquet: {len(kw_rows)} filas")
+
     df_raw_recent = df_raw[(df_raw['year'] >= 2021) & (df_raw['year'] <= 2025)]
     df_inv_recent = aggregate_metrics(df_raw_recent, ['academic_name', 'entities'])
     df_inv_recent.to_parquet(CACHE_DIR / 'investigador_recent.parquet', index=False)
@@ -612,7 +696,35 @@ def process_and_save():
         df_inst_raw.to_parquet(CACHE_DIR / 'papers_institucion.parquet', index=False)
         
         df_inst_tot = aggregate_metrics(df_inst_raw, ['entity_name'])
+
+        # ── Interdisciplinariedad por entidad ──────────────────────────────────
+        if 'topics' in df_inst_raw.columns:
+            inter_rows_inst = []
+            for e_name, grp in df_inst_raw.groupby('entity_name'):
+                idx = compute_interdisciplinarity(grp['topics'])
+                idx['entity_name'] = e_name
+                inter_rows_inst.append(idx)
+            if inter_rows_inst:
+                df_inter_inst = pd.DataFrame(inter_rows_inst)
+                df_inst_tot = df_inst_tot.merge(df_inter_inst, on='entity_name', how='left')
+
         df_inst_tot.to_parquet(CACHE_DIR / 'institucion_total.parquet', index=False)
+
+        # ── Keywords por entidad ───────────────────────────────────────────────
+        if 'keywords' in df_inst_raw.columns:
+            from collections import Counter
+            kw_inst_rows = []
+            for e_name, grp in df_inst_raw.groupby('entity_name'):
+                cnt = Counter()
+                for kws in grp['keywords']:
+                    if isinstance(kws, list):
+                        cnt.update([k for k in kws if k])
+                for kw, freq in cnt.most_common(100):
+                    kw_inst_rows.append({'entity_name': e_name, 'keyword': kw, 'freq': freq})
+            if kw_inst_rows:
+                pd.DataFrame(kw_inst_rows).to_parquet(CACHE_DIR / 'keywords_institucion.parquet', index=False)
+                print(f"  → keywords_institucion.parquet: {len(kw_inst_rows)} filas")
+
     
         df_inst_ann = aggregate_metrics(df_inst_raw, ['entity_name', 'year'])
         df_inst_ann.to_parquet(CACHE_DIR / 'institucion_annual.parquet', index=False)
