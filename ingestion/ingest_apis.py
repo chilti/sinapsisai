@@ -177,8 +177,18 @@ def _resolve_arxiv_to_doi(arxiv_id: str) -> str | None:
     return None
 
 def obtener_metadatos_de_orcid(orcid_url):
-    if not orcid_url or 'http' not in orcid_url: return {}
+    if not orcid_url: return {}
+    
+    # Extraer el ID (los 16 dígitos) por si viene como URL o como string puro
+    orcid_url = str(orcid_url).strip()
     orcid_id = orcid_url.rstrip('/').split('/')[-1]
+    
+    # Validar formato básico de ORCID (ej: 0000-0001-2345-6789 o termina en X)
+    import re
+    if not re.search(r'\d{4}-\d{4}-\d{4}-\d{3}[\dX]', orcid_id, re.IGNORECASE):
+        print(f"    [ORCID] Formato inválido ignorado: '{orcid_url}'")
+        return {}
+
     metadatos = {}
     url = f"https://pub.orcid.org/v3.0/{orcid_id}/works"
     headers = {"Accept": "application/json"}
