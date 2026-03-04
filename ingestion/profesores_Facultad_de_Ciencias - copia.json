@@ -160,7 +160,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127803",
-        "scopus": "56013760500; 7003909159",
+        "scopus": [
+            "56013760500",
+            "7003909159"
+        ],
         "orcid": "",
         "areas": [
             "Anatomy and morphology",
@@ -205,7 +208,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=67707",
-        "scopus": "7004675732",
+        "scopus": [
+            "7004675732"
+        ],
         "orcid": "",
         "areas": [
             "Biology",
@@ -255,7 +260,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=125473",
-        "scopus": "22971092300; 55989663700",
+        "scopus": [
+            "22971092300",
+            "55989663700"
+        ],
         "orcid": "",
         "areas": [
             "Optics",
@@ -305,7 +313,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127707",
-        "scopus": "55993651000",
+        "scopus": [
+            "55993651000"
+        ],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -319,7 +329,13 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=125823",
-        "scopus": "36673986700; 55016501300; 57190135810; 57577505700; 7004509045",
+        "scopus": [
+            "36673986700",
+            "55016501300",
+            "57190135810",
+            "57577505700",
+            "7004509045"
+        ],
         "orcid": "",
         "areas": [
             "Behavioral sciences",
@@ -364,7 +380,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=125485",
-        "scopus": "57021728400; 6603983731",
+        "scopus": [
+            "57021728400",
+            "6603983731"
+        ],
         "orcid": "",
         "areas": [
             "Education, scientific disciplines",
@@ -393,7 +412,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=86355",
-        "scopus": "24433819800",
+        "scopus": [
+            "24433819800"
+        ],
         "orcid": "",
         "areas": []
     },
@@ -402,7 +423,11 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127674",
-        "scopus": "16064306700; 55622737500; 56000859600",
+        "scopus": [
+            "16064306700",
+            "55622737500",
+            "56000859600"
+        ],
         "orcid": "",
         "areas": [
             "Biology",
@@ -423,7 +448,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=125978",
-        "scopus": "55606754100; 6602643017",
+        "scopus": [
+            "55606754100",
+            "6602643017"
+        ],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -478,10 +506,7 @@
         "original_name": "DE LA MORA Y PALOMAR ASKINASY, PABLO",
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
-        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=79413",
-        "scopus": "",
-        "orcid": "",
-        "areas": []
+        "siia": "No encontrado"
     },
     "ROSAS VAZQUEZ, CARLOS": {
         "original_name": "ROSAS VAZQUEZ, CARLOS",
@@ -543,7 +568,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=125910",
-        "scopus": "7202925356",
+        "scopus": [
+            "7202925356"
+        ],
         "orcid": "",
         "areas": [
             "History & philosophy of science"
@@ -677,7 +704,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=65731",
-        "scopus": "6603690561",
+        "scopus": [
+            "6603690561"
+        ],
         "orcid": "",
         "areas": [
             "Chemistry, inorganic and nuclear",
@@ -778,7 +807,13 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=125458",
-        "scopus": "55663747400; 56013882300; 56183422800; 56264439500; 56728596500",
+        "scopus": [
+            "55663747400",
+            "56013882300",
+            "56183422800",
+            "56264439500",
+            "56728596500"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -858,7 +893,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126147",
-        "scopus": "6505914727",
+        "scopus": [
+            "6505914727"
+        ],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -879,7 +916,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126000",
-        "scopus": "7004511202",
+        "scopus": [
+            "7004511202"
+        ],
         "orcid": "",
         "areas": [
             "Biology",
@@ -913,7 +952,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=86349",
-        "scopus": "6602681387",
+        "scopus": [
+            "6602681387"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -957,7 +998,11 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127716",
-        "scopus": "35585848600; 55989648600; 56756996700",
+        "scopus": [
+            "35585848600",
+            "55989648600",
+            "56756996700"
+        ],
         "orcid": "",
         "areas": [
             "Economics",
@@ -975,7 +1020,12 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126460",
-        "scopus": "55620535600; 55917727300; 6602482862; 6602482863",
+        "scopus": [
+            "55620535600",
+            "55917727300",
+            "6602482862",
+            "6602482863"
+        ],
         "orcid": "",
         "areas": [
             "Anatomy & morphology",
@@ -1002,7 +1052,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=85839",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": []
     },
@@ -1011,7 +1061,11 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127864",
-        "scopus": "55989692100; 56757590200; 7103144801",
+        "scopus": [
+            "55989692100",
+            "56757590200",
+            "7103144801"
+        ],
         "orcid": "",
         "areas": [
             "Biology",
@@ -1034,7 +1088,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126784",
-        "scopus": "47062051100; 9279257700",
+        "scopus": [
+            "47062051100",
+            "9279257700"
+        ],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -1243,7 +1300,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=125811",
-        "scopus": "55989772200; 6506727504",
+        "scopus": [
+            "55989772200",
+            "6506727504"
+        ],
         "orcid": "",
         "areas": [
             "Biology",
@@ -1303,7 +1363,13 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126966",
-        "scopus": "12806331900; 36883127200; 55420831000; 55665909600; 56556690400",
+        "scopus": [
+            "12806331900",
+            "36883127200",
+            "55420831000",
+            "55665909600",
+            "56556690400"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -1387,7 +1453,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=87564",
-        "scopus": "55989814400",
+        "scopus": [
+            "55989814400"
+        ],
         "orcid": "",
         "areas": [
             "Biochemistry and molecular biology",
@@ -1504,7 +1572,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127566",
-        "scopus": "56217070800",
+        "scopus": [
+            "56217070800"
+        ],
         "orcid": "",
         "areas": [
             "Anatomy and morphology",
@@ -1578,7 +1648,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=85216",
-        "scopus": "55993676600",
+        "scopus": [
+            "55993676600"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -1677,7 +1749,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127972",
-        "scopus": "55993694800",
+        "scopus": [
+            "55993694800"
+        ],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -1692,7 +1766,11 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127537",
-        "scopus": "56755697800; 6701827014; 7005426707",
+        "scopus": [
+            "56755697800",
+            "6701827014",
+            "7005426707"
+        ],
         "orcid": "",
         "areas": [
             "Biochemical research methods",
@@ -1733,31 +1811,7 @@
         "original_name": "VALLADARES MCNELIS, RENELA MARIA",
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
-        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=77831",
-        "scopus": "6701511281",
-        "orcid": "",
-        "areas": [
-            "Materials science, ceramics",
-            "Materials science, multidisciplinary",
-            "Metallurgy & metallurgical engineering",
-            "Multidisciplinary sciences",
-            "Physics, applied",
-            "Physics, atomic, molecular & chemical",
-            "Physics, condensed matter",
-            "Physics, multidisciplinary",
-            "Polymer science",
-            "Agricultural and Biological Sciences (miscellaneous)",
-            "Ceramics and Composites",
-            "Condensed matter physics",
-            "Chemical Engineering (miscellaneous)",
-            "Electrical and Electronic Engineering",
-            "Materials Chemistry",
-            "Materials Science (miscellaneous)",
-            "Mechanical Engineering",
-            "Metals and Alloys",
-            "Multidisciplinary",
-            "Physics and Astronomy (miscellaneous)"
-        ]
+        "siia": "No encontrado"
     },
     "MASCARO MIQUELAJAUREGUI, MAITE": {
         "original_name": "MASCARO MIQUELAJAUREGUI, MAITE",
@@ -1850,7 +1904,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128946",
-        "scopus": "55993729400; 6506609474",
+        "scopus": [
+            "55993729400",
+            "6506609474"
+        ],
         "orcid": "",
         "areas": [
             "Acoustics",
@@ -1889,7 +1946,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128125",
-        "scopus": "6504808587; 7103011531",
+        "scopus": [
+            "6504808587",
+            "7103011531"
+        ],
         "orcid": "",
         "areas": [
             "Acoustics",
@@ -2001,7 +2061,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127152",
-        "scopus": "55993771200; 9278286500",
+        "scopus": [
+            "55993771200",
+            "9278286500"
+        ],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -2022,7 +2085,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127748",
-        "scopus": "55993785600",
+        "scopus": [
+            "55993785600"
+        ],
         "orcid": "",
         "areas": [
             "Astronomy & astrophysics",
@@ -2099,7 +2164,16 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127773",
-        "scopus": "14421128300; 36508829400; 51664768400; 55993672400; 56395345800; 56690372400; 57208316107; 7201805767",
+        "scopus": [
+            "14421128300",
+            "36508829400",
+            "51664768400",
+            "55993672400",
+            "56395345800",
+            "56690372400",
+            "57208316107",
+            "7201805767"
+        ],
         "orcid": "",
         "areas": [
             "Acoustics",
@@ -2124,7 +2198,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=80879",
-        "scopus": "6603760891",
+        "scopus": [
+            "6603760891"
+        ],
         "orcid": "",
         "areas": [
             "Chemistry, physical",
@@ -2159,7 +2235,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=75359",
-        "scopus": "7201610059",
+        "scopus": [
+            "7201610059"
+        ],
         "orcid": "",
         "areas": [
             "Biochemistry & molecular biology",
@@ -2199,7 +2277,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128022",
-        "scopus": "8689411700",
+        "scopus": [
+            "8689411700"
+        ],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -2212,7 +2292,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=86762",
-        "scopus": "7103225873",
+        "scopus": [
+            "7103225873"
+        ],
         "orcid": "",
         "areas": [
             "Clinical neurology",
@@ -2248,7 +2330,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126014",
-        "scopus": "36784908000; 6507979933",
+        "scopus": [
+            "36784908000",
+            "6507979933"
+        ],
         "orcid": "",
         "areas": [
             "Biology",
@@ -2290,7 +2375,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127321",
-        "scopus": "55989786200; 56251857700",
+        "scopus": [
+            "55989786200",
+            "56251857700"
+        ],
         "orcid": "",
         "areas": [
             "Biochemistry and molecular biology",
@@ -2313,7 +2401,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126316",
-        "scopus": "55993643100; 6508192560",
+        "scopus": [
+            "55993643100",
+            "6508192560"
+        ],
         "orcid": "",
         "areas": [
             "Geology",
@@ -2537,7 +2628,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=90956",
-        "scopus": "55485180300",
+        "scopus": [
+            "55485180300"
+        ],
         "orcid": "",
         "areas": [
             "Marine & freshwater biology",
@@ -2555,7 +2648,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128542",
-        "scopus": "56002660400",
+        "scopus": [
+            "56002660400"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -2669,37 +2764,13 @@
         "original_name": "GALLARDO ESPINOZA, PEDRO PABLO",
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
-        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=95164",
-        "scopus": "6602694254",
-        "orcid": "",
-        "areas": [
-            "Agriculture, dairy and animal science",
-            "Agriculture, multidisciplinary",
-            "Biology",
-            "Fisheries",
-            "International relations",
-            "Marine and freshwater biology",
-            "Multidisciplinary sciences",
-            "Physiology",
-            "Agricultural and biological sciences (miscellaneous)",
-            "Agronomy and crop science",
-            "Animal science and zoology",
-            "Aquatic science",
-            "Ecology",
-            "Law",
-            "Multidisciplinary",
-            "Physiology",
-            "Physiology (medical)"
-        ]
+        "siia": "No encontrado"
     },
     "MARTINEZ ADAME ISAIS, CARMEN": {
         "original_name": "MARTINEZ ADAME ISAIS, CARMEN",
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
-        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=77805",
-        "scopus": "",
-        "orcid": "",
-        "areas": []
+        "siia": "No encontrado"
     },
     "HERMOSO SALAZAR, ANA MARGARITA": {
         "original_name": "HERMOSO SALAZAR, ANA MARGARITA",
@@ -2733,7 +2804,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=129206",
-        "scopus": "15520933700; 56013639500",
+        "scopus": [
+            "15520933700",
+            "56013639500"
+        ],
         "orcid": "",
         "areas": [
             "Astronomy & astrophysics",
@@ -2775,7 +2849,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128208",
-        "scopus": "56013704300",
+        "scopus": [
+            "56013704300"
+        ],
         "orcid": "",
         "areas": [
             "Astronomy and astrophysics",
@@ -2845,7 +2921,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=99482",
-        "scopus": "12761197700; 57216671337",
+        "scopus": [
+            "12761197700",
+            "57216671337"
+        ],
         "orcid": "",
         "areas": [
             "History",
@@ -2890,7 +2969,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=90254",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Astronomy and astrophysics",
@@ -2905,7 +2984,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=93145",
-        "scopus": "37010864800",
+        "scopus": [
+            "37010864800"
+        ],
         "orcid": "",
         "areas": [
             "Anthropology",
@@ -2929,7 +3010,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128286",
-        "scopus": "8599926700",
+        "scopus": [
+            "8599926700"
+        ],
         "orcid": "",
         "areas": [
             "Biochemistry and molecular biology",
@@ -2966,7 +3049,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=93854",
-        "scopus": "24171914800",
+        "scopus": [
+            "24171914800"
+        ],
         "orcid": "",
         "areas": [
             "Anthropology",
@@ -3004,7 +3089,11 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128157",
-        "scopus": "56002661200; 58042618500; 8917741300",
+        "scopus": [
+            "56002661200",
+            "58042618500",
+            "8917741300"
+        ],
         "orcid": "",
         "areas": [
             "Acoustics",
@@ -3061,7 +3150,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=97009",
-        "scopus": "14826536400",
+        "scopus": [
+            "14826536400"
+        ],
         "orcid": "",
         "areas": [
             "Astronomy and astrophysics",
@@ -3081,7 +3172,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=90495",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Logic",
@@ -3098,7 +3189,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=122025",
-        "scopus": "55505974700",
+        "scopus": [
+            "55505974700"
+        ],
         "orcid": "",
         "areas": [
             "Business, finance",
@@ -3122,7 +3215,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=95499",
-        "scopus": "36919175000",
+        "scopus": [
+            "36919175000"
+        ],
         "orcid": "",
         "areas": [
             "Geology",
@@ -3139,7 +3234,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=118435",
-        "scopus": "18433630100",
+        "scopus": [
+            "18433630100"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -3163,7 +3260,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=97957",
-        "scopus": "23767667100",
+        "scopus": [
+            "23767667100"
+        ],
         "orcid": "",
         "areas": [
             "Behavioral sciences",
@@ -3213,7 +3312,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=87530",
-        "scopus": "16640707200",
+        "scopus": [
+            "16640707200"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -3234,7 +3335,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126816",
-        "scopus": "16203497300",
+        "scopus": [
+            "16203497300"
+        ],
         "orcid": "",
         "areas": [
             "Geography, physical",
@@ -3257,7 +3360,11 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126409",
-        "scopus": "36453082400; 55989775700; 8847555600",
+        "scopus": [
+            "36453082400",
+            "55989775700",
+            "8847555600"
+        ],
         "orcid": "",
         "areas": [
             "Agronomy",
@@ -3350,7 +3457,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=83789",
-        "scopus": "57210890256",
+        "scopus": [
+            "57210890256"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -3370,7 +3479,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=175909",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": []
     },
@@ -3379,7 +3488,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=129154",
-        "scopus": "8552055700",
+        "scopus": [
+            "8552055700"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -3457,7 +3568,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128705",
-        "scopus": "55575585400; 6507397122",
+        "scopus": [
+            "55575585400",
+            "6507397122"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -3556,7 +3670,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127605",
-        "scopus": "54792990300; 7801606374",
+        "scopus": [
+            "54792990300",
+            "7801606374"
+        ],
         "orcid": "",
         "areas": [
             "Education, scientific disciplines",
@@ -3580,7 +3697,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128462",
-        "scopus": "6504530562",
+        "scopus": [
+            "6504530562"
+        ],
         "orcid": "",
         "areas": [
             "Biochemistry and molecular biology",
@@ -3663,7 +3782,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128636",
-        "scopus": "35271282900; 56013587900",
+        "scopus": [
+            "35271282900",
+            "56013587900"
+        ],
         "orcid": "",
         "areas": [
             "Biotechnology & applied microbiology",
@@ -3683,7 +3805,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128854",
-        "scopus": "22833905100; 56013590200",
+        "scopus": [
+            "22833905100",
+            "56013590200"
+        ],
         "orcid": "",
         "areas": [
             "Biochemistry and molecular biology",
@@ -3723,7 +3848,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=115913",
-        "scopus": "56013637000; 57223658980",
+        "scopus": [
+            "56013637000",
+            "57223658980"
+        ],
         "orcid": "",
         "areas": [
             "Acoustics",
@@ -3752,7 +3880,11 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127861",
-        "scopus": "16507834800; 56083723000; 6508240232",
+        "scopus": [
+            "16507834800",
+            "56083723000",
+            "6508240232"
+        ],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -3772,7 +3904,11 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126098",
-        "scopus": "56013748400; 57189885226; 6701499043",
+        "scopus": [
+            "56013748400",
+            "57189885226",
+            "6701499043"
+        ],
         "orcid": "",
         "areas": [
             "Electrochemistry",
@@ -3799,7 +3935,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127175",
-        "scopus": "24461355000; 55989773800",
+        "scopus": [
+            "24461355000",
+            "55989773800"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -3829,7 +3968,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=76970",
-        "scopus": "56417499900",
+        "scopus": [
+            "56417499900"
+        ],
         "orcid": "",
         "areas": [
             "Mathematics, applied",
@@ -3845,7 +3986,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128124",
-        "scopus": "8509013500",
+        "scopus": [
+            "8509013500"
+        ],
         "orcid": "",
         "areas": [
             "Anthropology",
@@ -3937,7 +4080,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=94172",
-        "scopus": "26429103600; 57219443742",
+        "scopus": [
+            "26429103600",
+            "57219443742"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -4077,7 +4223,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128012",
-        "scopus": "56000747500",
+        "scopus": [
+            "56000747500"
+        ],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -4151,7 +4299,11 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128043",
-        "scopus": "56259231200; 57204803100; 6604036719",
+        "scopus": [
+            "56259231200",
+            "57204803100",
+            "6604036719"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -4188,39 +4340,7 @@
         "original_name": "PONCE DE LEON HILL, CLAUDIA ALEJANDRA",
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
-        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128524",
-        "scopus": "56055616700; 57204292069; 6603663590",
-        "orcid": "",
-        "areas": [
-            "Agriculture, multidisciplinary",
-            "Biochemical research methods",
-            "Biochemistry and molecular biology",
-            "Biotechnology & applied microbiology",
-            "Chemistry, analytical",
-            "Chemistry, organic",
-            "Ecology",
-            "Engineering, environmental",
-            "Environmental sciences",
-            "Food science and technology",
-            "Forestry",
-            "Marine & freshwater biology",
-            "Soil science",
-            "Spectroscopy",
-            "Water resources",
-            "Agronomy and Crop Science",
-            "Aquatic Science",
-            "Biochemistry (medical)",
-            "Earth-Surface Processes",
-            "Environmental Engineering",
-            "Environmental Science (miscellaneous)",
-            "Forestry",
-            "Health, toxicology and mutagenesis",
-            "Medicine (miscellaneous)",
-            "Polymers and Plastics",
-            "Soil science",
-            "Waste Management and Disposal",
-            "Water science and technology"
-        ]
+        "siia": "No encontrado"
     },
     "MONTEJANO CANTORAL, AMANDA": {
         "original_name": "MONTEJANO CANTORAL, AMANDA",
@@ -4251,7 +4371,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=109471",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Materials science, coatings and films",
@@ -4287,7 +4407,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=114400",
-        "scopus": "55989478100",
+        "scopus": [
+            "55989478100"
+        ],
         "orcid": "",
         "areas": [
             "Veterinary sciences",
@@ -4331,7 +4453,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=109374",
-        "scopus": "15831952100; 58715375700",
+        "scopus": [
+            "15831952100",
+            "58715375700"
+        ],
         "orcid": "",
         "areas": [
             "Biochemical research methods",
@@ -4362,7 +4487,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=103966",
-        "scopus": "55771933700; 58758866700",
+        "scopus": [
+            "55771933700",
+            "58758866700"
+        ],
         "orcid": "",
         "areas": [
             "Plant sciences",
@@ -4495,7 +4623,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=100244",
-        "scopus": "35077677800",
+        "scopus": [
+            "35077677800"
+        ],
         "orcid": "",
         "areas": [
             "Fisheries",
@@ -4510,7 +4640,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=106610",
-        "scopus": "55326898000",
+        "scopus": [
+            "55326898000"
+        ],
         "orcid": "",
         "areas": [
             "Cardiac and cardiovascular systems",
@@ -4575,7 +4707,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128616",
-        "scopus": "26635008000; 56013629200",
+        "scopus": [
+            "26635008000",
+            "56013629200"
+        ],
         "orcid": "",
         "areas": [
             "Computer science, hardware and architecture",
@@ -4603,7 +4738,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128637",
-        "scopus": "56521168600",
+        "scopus": [
+            "56521168600"
+        ],
         "orcid": "",
         "areas": [
             "Environmental sciences",
@@ -4620,7 +4757,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=96917",
-        "scopus": "0000-0003-4604-6066",
+        "scopus": [
+            "0000-0003-4604-6066"
+        ],
         "orcid": "",
         "areas": [
             "Agronomy",
@@ -4656,7 +4795,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=120114",
-        "scopus": "0000-0001-9113-1070",
+        "scopus": [
+            "0000-0001-9113-1070"
+        ],
         "orcid": "",
         "areas": [
             "Agriculture, multidisciplinary",
@@ -4728,7 +4869,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=82180",
-        "scopus": "55880838500",
+        "scopus": [
+            "55880838500"
+        ],
         "orcid": "",
         "areas": [
             "Biotechnology and applied microbiology",
@@ -4746,7 +4889,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128688",
-        "scopus": "35745889200; 7102969775",
+        "scopus": [
+            "35745889200",
+            "7102969775"
+        ],
         "orcid": "",
         "areas": [
             "Anatomy and morphology",
@@ -4858,7 +5004,13 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126753",
-        "scopus": "55663267200; 56000769600; 56578511600; 57226830909; 6506898241",
+        "scopus": [
+            "55663267200",
+            "56000769600",
+            "56578511600",
+            "57226830909",
+            "6506898241"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -4963,7 +5115,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=101931",
-        "scopus": "7801588106",
+        "scopus": [
+            "7801588106"
+        ],
         "orcid": "",
         "areas": [
             "Biochemistry and molecular biology",
@@ -4997,7 +5151,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=113042",
-        "scopus": "36084232600",
+        "scopus": [
+            "36084232600"
+        ],
         "orcid": "",
         "areas": [
             "Environmental sciences",
@@ -5017,7 +5173,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=93316",
-        "scopus": "9233885900",
+        "scopus": [
+            "9233885900"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -5084,7 +5242,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128303",
-        "scopus": "12807161500; 56000799700",
+        "scopus": [
+            "12807161500",
+            "56000799700"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -5114,7 +5275,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127082",
-        "scopus": "55989808400; 6506977898",
+        "scopus": [
+            "55989808400",
+            "6506977898"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -5142,7 +5306,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=122084",
-        "scopus": "56000801500",
+        "scopus": [
+            "56000801500"
+        ],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -5242,7 +5408,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127676",
-        "scopus": "12806664900; 15752699600",
+        "scopus": [
+            "12806664900",
+            "15752699600"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -5360,7 +5529,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=104198",
-        "scopus": "57195068362",
+        "scopus": [
+            "57195068362"
+        ],
         "orcid": "",
         "areas": [
             "History and philosophy of science",
@@ -5397,7 +5568,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=121307",
-        "scopus": "55344708400; 56108855700",
+        "scopus": [
+            "55344708400",
+            "56108855700"
+        ],
         "orcid": "",
         "areas": [
             "Geology",
@@ -5457,7 +5631,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=95067",
-        "scopus": "24587056500",
+        "scopus": [
+            "24587056500"
+        ],
         "orcid": "",
         "areas": [
             "Chemistry, physical",
@@ -5512,7 +5688,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=103760",
-        "scopus": "28367705700",
+        "scopus": [
+            "28367705700"
+        ],
         "orcid": "",
         "areas": [
             "Ecology",
@@ -5529,7 +5707,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=96949",
-        "scopus": "55344536400",
+        "scopus": [
+            "55344536400"
+        ],
         "orcid": "",
         "areas": [
             "Jcs 2008",
@@ -5547,7 +5727,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=99671",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Biology",
@@ -5565,7 +5745,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=100402",
-        "scopus": "55810896100",
+        "scopus": [
+            "55810896100"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -5606,7 +5788,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=97898",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -5620,7 +5802,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=95022",
-        "scopus": "57193546270",
+        "scopus": [
+            "57193546270"
+        ],
         "orcid": "",
         "areas": [
             "Mathematical and computational biology",
@@ -5644,7 +5828,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127397",
-        "scopus": "14421672000; 6508010314",
+        "scopus": [
+            "14421672000",
+            "6508010314"
+        ],
         "orcid": "",
         "areas": [
             "Biochemistry and molecular biology",
@@ -5727,7 +5914,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=146908",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Geosciences, multidisciplinary",
@@ -5760,7 +5947,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=100447",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Materials science, multidisciplinary",
@@ -5779,7 +5966,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=98788",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Astronomy & astrophysics",
@@ -5800,7 +5987,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=107977",
-        "scopus": "0000-0001-5690-5034",
+        "scopus": [
+            "0000-0001-5690-5034"
+        ],
         "orcid": "",
         "areas": [
             "Engineering, biomedical",
@@ -5820,7 +6009,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=123197",
-        "scopus": "57190186512",
+        "scopus": [
+            "57190186512"
+        ],
         "orcid": "",
         "areas": [
             "Computer science, software engineering",
@@ -5834,7 +6025,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128635",
-        "scopus": "35786668800",
+        "scopus": [
+            "35786668800"
+        ],
         "orcid": "",
         "areas": [
             "Biochemistry and molecular biology",
@@ -5863,7 +6056,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128598",
-        "scopus": "55390677700",
+        "scopus": [
+            "55390677700"
+        ],
         "orcid": "",
         "areas": [
             "Computer science, theory and methods",
@@ -5910,7 +6105,11 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127795",
-        "scopus": "19337692700; 55993766600; 57220050951",
+        "scopus": [
+            "19337692700",
+            "55993766600",
+            "57220050951"
+        ],
         "orcid": "",
         "areas": [
             "Agricultural engineering",
@@ -5938,7 +6137,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=112271",
-        "scopus": "56421521900; 57223644405",
+        "scopus": [
+            "56421521900",
+            "57223644405"
+        ],
         "orcid": "",
         "areas": [
             "Engineering, electrical and electronic",
@@ -5961,7 +6163,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128866",
-        "scopus": "26632754800",
+        "scopus": [
+            "26632754800"
+        ],
         "orcid": "",
         "areas": [
             "Biology",
@@ -6054,7 +6258,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=165239",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -6072,7 +6276,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=75380",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": []
     },
@@ -6080,41 +6284,7 @@
         "original_name": "DEL CASTILLO VAZQUEZ, ROXANA MITZAYE",
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
-        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=99662",
-        "scopus": "15756840800",
-        "orcid": "https://orcid.org/0000-0002-1670-8631",
-        "areas": [
-            "Crystallography",
-            "Chemistry, multidisciplinary",
-            "Chemistry, physical",
-            "Engineering, biomedical",
-            "Instruments and instrumentation",
-            "Materials science, multidisciplinary",
-            "Mathematics, interdisciplinary applications",
-            "Physics, applied",
-            "Physics, atomic, molecular & chemical",
-            "Physics, atomic, molecular and chemical",
-            "Physics, condensed matter",
-            "Physics, fluids and plasmas",
-            "Physics, multidisciplinary",
-            "Polymer science",
-            "Aerospace engineering",
-            "Analytical chemistry",
-            "Atomic and Molecular Physics, and Optics",
-            "Biomedical engineering",
-            "Computer Science Applications",
-            "Condensed matter physics",
-            "Chemical engineering (miscellaneous)",
-            "Chemistry (miscellaneous)",
-            "Electronic, Optical and Magnetic Materials",
-            "Materials chemistry",
-            "Materials science (miscellaneous)",
-            "Optometry",
-            "Pharmaceutical science",
-            "Physics and astronomy (miscellaneous)",
-            "Polymers and plastics",
-            "Surfaces, coatings and films"
-        ]
+        "siia": "No encontrado"
     },
     "TORRES RAMIREZ, NAYELI": {
         "original_name": "TORRES RAMIREZ, NAYELI",
@@ -6157,7 +6327,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=168943",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": []
     },
@@ -6166,7 +6336,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=107972",
-        "scopus": "55340926000",
+        "scopus": [
+            "55340926000"
+        ],
         "orcid": "",
         "areas": [
             "Criminology and penology",
@@ -6228,7 +6400,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=97561",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Physics, applied",
@@ -6240,7 +6412,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=125806",
-        "scopus": "54684448800; 55936375800",
+        "scopus": [
+            "54684448800",
+            "55936375800"
+        ],
         "orcid": "",
         "areas": [
             "Fisheries",
@@ -6256,7 +6431,11 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=125979",
-        "scopus": "24474369300; 59206288100; 7005555699",
+        "scopus": [
+            "24474369300",
+            "59206288100",
+            "7005555699"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -6359,7 +6538,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=106849",
-        "scopus": "56562991100",
+        "scopus": [
+            "56562991100"
+        ],
         "orcid": "",
         "areas": [
             "Electrochemistry",
@@ -6376,23 +6557,16 @@
         "original_name": "MONTES DE OCA BALDERAS, MARCO ANTONIO",
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
-        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=96146",
-        "scopus": "56328553400",
-        "orcid": "",
-        "areas": [
-            "Mathematics",
-            "Multidisciplinary sciences",
-            "Physics, mathematical",
-            "Mathematics (miscellaneous)",
-            "Multidisciplinary"
-        ]
+        "siia": "No encontrado"
     },
     "ALCALA CORONA, SERGIO ANTONIO": {
         "original_name": "ALCALA CORONA, SERGIO ANTONIO",
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=97873",
-        "scopus": "56543806600",
+        "scopus": [
+            "56543806600"
+        ],
         "orcid": "",
         "areas": [
             "Biology",
@@ -6474,7 +6648,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=151677",
-        "scopus": "0000-0002-1276-7183",
+        "scopus": [
+            "0000-0002-1276-7183"
+        ],
         "orcid": "",
         "areas": [
             "Neurosciences",
@@ -6488,7 +6664,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=112999",
-        "scopus": "42361208300",
+        "scopus": [
+            "42361208300"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -6509,7 +6687,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=159614",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Animal science and zoology"
@@ -6520,7 +6698,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=145752",
-        "scopus": "57191171968",
+        "scopus": [
+            "57191171968"
+        ],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -6535,7 +6715,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=107986",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Materials science, ceramics",
@@ -6596,7 +6776,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=105396",
-        "scopus": "57188711830",
+        "scopus": [
+            "57188711830"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -6659,7 +6841,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=99606",
-        "scopus": "26428319000",
+        "scopus": [
+            "26428319000"
+        ],
         "orcid": "",
         "areas": [
             "Optics",
@@ -6675,7 +6859,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=101725",
-        "scopus": "57188684346; 57188684346",
+        "scopus": [
+            "57188684346",
+            "57188684346"
+        ],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -6689,7 +6876,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=101693",
-        "scopus": "57190886478",
+        "scopus": [
+            "57190886478"
+        ],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -6702,7 +6891,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=124813",
-        "scopus": "55022657700",
+        "scopus": [
+            "55022657700"
+        ],
         "orcid": "",
         "areas": [
             "Geology",
@@ -6746,7 +6937,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=172431",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": []
     },
@@ -6806,7 +6997,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=172214",
-        "scopus": "36473083600",
+        "scopus": [
+            "36473083600"
+        ],
         "orcid": "",
         "areas": [
             "Plant sciences",
@@ -6819,7 +7012,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=66524",
-        "scopus": "55155588600",
+        "scopus": [
+            "55155588600"
+        ],
         "orcid": "",
         "areas": [
             "Chemistry, organic",
@@ -6859,7 +7054,11 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127002",
-        "scopus": "24376705900; 55846660300; 56013690800",
+        "scopus": [
+            "24376705900",
+            "55846660300",
+            "56013690800"
+        ],
         "orcid": "",
         "areas": [
             "Biochemistry and molecular biology",
@@ -6891,7 +7090,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=101750",
-        "scopus": "57072256900",
+        "scopus": [
+            "57072256900"
+        ],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -6943,7 +7144,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=119892",
-        "scopus": "55165385600",
+        "scopus": [
+            "55165385600"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -6964,7 +7167,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=161013",
-        "scopus": "0000-0002-0219-5601",
+        "scopus": [
+            "0000-0002-0219-5601"
+        ],
         "orcid": "",
         "areas": [
             "Biophysics",
@@ -7015,7 +7220,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=102911",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -7072,7 +7277,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=168436",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": []
     },
@@ -7081,7 +7286,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=166577",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Engineering, electrical and electronic",
@@ -7101,7 +7306,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=107938",
-        "scopus": "57190443834",
+        "scopus": [
+            "57190443834"
+        ],
         "orcid": "",
         "areas": [
             "Food science & technology",
@@ -7119,7 +7326,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=146518",
-        "scopus": "57200444495",
+        "scopus": [
+            "57200444495"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -7135,7 +7344,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=154897",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Plant sciences",
@@ -7147,7 +7356,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=117132",
-        "scopus": "55428623400",
+        "scopus": [
+            "55428623400"
+        ],
         "orcid": "",
         "areas": [
             "Ecology",
@@ -7165,7 +7376,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=172496",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": []
     },
@@ -7174,7 +7385,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=95445",
-        "scopus": "0000-0003-3453-7159",
+        "scopus": [
+            "0000-0003-3453-7159"
+        ],
         "orcid": "",
         "areas": [
             "Computer science, interdisciplinary applications",
@@ -7203,36 +7416,14 @@
         "original_name": "GUERRERO JIMENEZ, GERARDO",
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
-        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=83003",
-        "scopus": "6602296474",
-        "orcid": "https://orcid.org/0000-0002-9290-9574",
-        "areas": [
-            "Automation & control systems",
-            "Automation and control systems",
-            "Computer science, interdisciplinary applications",
-            "Engineering, chemical",
-            "Engineering, electrical & electronic",
-            "Engineering, electrical and electronic",
-            "Engineering, multidisciplinary",
-            "Instruments and instrumentation",
-            "Mathematics, interdisciplinary applications",
-            "Computer Science (miscellaneous)",
-            "Control and Systems Engineering",
-            "Chemical Engineering (miscellaneous)",
-            "Electrical and Electronic Engineering",
-            "Engineering (miscellaneous)",
-            "Instrumentation",
-            "Mathematics (miscellaneous)",
-            "Medicine (miscellaneous)",
-            "Physics and Astronomy (miscellaneous)"
-        ]
+        "siia": "No encontrado"
     },
     "BORREGO KIM, PATRICIA": {
         "original_name": "BORREGO KIM, PATRICIA",
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=161643",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Fisheries",
@@ -7246,7 +7437,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=119091",
-        "scopus": "56781480500",
+        "scopus": [
+            "56781480500"
+        ],
         "orcid": "",
         "areas": [
             "Biotechnology and applied microbiology",
@@ -7268,7 +7461,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=115976",
-        "scopus": "55935666500",
+        "scopus": [
+            "55935666500"
+        ],
         "orcid": "",
         "areas": [
             "Computer science, artificial intelligence",
@@ -7285,7 +7480,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=115729",
-        "scopus": "57206243405",
+        "scopus": [
+            "57206243405"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -7301,7 +7498,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=159674",
-        "scopus": "57199306287",
+        "scopus": [
+            "57199306287"
+        ],
         "orcid": "",
         "areas": [
             "Marine and freshwater biology",
@@ -7320,7 +7519,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=156257",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Jcs 2008",
@@ -7334,7 +7533,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=158053",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Immunology",
@@ -7348,7 +7547,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=108139",
-        "scopus": "57191503087",
+        "scopus": [
+            "57191503087"
+        ],
         "orcid": "",
         "areas": [
             "Astronomy and astrophysics",
@@ -7401,7 +7602,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=170315",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": []
     },
@@ -7431,7 +7632,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=91790",
-        "scopus": "56990059400",
+        "scopus": [
+            "56990059400"
+        ],
         "orcid": "",
         "areas": [
             "Fisheries",
@@ -7448,7 +7651,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=110450",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": []
     },
@@ -7457,7 +7660,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=95715",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Biotechnology and applied microbiology",
@@ -7477,7 +7680,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=154939",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Chemistry, multidisciplinary",
@@ -7497,7 +7700,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=112075",
-        "scopus": "57194947554",
+        "scopus": [
+            "57194947554"
+        ],
         "orcid": "",
         "areas": [
             "Chemistry, inorganic and nuclear",
@@ -7520,7 +7725,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=158388",
-        "scopus": "57193444797",
+        "scopus": [
+            "57193444797"
+        ],
         "orcid": "",
         "areas": [
             "Biology",
@@ -7542,7 +7749,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=106727",
-        "scopus": "57016827000",
+        "scopus": [
+            "57016827000"
+        ],
         "orcid": "",
         "areas": [
             "Computer science, information systems",
@@ -7562,7 +7771,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=156648",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Medicine, general and internal",
@@ -7574,7 +7783,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=109341",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": []
     },
@@ -7583,7 +7792,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=111917",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": []
     },
@@ -7591,17 +7800,16 @@
         "original_name": "GONZALEZ FERNANDEZ, ANDREA",
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
-        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=175248",
-        "scopus": "",
-        "orcid": "",
-        "areas": []
+        "siia": "No encontrado"
     },
     "VAZQUEZ SALVADOR, NALLELY": {
         "original_name": "VAZQUEZ SALVADOR, NALLELY",
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=158440",
-        "scopus": "56118278700",
+        "scopus": [
+            "56118278700"
+        ],
         "orcid": "",
         "areas": [
             "Water resources",
@@ -7614,7 +7822,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=156564",
-        "scopus": "0000-0002-8870-0313",
+        "scopus": [
+            "0000-0002-8870-0313"
+        ],
         "orcid": "",
         "areas": [
             "Chemistry, inorganic and nuclear",
@@ -7639,7 +7849,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=163212",
-        "scopus": "57203681048",
+        "scopus": [
+            "57203681048"
+        ],
         "orcid": "",
         "areas": [
             "Biochemical research methods",
@@ -7654,7 +7866,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=111658",
-        "scopus": "56763474000; 57191749801",
+        "scopus": [
+            "56763474000",
+            "57191749801"
+        ],
         "orcid": "",
         "areas": [
             "Chemistry, inorganic and nuclear",
@@ -7683,7 +7898,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=108275",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Physics, mathematical",
@@ -7699,7 +7914,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=106648",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Astronomy and astrophysics",
@@ -7715,12 +7930,7 @@
         "original_name": "TRUJILLO NEGRETE, ANA LAURA",
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
-        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=91854",
-        "scopus": "57204778896",
-        "orcid": "",
-        "areas": [
-            "Education"
-        ]
+        "siia": "No encontrado"
     },
     "SANTOVENA URIBE, ALEJANDRO ALAN": {
         "original_name": "SANTOVEÑA URIBE, ALEJANDRO ALAN",
@@ -7733,7 +7943,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=156341",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Geosciences, multidisciplinary",
@@ -7747,7 +7957,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=163457",
-        "scopus": "57192253083",
+        "scopus": [
+            "57192253083"
+        ],
         "orcid": "",
         "areas": [
             "Agronomy",
@@ -7766,7 +7978,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=123371",
-        "scopus": "56277864200",
+        "scopus": [
+            "56277864200"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -7806,7 +8020,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=111648",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -7819,7 +8033,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=159524",
-        "scopus": "57219508500",
+        "scopus": [
+            "57219508500"
+        ],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -7832,7 +8048,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=119923",
-        "scopus": "57218513487",
+        "scopus": [
+            "57218513487"
+        ],
         "orcid": "",
         "areas": [
             "Anatomy and morphology",
@@ -7848,7 +8066,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=106850",
-        "scopus": "57190273793",
+        "scopus": [
+            "57190273793"
+        ],
         "orcid": "",
         "areas": [
             "Acoustics",
@@ -7865,7 +8085,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=167739",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Biochemistry and molecular biology",
@@ -7877,7 +8097,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=77627",
-        "scopus": "6507520839",
+        "scopus": [
+            "6507520839"
+        ],
         "orcid": "",
         "areas": [
             "Biochemistry and molecular biology",
@@ -7917,7 +8139,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=153422",
-        "scopus": "57191203412",
+        "scopus": [
+            "57191203412"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -7938,7 +8162,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=168691",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Marine and freshwater biology",
@@ -7956,7 +8180,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=121285",
-        "scopus": "57216124183",
+        "scopus": [
+            "57216124183"
+        ],
         "orcid": "",
         "areas": [
             "Ecology",
@@ -7979,7 +8205,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=162832",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Public, environmental and occupational health",
@@ -7991,7 +8217,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=145513",
-        "scopus": "57195610942",
+        "scopus": [
+            "57195610942"
+        ],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -8009,7 +8237,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=111827",
-        "scopus": "56545279100",
+        "scopus": [
+            "56545279100"
+        ],
         "orcid": "",
         "areas": [
             "Astronomy and astrophysics",
@@ -8022,7 +8252,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=172659",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Chemistry, multidisciplinary",
@@ -8034,7 +8264,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=118469",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Astronomy and astrophysics",
@@ -8046,7 +8276,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=157298",
-        "scopus": "57216562341",
+        "scopus": [
+            "57216562341"
+        ],
         "orcid": "",
         "areas": [
             "Chemistry, inorganic and nuclear",
@@ -8073,7 +8305,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=111802",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Spectroscopy",
@@ -8085,7 +8317,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=157508",
-        "scopus": "0000-0002-4712-5076",
+        "scopus": [
+            "0000-0002-4712-5076"
+        ],
         "orcid": "",
         "areas": [
             "Biochemistry and molecular biology",
@@ -8111,7 +8345,10 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=146546",
-        "scopus": "57193926774; 57205580637",
+        "scopus": [
+            "57193926774",
+            "57205580637"
+        ],
         "orcid": "",
         "areas": [
             "Paleontology",
@@ -8126,7 +8363,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=123659",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Computer science, information systems",
@@ -8140,7 +8377,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=162636",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Biodiversity conservation",
@@ -8152,7 +8389,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=166627",
-        "scopus": "0000-0002-4032-6094",
+        "scopus": [
+            "0000-0002-4032-6094"
+        ],
         "orcid": "",
         "areas": [
             "Parasitology",
@@ -8165,7 +8404,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=161113",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Parasitology",
@@ -8177,7 +8416,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=121310",
-        "scopus": "0000-0002-8686-965X",
+        "scopus": [
+            "0000-0002-8686-965X"
+        ],
         "orcid": "",
         "areas": [
             "Multidisciplinary sciences",
@@ -8192,7 +8433,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=156069",
-        "scopus": "0000-0003-4094-3663",
+        "scopus": [
+            "0000-0003-4094-3663"
+        ],
         "orcid": "",
         "areas": [
             "Marine and freshwater biology",
@@ -8236,7 +8479,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=149942",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -8250,7 +8493,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=118499",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Astronomy and astrophysics",
@@ -8264,7 +8507,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=164519",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": []
     },
@@ -8273,7 +8516,7 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=118221",
-        "scopus": "",
+        "scopus": [],
         "orcid": "",
         "areas": [
             "Mathematics",
@@ -8285,7 +8528,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=121229",
-        "scopus": "57350829000",
+        "scopus": [
+            "57350829000"
+        ],
         "orcid": "",
         "areas": [
             "Crystallography",
@@ -8300,10 +8545,7 @@
         "original_name": "SANCHEZ GARCIA, GONZALO",
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
-        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=82964",
-        "scopus": "",
-        "orcid": "",
-        "areas": []
+        "siia": "No encontrado"
     },
     "LLANES QUEVEDO, ALEXANDER": {
         "original_name": "LLANES QUEVEDO, ALEXANDER",
@@ -8331,7 +8573,9 @@
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=80348",
-        "scopus": "55484920100",
+        "scopus": [
+            "55484920100"
+        ],
         "orcid": "",
         "areas": [
             "Fisheries",
@@ -8347,30 +8591,12 @@
         "original_name": "ARELLANO SARTORIUS, LUCIA GUADALUPE",
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
-        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=99151",
-        "scopus": "",
-        "orcid": "",
-        "areas": []
+        "siia": "No encontrado"
     },
     "ANTONIO PALLARES, JAIME EUGENIO": {
         "original_name": "ANTONIO PALLARES, JAIME EUGENIO",
         "entity": "Facultad de Ciencias",
         "already_in_db": false,
-        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=162535",
-        "scopus": "",
-        "orcid": "",
-        "areas": [
-            "Chemistry, inorganic and nuclear",
-            "Materials science, ceramics",
-            "Materials science, coatings and films",
-            "Materials science, multidisciplinary",
-            "Physics, condensed matter",
-            "Physics, multidisciplinary",
-            "Condensed matter physics",
-            "Inorganic chemistry",
-            "Metals and alloys",
-            "Physics and astronomy (miscellaneous)",
-            "Surfaces, coatings and films"
-        ]
+        "siia": "No encontrado en los hits iniciales"
     }
 }

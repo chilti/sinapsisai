@@ -8,6 +8,13 @@ import json
 import numpy as np
 import viz_ods  # Nuevo módulo para pintar la matriz de ODS
 
+try:
+    import wordcloud_helper as _wc_helper
+    _HAS_WORDCLOUD = True
+except ImportError:
+    _wc_helper = None
+    _HAS_WORDCLOUD = False
+
 # Paths
 BASE_PATH = os.path.dirname(os.path.abspath(__file__))
 CACHE_DIR = os.path.join(BASE_PATH, 'data', 'cache')
@@ -59,6 +66,164 @@ def mostrar_banners_destacados(df):
             Title = f"[{row['Title']}]({row['DOI']})" if row['DOI'] else row['Title']
             st.markdown(f"**{int(row['year']) if pd.notna(row['year']) else 'N/A'}** - {Title}")
 
+# ══════════════════════════════════════════════════════════════════════════
+# Helpers de visualización para indicadores nuevos
+# ══════════════════════════════════════════════════════════════════════════
+
+def _render_oa_donut(data_row, key_suffix=""):
+    """Mini donut de distribución OA (gold/green/hybrid/bronze/closed)."""
+    labels = ["Gold", "Green", "Hybrid", "Bronze", "Closed"]
+    cols_  = ["pct_oa_gold","pct_oa_green","pct_oa_hybrid","pct_oa_bronze","pct_oa_closed"]
+    values = [float(data_row.get(c, 0) or 0) for c in cols_]
+    colors = ["#FFD700","#2ECC71","#3498DB","#CD7F32","#95A5A6"]
+    total_oa = float(data_row.get("pct_open_access", sum(v for v in values if v > 0)) or 0)
+    fig = go.Figure(data=[go.Pie(
+        labels=labels, values=values, hole=.55,
+        marker=dict(colors=colors),
+        hovertemplate="%{label}: %{value:.1f}%<extra></extra>",
+        textinfo="percent", textposition="outside",
+    )])
+    fig.update_layout(
+        height=260, margin=dict(t=10,b=30,l=10,r=10),
+        showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.3),
+        annotations=[dict(text=f"{total_oa:.0f}%<br><span style='font-size:11px'>OA</span>",
+                          x=0.5, y=0.5, font_size=16, showarrow=False)],
+    )
+    st.plotly_chart(fig, use_container_width=True, key=f"donut_oa_{key_suffix}")
+
+
+def _render_velocity_sparkline(df_papers, name_col, name_val, key_suffix=""):
+    """Sparkline de trayectoria de citas acumuladas por año."""
+    from collections import defaultdict
+    df_p = df_papers[df_papers[name_col] == name_val].copy()
+    if df_p.empty or "counts_by_year" not in df_p.columns:
+        st.info("Sin datos de trayectoria de citas.")
+        return
+    year_cites: dict = defaultdict(int)
+    for val in df_p["counts_by_year"]:
+        if isinstance(val, list):
+            for entry in val:
+                if isinstance(entry, dict):
+                    year_cites[int(entry.get("year", 0))] += int(entry.get("cited_by_count", 0))
+    if not year_cites:
+        st.info("Sin datos de citas por año.")
+        return
+    years = sorted(k for k in year_cites if k > 1990)
+    cites = [year_cites[y] for y in years]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=years, y=cites, mode="lines+markers",
+        line=dict(color="#002B5C", width=2.5),
+        marker=dict(size=5, color="#D4AF37", line=dict(width=1, color="#b6932b")),
+        fill="tozeroy", fillcolor="rgba(0,43,92,0.07)",
+        hovertemplate="%{x}: <b>%{y:,}</b> citas<extra></extra>",
+    ))
+    fig.update_layout(
+        height=200, margin=dict(t=5,b=5,l=40,r=10),
+        xaxis=dict(showgrid=False, tickformat="d"),
+        yaxis=dict(showgrid=True, gridcolor="#eee"),
+        template="plotly_white",
+    )
+    st.plotly_chart(fig, use_container_width=True, key=f"spark_{key_suffix}")
+
+
+def _render_choropleth_collab(df_papers, name_col, name_val, title="Países colaboradores", key_suffix=""):
+    """Choropleth world map de países colaboradores (ISO-alpha-2 en campo 'countries')."""
+    from collections import Counter
+    df_p = df_papers[df_papers[name_col] == name_val].copy()
+    if df_p.empty or "countries" not in df_p.columns:
+        st.info("Sin datos de colaboración internacional.")
+        return
+    cnt: Counter = Counter()
+    for val in df_p["countries"]:
+        if isinstance(val, list):
+            cnt.update(c for c in val if c and c != "MX")
+    if not cnt:
+        st.info("No se detectó colaboración internacional registrada.")
+        return
+    df_cnt = pd.DataFrame(cnt.most_common(80), columns=["iso_a2", "papers"])
+    # Plotly choropleth acepta locationmode='ISO-3' natively; convertir si es alpha-2
+    fig = px.choropleth(
+        df_cnt, locations="iso_a2", locationmode="ISO-3",
+        color="papers",
+        color_continuous_scale="Blues",
+        title=title,
+        labels={"papers": "Papers conjuntos"},
+        hover_name="iso_a2",
+    )
+    # Fallback: si los códigos son alpha-2, usar country_iso_alpha nativo
+    fig.update_traces(locationmode="geojson-id",
+                      geojson=None,
+                      selector=dict(type="choropleth"))
+    fig_alt = px.choropleth(
+        df_cnt, locations="iso_a2",
+        color="papers",
+        color_continuous_scale="Blues",
+        title=title,
+        labels={"papers": "Papers conjuntos"},
+        hover_name="iso_a2",
+    )
+    fig_alt.update_layout(
+        height=380, margin=dict(t=30,b=0,l=0,r=0),
+        geo=dict(showframe=False, showcoastlines=True, bgcolor="rgba(0,0,0,0)",
+                 showland=True, landcolor="#f0f0f0"),
+        coloraxis_colorbar=dict(title="Papers", len=0.6),
+    )
+    st.plotly_chart(fig_alt, use_container_width=True, key=f"choro_{key_suffix}")
+
+
+def _render_keywords_section(df_kw, name_col, name_val, title="Keywords principales", key_suffix=""):
+    """Nube de palabras o barras horizontales de keywords."""
+    df_k = df_kw[df_kw[name_col] == name_val].sort_values("freq", ascending=False).head(50)
+    if df_k.empty:
+        st.info("Sin keywords registrados.")
+        return
+    freq_dict = dict(zip(df_k["keyword"], df_k["freq"]))
+    if _HAS_WORDCLOUD and _wc_helper is not None:
+        img_bytes = _wc_helper.generate_wordcloud_image(freq_dict)
+        if img_bytes:
+            st.markdown(f"**{title}**")
+            st.image(img_bytes, use_container_width=True)
+            return
+    # Fallback: barras horizontales
+    top20 = df_k.head(20)
+    fig = px.bar(top20, x="freq", y="keyword", orientation="h",
+                 color="freq", color_continuous_scale="Blues",
+                 title=title, labels={"freq": "Frecuencia", "keyword": ""})
+    fig.update_layout(height=420, margin=dict(t=30,b=10),
+                      yaxis=dict(categoryorder="total ascending"),
+                      showlegend=False, coloraxis_showscale=False)
+    st.plotly_chart(fig, use_container_width=True, key=f"kw_bar_{key_suffix}")
+
+
+def _render_radar_visibilidad(data_row, title="Perfil de Visibilidad", key_suffix=""):
+    """Radar chart con 6 ejes de visibilidad e indexación."""
+    metrics = {
+        "PubMed":       float(data_row.get("pct_pubmed",        0) or 0),
+        "DOAJ":         float(data_row.get("pct_doaj_indexed",  0) or 0),
+        "Revista Core": float(data_row.get("pct_core_journal",  0) or 0),
+        "Repositorio":  float(data_row.get("pct_repository",    0) or 0),
+        "Inglés":       float(data_row.get("pct_english",       0) or 0),
+        "CC-BY":        float(data_row.get("pct_cc_by",         0) or 0),
+    }
+    cats   = list(metrics.keys()) + [list(metrics.keys())[0]]
+    values = list(metrics.values()) + [list(metrics.values())[0]]
+    fig = go.Figure(data=go.Scatterpolar(
+        r=values, theta=cats, fill="toself",
+        fillcolor="rgba(0,43,92,0.12)",
+        line=dict(color="#002B5C", width=2),
+        marker=dict(color="#D4AF37", size=7),
+    ))
+    fig.update_layout(
+        title=dict(text=title, font_size=14, x=0.5),
+        polar=dict(radialaxis=dict(visible=True, range=[0,100],
+                                   ticksuffix="%", tickfont_size=10)),
+        height=320, margin=dict(t=50,b=10,l=30,r=30),
+        template="plotly_white",
+    )
+    st.plotly_chart(fig, use_container_width=True, key=f"radar_{key_suffix}")
+
+
 def render_institucion_view(entity_name):
     st.header(f"🏢 Vista de la Institución: {entity_name}")
     st.markdown(f"Panorama Analítico de la Producción de **{entity_name}**. La producción de la institución fué descargada desde Web of Sciencei. Los indicaddores fueron ectraidos de la base de datos abierta OpenAlex.")
@@ -88,7 +253,44 @@ def render_institucion_view(entity_name):
         c5.metric("Percentil Promedio", f"{total.get('percentile_avg',50):.1f}")
         c6.metric("% Top 10%", f"{total.get('pct_top_10',0):.1f}%")
         c7.metric("% Top 1%", f"{total.get('pct_1',0):.1f}%")
-        
+
+        # ── Velocidad y Colaboración ──────────────────────────────────────────────
+        st.markdown("##### Velocidad de Citas y Colaboración")
+        cv1, cv2, cv3, cv4, cv5 = st.columns(5)
+        cv1.metric("Citas/año (avg)",       f"{total.get('velocity_avg',0):.1f}")
+        cv2.metric("Citas últ. 3 años",     f"{int(total.get('recent_cites_3yr',0)):,}")
+        cv3.metric("% Internacional",       f"{total.get('pct_international',0):.1f}%")
+        cv4.metric("Países/paper (avg)",    f"{total.get('avg_countries',0):.1f}")
+        cv5.metric("Autores/paper (avg)",   f"{total.get('avg_author_count',0):.1f}")
+
+        # ── APC ───────────────────────────────────────────────────────────────────
+        st.markdown("##### Acceso Abierto y Costos")
+        ca1, ca2, ca3 = st.columns(3)
+        apc_total = total.get('apc_paid_usd', 0) or 0
+        ca1.metric("APC Pagado Total",     f"${apc_total:,.0f} USD")
+        ca2.metric("% Papers con APC",     f"{total.get('pct_apc',0):.1f}%")
+        ca3.metric("Vida Media Citas",     f"{total.get('half_life_avg',0):.1f} años")
+
+        # ── OA Donut ──────────────────────────────────────────────────────────────
+        col_donut, col_gini = st.columns(2)
+        with col_donut:
+            st.markdown("**Distribución Open Access**")
+            _render_oa_donut(total, key_suffix=f"inst_{entity_name}")
+        with col_gini:
+            st.markdown("**Perfil Temático**")
+            gini_val = total.get('gini_topics')
+            n_dom    = int(total.get('domain_diversity', 0) or 0)
+            n_top    = int(total.get('unique_topics', 0) or 0)
+            top_dom  = total.get('top_domain', '—') or '—'
+            st.markdown(f"""
+| Indicador | Valor |
+|---|---|
+| Índice de Gini temático | `{gini_val:.3f}` |
+| Dominios de investigación | **{n_dom}** |
+| Tópicos únicos | **{n_top}** |
+| Dominio principal | {top_dom} |
+            """.strip()) if gini_val and not np.isnan(gini_val) else st.info("Sin datos de Gini temático.")
+
         # Glosario Metodológico
         with st.expander("ℹ️ ¿Qué significan estos indicadores?"):
             st.markdown("""
@@ -124,19 +326,107 @@ def render_institucion_view(entity_name):
             st.markdown("---")
             st.subheader("Temáticas de Investigación Institucional (Sunburst)")
             top_topics = df_topics.sort_values('value', ascending=False).head(100)
-            # Adding a root node column for the sunburst path
-            top_topics['Institución'] = entity_name
-            
             fig_sun = px.sunburst(
-                top_topics, 
-                path=[ 'domain', 'field', 'subfield', 'topic'], 
+                top_topics,
+                path=['domain', 'field', 'subfield', 'topic'],
                 values='value',
-                color='value', 
+                color='value',
                 color_continuous_scale='Blues',
                 title="Concentración Temática"
             )
             fig_sun.update_layout(margin=dict(t=50, l=0, r=0, b=10), height=700)
             st.plotly_chart(fig_sun, width="stretch")
+
+    # ── Vocabulario Científico (WordCloud) ────────────────────────────────────────
+    df_kw_inst = get_cached_data("keywords_institucion.parquet")
+    if df_kw_inst is not None and not df_kw_inst.empty:
+        st.markdown("---")
+        st.subheader("🔑 Vocabulario Científico Institucional")
+        _render_keywords_section(df_kw_inst, "entity_name", entity_name,
+                                 title="", key_suffix=f"inst_{entity_name}")
+
+    # ── Colaboración Internacional (Choropleth) ───────────────────────────────────
+    df_inst_papers = get_cached_data("papers_institucion.parquet")
+    if df_inst_papers is not None and not df_inst_papers.empty:
+        df_ip = df_inst_papers[df_inst_papers['entity_name'] == entity_name]
+        if not df_ip.empty and "countries" in df_ip.columns:
+            st.markdown("---")
+            st.subheader("🌍 Colaboración Internacional")
+            df_annual_inst = get_cached_data("institucion_annual.parquet")
+            if df_annual_inst is not None and not df_annual_inst.empty:
+                df_ia = df_annual_inst[df_annual_inst['entity_name'] == entity_name].sort_values('year')
+                if 'pct_international' in df_ia.columns and not df_ia.empty:
+                    fig_intl = go.Figure()
+                    fig_intl.add_trace(go.Scatter(
+                        x=df_ia['year'], y=df_ia['pct_international'],
+                        mode='lines+markers', name='% Internacional',
+                        line=dict(color='#002B5C', width=2.5),
+                        marker=dict(size=6, color='#D4AF37'),
+                        fill='tozeroy', fillcolor='rgba(0,43,92,0.07)',
+                        hovertemplate="%{x}: <b>%{y:.1f}%</b><extra></extra>",
+                    ))
+                    fig_intl.update_layout(
+                        height=220, margin=dict(t=5,b=5,l=40,r=10),
+                        yaxis=dict(ticksuffix="%", range=[0,100]),
+                        xaxis=dict(showgrid=False, tickformat="d"),
+                        template="plotly_white",
+                        title="Evolución de Colaboración Internacional (%)",
+                    )
+                    st.plotly_chart(fig_intl, use_container_width=True, key=f"intl_evol_{entity_name}")
+            _render_choropleth_collab(df_ip, 'entity_name', entity_name,
+                                      title="Países colaboradores",
+                                      key_suffix=f"inst_{entity_name}")
+
+    # ── Stacked Bar OA anual ──────────────────────────────────────────────
+    df_annual_oa = get_cached_data("institucion_annual.parquet")
+    if df_annual_oa is not None and not df_annual_oa.empty:
+        df_oa_ann = df_annual_oa[df_annual_oa['entity_name'] == entity_name].sort_values('year')
+        oa_cols = [c for c in ['pct_oa_gold','pct_oa_green','pct_oa_hybrid','pct_oa_bronze','pct_oa_closed']
+                   if c in df_oa_ann.columns]
+        if oa_cols and not df_oa_ann.empty:
+            st.markdown("---")
+            st.subheader("📊 Evolución del Acceso Abierto por Año")
+            df_oa_melt = df_oa_ann[['year'] + oa_cols].melt(id_vars='year', var_name='tipo_oa', value_name='pct')
+            df_oa_melt['tipo_oa'] = df_oa_melt['tipo_oa'].str.replace('pct_oa_','').str.capitalize()
+            color_map = {'Gold':'#FFD700','Green':'#2ECC71','Hybrid':'#3498DB','Bronze':'#CD7F32','Closed':'#95A5A6'}
+            fig_stack = px.bar(df_oa_melt, x='year', y='pct', color='tipo_oa',
+                               color_discrete_map=color_map,
+                               labels={'pct':'%','tipo_oa':'Tipo OA'},
+                               barmode='stack',
+                               title="Distribución OA por año (%)",
+                               text_auto=False)
+            fig_stack.update_layout(height=320, margin=dict(t=30,b=10), template='plotly_white',
+                                     xaxis=dict(tickformat='d'))
+            st.plotly_chart(fig_stack, use_container_width=True, key=f"oa_stack_{entity_name}")
+
+    # ── Perfil de Visibilidad e Indexación (Radar) ────────────────────────────────
+    if df_total is not None:
+        total_row = df_total.iloc[0] if not df_total.empty else None
+        if total_row is not None:
+            vis_cols = ['pct_pubmed','pct_doaj_indexed','pct_core_journal',
+                        'pct_repository','pct_english','pct_cc_by']
+            has_vis = any(total_row.get(c, 0) != 0 for c in vis_cols)
+            if has_vis:
+                st.markdown("---")
+                with st.expander("🔭 Perfil de Visibilidad e Indexación", expanded=False):
+                    col_rad, col_idx = st.columns([1, 1])
+                    with col_rad:
+                        _render_radar_visibilidad(total_row,
+                                                  title="Perfil de Visibilidad",
+                                                  key_suffix=f"inst_{entity_name}")
+                    with col_idx:
+                        st.markdown("")
+                        st.markdown(f"""
+| Indicador | Valor |
+|---|---|
+| % en PubMed | `{total_row.get('pct_pubmed',0):.1f}%` |
+| % en DOAJ | `{total_row.get('pct_doaj_indexed',0):.1f}%` |
+| % en revista Core | `{total_row.get('pct_core_journal',0):.1f}%` |
+| % en repositorio | `{total_row.get('pct_repository',0):.1f}%` |
+| % en inglés | `{total_row.get('pct_english',0):.1f}%` |
+| % con licencia CC-BY | `{total_row.get('pct_cc_by',0):.1f}%` |
+| Papers retractados | `{total_row.get('pct_retracted',0):.2f}%` |
+                        """.strip())
 
     df_institucion_papers = load_cached_data("papers_institucion.parquet")
     if df_institucion_papers is not None and not df_institucion_papers.empty:
@@ -249,13 +539,55 @@ def render_investigador_view(entity_name):
     c6.metric("Percentil Promedio", f"{inv_data.get('percentile_avg',50):.1f}")
     c7.metric("% Top 10%", f"{inv_data.get('pct_top_10',0):.1f}%")
     c8.metric("% Top 1%", f"{inv_data.get('pct_1',0):.1f}%")
-    
+
+    # ── Velocidad y Colaboración ────────────────────────────────────────────────
+    st.markdown("##### Velocidad de Citas y Colaboración")
+    cv1, cv2, cv3, cv4, cv5 = st.columns(5)
+    vel = inv_data.get('velocity_avg', 0) or 0
+    rec = int(inv_data.get('recent_cites_3yr', 0) or 0)
+    delta_txt = f"↑ {rec} últ. 3 años" if rec > vel else None
+    cv1.metric("Citas/año (prom.)",      f"{vel:.1f}", delta=delta_txt)
+    cv2.metric("Citas últ. 3 años",      f"{rec:,}")
+    cv3.metric("% Internacional",        f"{inv_data.get('pct_international',0):.1f}%")
+    cv4.metric("Países/paper (prom.)",   f"{inv_data.get('avg_countries',0):.1f}")
+    cv5.metric("Autores/paper (prom.)",  f"{inv_data.get('avg_author_count',0):.1f}")
+
+    # ── APC ──────────────────────────────────────────────────────────────────────
+    st.markdown("##### Acceso Abierto y Costos")
+    ca1, ca2, ca3 = st.columns(3)
+    apc_inv = inv_data.get('apc_paid_usd', 0) or 0
+    ca1.metric("APC Pagado Total",  f"${apc_inv:,.0f} USD")
+    ca2.metric("% Papers con APC", f"{inv_data.get('pct_apc',0):.1f}%")
+    ca3.metric("Vida Media Citas", f"{inv_data.get('half_life_avg',0):.1f} años")
+
+    # ── OA Donut ──────────────────────────────────────────────────────────────────
+    col_donut_inv, col_gini_inv = st.columns(2)
+    with col_donut_inv:
+        st.markdown("**Distribución Open Access**")
+        _render_oa_donut(inv_data, key_suffix=f"inv_{selected_inv}")
+    with col_gini_inv:
+        st.markdown("**Perfil Temático**")
+        gini_inv = inv_data.get('gini_topics')
+        if gini_inv is not None and not (isinstance(gini_inv, float) and np.isnan(gini_inv)):
+            st.markdown(f"""
+| Indicador | Valor |
+|---|---|
+| Índice de Gini temático | `{gini_inv:.3f}` |
+| Dominios cubiertos | **{int(inv_data.get('domain_diversity',0) or 0)}** |
+| Tópicos únicos | **{int(inv_data.get('unique_topics',0) or 0)}** |
+| Dominio principal | {inv_data.get('top_domain','—') or '—'} |
+            """.strip())
+        else:
+            st.info("Sin datos de diversidad temática.")
+
     with st.expander("ℹ️ ¿Qué significan estos indicadores?"):
         st.markdown("""
-        - **FWCI (Field-Weighted Citation Impact):** Relación entre las citas recibidas y el promedio mundial esperado para el mismo año y disciplina (Mundial = 1.0).
-        - **Percentil Promedio:** Posición promedio de los artículos respecto a sus citas (99 es el mejor decil).
-        - **% Top 10% / Top 1%:** Porcentaje de la producción que se ubica en la cúspide mundial de citación.
-        - **% Open Access:** Porcentaje de documentos publicados bajo estándares de ciencia abierta.
+        - **FWCI:** Relación citas recibidas / promedio mundial para el mismo año y disciplina (1.0 = media mundial).
+        - **Percentil / Top 10% / Top 1%:** Posición global en citación dentro del campo.
+        - **Velocidad:** Citas promedio recibidas cada año de vida del paper.
+        - **Vida Media:** Años hasta que el paper acumula el 50% de sus citas.
+        - **Gini temático:** 0 = enfocado en un solo tema, 1 = producción totalmente dispersa.
+        - **% Open Access / Tipos OA:** Gold (revista OA), Green (repositorio), Hybrid (elección del autor), Bronze (libre sin licencia abierta).
         """)
 
 
@@ -307,12 +639,53 @@ def render_investigador_view(entity_name):
             fig_sun_inv.update_layout(margin=dict(t=10, l=0, r=0, b=10), height=600)
             st.plotly_chart(fig_sun_inv, width="stretch")
 
-    
+    # ── WordCloud de Keywords ─────────────────────────────────────────────────────
+    df_kw_inv = get_cached_data("keywords_investigador.parquet")
+    if df_kw_inv is not None and not df_kw_inv.empty:
+        st.markdown("---")
+        st.subheader("🔑 Vocabulario Científico")
+        _render_keywords_section(df_kw_inv, "academic_name", selected_inv,
+                                 title="", key_suffix=f"inv_{selected_inv}")
 
+    # ── Colaboración Internacional (Choropleth) ───────────────────────────────────
     df_profesores_papers = load_cached_data("papers_profesor.parquet")
     if df_profesores_papers is not None and not df_profesores_papers.empty:
         df_prof = df_profesores_papers[df_profesores_papers['academic_name'] == selected_inv]
-        
+
+        if not df_prof.empty and "countries" in df_prof.columns:
+            st.markdown("---")
+            st.subheader("🌍 Colaboración Internacional")
+            # Sparkline de citas
+            _render_velocity_sparkline(df_prof, 'academic_name', selected_inv,
+                                       key_suffix=f"inv_{selected_inv}")
+            _render_choropleth_collab(df_prof, 'academic_name', selected_inv,
+                                      title="Países colaboradores",
+                                      key_suffix=f"inv_{selected_inv}")
+
+        # ── Indexación y Visibilidad ──────────────────────────────────────────────
+        vis_cols_inv = ['pct_pubmed','pct_doaj_indexed','pct_core_journal',
+                        'pct_repository','pct_english','pct_cc_by']
+        has_vis_inv = any(inv_data.get(c, 0) != 0 for c in vis_cols_inv)
+        if has_vis_inv:
+            st.markdown("---")
+            with st.expander("🔭 Visibilidad e Indexación", expanded=False):
+                col_r, col_t = st.columns([1, 1])
+                with col_r:
+                    _render_radar_visibilidad(inv_data, title="Perfil de Visibilidad",
+                                             key_suffix=f"inv_{selected_inv}")
+                with col_t:
+                    st.markdown("")
+                    st.markdown(f"""
+| Indicador | Valor |
+|---|---|
+| % en PubMed | `{inv_data.get('pct_pubmed',0):.1f}%` |
+| % en DOAJ | `{inv_data.get('pct_doaj_indexed',0):.1f}%` |
+| % en revista Core | `{inv_data.get('pct_core_journal',0):.1f}%` |
+| % en repositorio | `{inv_data.get('pct_repository',0):.1f}%` |
+| % en inglés | `{inv_data.get('pct_english',0):.1f}%` |
+| % con licencia CC-BY | `{inv_data.get('pct_cc_by',0):.1f}%` |
+                    """.strip())
+
         st.markdown("---")
         mostrar_banners_destacados(df_prof)
         
