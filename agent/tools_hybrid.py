@@ -230,6 +230,9 @@ def query_knowledge_graph_cypher(cypher_query: str) -> str:
     - NO uses parámetros Cypher ($variable). Esta herramienta NO acepta un dict de params separado. Incrusta los valores directamente en el string de la query. INCORRECTO: `WHERE a.id IN $ids`. CORRECTO: `WHERE a.id IN ['id1','id2']`
     - NO uses `(p:Paper)-[:AFFILIATED_TO]->(:Institution)`. Los Papers NO tienen relación AFFILIATED_TO. La afiliación es SIEMPRE a través del académico: `(a:Academic)-[:AFFILIATED_TO]->(e:Entity)`.
     - NO uses `EXISTS()` con patrones complejos. Usa `MATCH` directos.
+    - Para SDGs usa `(p:Paper)-[:ADDRESSES]->(s:SDG)`. La relación se llama :ADDRESSES, no :RELEVANT_TO.
+      Ejemplo: `MATCH (p:Paper)-[:ADDRESSES]->(s:SDG) RETURN s.id, s.name, count(p) AS papers ORDER BY papers DESC`
+
     
     IMPORTANTE: Esta herramienta solo encuentra trabajos con tópicos etiquetados explícitamente. Usa SIEMPRE en paralelo con `search_scientific_papers_semantic` para encontrar trabajos cuyo tópico no coincide textualmente. SIEMPRE usa `LIMIT 20` por defecto en tus consultas Cypher.
     """

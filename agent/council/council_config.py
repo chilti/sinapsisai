@@ -175,8 +175,9 @@ def get_db_schema() -> str:
     except Exception as e:
         lines.append(f"### Neo4j\n> ⚠️ No se pudo conectar: {e}")
         lines.append(
-            "Esquema esperado: `:Paper`, `:Academic`, `:Topic`, `:Entity`, `:Journal`\n"
-            "Relaciones: `:AUTHORED`, `:HAS_TOPIC`, `:PUBLISHED_IN`, `:AFFILIATED_TO`, `:CITES`\n"
+            "Esquema esperado: `:Paper`, `:Academic`, `:Topic`, `:Entity`, `:Journal`, `:SDG`\n"
+            "Relaciones: `:AUTHORED`, `:HAS_TOPIC`, `:PUBLISHED_IN`, `:AFFILIATED_TO`, `:CITES`, "
+            "`:ADDRESSES` (Paper→SDG — se llama ADDRESSES, no RELEVANT_TO)\n"
             "> ⚠️ No fue posible obtener los nombres exactos de las entidades disponibles. "
             "Usa `query_knowledge_graph_cypher` con `MATCH (e:Entity) RETURN e.name LIMIT 20` "
             "como PRIMER paso del script para conocer las entidades disponibles."
