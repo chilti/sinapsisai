@@ -456,17 +456,21 @@ def render_institucion_view(entity_name):
             df_display_inst = df_display_inst[df_display_inst['ODS_Nombre'] == s_ods_inst]
             
         df_display_inst = df_display_inst[[
-            "year", "Title", "Source", "citations", "DOI", "ODS_Nombre"
+            "year", "Title", "Source", "citations", "DOI", "openalex_url", "ODS_Nombre"
         ]].rename(columns={
             "year": "Año",
             "Title": "Título",
             "Source": "Revista/Publicación",
             "citations": "Citas",
             "DOI": "DOI",
+            "openalex_url": "OpenAlex",
             "ODS_Nombre": "ODS"
         }).sort_values(by="Año", ascending=False)
         
-        st.dataframe(df_display_inst, width="stretch", hide_index=True, column_config={"DOI": st.column_config.LinkColumn("Enlace DOI")})
+        st.dataframe(df_display_inst, width="stretch", hide_index=True, column_config={
+            "DOI": st.column_config.LinkColumn("Enlace DOI"),
+            "OpenAlex": st.column_config.LinkColumn("Enlace OpenAlex")
+        })
 
 def render_investigador_view(entity_name):
     st.header(f"👤 Vista por Investigador ({entity_name})")
@@ -713,17 +717,21 @@ def render_investigador_view(entity_name):
             df_display_prof = df_display_prof[df_display_prof['ODS_Nombre'] == s_ods_prof]
             
         df_display_prof = df_display_prof[[
-            "year", "Title", "Source", "citations", "DOI", "ODS_Nombre"
+            "year", "Title", "Source", "citations", "DOI", "openalex_url", "ODS_Nombre"
         ]].rename(columns={
             "year": "Año",
             "Title": "Título",
             "Source": "Revista/Publicación",
             "citations": "Citas",
             "DOI": "DOI",
+            "openalex_url": "OpenAlex",
             "ODS_Nombre": "ODS"
         }).sort_values(by="Año", ascending=False)
         
-        st.dataframe(df_display_prof, width="stretch", hide_index=True, column_config={"DOI": st.column_config.LinkColumn("Enlace DOI")})
+        st.dataframe(df_display_prof, width="stretch", hide_index=True, column_config={
+            "DOI": st.column_config.LinkColumn("Enlace DOI"),
+            "OpenAlex": st.column_config.LinkColumn("Enlace OpenAlex")
+        })
     
     # 5. Mapa UMAP
     st.markdown("---")
