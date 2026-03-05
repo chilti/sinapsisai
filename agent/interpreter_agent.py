@@ -156,7 +156,7 @@ class InterpreterOrchestrator:
                                 "args": {"code": chunk["content"]}
                             })
                         else:
-                            intermediate_steps[-1]["args"]["code"] += chunk["content"]
+                            intermediate_steps[-1]["args"]["code"] += str(chunk["content"])
                             
                     elif chunk["type"] == "console" and "content" in chunk:
                         if not intermediate_steps or intermediate_steps[-1]["type"] != "tool_result":
@@ -166,10 +166,10 @@ class InterpreterOrchestrator:
                                 "content": chunk["content"]
                             })
                         else:
-                            intermediate_steps[-1]["content"] += chunk["content"]
+                            intermediate_steps[-1]["content"] += str(chunk["content"])
                             
                     elif chunk["type"] == "message" and "content" in chunk:
-                        final_answer += chunk["content"]
+                        final_answer += str(chunk["content"])
                         
         except Exception as e:
             final_answer += f"\n[Ha ocurrido un error durante la ejecución: {str(e)}]"
