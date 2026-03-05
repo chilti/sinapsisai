@@ -75,14 +75,15 @@ class InterpreterOrchestrator:
             full_prompt = f"[Contexto actual: {entity_context}]\n" + full_prompt
 
         # Restore past messages for this session
-        past_msgs = self.memory.get_messages(session_id)
+        past_msgs = self.memory.get_history(session_id, limit=20)
         # OpenInterpreter format: [{"role": "user"/"assistant", "type": "message", "content": "..."}]
         interpreter_msgs = []
         for m in past_msgs:
-            role = m.type
+            role = m.get("role", "user")
+            # Convert roles if necessary
             if role == "human": role = "user"
             if role == "ai": role = "assistant"
-            interpreter_msgs.append({"role": role, "type": "message", "content": m.content})
+            interpreter_msgs.append({"role": role, "type": "message", "content": m.get("content", "")})
         
         self.interpreter.messages = interpreter_msgs
 
@@ -124,9 +125,9 @@ class InterpreterOrchestrator:
         except Exception as e:
             final_answer += f"\n[Ha ocurrido un error durante la ejecución: {str(e)}]"
 
-        # Save to memory (solo el texto final para evitar saturar el LLM en futuras vueltas)
-        self.memory.add_user_message(session_id, prompt)
-        self.memory.add_ai_message(session_id, final_answer)
+        # Save to memory
+        self.memory.add_message(session_id, "user", prompt)
+        self.memory.add_message(session_id, "assistant", final_answer)
 
         return {
             "answer": final_answer,
