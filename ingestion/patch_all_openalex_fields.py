@@ -39,8 +39,12 @@ except AttributeError:
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.knowledge_graph import Neo4jGraphStore
 import pyalex
+from dotenv import load_dotenv, find_dotenv
 
-pyalex.config.email = "jlja@ciencias.unam.mx"
+load_dotenv(find_dotenv())
+pyalex.config.email = os.getenv("EMAIL_ADDRESS", "sin_correo@ciencias.unam.mx")
+if os.getenv("OPENALEX_API_KEY"):
+    pyalex.config.api_key = os.getenv("OPENALEX_API_KEY")
 
 # ─── Extracción de campos desde un work de OpenAlex ────────────────────────
 

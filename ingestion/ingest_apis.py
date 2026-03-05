@@ -328,7 +328,7 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                                  .strip('/') if doi and not doi.startswith('orcid-work:') else None)
                 if not _doi_clean:
                     raise ValueError("No es un DOI resolvible en OpenAlex")
-                time.sleep(1)
+                time.sleep(0.1)
                 print(f"    Consultando OpenAlex para {_doi_clean}...")
                 work = pyalex.Works()["https://doi.org/" + _doi_clean]
                 authorships = work.get('authorships', [])
