@@ -226,7 +226,7 @@ def _render_radar_visibilidad(data_row, title="Perfil de Visibilidad", key_suffi
 
 def render_institucion_view(entity_name):
     st.header(f"🏢 Vista de la Institución: {entity_name}")
-    st.markdown(f"Panorama Analítico de la Producción de **{entity_name}**. La producción de la institución fué descargada desde Web of Science. Los indicaddores fueron ectraidos de la base de datos abierta OpenAlex.")
+    st.markdown(f"Panorama Analítico de la Producción de **{entity_name}**. La producción de la institución fué descargada desde Web of Science. Los indicaddores fueron extraidos de la base de datos abierta OpenAlex.")
 
     df_annual = load_cached_data("institucion_annual.parquet")
     df_total = load_cached_data("institucion_total.parquet")
