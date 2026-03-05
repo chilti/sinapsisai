@@ -32,7 +32,9 @@ try:
 except Exception:
     print("Nota: pybliometrics puede no estar completamente configurado con la API key de Scopus.")
 
-load_dotenv(find_dotenv())
+# Cargar .env de forma robusta asumiendo que está un nivel arriba (raíz del proyecto)
+env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
+load_dotenv(env_path)
 
 pyalex.config.email = os.getenv("EMAIL_ADDRESS", "sin_correo@ciencias.unam.mx")
 if os.getenv("OPENALEX_API_KEY"):
