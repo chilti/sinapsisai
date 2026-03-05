@@ -429,6 +429,10 @@ def aggregate_metrics(df_papers, group_cols):
         df_papers['is_oa_closed'] = (df_papers['oa_status'] == 'closed').astype(int)
 
     # ── Nuevos campos de alto impacto ───────────────────────────────
+    # Máscara de papers SIN enriquecimiento de OpenAlex.
+    # (fwci es el indicador más confiable de que OpenAlex procesó el paper)
+    _has_oa = df_papers.get('fwci', pd.Series([np.nan]*len(df_papers))).notna()
+
     # Velocidad de citas por paper
     if 'counts_by_year' in df_papers.columns and 'year' in df_papers.columns:
         vel_data = df_papers.apply(
@@ -442,26 +446,36 @@ def aggregate_metrics(df_papers, group_cols):
         for col in ['velocity', 'recent_cites_3yr', 'early_impact', 'half_life']:
             df_papers[col] = np.nan
 
-    # APC
+    # APC — suma bruta mantiene 0 válido; % sólo sobre papers con datos OA
     for col in ['apc_paid_usd', 'apc_list_usd']:
         if col in df_papers.columns:
             df_papers[col] = pd.to_numeric(df_papers[col], errors='coerce').fillna(0)
         else:
             df_papers[col] = 0.0
-    df_papers['has_apc'] = (df_papers['apc_paid_usd'] > 0).astype(int)
+    # has_apc: NaN para papers sin información OA, 1/0 para los que sí tienen
+    df_papers['has_apc'] = np.where(_has_oa, (df_papers['apc_paid_usd'] > 0).astype(float), np.nan)
 
-    # Colaboración
+    # Colaboración — usar NaN para papers sin enriquecimiento OA
     if 'countries_distinct_count' in df_papers.columns:
-        df_papers['countries_distinct_count'] = pd.to_numeric(df_papers['countries_distinct_count'], errors='coerce').fillna(0)
-        df_papers['is_international'] = (df_papers['countries_distinct_count'] >= 2).astype(int)
+        df_papers['countries_distinct_count'] = pd.to_numeric(df_papers['countries_distinct_count'], errors='coerce')
+        # is_international: 1/0/NaN según si hay datos de OA
+        df_papers['is_international'] = np.where(
+            _has_oa,
+            (df_papers['countries_distinct_count'].fillna(0) >= 2).astype(float),
+            np.nan
+        )
+        # avg_countries: NaN si no hay datos OA
+        df_papers.loc[~_has_oa, 'countries_distinct_count'] = np.nan
     else:
-        df_papers['countries_distinct_count'] = 0.0
-        df_papers['is_international'] = 0
+        df_papers['countries_distinct_count'] = np.nan
+        df_papers['is_international'] = np.nan
 
     if 'author_count' in df_papers.columns:
-        df_papers['author_count'] = pd.to_numeric(df_papers['author_count'], errors='coerce').fillna(0)
+        df_papers['author_count'] = pd.to_numeric(df_papers['author_count'], errors='coerce')
+        # Si no hay ó si es 0 y no hay datos OA, dejar NaN
+        df_papers.loc[~_has_oa | (df_papers['author_count'] == 0), 'author_count'] = np.nan
     else:
-        df_papers['author_count'] = 0.0
+        df_papers['author_count'] = np.nan
 
     # Indexación y acceso
     for bool_col in ['journal_is_in_doaj', 'journal_is_core', 'is_retracted', 'any_repository_has_fulltext']:
