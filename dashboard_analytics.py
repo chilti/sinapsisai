@@ -455,6 +455,9 @@ def render_institucion_view(entity_name):
         if s_ods_inst != "Todos":
             df_display_inst = df_display_inst[df_display_inst['ODS_Nombre'] == s_ods_inst]
             
+        if "openalex_url" not in df_display_inst.columns:
+            df_display_inst["openalex_url"] = None
+            
         df_display_inst = df_display_inst[[
             "year", "Title", "Source", "citations", "DOI", "openalex_url", "ODS_Nombre"
         ]].rename(columns={
@@ -715,6 +718,9 @@ def render_investigador_view(entity_name):
             df_display_prof = df_display_prof[df_display_prof['year'] == s_year_prof]
         if s_ods_prof != "Todos":
             df_display_prof = df_display_prof[df_display_prof['ODS_Nombre'] == s_ods_prof]
+            
+        if "openalex_url" not in df_display_prof.columns:
+            df_display_prof["openalex_url"] = None
             
         df_display_prof = df_display_prof[[
             "year", "Title", "Source", "citations", "DOI", "openalex_url", "ODS_Nombre"
