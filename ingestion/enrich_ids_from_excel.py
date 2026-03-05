@@ -170,25 +170,32 @@ def enrich(json_path: Path, excel_path: Path, dry_run: bool = False):
         # Nombre que usamos para el match (logging)
         excel_display = f"{row.get('first_name','')} {row.get('last_name','')}".strip()
 
-        # ORCID: Excel → JSON
-        orcid_excel  = _clean_orcid(str(row.get('ORCID', '') or ''))
-        orcid_json   = _clean_orcid(str(entry.get('orcid', '') or ''))
-        if orcid_excel and not orcid_json:
-            entry['orcid'] = orcid_excel
-            changed = True
-            print(f"  ✅ [{orig_json_key}]  ORCID  ← {orcid_excel}  (Excel: {excel_display})")
-        elif orcid_excel and orcid_json and orcid_excel != orcid_json:
-            print(f"  ⚠️  [{orig_json_key}]  ORCID conflicto: json={orcid_json}  excel={orcid_excel}  → se mantiene JSON")
+        # ORCID: Excel es la fuente de verdad → siempre reemplazar si Excel tiene valor
+        orcid_excel = _clean_orcid(str(row.get('ORCID', '') or ''))
+        orcid_json  = _clean_orcid(str(entry.get('orcid', '') or ''))
+        if orcid_excel:
+            if not orcid_json:
+                entry['orcid'] = orcid_excel
+                changed = True
+                print(f"  ✅ [{orig_json_key}]  ORCID  ← {orcid_excel}  (Excel: {excel_display})")
+            elif orcid_excel != orcid_json:
+                entry['orcid'] = orcid_excel
+                changed = True
+                print(f"  🔄 [{orig_json_key}]  ORCID  reemplazado: {orcid_json} → {orcid_excel}  (Excel gana)")
 
-        # Scopus: Excel → JSON
-        scopus_excel = _clean_scopus(row.get('authorID', '') or '')
-        scopus_json  = _clean_scopus(entry.get('scopus', '') or '')
-        if scopus_excel and not scopus_json:
-            entry['scopus'] = scopus_excel
+        # Scopus: MERGE de ambas listas (union deduplicada)
+        scopus_excel_raw = _clean_scopus(row.get('authorID', '') or '')
+        scopus_json_raw  = entry.get('scopus', '') or ''
+        # Convertir ambos a sets de IDs
+        existing_ids = {s.strip() for s in str(scopus_json_raw).split(';') if _clean_scopus(s.strip())}
+        excel_ids    = {s.strip() for s in str(scopus_excel_raw or '').split(';') if _clean_scopus(s.strip())}
+        all_ids = existing_ids | excel_ids
+        added  = excel_ids - existing_ids
+        if added:
+            entry['scopus'] = '; '.join(sorted(all_ids))
             changed = True
-            print(f"  ✅ [{orig_json_key}]  Scopus ← {scopus_excel}  (Excel: {excel_display})")
-        elif scopus_excel and scopus_json and scopus_excel != scopus_json:
-            print(f"  ⚠️  [{orig_json_key}]  Scopus conflicto: json={scopus_json}  excel={scopus_excel}  → se mantiene JSON")
+            print(f"  ✅ [{orig_json_key}]  Scopus ← {added}  (Excel: {excel_display})")
+        scopus_json  = _clean_scopus(entry.get('scopus', '') or '')
 
         # ResearcherID: Excel → JSON (si existe campo)
         rid_excel = str(row.get('researcherID', '') or '').strip()
@@ -208,9 +215,8 @@ def enrich(json_path: Path, excel_path: Path, dry_run: bool = False):
         matched += 1
 
         # ── 2. Enriquecer Excel con datos del JSON ───────────────────────────────
-        # Guardar ORCID/Scopus del JSON en el Excel si Excel estaba vacío
         orcid_json_cleaned  = _clean_orcid(str(entry.get('orcid', '') or ''))
-        scopus_json_cleaned = _clean_scopus(entry.get('scopus', '') or '')
+        scopus_json_cleaned = entry.get('scopus', '') or ''
 
         if not _clean_orcid(str(row.get('ORCID', '') or '')) and orcid_json_cleaned:
             df_excel.at[excel_idx, 'ORCID'] = orcid_json_cleaned
@@ -218,12 +224,12 @@ def enrich(json_path: Path, excel_path: Path, dry_run: bool = False):
             excel_updated += 1
             print(f"  📊 [{excel_display}]  ORCID  → Excel  {orcid_json_cleaned}")
 
-        if not _clean_scopus(row.get('authorID', '') or '') and scopus_json_cleaned:
-            df_excel.at[excel_idx, 'authorID']        = scopus_json_cleaned
+        # Scopus: escribir lista completa (merge) a una columna 'Scopus_merged' en el Excel
+        if scopus_json_cleaned:
+            df_excel.at[excel_idx, 'Scopus_merged']    = scopus_json_cleaned
             df_excel.at[excel_idx, 'Scopus_from_json'] = '✓'
-            df_excel.at[excel_idx, 'json_key'] = orig_json_key
+            df_excel.at[excel_idx, 'json_key']         = orig_json_key
             excel_updated += 1
-            print(f"  📊 [{excel_display}]  Scopus → Excel  {scopus_json_cleaned}")
 
     # ── Unmatched en Excel ───────────────────────────────────────────────────────
     matched_excel_idxs = {excel_index.get(_json_full_name(k)) for k in json_index

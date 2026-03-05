@@ -4,8 +4,8 @@
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127812",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=56013602900",
-        "orcid": "https://orcid.org/0000-0003-4853-125X",
+        "scopus": "6701767320; https://www.scopus.com/authid/detail.uri?authorId=56013602900",
+        "orcid": "0000-0002-9060-3731",
         "areas": [
             "Chemistry, analytical",
             "Chemistry, physical",
@@ -27,23 +27,26 @@
             "Pollution",
             "Radiation",
             "Water science and technology"
-        ]
+        ],
+        "sex": "0"
     },
     "ALCUBIERRE MOYA, MIGUEL": {
         "original_name": "Alcubierre Moya, Miguel",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=92378",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=6701340768",
+        "scopus": "6701340768; https://www.scopus.com/authid/detail.uri?authorId=6701340768",
         "orcid": "https://orcid.org/0000-0003-3367-9868",
-        "areas": []
+        "areas": [],
+        "researcher_id": "E-9188-2018",
+        "sex": "1"
     },
     "ALVAREZ VENICIO, VIOLETA": {
         "original_name": "Álvarez Venicio, Violeta",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=102287",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=24474291400",
+        "scopus": "24474291400; https://www.scopus.com/authid/detail.uri?authorId=24474291400",
         "orcid": "https://orcid.org/0000-0001-8908-5124",
         "areas": [
             "Chemistry, applied",
@@ -69,15 +72,17 @@
             "Physical and theoretical chemistry",
             "Polymers and plastics",
             "Radiation"
-        ]
+        ],
+        "researcher_id": "AAY-9050-2020",
+        "sex": "0"
     },
     "ARCOS RAMOS, RAFAEL OMAR": {
         "original_name": "Arcos Ramos, Rafael Omar",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=110024",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=14830000100",
-        "orcid": "",
+        "scopus": "14830000100; https://www.scopus.com/authid/detail.uri?authorId=14830000100",
+        "orcid": "0000-0001-9225-9535",
         "areas": [
             "Biochemistry and molecular biology",
             "Crystallography",
@@ -99,14 +104,15 @@
             "Organic Chemistry",
             "Pharmacology",
             "Polymers and plastics"
-        ]
+        ],
+        "sex": "1"
     },
     "AYALA MERCADO, JOSE ALEJANDRO": {
         "original_name": "Ayala Mercado, José Alejandro",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=76959",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=56248782800",
+        "scopus": "56248782800; https://www.scopus.com/authid/detail.uri?authorId=56248782800",
         "orcid": "https://orcid.org/0000-0003-3929-9209",
         "areas": [
             "Astronomy & astrophysics",
@@ -129,14 +135,16 @@
             "Nuclear and High Energy Physics",
             "Physics and Astronomy (miscellaneous)",
             "Space and planetary science"
-        ]
+        ],
+        "researcher_id": "ABF-9042-2021",
+        "sex": "1"
     },
     "BASSIOUK EVDOKIMENKO, VLADIMIR": {
         "original_name": "Bassiouk Evdokimenko, Vladimir",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127416",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=35583919300",
+        "scopus": "57195302676; https://www.scopus.com/authid/detail.uri?authorId=35583919300",
         "orcid": "https://orcid.org/0000-0001-7864-9203",
         "areas": [
             "Aerospace engineering & technology",
@@ -193,15 +201,17 @@
             "Physics and Astronomy (miscellaneous)",
             "Polymers and plastics",
             "Surfaces, Coatings and Films"
-        ]
+        ],
+        "researcher_id": "G-4988-2018",
+        "sex": "1"
     },
     "BIETENHOLZ, WOLFGANG PETER": {
         "original_name": "Bietenholz, Wolfgang Peter",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=104737",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=7003677587",
-        "orcid": "",
+        "scopus": "7003677587; https://www.scopus.com/authid/detail.uri?authorId=7003677587",
+        "orcid": "0000-0002-8545-9704",
         "areas": [
             "Astronomy & astrophysics",
             "Astronomy and astrophysics",
@@ -230,23 +240,26 @@
             "Nuclear and high energy physics",
             "Physics and Astronomy (miscellaneous)",
             "Statistical and Nonlinear Physics"
-        ]
+        ],
+        "sex": "1"
     },
     "BIJKER BIJKER, ROELOF": {
         "original_name": "Bijker Bijker, Roelof",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=82322",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=7003802851",
-        "orcid": "https://orcid.org/0000-0002-7266-934X"
+        "scopus": "7003802851; https://www.scopus.com/authid/detail.uri?authorId=7003802851",
+        "orcid": "https://orcid.org/0000-0002-7266-934X",
+        "researcher_id": "O-5483-2018",
+        "sex": "1"
     },
     "BONDER GRIMBERG, YURI": {
         "original_name": "Bonder Grimberg, Yuri",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128515",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=56013614000",
-        "orcid": "",
+        "scopus": "56013614000; https://www.scopus.com/authid/detail.uri?authorId=56013614000",
+        "orcid": "0000-0001-8303-7500",
         "areas": [
             "Astronomy and astrophysics",
             "Multidisciplinary sciences",
@@ -259,15 +272,16 @@
             "Mathematical Physics",
             "Nuclear and high energy physics",
             "Physics and astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "BUCIO CARRILLO, EMILIO": {
         "original_name": "Bucio Carrillo, Emilio",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127518",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=55993755500",
-        "orcid": "",
+        "scopus": "24779545800; https://www.scopus.com/authid/detail.uri?authorId=55993755500",
+        "orcid": "0000-0003-4853-125X",
         "areas": [
             "Biochemistry and molecular biology",
             "Biophysics",
@@ -317,14 +331,15 @@
             "Surfaces and Interfaces",
             "Surfaces, coatings and films",
             "Water Science and Technology"
-        ]
+        ],
+        "sex": "1"
     },
     "BURILLO AMEZCUA, SOFIA GUILLERMINA": {
         "original_name": "Burillo Amezcua, Sofía Guillermina",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=125567",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=6504647070",
+        "scopus": "7003281369; https://www.scopus.com/authid/detail.uri?authorId=6504647070",
         "orcid": "https://orcid.org/0000-0001-8993-4923",
         "areas": [
             "Biophysics",
@@ -363,15 +378,16 @@
             "Surfaces and Interfaces",
             "Surfaces, Coatings and Films",
             "Water science and technology"
-        ]
+        ],
+        "sex": "0"
     },
     "CARREON CASTRO, MARIA DEL PILAR": {
         "original_name": "Carreón Castro, María del Pilar",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127446",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=12445325600",
-        "orcid": "",
+        "scopus": "15833934900; https://www.scopus.com/authid/detail.uri?authorId=12445325600",
+        "orcid": "0000-0002-8271-6250",
         "areas": [
             "Biochemical research methods",
             "Chemistry",
@@ -416,14 +432,16 @@
             "Polymers and Plastics",
             "Radiation",
             "Spectroscopy"
-        ]
+        ],
+        "researcher_id": "E-9005-2018",
+        "sex": "0"
     },
     "CASTANOS GARZA, OCTAVIO HECTOR": {
         "original_name": "Castaños Garza, Octavio Héctor",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=85387",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=55989685500",
+        "scopus": "57197490685; https://www.scopus.com/authid/detail.uri?authorId=55989685500",
         "orcid": "https://orcid.org/0000-0003-2514-3764",
         "areas": [
             "Computer science, theory and methods",
@@ -453,14 +471,15 @@
             "Nuclear and high energy physics",
             "Physics and astronomy (miscellaneous)",
             "Statistics and probability"
-        ]
+        ],
+        "sex": "1"
     },
     "CHRYSSOMALAKOS, CHRYSSOMALIS": {
         "original_name": "Chryssomalakos, Chryssomalis",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=89906",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=6603622390",
+        "scopus": "6603622390; https://www.scopus.com/authid/detail.uri?authorId=6603622390",
         "orcid": "https://orcid.org/0000-0002-6676-4762",
         "areas": [
             "Astronomy & astrophysics",
@@ -481,14 +500,15 @@
             "Modeling and simulation",
             "Nuclear and High Energy Physics",
             "Physics and Astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "CRUZ CASTANEDA, JORGE ARMANDO": {
         "original_name": "Cruz Castañeda, Jorge Armando",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=115764",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=56401014300",
+        "scopus": "56401014300; https://www.scopus.com/authid/detail.uri?authorId=56401014300",
         "orcid": "https://orcid.org/0000-0002-7907-0751",
         "areas": [
             "Astronomy and astrophysics",
@@ -509,7 +529,9 @@
             "Physics and astronomy (miscellaneous)",
             "Pollution",
             "Radiation"
-        ]
+        ],
+        "researcher_id": "AAE-8145-2020",
+        "sex": "1"
     },
     "CRUZ RAMIREZ, HECTOR": {
         "original_name": "Cruz Ramírez, Héctor",
@@ -517,7 +539,7 @@
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128414",
         "scopus": "https://www.scopus.com/authid/detail.uri?authorId=55547356300",
-        "orcid": "",
+        "orcid": "0000-0002-1608-9383",
         "areas": [
             "Multidisciplinary sciences",
             "Optics",
@@ -532,7 +554,8 @@
             "Multidisciplinary",
             "Physical and theoretical chemistry",
             "Physics and astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "CRUZ ROJAS, JESUS": {
         "original_name": "Cruz Rojas, Jesús",
@@ -553,14 +576,15 @@
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=77334",
         "scopus": "",
         "orcid": "",
-        "areas": []
+        "areas": [],
+        "sex": "1"
     },
     "CRUZ ZARAGOZA, EPIFANIO": {
         "original_name": "Cruz Zaragoza, Epifanio",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126903",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=55514789800",
+        "scopus": "55995867500; https://www.scopus.com/authid/detail.uri?authorId=55514789800",
         "orcid": "https://orcid.org/0000-0003-0422-7854",
         "areas": [
             "Biotechnology & applied microbiology",
@@ -599,15 +623,16 @@
             "Space and Planetary Science",
             "Surfaces, Coatings and Films",
             "Toxicology"
-        ]
+        ],
+        "sex": "1"
     },
     "CUAUTLE FLORES, ELEAZAR": {
         "original_name": "Cuautle Flores, Eleazar",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128300",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=102222207",
-        "orcid": "",
+        "scopus": "8208473800; https://www.scopus.com/authid/detail.uri?authorId=102222207",
+        "orcid": "0000-0002-7462-0275",
         "areas": [
             "Astronomy & astrophysics",
             "Astronomy and astrophysics",
@@ -634,25 +659,29 @@
             "Multidisciplinary",
             "Nuclear and high energy physics",
             "Physics and astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "DE COLLE, FABIO": {
         "original_name": "De Colle, Fabio",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "",
-        "scopus": "",
-        "orcid": "h",
-        "areas": []
+        "scopus": "12778764000",
+        "orcid": "0000-0002-3137-4633",
+        "areas": [],
+        "sex": "1"
     },
     "DE LA ROSA CANALES,  JOSE GUADALUPE": {
         "original_name": "De la Rosa Canales,  José Guadalupe",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "",
-        "scopus": "",
-        "orcid": "",
-        "areas": []
+        "scopus": "7004978012",
+        "orcid": "0009-0009-4222-9587",
+        "areas": [],
+        "researcher_id": "A-3573-2010",
+        "sex": "1"
     },
     "DIAZ GONZALEZ, JUAN LUCIANO": {
         "original_name": "Díaz González, Juan Luciano",
@@ -676,15 +705,17 @@
             "Instrumentation",
             "Nuclear and High Energy Physics",
             "Physics and Astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "D'OLIVO SAEZ, JUAN CARLOS": {
         "original_name": "D'Olivo Saez, Juan Carlos",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=73406",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=55989657200",
-        "orcid": ""
+        "scopus": "55989657200; https://www.scopus.com/authid/detail.uri?authorId=55989657200",
+        "orcid": "0000-0001-7449-1015",
+        "sex": "1"
     },
     "ESCAMILLA MOYA, MARIA DE LA LUZ": {
         "original_name": "Escamilla Moya, María de La Luz",
@@ -692,8 +723,9 @@
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=79606",
         "scopus": "",
-        "orcid": "",
-        "areas": []
+        "orcid": "0000-0003-2633-0406",
+        "areas": [],
+        "sex": "0"
     },
     "ESCAMILLA RIVERA, CELIA DEL CARMEN": {
         "original_name": "Escamilla Rivera, Celia del Carmen",
@@ -716,15 +748,16 @@
             "Nuclear and high energy physics",
             "Physics and astronomy (miscellaneous)",
             "Space and planetary science"
-        ]
+        ],
+        "sex": "0"
     },
     "ESQUIVEL SALAZAR, JOSE ALEJANDRO": {
         "original_name": "Esquivel Salazar, José Alejandro",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128845",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=15847641500",
-        "orcid": "",
+        "scopus": "56000785700; https://www.scopus.com/authid/detail.uri?authorId=15847641500",
+        "orcid": "0000-0001-7222-1492",
         "areas": [
             "Astronomy & astrophysics",
             "Astronomy and astrophysics",
@@ -734,14 +767,16 @@
             "Astronomy and Astrophysics",
             "Health, Toxicology and Mutagenesis",
             "Space and planetary science"
-        ]
+        ],
+        "researcher_id": "A-6999-2016",
+        "sex": "1"
     },
     "FERNANDEZ RAMIREZ, CESAR": {
         "original_name": "Fernández Ramírez, César",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=124188",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=13002934000",
+        "scopus": "13002934000; https://www.scopus.com/authid/detail.uri?authorId=13002934000",
         "orcid": "https://orcid.org/0000-0001-8979-5660",
         "areas": [
             "Astronomy and astrophysics",
@@ -758,15 +793,17 @@
             "Multidisciplinary",
             "Nuclear and high energy physics",
             "Physics and astronomy (miscellaneous)"
-        ]
+        ],
+        "researcher_id": "E-9213-2010",
+        "sex": "1"
     },
     "FLORES MIJANGOS, JESUS": {
         "original_name": "Flores Mijangos, Jesús",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127306",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=36720341300",
-        "orcid": "",
+        "scopus": "6507272333; https://www.scopus.com/authid/detail.uri?authorId=36720341300",
+        "orcid": "0009-0003-9468-3796",
         "areas": [
             "Chemistry, multidisciplinary",
             "Engineering, multidisciplinary",
@@ -782,14 +819,15 @@
             "Engineering (miscellaneous)",
             "Instrumentation",
             "Physics and astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "FOSSION, RUBEN YVAN MAARTEN": {
         "original_name": "Fossion, Ruben Yvan Maarten",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=129094",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=56013625700",
+        "scopus": "56013625700; https://www.scopus.com/authid/detail.uri?authorId=56013625700",
         "orcid": "https://orcid.org/0000-0001-8456-2075",
         "areas": [
             "Biology",
@@ -831,15 +869,17 @@
             "Psychology (miscellaneous)",
             "Public health, environmental and occupational health",
             "Social sciences (miscellaneous)"
-        ]
+        ],
+        "researcher_id": "X-1682-2019",
+        "sex": "1"
     },
     "FRANK HOEFLICH, ALEJANDRO": {
         "original_name": "Frank Hoeflich, Alejandro",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127779",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=55438122900",
-        "orcid": "",
+        "scopus": "7401661378; https://www.scopus.com/authid/detail.uri?authorId=55438122900",
+        "orcid": "0000-0001-5482-4855",
         "areas": [
             "Astronomy & astrophysics",
             "Astronomy and astrophysics",
@@ -882,7 +922,9 @@
             "Physiology",
             "Physiology (medical)",
             "Space and Planetary Science"
-        ]
+        ],
+        "researcher_id": "FZB-9225-2022",
+        "sex": "1"
     },
     "GAMBOA CALDERON, YOLSY GABRIELA": {
         "original_name": "Gamboa Calderón, Yolsy Gabriela",
@@ -890,19 +932,21 @@
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=148517",
         "scopus": "",
-        "orcid": "",
+        "orcid": "0000-0003-4797-7786",
         "areas": [
             "Information science and library science",
             "Library and information sciences"
-        ]
+        ],
+        "researcher_id": "F-1083-2018",
+        "sex": "0"
     },
     "GAMBOA DE BUEN, MARIA ISABEL": {
         "original_name": "Gamboa de Buen, María Isabel",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126699",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=56027167300",
-        "orcid": "",
+        "scopus": "56184370000; https://www.scopus.com/authid/detail.uri?authorId=56027167300",
+        "orcid": "0000-0002-5948-4498",
         "areas": [
             "Engineering, biomedical",
             "Engineering, multidisciplinary",
@@ -922,15 +966,16 @@
             "Radiology, Nuclear Medicine and Imaging",
             "Surfaces, Coatings and Films",
             "Waste management and disposal"
-        ]
+        ],
+        "sex": "0"
     },
     "GARCIA ZENTENO, JOSE ANTONIO RAFAEL": {
         "original_name": "García Zenteno, José Antonio Rafael",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126763",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=57214268155",
-        "orcid": "",
+        "scopus": "57199440958; https://www.scopus.com/authid/detail.uri?authorId=57214268155",
+        "orcid": "0000-0001-9784-3079",
         "areas": [
             "Astronomy and astrophysics",
             "Physics, multidisciplinary",
@@ -943,7 +988,8 @@
             "Nephrology",
             "Nuclear and High Energy Physics",
             "Physics and Astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "GUEVARA VILLEGAS, ALINE": {
         "original_name": "Guevara Villegas, Aline",
@@ -955,7 +1001,9 @@
         "areas": [
             "Multidisciplinary sciences",
             "Multidisciplinary"
-        ]
+        ],
+        "researcher_id": "NULL",
+        "sex": "0"
     },
     "GUTIERREZ ROMERO, JAVIER": {
         "original_name": "Gutiérrez Romero, Javier",
@@ -964,7 +1012,8 @@
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=152019",
         "scopus": "",
         "orcid": "",
-        "areas": []
+        "areas": [],
+        "sex": "1"
     },
     "GUVEN SEERY, JEMAL JANER": {
         "original_name": "Guven Seery, Jemal Janer",
@@ -980,8 +1029,8 @@
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=92063",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=6602519359",
-        "orcid": "",
+        "scopus": "6602519359; https://www.scopus.com/authid/detail.uri?authorId=6602519359",
+        "orcid": "0000-0003-2754-8394",
         "areas": [
             "Astronomy & astrophysics",
             "Immunology",
@@ -994,14 +1043,15 @@
             "Medicine (miscellaneous)",
             "Nuclear and high energy physics",
             "Physics and Astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "HEREDIA BARBERO, ALEJANDRO": {
         "original_name": "Heredia Barbero, Alejandro",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128251",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=23979691000",
+        "scopus": "23979691000; https://www.scopus.com/authid/detail.uri?authorId=23979691000",
         "orcid": "https://orcid.org/0000-0002-3887-610X",
         "areas": [
             "Astronomy and astrophysics",
@@ -1046,7 +1096,8 @@
             "Radiation",
             "Spectroscopy",
             "Surfaces, Coatings and Films"
-        ]
+        ],
+        "sex": "1"
     },
     "HERNANDEZ DIAZ, CARLOS ANTONIO": {
         "original_name": "Hernández Díaz, Carlos Antonio",
@@ -1055,14 +1106,15 @@
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=159738",
         "scopus": "",
         "orcid": "",
-        "areas": []
+        "areas": [],
+        "sex": "1"
     },
     "HERRERA VELAZQUEZ, JOSE JULIO EMILIO": {
         "original_name": "Herrera Velázquez, José Julio Emilio",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=85393",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=57425608300",
+        "scopus": "57192695287; https://www.scopus.com/authid/detail.uri?authorId=57425608300",
         "orcid": "https://orcid.org/0000-0003-0601-2611",
         "areas": [
             "Astronomy & astrophysics",
@@ -1090,15 +1142,17 @@
             "Safety, Risk, Reliability and Quality",
             "Space and Planetary Science",
             "Surfaces, Coatings and Films"
-        ]
+        ],
+        "researcher_id": "A-1921-2008",
+        "sex": "1"
     },
     "HESS BECHSTEDT, PETER OTTO": {
         "original_name": "Hess Bechstedt, Peter Otto",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=70780",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=25938080000",
-        "orcid": "",
+        "scopus": "25938080000; https://www.scopus.com/authid/detail.uri?authorId=25938080000",
+        "orcid": "0000-0002-6228-7348",
         "areas": [
             "Astronomy & astrophysics",
             "Astronomy and astrophysics",
@@ -1125,14 +1179,15 @@
             "Nuclear and high energy physics",
             "Physics and Astronomy (miscellaneous)",
             "Space and planetary science"
-        ]
+        ],
+        "sex": "1"
     },
     "HIRSCH GANIEVICH, JORGE GUSTAVO": {
         "original_name": "Hirsch Ganievich, Jorge Gustavo",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128035",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=7402780543",
+        "scopus": "7402780543; https://www.scopus.com/authid/detail.uri?authorId=7402780543",
         "orcid": "https://orcid.org/0000-0002-2170-9903",
         "areas": [
             "Jcs 2008",
@@ -1159,15 +1214,16 @@
             "Nuclear and high energy physics",
             "Physics and Astronomy (miscellaneous)",
             "Statistics, Probability and Uncertainty"
-        ]
+        ],
+        "sex": "1"
     },
     "JIMENEZ MIER Y TERAN, JOSE IGNACIO": {
         "original_name": "Jiménez Mier y Terán, José Ignacio",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=125929",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=56220682600",
-        "orcid": "",
+        "scopus": "6602932694; https://www.scopus.com/authid/detail.uri?authorId=56220682600",
+        "orcid": "0000-0002-5939-9568",
         "areas": [
             "Engineering, multidisciplinary",
             "Materials science, ceramics",
@@ -1197,30 +1253,34 @@
             "Metals and Alloys",
             "Physics and Astronomy (miscellaneous)",
             "Radiation"
-        ]
+        ],
+        "researcher_id": "A-5081-2009",
+        "sex": "1"
     },
     "LEAL ACEVEDO, BENJAMIN": {
         "original_name": "Leal Acevedo, Benjamín",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=99450",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=57205122303",
-        "orcid": "",
+        "scopus": "57205122303; https://www.scopus.com/authid/detail.uri?authorId=57205122303",
+        "orcid": "0009-0005-4464-892X",
         "areas": [
             "Nuclear science and technology",
             "Polymer science",
             "Physics and Astronomy (miscellaneous)",
             "Polymers and plastics",
             "Radiation"
-        ]
+        ],
+        "researcher_id": "FFZ-8828-2022",
+        "sex": "1"
     },
     "LEMUS CASILLAS, RENATO": {
         "original_name": "Lemus Casillas, Renato",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=72424",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=22962520600",
-        "orcid": "",
+        "scopus": "22962520600; https://www.scopus.com/authid/detail.uri?authorId=22962520600",
+        "orcid": "0000-0002-9233-968X",
         "areas": [
             "Biochemistry and molecular biology",
             "Chemistry, physical",
@@ -1248,14 +1308,15 @@
             "Physical and theoretical chemistry",
             "Physics and Astronomy (miscellaneous)",
             "Radiation"
-        ]
+        ],
+        "sex": "1"
     },
     "LEON MONTIEL, ROBERTO": {
         "original_name": "León Montiel, Roberto",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=145047",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=43461509000",
+        "scopus": "43461509000; https://www.scopus.com/authid/detail.uri?authorId=43461509000",
         "orcid": "https://orcid.org/0000-0002-3045-3604",
         "areas": [
             "Computer science, interdisciplinary applications",
@@ -1287,15 +1348,16 @@
             "Software",
             "Statistical and nonlinear physics",
             "Water science and technology"
-        ]
+        ],
+        "sex": "1"
     },
     "LOPEZ PENA, RAMON": {
         "original_name": "López Peña, Ramón",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126482",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=56497046200",
-        "orcid": "",
+        "scopus": "6603022171; https://www.scopus.com/authid/detail.uri?authorId=56497046200",
+        "orcid": "0000-0003-2214-5991",
         "areas": [
             "Energy & fuels",
             "Materials science, coatings & films",
@@ -1314,7 +1376,8 @@
             "Industrial and manufacturing engineering",
             "Modeling and simulation",
             "Physics and Astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "LOPEZ CAMARA RAMIREZ, DIEGO": {
         "original_name": "López Cámara Ramírez, Diego",
@@ -1322,16 +1385,17 @@
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=173457",
         "scopus": "",
-        "orcid": "",
-        "areas": []
+        "orcid": "0000-0001-9512-4177",
+        "areas": [],
+        "sex": "1"
     },
     "LOPEZ VIEYRA, JUAN CARLOS": {
         "original_name": "López Vieyra, Juan Carlos",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127270",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=55667219900",
-        "orcid": "",
+        "scopus": "56500713400; https://www.scopus.com/authid/detail.uri?authorId=55667219900",
+        "orcid": "0000-0002-7212-0672",
         "areas": [
             "Chemistry, multidisciplinary",
             "Chemistry, physical",
@@ -1359,7 +1423,9 @@
             "Physics and astronomy (miscellaneous)",
             "Radiation",
             "Space and Planetary Science"
-        ]
+        ],
+        "researcher_id": "E-8998-2018",
+        "sex": "1"
     },
     "LORA CASTELLANOS, VERONICA": {
         "original_name": "Lora Castellanos, Verónica",
@@ -1367,20 +1433,21 @@
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=151857",
         "scopus": "https://www.scopus.com/authid/detail.uri?authorId=56013684000",
-        "orcid": "",
+        "orcid": "0000-0003-3588-5235",
         "areas": [
             "Astronomy and astrophysics",
             "Astronomy and astrophysics",
             "Space and Planetary Science"
-        ]
+        ],
+        "sex": "0"
     },
     "MARTIN RUIZ, JOSE ALBERTO": {
         "original_name": "Martín Ruiz, José Alberto",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=117645",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=56096214600",
-        "orcid": "",
+        "scopus": "56096214600; https://www.scopus.com/authid/detail.uri?authorId=56096214600",
+        "orcid": "0000-0001-5308-5448",
         "areas": [
             "Astronomy and astrophysics",
             "Multidisciplinary sciences",
@@ -1399,14 +1466,16 @@
             "Multidisciplinary",
             "Nuclear and high energy physics",
             "Physics and astronomy (miscellaneous)"
-        ]
+        ],
+        "researcher_id": "AEW-6795-2022",
+        "sex": "1"
     },
     "MARTINELL BENITO, JULIO JAVIER": {
         "original_name": "Martinell Benito, Julio Javier",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=68764",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=56013627700",
+        "scopus": "56013627700; https://www.scopus.com/authid/detail.uri?authorId=56013627700",
         "orcid": "https://orcid.org/0000-0002-2728-220X",
         "areas": [
             "Astronomy & astrophysics",
@@ -1429,7 +1498,8 @@
             "Nuclear and high energy physics",
             "Nuclear energy and engineering",
             "Physics and Astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "MARTINEZ MONTERO, MAURICIO": {
         "original_name": "Martínez Montero, Mauricio",
@@ -1447,15 +1517,16 @@
             "Instrumentation",
             "Physics and astronomy (miscellaneous)",
             "Water science and technology"
-        ]
+        ],
+        "sex": "1"
     },
     "MEDINA TANCO, GUSTAVO ADOLFO": {
         "original_name": "Medina Tanco, Gustavo Adolfo",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128678",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=56127012400",
-        "orcid": "",
+        "scopus": "6602701353; https://www.scopus.com/authid/detail.uri?authorId=56127012400",
+        "orcid": "0000-0002-3202-319X",
         "areas": [
             "Astronomy & astrophysics",
             "Astronomy and astrophysics",
@@ -1489,15 +1560,16 @@
             "Physics and Astronomy (miscellaneous)",
             "Radiation",
             "Space and planetary science"
-        ]
+        ],
+        "sex": "1"
     },
     "MEZA LAGUNA, VICTOR HUGO": {
         "original_name": "Meza Laguna, Victor Hugo",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128291",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=56002751100",
-        "orcid": "",
+        "scopus": "56002751100; https://www.scopus.com/authid/detail.uri?authorId=56002751100",
+        "orcid": "0000-0003-1222-774X",
         "areas": [
             "Crystallography",
             "Chemistry, multidisciplinary",
@@ -1519,15 +1591,17 @@
             "Metals and Alloys",
             "Physical and theoretical chemistry",
             "Surfaces, coatings and films"
-        ]
+        ],
+        "researcher_id": "DIH-7401-2022",
+        "sex": "1"
     },
     "MIRABAL SOSA, MAYELIN": {
         "original_name": "Mirabal Sosa, Mayelin",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=158647",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=15058152000",
-        "orcid": "",
+        "scopus": "15058152000; https://www.scopus.com/authid/detail.uri?authorId=15058152000",
+        "orcid": "0000-0001-7289-8495",
         "areas": [
             "Immunology",
             "Medicine, research and experimental",
@@ -1538,15 +1612,17 @@
             "Pharmaceutical science",
             "Pharmacology, toxicology and pharmaceutics (miscellaneous)",
             "Public health, environmental and occupational health"
-        ]
+        ],
+        "researcher_id": "AAV-1261-2020",
+        "sex": "0"
     },
     "MOJICA CASIQUE, CRISTIAN ADAN": {
         "original_name": " Mojica Casique, Cristian Adan",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=105277",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=56707673700",
-        "orcid": "",
+        "scopus": "56707673700; https://www.scopus.com/authid/detail.uri?authorId=56707673700",
+        "orcid": "0000-0002-5867-1187",
         "areas": [
             "Engineering, multidisciplinary",
             "Optics",
@@ -1558,15 +1634,17 @@
             "Engineering (miscellaneous)",
             "Instrumentation",
             "Physics and Astronomy (miscellaneous)"
-        ]
+        ],
+        "researcher_id": "Q24582016",
+        "sex": "1"
     },
     "MOLINA SEVILLA, PAOLA": {
         "original_name": " Molina Sevilla, Paola",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=98948",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=7102021767",
-        "orcid": "",
+        "scopus": "7102021767; https://www.scopus.com/authid/detail.uri?authorId=7102021767",
+        "orcid": "0009-0009-1889-4253",
         "areas": [
             "Biology",
             "Chemistry, multidisciplinary",
@@ -1574,7 +1652,8 @@
             "Agricultural and biological sciences (miscellaneous)",
             "Astronomy and astrophysics",
             "Engineering (miscellaneous)"
-        ]
+        ],
+        "sex": "0"
     },
     "MURRIETA LEON, JUAN EDUARDO": {
         "original_name": " Murrieta León, Juan Eduardo",
@@ -1583,7 +1662,8 @@
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=94947",
         "scopus": "",
         "orcid": "",
-        "areas": []
+        "areas": [],
+        "sex": "1"
     },
     "NAHMAD ACHAR, EDUARDO": {
         "original_name": " Nahmad Achar, Eduardo",
@@ -1591,7 +1671,7 @@
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=67490",
         "scopus": "https://www.scopus.com/authid/detail.uri?authorId=56013745000",
-        "orcid": "",
+        "orcid": "0000-0003-3707-8293",
         "areas": [
             "Chemistry, applied",
             "Chemistry, physical",
@@ -1609,14 +1689,15 @@
             "Physics and Astronomy (miscellaneous)",
             "Pollution",
             "Surfaces, Coatings and Films"
-        ]
+        ],
+        "sex": "1"
     },
     "NAVARRO GONZALEZ, RAFAEL": {
         "original_name": "Navarro González, Rafael",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=70671",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=57191429936",
+        "scopus": "7003446002; https://www.scopus.com/authid/detail.uri?authorId=57191429936",
         "orcid": "https://orcid.org/0000-0002-6078-7621",
         "areas": [
             "Aerospace engineering & technology",
@@ -1663,7 +1744,9 @@
             "Paleontology",
             "Space and Planetary Science",
             "Spectroscopy"
-        ]
+        ],
+        "researcher_id": "D-1748-2009",
+        "sex": "1"
     },
     "NEGRON MENDOZA, ALICIA": {
         "original_name": "Negrón Mendoza, Alicia",
@@ -1706,14 +1789,15 @@
             "Physics and astronomy (miscellaneous)",
             "Pollution",
             "Radiation"
-        ]
+        ],
+        "sex": "0"
     },
     "NELLEN FILLA, LUKAS": {
         "original_name": "Nellen Filla, Lukas",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=84307",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=6506907314",
+        "scopus": "6506907314; https://www.scopus.com/authid/detail.uri?authorId=6506907314",
         "orcid": "https://orcid.org/0000-0003-1059-8731",
         "areas": [
             "Astronomy & astrophysics",
@@ -1748,14 +1832,16 @@
             "Nuclear and high energy physics",
             "Physics and astronomy (miscellaneous)",
             "Space and planetary science"
-        ]
+        ],
+        "researcher_id": "AAH-2388-2020",
+        "sex": "1"
     },
     "NUNEZ ZUNIGA, DARIO": {
         "original_name": "Núñez Zúñiga, Darío",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126217",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=23028570600",
+        "scopus": "7005651300; https://www.scopus.com/authid/detail.uri?authorId=23028570600",
         "orcid": "https://orcid.org/0000-0003-0295-0053",
         "areas": [
             "Astronomy & astrophysics",
@@ -1771,14 +1857,15 @@
             "Astronomy and Astrophysics",
             "Nuclear and high energy physics",
             "Physics and Astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "ORTEGA ALFARO, MARIA DEL CARMEN VIRGINIA": {
         "original_name": "Ortega Alfaro, María Del Carmen Virginia",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128520",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=6507163445",
+        "scopus": "6507163445; https://www.scopus.com/authid/detail.uri?authorId=6507163445",
         "orcid": "https://orcid.org/0000-0001-6590-3671",
         "areas": [
             "Biochemistry and molecular biology",
@@ -1811,7 +1898,9 @@
             "Polymers and plastics",
             "Process chemistry and technology",
             "Toxicology"
-        ]
+        ],
+        "researcher_id": "C-4648-2018",
+        "sex": "0"
     },
     "ORTEGA ARAMBURU, ALEJANDRA": {
         "original_name": "Ortega Aramburu, Alejandra",
@@ -1843,7 +1932,8 @@
             "Polymers and Plastics",
             "Radiation",
             "Water science and technology"
-        ]
+        ],
+        "sex": "0"
     },
     "ORTIZ MADRIGAL, NESTOR ENRIQUE": {
         "original_name": "Ortiz Madrigal, Néstor Enrique",
@@ -1851,21 +1941,22 @@
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=155911",
         "scopus": "https://www.scopus.com/authid/detail.uri?authorId=36348572500",
-        "orcid": "",
+        "orcid": "0000-0002-2989-6694",
         "areas": [
             "Astronomy and astrophysics",
             "Physics, multidisciplinary",
             "Physics, particles and fields",
             "Nuclear and high energy physics",
             "Physics and astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "ORTIZ VELASQUEZ, ANTONIO": {
         "original_name": "Ortiz Velásquez, Antonio",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=129156",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=36167354400",
+        "scopus": "56013679300; https://www.scopus.com/authid/detail.uri?authorId=36167354400",
         "orcid": "https://orcid.org/0000-0002-4788-7943",
         "areas": [
             "Astronomy & astrophysics",
@@ -1888,15 +1979,16 @@
             "Nuclear and high energy physics",
             "Physics and astronomy (miscellaneous)",
             "Radiation"
-        ]
+        ],
+        "sex": "1"
     },
     "PADILLA RODAL, ELIZABETH": {
         "original_name": "Padilla Rodal, Elizabeth",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128011",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=12800617200",
-        "orcid": "",
+        "scopus": "12800617200; https://www.scopus.com/authid/detail.uri?authorId=12800617200",
+        "orcid": "0000-0002-4530-0598",
         "areas": [
             "Astronomy and astrophysics",
             "Jcs 2008",
@@ -1912,15 +2004,16 @@
             "Multidisciplinary",
             "Nuclear and high energy physics",
             "Physics and astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "0"
     },
     "PAIC, GUY": {
         "original_name": "Paic, Guy",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128461",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=15833185500",
-        "orcid": "",
+        "scopus": "7003564979; https://www.scopus.com/authid/detail.uri?authorId=15833185500",
+        "orcid": "0000-0003-2513-2459",
         "areas": [
             "Astronomy & astrophysics",
             "Astronomy and astrophysics",
@@ -1946,7 +2039,8 @@
             "Multidisciplinary",
             "Nuclear and high energy physics",
             "Physics and astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "PALACIOS BONETA, ENRIQUE": {
         "original_name": "Palacios Boneta, Enrique",
@@ -1954,8 +2048,9 @@
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=97077",
         "scopus": "",
-        "orcid": "",
-        "areas": []
+        "orcid": "0000-0003-4645-9020",
+        "areas": [],
+        "sex": "1"
     },
     "PATINO SALAZAR, MIGUEL ENRIQUE": {
         "original_name": "Patiño Salazar, Miguel Enrique",
@@ -1978,15 +2073,16 @@
             "Multidisciplinary",
             "Nuclear and high energy physics",
             "Physics and Astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "QUEVEDO CUBILLOS, HERNANDO": {
         "original_name": "Quevedo Cubillos, Hernando",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127261",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=55989741100",
-        "orcid": "",
+        "scopus": "55989741100; https://www.scopus.com/authid/detail.uri?authorId=55989741100",
+        "orcid": "0000-0003-4433-5550",
         "areas": [
             "Astronomy & astrophysics",
             "Astronomy and astrophysics",
@@ -2021,15 +2117,16 @@
             "Nuclear and high energy physics",
             "Physics and astronomy (miscellaneous)",
             "Space and planetary science"
-        ]
+        ],
+        "sex": "1"
     },
     "QUINTO SU, PEDRO ANTONIO": {
         "original_name": "Quinto Su, Pedro Antonio",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128107",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=14033395100",
-        "orcid": "",
+        "scopus": "56002680800; https://www.scopus.com/authid/detail.uri?authorId=14033395100",
+        "orcid": "0000-0002-8363-3932",
         "areas": [
             "Biochemical research methods",
             "Biophysics",
@@ -2058,15 +2155,17 @@
             "Medicine (miscellaneous)",
             "Multidisciplinary",
             "Physics and Astronomy (miscellaneous)"
-        ]
+        ],
+        "researcher_id": "DMJ-4912-2022",
+        "sex": "1"
     },
     "RAGA RASMUSSEN, ALEJANDRO CRISTIAN": {
         "original_name": "Raga Rasmussen, Alejandro Cristian",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127508",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=56394707000",
-        "orcid": "",
+        "scopus": "7006306330; https://www.scopus.com/authid/detail.uri?authorId=56394707000",
+        "orcid": "0000-0002-0835-1126",
         "areas": [
             "Astronomy & astrophysics",
             "Astronomy and astrophysics",
@@ -2088,7 +2187,8 @@
             "Physics and Astronomy (miscellaneous)",
             "Social Sciences (miscellaneous)",
             "Space and Planetary Science"
-        ]
+        ],
+        "sex": "1"
     },
     "RAMIREZ FERNANDEZ, ANTONIO": {
         "original_name": "Ramírez Fernández, Antonio",
@@ -2097,14 +2197,15 @@
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=74817",
         "scopus": "",
         "orcid": "",
-        "areas": []
+        "areas": [],
+        "sex": "1"
     },
     "RAMIREZ MARTINEZ, FERNANDO": {
         "original_name": "Ramírez Martínez, Fernando",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=91849",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=6504249248",
+        "scopus": "6504249248; https://www.scopus.com/authid/detail.uri?authorId=6504249248",
         "orcid": "https://orcid.org/0000-0001-7634-6516",
         "areas": [
             "Acoustics",
@@ -2123,14 +2224,16 @@
             "Instrumentation",
             "Mechanical Engineering",
             "Physics and Astronomy (miscellaneous)"
-        ]
+        ],
+        "researcher_id": "A-2522-2011",
+        "sex": "1"
     },
     "RAMOS BERNAL, SERGIO AGUSTIN": {
         "original_name": "Ramos Bernal, Sergio Agustín",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=125490",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=15745859700",
+        "scopus": "6601958248; https://www.scopus.com/authid/detail.uri?authorId=15745859700",
         "orcid": "",
         "areas": [
             "Agriculture, soil science",
@@ -2163,14 +2266,16 @@
             "Physics and Astronomy (miscellaneous)",
             "Pollution",
             "Radiation"
-        ]
+        ],
+        "researcher_id": "FSN-4652-2022",
+        "sex": "1"
     },
     "RANGEL GUTIERREZ, JOSE": {
         "original_name": "Rangel Gutiérrez, José",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126187",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=15132957400",
+        "scopus": "55305740700; https://www.scopus.com/authid/detail.uri?authorId=15132957400",
         "orcid": "",
         "areas": [
             "Nuclear science & technology",
@@ -2179,14 +2284,15 @@
             "Scie jcr",
             "Physics and Astronomy (miscellaneous)",
             "Surfaces, Coatings and Films"
-        ]
+        ],
+        "sex": "1"
     },
     "RIVERA LOPEZ, ANA LEONOR": {
         "original_name": "Rivera López, Ana Leonor",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=77321",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=57206248207",
+        "scopus": "57193081327; https://www.scopus.com/authid/detail.uri?authorId=57206248207",
         "orcid": "https://orcid.org/0000-0002-0296-7966",
         "areas": [
             "Astronomy and astrophysics",
@@ -2230,7 +2336,9 @@
             "Physiology",
             "Physiology (medical)",
             "Public health, environmental and occupational health"
-        ]
+        ],
+        "researcher_id": "L-4433-2019",
+        "sex": "0"
     },
     "RODRIGUEZ ALBARRAN, MARIA JOSE": {
         "original_name": "Rodríguez Albarrán, María José",
@@ -2238,16 +2346,17 @@
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=167342",
         "scopus": "",
-        "orcid": "",
-        "areas": []
+        "orcid": "0000-0001-7857-2621",
+        "areas": [],
+        "sex": "0"
     },
     "RODRIGUEZ GONZALEZ, ARY": {
         "original_name": "Rodríguez González, Ary",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=129050",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=21739702400",
-        "orcid": "",
+        "scopus": "56000892300; https://www.scopus.com/authid/detail.uri?authorId=21739702400",
+        "orcid": "0000-0002-2606-8527",
         "areas": [
             "Astronomy & astrophysics",
             "Astronomy and astrophysics",
@@ -2258,7 +2367,8 @@
             "Medicine (miscellaneous)",
             "Multidisciplinary",
             "Space and planetary science"
-        ]
+        ],
+        "sex": "1"
     },
     "ROJAS VIVAS, JOSE ALFREDO": {
         "original_name": "Rojas Vivas, José Alfredo",
@@ -2267,7 +2377,8 @@
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=159967",
         "scopus": "",
         "orcid": "",
-        "areas": []
+        "areas": [],
+        "sex": "1"
     },
     "ROMAN LOPEZ, JESUS": {
         "original_name": "Román López, Jesús",
@@ -2275,7 +2386,7 @@
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=151886",
         "scopus": "https://www.scopus.com/authid/detail.uri?authorId=55487033300",
-        "orcid": "",
+        "orcid": "0000-0001-8866-7050",
         "areas": [
             "Food science and technology",
             "Nuclear science and technology",
@@ -2287,15 +2398,17 @@
             "Instrumentation",
             "Radiation",
             "Safety research"
-        ]
+        ],
+        "researcher_id": "ACB-0958-2022",
+        "sex": "1"
     },
     "ROSENBAUM PITLUCK, MARCOS": {
         "original_name": "Rosenbaum Pitluck, Marcos",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=64610",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=56000802100",
-        "orcid": "",
+        "scopus": "56000802100; https://www.scopus.com/authid/detail.uri?authorId=56000802100",
+        "orcid": "0000-0001-9444-5825",
         "areas": [
             "Astronomy and astrophysics",
             "Mathematics, applied",
@@ -2308,14 +2421,15 @@
             "Modeling and Simulation",
             "Nuclear and High Energy Physics",
             "Physics and Astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "SAHU, SARIRA": {
         "original_name": "Sahu, Sarira",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=89364",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=7202907604",
+        "scopus": "7202907604; https://www.scopus.com/authid/detail.uri?authorId=7202907604",
         "orcid": "https://orcid.org/0000-0003-0038-5548",
         "areas": [
             "Astronomy & astrophysics",
@@ -2340,15 +2454,16 @@
             "Physics and Astronomy (miscellaneous)",
             "Renewable Energy, Sustainability and the Environment",
             "Space and Planetary Science"
-        ]
+        ],
+        "sex": "1"
     },
     "SALGADO RODRIGUEZ, MARCELO": {
         "original_name": "Salgado Rodríguez, Marcelo",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=83283",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=7102741643",
-        "orcid": "",
+        "scopus": "7102741643; https://www.scopus.com/authid/detail.uri?authorId=7102741643",
+        "orcid": "0000-0003-2201-3542",
         "areas": [
             "Astronomy & astrophysics",
             "Astronomy and astrophysics",
@@ -2363,14 +2478,15 @@
             "Mathematical Physics",
             "Nuclear and High Energy Physics",
             "Physics and astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "SANCHEZ BALANZAR, JUAN CARLOS": {
         "original_name": "Sánchez Balanzar, Juan Carlos",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=125242",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=57202589342",
+        "scopus": "57202380428; https://www.scopus.com/authid/detail.uri?authorId=57202589342",
         "orcid": "",
         "areas": [
             "Astronomy and astrophysics",
@@ -2380,7 +2496,8 @@
             "Astronomy and astrophysics",
             "Instrumentation",
             "Multidisciplinary"
-        ]
+        ],
+        "sex": "1"
     },
     "SANCHEZ CORREA, VERENISE": {
         "original_name": "Sánchez Correa, Verenise",
@@ -2389,15 +2506,16 @@
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=163011",
         "scopus": "",
         "orcid": "",
-        "areas": []
+        "areas": [],
+        "sex": "0"
     },
     "SANDOVAL CHAVEZ, CESAR IGNACIO": {
         "original_name": "Sandoval Chávez, César Ignacio",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=122098",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=24923822100",
-        "orcid": "",
+        "scopus": "24923822100; https://www.scopus.com/authid/detail.uri?authorId=24923822100",
+        "orcid": "0000-0002-7416-082X",
         "areas": [
             "Chemistry, inorganic and nuclear",
             "Chemistry, multidisciplinary",
@@ -2408,23 +2526,27 @@
             "Inorganic chemistry",
             "Materials Chemistry",
             "Organic chemistry"
-        ]
+        ],
+        "researcher_id": "E-8962-2018",
+        "sex": "1"
     },
     "SEDOVA, ANASTASIYA": {
         "original_name": "Sedova, Anastasiya",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=176023",
-        "scopus": "",
-        "orcid": "",
-        "areas": []
+        "scopus": "56132373800",
+        "orcid": "0000-0003-3342-7425",
+        "areas": [],
+        "researcher_id": "NJR-1318-2025",
+        "sex": "0"
     },
     "SEGURA PERALTA, ANTIGONA": {
         "original_name": "Segura Peralta, Antígona",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127984",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=12140806500",
+        "scopus": "12140806500; https://www.scopus.com/authid/detail.uri?authorId=12140806500",
         "orcid": "https://orcid.org/0000-0002-2240-2452",
         "areas": [
             "Astronomy & astrophysics",
@@ -2444,14 +2566,15 @@
             "Geophysics",
             "Mechanical Engineering",
             "Space and planetary science"
-        ]
+        ],
+        "sex": "0"
     },
     "SIERRA FLORES, MARIA MAGDALENA": {
         "original_name": "Sierra Flores, María Magdalena",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=84119",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=26434554000",
+        "scopus": "26434554000; https://www.scopus.com/authid/detail.uri?authorId=26434554000",
         "orcid": "https://orcid.org/0000-0001-7981-0919",
         "areas": [
             "Information science & library science",
@@ -2459,7 +2582,9 @@
             "Communication",
             "Library and information sciences",
             "Social Sciences (miscellaneous)"
-        ]
+        ],
+        "researcher_id": "C-2957-2008",
+        "sex": "0"
     },
     "SOCOLOVSKY VAJOVSKY, MIGUEL": {
         "original_name": "Socolovsky Vajovsky, Miguel",
@@ -2467,7 +2592,7 @@
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=68620",
         "scopus": "https://www.scopus.com/authid/detail.uri?authorId=6701538520",
-        "orcid": "",
+        "orcid": "0000-0003-3850-3394",
         "areas": [
             "Astronomy & astrophysics",
             "Mathematics, applied",
@@ -2480,15 +2605,16 @@
             "Fluid flow and transfer processes",
             "Mathematics (miscellaneous)",
             "Physics and Astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "STEPHENS, CHRISTOPHER RHODES": {
         "original_name": "Stephens, Christopher Rhodes",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=82318",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=57210367820",
-        "orcid": "",
+        "scopus": "7202917613; https://www.scopus.com/authid/detail.uri?authorId=57210367820",
+        "orcid": "0000-0002-2491-606X",
         "areas": [
             "Biology",
             "Biology, miscellaneous",
@@ -2549,15 +2675,16 @@
             "Software",
             "Theoretical Computer Science",
             "Veterinary (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "SUDARSKY SAIONZ, DANIEL EDUARDO": {
         "original_name": "Sudarsky Saionz, Daniel Eduardo",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=82478",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=7003779083",
-        "orcid": "",
+        "scopus": "7003779083; https://www.scopus.com/authid/detail.uri?authorId=7003779083",
+        "orcid": "0000-0003-3042-4982",
         "areas": [
             "Astronomy & astrophysics",
             "Astronomy and astrophysics",
@@ -2580,15 +2707,16 @@
             "Nuclear and high energy physics",
             "Philosophy",
             "Physics and astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "SUSSMAN LIVOVSKY, ROBERTO ALLAN": {
         "original_name": "Sussman Livovsky, Roberto Allan",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126049",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=55989663800",
-        "orcid": "",
+        "scopus": "7006175337; https://www.scopus.com/authid/detail.uri?authorId=55989663800",
+        "orcid": "0000-0003-3774-4452",
         "areas": [
             "Astronomy & astrophysics",
             "Astronomy and astrophysics",
@@ -2619,14 +2747,15 @@
             "Public health, environmental and occupational health",
             "Space and planetary science",
             "Toxicology"
-        ]
+        ],
+        "sex": "1"
     },
     "TOLEDO ROY, JUAN CLAUDIO": {
         "original_name": "Toledo Roy, Juan Claudio",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=108200",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=23487034200",
+        "scopus": "23487034200; https://www.scopus.com/authid/detail.uri?authorId=23487034200",
         "orcid": "https://orcid.org/0000-0002-0267-3378",
         "areas": [
             "Astronomy & astrophysics",
@@ -2643,14 +2772,15 @@
             "Library and information sciences",
             "Physics and astronomy (miscellaneous)",
             "Space and planetary science"
-        ]
+        ],
+        "sex": "1"
     },
     "TURBINER ROSENBAUM, ALEXANDER": {
         "original_name": "Turbiner Rosenbaum, Alexander",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=82947",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=7003426751",
+        "scopus": "7003426751; https://www.scopus.com/authid/detail.uri?authorId=7003426751",
         "orcid": "https://orcid.org/0000-0002-9415-6748",
         "areas": [
             "Astronomy and astrophysics",
@@ -2685,14 +2815,16 @@
             "Physics and astronomy (miscellaneous)",
             "Radiation",
             "Space and Planetary Science"
-        ]
+        ],
+        "researcher_id": "A-1743-2008",
+        "sex": "1"
     },
     "URRUTIA RIOS, LUIS FERNANDO": {
         "original_name": "Urrutia Ríos, Luis Fernando",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126185",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=22996208200",
+        "scopus": "6603765921; https://www.scopus.com/authid/detail.uri?authorId=22996208200",
         "orcid": "https://orcid.org/0000-0001-9792-7344",
         "areas": [
             "Astronomy & astrophysics",
@@ -2715,23 +2847,25 @@
             "Modeling and simulation",
             "Nuclear and high energy physics",
             "Physics and Astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     },
     "U'REN CORTES, ALFRED BARRY": {
         "original_name": "U'Ren Cortés, Alfred Barry",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=103134",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=55664134100",
-        "orcid": ""
+        "scopus": "6602552469; https://www.scopus.com/authid/detail.uri?authorId=55664134100",
+        "orcid": "0000-0002-4963-9388",
+        "sex": "1"
     },
     "VELAZQUEZ BRITO, PABLO FABIAN": {
         "original_name": "Velázquez Brito, Pablo Fabián",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=128326",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=56394706500",
-        "orcid": "",
+        "scopus": "7003737642; https://www.scopus.com/authid/detail.uri?authorId=56394706500",
+        "orcid": "0000-0002-9644-1446",
         "areas": [
             "Astronomy & astrophysics",
             "Astronomy and astrophysics",
@@ -2740,14 +2874,15 @@
             "Scie jcr",
             "Astronomy and Astrophysics",
             "Space and planetary science"
-        ]
+        ],
+        "sex": "1"
     },
     "VERGARA OLIVER, JOSE DAVID": {
         "original_name": "Vergara Oliver, José David",
         "entity": "Instituto de Ciencias Nucleares",
         "already_in_db": false,
         "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=126788",
-        "scopus": "https://www.scopus.com/authid/detail.uri?authorId=22964781000",
+        "scopus": "22964781000; https://www.scopus.com/authid/detail.uri?authorId=22964781000",
         "orcid": "https://orcid.org/0000-0002-8615-761X",
         "areas": [
             "Astronomy & astrophysics",
@@ -2772,6 +2907,7 @@
             "Modeling and Simulation",
             "Nuclear and High Energy Physics",
             "Physics and Astronomy (miscellaneous)"
-        ]
+        ],
+        "sex": "1"
     }
 }
