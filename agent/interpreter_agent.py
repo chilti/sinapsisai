@@ -54,7 +54,7 @@ class InterpreterOrchestrator:
             self.interpreter.offline = False 
             self.interpreter.safe_mode = "off"
             
-            # SOBRESCRIBIR mensaje del sistema con ESQUEMAS REALES
+            # SOBRESCRIBIR mensaje del sistema con ESQUEMAS REALES Y BOILERPLATE
             self.interpreter.system_message = """
             Eres un agente 'Plan-and-Execute' de Sinapsis AI, experto en análisis de datos científicos.
             Tu misión es analizar la producción científica usando Python de manera iterativa.
@@ -64,18 +64,25 @@ class InterpreterOrchestrator:
             2. PROHIBIDO: NO uses etiquetas <|channel|>, <|thought|>, <|message|>. NUNCA.
             3. Usa ```python [código] ``` y siempre print() para ver resultados.
 
-            ESTRATEGIA DE DATOS Y ESQUEMAS (CRÍTICO):
+            ESTRATEGIA DE DATOS Y ESQUEMA (¡LEE ESTO!):
             1. INSTITUCIÓN: 'data/cache/papers_institucion.parquet'
-               - Columnas clave: ['Title', 'year', 'citations', 'entity_name', 'DOI', 'primary_topic_name']
-               - NOTA: NO tiene columna 'authors'. Para buscar autores, usa el Grafo o el Parquet de Profesores.
+               - Columnas: ['Title', 'year', 'citations', 'entity_name', 'DOI', 'primary_topic_name']
+               - ADVERTENCIA: NO existe columna 'authors'. No intentes filtrarla.
             2. PROFESORES: 'data/cache/papers_profesor.parquet'
-               - Columnas clave: ['academic_name', 'Title', 'year', 'citations', 'orcid']
-            3. GRAFO: 'agent.tools_hybrid.query_knowledge_graph_cypher' para buscar por autor.
-               - Ejemplo: MATCH (a:Author {name: '...'})-[:AUTHORED]->(p:Paper) RETURN p.title AS Title, p.year AS year
+               - Columnas: ['academic_name', 'Title', 'year', 'citations', 'orcid']
+            3. GRAFO: Usa 'agent.tools_hybrid.query_knowledge_graph_cypher' para buscar por autor.
+               - El resultado es una LISTA de diccionarios.
 
-            ERRORES COMUNES A EVITAR:
-            - NO uses df['authors'] en el parquet de la institución (no existe).
-            - Usa 'Title' (con T mayúscula) en lugar de 'title'.
+            BOILERPLATE RECOMENDADO:
+            Para buscar un autor y sus papers, usa este patrón:
+            ```python
+            from agent.tools_hybrid import query_knowledge_graph_cypher
+            query = "MATCH (a:Author {name: 'Humberto Carrillo'})-[:AUTHORED]->(p:Paper) RETURN p.title AS Title, p.year AS Year"
+            papers = query_knowledge_graph_cypher(query)
+            # papers es [{'Title': '...', 'Year': ...}, ...]
+            ```
+
+            RECUERDA: Usa 'Title' (T mayúscula) siempre.
             """
 
     async def ask(self, session_id: str, prompt: str, mode: str = "plan_and_execute", entity_context: str = None):
@@ -124,6 +131,9 @@ class InterpreterOrchestrator:
             # Convert roles if necessary
             if role == "human": role = "user"
             if role == "ai": role = "assistant"
+            # OpenAI no soporta el rol 'computer' (usado internamente por OI para resultados de código)
+            if role == "computer": role = "user" 
+            
             interpreter_msgs.append({"role": role, "type": "message", "content": content})
         
         self.interpreter.messages = interpreter_msgs
