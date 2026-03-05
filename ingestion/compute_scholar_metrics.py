@@ -259,9 +259,9 @@ def extract_academic_papers():
                 'is_in_top_1_percent':          is_in_top_1_percent,
                 'citation_normalized_percentile': citation_normalized_percentile,
                 # ── Trayectoria de citas ────────────────────────────────────────
-                'counts_by_year':        raw_meta.get('counts_by_year', []),
+                'counts_by_year':        raw_meta.get('counts_by_year') or [],
                 'referenced_works_count': int(raw_meta.get('referenced_works_count', 0) or 0),
-                'referenced_works':      raw_meta.get('referenced_works', []),
+                'referenced_works':      raw_meta.get('referenced_works') or [],
                 # ── APC ─────────────────────────────────────────────────────────
                 'apc_paid_usd': float(raw_meta.get('apc_paid_usd', 0) or 0),
                 'apc_list_usd': float(raw_meta.get('apc_list_usd', 0) or 0),
@@ -269,15 +269,15 @@ def extract_academic_papers():
                 'author_count':             int(raw_meta.get('author_count', 0) or 0),
                 'countries_distinct_count': int(raw_meta.get('countries_distinct_count', 0) or 0),
                 'institutions_distinct_count': int(raw_meta.get('institutions_distinct_count', 0) or 0),
-                'countries':            raw_meta.get('countries', []),
-                'coauthor_institutions': raw_meta.get('coauthor_institutions', []),
+                'countries':            raw_meta.get('countries') or [],
+                'coauthor_institutions': raw_meta.get('coauthor_institutions') or [],
                 # ── OA avanzado ─────────────────────────────────────────────────
                 'license':                   raw_meta.get('license'),
                 'any_repository_has_fulltext': bool(raw_meta.get('any_repository_has_fulltext', False)),
                 'locations_count':           int(raw_meta.get('locations_count', 0) or 0),
                 'oa_url':                    raw_meta.get('oa_url'),
                 # ── Indexación ─────────────────────────────────────────────────
-                'indexed_in':        raw_meta.get('indexed_in', []),
+                'indexed_in':        raw_meta.get('indexed_in') or [],
                 'is_retracted':      bool(raw_meta.get('is_retracted', False)),
                 'language':          raw_meta.get('language', 'en') or 'en',
                 'type':              raw_meta.get('type', 'article'),
@@ -292,7 +292,7 @@ def extract_academic_papers():
                 'primary_topic_field':    raw_meta.get('primary_topic_field'),
                 'primary_topic_subfield': raw_meta.get('primary_topic_subfield'),
                 'primary_topic_score':    raw_meta.get('primary_topic_score'),
-                'keywords':              raw_meta.get('keywords', []),
+                'keywords':              raw_meta.get('keywords') or [],
                 # ── Tópicos y ODS ──────────────────────────────────────────────
                 'topics': topics,
                 'ODS_ID':           sdg_id,
@@ -402,9 +402,9 @@ def extract_entity_papers():
                 'is_in_top_1_percent':          is_in_top_1_percent,
                 'citation_normalized_percentile': citation_normalized_percentile,
                 # ── Trayectoria de citas ────────────────────────────────────────
-                'counts_by_year':        raw_meta.get('counts_by_year', []),
+                'counts_by_year':        raw_meta.get('counts_by_year') or [],
                 'referenced_works_count': int(raw_meta.get('referenced_works_count', 0) or 0),
-                'referenced_works':      raw_meta.get('referenced_works', []),
+                'referenced_works':      raw_meta.get('referenced_works') or [],
                 # ── APC ─────────────────────────────────────────────────────────
                 'apc_paid_usd': float(raw_meta.get('apc_paid_usd', 0) or 0),
                 'apc_list_usd': float(raw_meta.get('apc_list_usd', 0) or 0),
@@ -412,15 +412,15 @@ def extract_entity_papers():
                 'author_count':             int(raw_meta.get('author_count', 0) or 0),
                 'countries_distinct_count': int(raw_meta.get('countries_distinct_count', 0) or 0),
                 'institutions_distinct_count': int(raw_meta.get('institutions_distinct_count', 0) or 0),
-                'countries':            raw_meta.get('countries', []),
-                'coauthor_institutions': raw_meta.get('coauthor_institutions', []),
+                'countries':            raw_meta.get('countries') or [],
+                'coauthor_institutions': raw_meta.get('coauthor_institutions') or [],
                 # ── OA avanzado ─────────────────────────────────────────────────
                 'license':                   raw_meta.get('license'),
                 'any_repository_has_fulltext': bool(raw_meta.get('any_repository_has_fulltext', False)),
                 'locations_count':           int(raw_meta.get('locations_count', 0) or 0),
                 'oa_url':                    raw_meta.get('oa_url'),
                 # ── Indexación ─────────────────────────────────────────────────
-                'indexed_in':        raw_meta.get('indexed_in', []),
+                'indexed_in':        raw_meta.get('indexed_in') or [],
                 'is_retracted':      bool(raw_meta.get('is_retracted', False)),
                 'language':          raw_meta.get('language', 'en') or 'en',
                 'type':              raw_meta.get('type', 'article'),
@@ -435,7 +435,7 @@ def extract_entity_papers():
                 'primary_topic_field':    raw_meta.get('primary_topic_field'),
                 'primary_topic_subfield': raw_meta.get('primary_topic_subfield'),
                 'primary_topic_score':    raw_meta.get('primary_topic_score'),
-                'keywords':              raw_meta.get('keywords', []),
+                'keywords':              raw_meta.get('keywords') or [],
                 # ── Tópicos y ODS ──────────────────────────────────────────────
                 'topics': topics,
                 'ODS_ID': sdg_id,
