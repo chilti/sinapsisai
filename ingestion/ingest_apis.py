@@ -34,7 +34,7 @@ except Exception:
 
 load_dotenv()
 
-pyalex.config.email = os.getenv("EMAIL_ADDRESS", "[EMAIL_ADDRESS]")
+#pyalex.config.email = os.getenv("EMAIL_ADDRESS", "[EMAIL_ADDRESS]")
 pyalex.config.api_key = os.getenv("OPENALEX_API_KEY")
 
 from langchain_openai import OpenAIEmbeddings
