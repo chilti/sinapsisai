@@ -659,6 +659,12 @@ def process_and_save():
     # Filtrar años inválidos (0 o muy antiguos) para evitar errores en gráficas temporales
     df_raw = df_raw[df_raw['year'] >= 1900] 
     
+    # Sanear columnas tipo lista para PyArrow
+    list_cols = ['keywords', 'topics', 'countries', 'coauthor_institutions', 'referenced_works', 'counts_by_year', 'indexed_in']
+    for c in list_cols:
+        if c in df_raw.columns:
+            df_raw[c] = df_raw[c].apply(lambda x: list(x) if isinstance(x, (list, tuple, np.ndarray)) else [])
+
     # Exportar listado general de papers de Académicos
     df_raw.to_parquet(CACHE_DIR / 'papers_profesor.parquet', index=False)
     
@@ -745,6 +751,13 @@ def process_and_save():
         df_inst_raw = df_inst_raw.dropna(subset=['year'])
         # Filtrar años inválidos
         df_inst_raw = df_inst_raw[df_inst_raw['year'] >= 1900]
+        
+        # Sanear columnas tipo lista para PyArrow
+        list_cols = ['keywords', 'topics', 'countries', 'coauthor_institutions', 'referenced_works', 'counts_by_year', 'indexed_in']
+        for c in list_cols:
+            if c in df_inst_raw.columns:
+                df_inst_raw[c] = df_inst_raw[c].apply(lambda x: list(x) if isinstance(x, (list, tuple, np.ndarray)) else [])
+
         # Exportar listado general de papers de Institucion
         df_inst_raw.to_parquet(CACHE_DIR / 'papers_institucion.parquet', index=False)
         
