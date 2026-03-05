@@ -21,6 +21,11 @@ class InterpreterOrchestrator:
             # Cargamos configuración de LLM desde el entorno (igual que RAGOrchestrator)
             base_url = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1/")
             model_name = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
+            
+            # Asegurar que tenga el prefijo del proveedor para litellm si es un endpoint custom
+            if "/" not in model_name:
+                model_name = f"openai/{model_name}"
+                
             api_key = os.getenv("OPENAI_API_KEY", "lm-studio")
             user = os.getenv("LLM_USER")
             password = os.getenv("LLM_PASSWORD")
