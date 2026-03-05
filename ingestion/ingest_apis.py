@@ -314,7 +314,7 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
 
         batch_payloads = []
         batch_texts = []
-        print('api_key: '+pyalex.config.api_key)
+        print('api_key: '+str(pyalex.config.api_key))
         for doi, base_metadata in meta_unificada.items():
             record = base_metadata.copy()
             text_for_embedding = f"Title: {record.get('Title')}\n"
