@@ -18,6 +18,7 @@ import plotly.express as px
 from database.knowledge_graph import Neo4jGraphStore
 from database.vector_store import QdrantStore
 from agent.orchestrator import RAGOrchestrator
+from agent.interpreter_agent import InterpreterOrchestrator
 from dashboard_analytics import render_institucion_view, render_investigador_view, load_cached_data
 
 load_dotenv()
@@ -110,6 +111,7 @@ if "orchestrator" not in st.session_state:
             # El orquestador se crea en el hilo principal (es síncrono)
             # Solo el método .ask() es async y se ejecuta en el hilo dedicado
             st.session_state.orchestrator = RAGOrchestrator(tools_list=[])
+            st.session_state.interpreter_orchestrator = InterpreterOrchestrator(st.session_state.orchestrator.memory_manager)
             st.session_state.session_id = f"st-{random.randint(1000, 9999)}"
         except Exception as e:
             st.error(f"Error inicializando el orquestador: {e}")
@@ -146,20 +148,6 @@ with st.sidebar:
     st.success("✅ Orquestador: Activo")
     st.info(f"ID Sesión: {st.session_state.session_id}")
 
-    with st.expander("👥 El Consejo Estratégico", expanded=False):
-        st.markdown("""
-        **Composición Plural y Diversa:**
-        
-        *   **Rectora (👩🏽‍🎓)**: Zapoteca, SNI III. Liderazgo, internacionalización e impacto social.
-        *   **Investigador (🔬)**: Primera generación universitaria. Experto en el área y retos de publicación en México.
-        *   **Bibliometra (📊)**: Afromexicana, experta en cienciometría. Vigila rigor y sesgos en bases de datos.
-        *   **Política Científica (🏛️)**: Árabe-mexicano. Conecta hallazgos con financiamiento y políticas públicas.
-        *   **Evaluadora (⚖️)**: Perspectiva crítica post-colonial. Evaluación responsable (DORA y Leiden).
-        *   **Consejera Social (🤝)**: Comunidad campesina. Foco en equidad de género y justicia social.
-        *   **Estudiante (🎓)**: Persona No Binaria, becaria. Perspectiva de nuevas generaciones y acceso abierto.
-        
-        *Mecanismo: Consenso Mayoritario (4 de 7).*
-        """)
 
     st.markdown("---")
     st.subheader("Configuración")
@@ -512,9 +500,31 @@ if False: # with tab_council:
 
 
 # =======================================================
-# TAB 1: Chat RAG Orquestador
+# TAB 1: Chat RAG Orquestador & Interpreter
 # =======================================================
 with tab_chat:
+    
+    st.markdown("### Selecciona el Modo del Asistente")
+    assistant_type = st.radio(
+        "Tipo de Asistente",
+        ["⚡ Reactivo (Respuestas Rápidas)", "🧠 Analítico (Planificador & Ejecutor)"],
+        horizontal=True,
+        label_visibility="collapsed"
+    )
+    
+    plan_mode_internal = "plan_and_execute"
+    if "Analítico" in assistant_type:
+        plan_mode = st.radio(
+            "Modo de Misión",
+            ["▶️ Planear y Ejecutar Directo", "📝 Solo Generar Plan", "⚙️ Ejecutar Plan Guardado"],
+            horizontal=True
+        )
+        if "Solo" in plan_mode: plan_mode_internal = "plan_only"
+        elif "Guardado" in plan_mode: plan_mode_internal = "execute_plan"
+        else: plan_mode_internal = "plan_and_execute"
+        
+    st.markdown("---")
+
     col_clear, _ = st.columns([1, 4])
     with col_clear:
         if st.button("🗑️ Limpiar Conversación"):
@@ -556,9 +566,15 @@ with tab_chat:
                     # Capturamos session_id y orchestrator antes de entrar al hilo
                     session_id = st.session_state.session_id
                     orchestrator = st.session_state.orchestrator
+                    interpreter_orch = st.session_state.interpreter_orchestrator
 
                     async def ask_agent():
-                        return await orchestrator.ask(session_id, prompt, entity_context=selected_entity)
+                        if "Analítico" in assistant_type:
+                            return await interpreter_orch.ask(
+                                session_id, prompt, mode=plan_mode_internal, entity_context=selected_entity
+                            )
+                        else:
+                            return await orchestrator.ask(session_id, prompt, entity_context=selected_entity)
 
                     response_data = _run_async_in_thread(ask_agent())
                     
