@@ -17,12 +17,35 @@ class InterpreterOrchestrator:
         # Configure the open interpreter instance
         if interpreter:
             self.interpreter = interpreter.core.core.OpenInterpreter()
+            
+            # Cargamos configuración de LLM desde el entorno (igual que RAGOrchestrator)
+            base_url = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1/")
+            model_name = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
+            api_key = os.getenv("OPENAI_API_KEY", "lm-studio")
+            user = os.getenv("LLM_USER")
+            password = os.getenv("LLM_PASSWORD")
+
+            # Construir URL con Basic Auth si es necesario (para que litellm lo mande bien)
+            auth_url = base_url
+            if user and password:
+                if "://" in base_url:
+                    protocol, rest = base_url.split("://", 1)
+                    auth_url = f"{protocol}://{user}:{password}@{rest}"
+                else:
+                    auth_url = f"http://{user}:{password}@{base_url}"
+
+            self.interpreter.llm.model = model_name
+            self.interpreter.llm.api_base = auth_url
+            self.interpreter.llm.api_key = api_key
+            
             # Disable confirmation to run autonomously
             self.interpreter.auto_run = True
             # Limit steps to prevent infinite loops
             self.interpreter.max_steps = 15
-            # Use local Python
-            self.interpreter.local = True
+            # Importante: No usar .local = True si queremos usar el LLM remoto config arriba
+            # .local en versiones recientes de OI a veces intenta usar modelos locales vía local-server
+            self.interpreter.offline = False 
+            self.interpreter.safe_mode = "off"
             
             # Inject context
             self.interpreter.system_message += """
