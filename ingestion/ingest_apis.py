@@ -258,7 +258,7 @@ def obtener_metadatos_de_orcid(orcid_url):
     return metadatos
 
 # --- Lógica principal de ingesta ---
-"
+
 def process_and_ingest_academics(json_path, force=False, force_local=False, target_name=None):
     if not os.path.exists(json_path):
         print(f"No se encontró el archivo: {json_path}")
