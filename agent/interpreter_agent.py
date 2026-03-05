@@ -1,7 +1,8 @@
+import asyncio
+import re
 import os
 import io
 import json
-import asyncio
 from agent.memory_manager import SessionMemoryManager
 
 try:
@@ -58,27 +59,28 @@ class InterpreterOrchestrator:
             Eres un agente 'Plan-and-Execute' de Sinapsis AI, experto en análisis de datos científicos y cienciometría.
             Tu misión es analizar la producción científica escribiendo y ejecutando código Python de manera iterativa.
 
-            REGLAS DE FORMATO (CRÍTICAS):
-            1. NO uses etiquetas especiales como <|channel|>, <|thought|>, <|message|>, o similares.
-            2. Escribe ÚNICAMENTE en Markdown estándar.
+            REGLAS DE FORMATO (ESTRICTAS Y OBLIGATORIAS):
+            1. UTILIZA ÚNICAMENTE Markdown estándar.
+            2. PROHIBIDO: NO uses etiquetas como <|channel|>, <|thought|>, <|message|>, o similares. NUNCA.
             3. Para ejecutar código Python, utiliza bloques de código markdown: ```python [tu código] ```
-            4. Para ver resultados, utiliza SIEMPRE print(). Los valores no impresos no serán visibles.
+            4. Para ver resultados, utiliza SIEMPRE print(). Los valores no impresos NO serán visibles.
 
             ESTRATEGIA DE DATOS:
-            1. PRIORIDAD CACHE: Si el análisis es sobre la institución o un profesor, busca primero en 'data/cache/papers_institucion.parquet' o 'data/cache/papers_profesor.parquet'.
-            2. GRAFO: Usa 'agent.tools_hybrid.query_knowledge_graph_cypher' para relaciones complejas o si el cache no es suficiente.
-            3. SEMÁNTICA: Usa 'agent.tools_hybrid.search_scientific_papers_semantic' para buscar temas por concepto o autores.
-
-            EJEMPLO DE EJECUCIÓN:
-            Voy a cargar los datos de la facultad para contar las publicaciones por año.
+            1. PRIORIDAD CACHE: Si el análisis es sobre una institución o un profesor, CARGA el archivo parquet correspondiente:
+               - data/cache/papers_institucion.parquet (Columnas: entity_name, title, year, citations, etc.)
+               - data/cache/papers_profesor.parquet (Si buscas un autor específico)
+            2. GRAFO: Usa 'agent.tools_hybrid.query_knowledge_graph_cypher' para relaciones complejas.
+            
+            EJEMPLO DE EJECUCIÓN EXITOSA:
+            Voy a filtrar los artículos de la facultad en los parquets.
             ```python
             import pandas as pd
             df = pd.read_parquet('data/cache/papers_institucion.parquet')
-            summary = df.groupby('year').size().reset_index(name='count')
-            print(summary.to_markdown(index=False))
+            # Análisis aquí...
+            print(df.head())
             ```
 
-            NUNCA uses este formato: <|channel|>... <|message|>... ES INCORRECTO Y FALLARÁ.
+            AVISO: Cualquier intento de usar <|channel|> resultará en un fallo del sistema. Escribe SOLO Python en bloques de código.
             """
 
     async def ask(self, session_id: str, prompt: str, mode: str = "plan_and_execute", entity_context: str = None):
@@ -108,10 +110,26 @@ class InterpreterOrchestrator:
         interpreter_msgs = []
         for m in past_msgs:
             role = m.get("role", "user")
+            content = m.get("content", "")
+            
+            # Sanitizar contenido: Si el historial tiene tags <|channel|>, convertirlos a bloques de código
+            # para que el modelo no imite el formato incorrecto.
+            if "<|channel|>" in content:
+                # Intenta extraer la llamada si parece JSON
+                try:
+                    # Regex para capturar el tag y lo que parece ser el argumento
+                    match = re.search(r"<\|channel\|>.*?code<\|message\|>(.*)", content, re.DOTALL)
+                    if match:
+                        code_cand = match.group(1).strip()
+                        # Si parece JSON, lo convertimos a algo legible o simplemente bloque python
+                        content = f"Análisis previo (sanitizado):\n```python\n# El modelo anterior usó formato incorrecto. \n# Contenido original: {code_cand}\n```"
+                except:
+                    content = content.replace("<|channel|>", "[TAG PROHIBIDO ELIMINADO]")
+
             # Convert roles if necessary
             if role == "human": role = "user"
             if role == "ai": role = "assistant"
-            interpreter_msgs.append({"role": role, "type": "message", "content": m.get("content", "")})
+            interpreter_msgs.append({"role": role, "type": "message", "content": content})
         
         self.interpreter.messages = interpreter_msgs
 
