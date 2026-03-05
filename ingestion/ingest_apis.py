@@ -257,7 +257,7 @@ def obtener_metadatos_de_orcid(orcid_url):
     return metadatos
 
 # --- Lógica principal de ingesta ---
-
+pyalex.config.email = "tu_correo@ciencias.unam.mx"
 def process_and_ingest_academics(json_path, force=False, force_local=False, target_name=None):
     if not os.path.exists(json_path):
         print(f"No se encontró el archivo: {json_path}")
@@ -325,6 +325,7 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                                  .strip('/') if doi and not doi.startswith('orcid-work:') else None)
                 if not _doi_clean:
                     raise ValueError("No es un DOI resolvible en OpenAlex")
+                time.sleep(0.1)
                 work = pyalex.Works()["https://doi.org/" + _doi_clean]
                 authorships = work.get('authorships', [])
                 record['Authors'] = "; ".join([au['author']['display_name'] for au in authorships])
