@@ -439,7 +439,8 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                 ]
 
                 record['Source'] += ' + OpenAlex'
-            except Exception:
+            except Exception as e:
+                print(f"    Advertencia en OpenAlex para {doi}: {e}")
                 pass # Si OpenAlex falla, seguimos con los datos base
             
             # Qdrant solo necesita un texto para el embedding y un payload
