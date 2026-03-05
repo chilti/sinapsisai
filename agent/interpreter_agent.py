@@ -54,33 +54,28 @@ class InterpreterOrchestrator:
             self.interpreter.offline = False 
             self.interpreter.safe_mode = "off"
             
-            # SOBRESCRIBIR mensaje del sistema para mayor control en modelos locales
+            # SOBRESCRIBIR mensaje del sistema con ESQUEMAS REALES
             self.interpreter.system_message = """
-            Eres un agente 'Plan-and-Execute' de Sinapsis AI, experto en análisis de datos científicos y cienciometría.
-            Tu misión es analizar la producción científica escribiendo y ejecutando código Python de manera iterativa.
+            Eres un agente 'Plan-and-Execute' de Sinapsis AI, experto en análisis de datos científicos.
+            Tu misión es analizar la producción científica usando Python de manera iterativa.
 
-            REGLAS DE FORMATO (ESTRICTAS Y OBLIGATORIAS):
-            1. UTILIZA ÚNICAMENTE Markdown estándar.
-            2. PROHIBIDO: NO uses etiquetas como <|channel|>, <|thought|>, <|message|>, o similares. NUNCA.
-            3. Para ejecutar código Python, utiliza bloques de código markdown: ```python [tu código] ```
-            4. Para ver resultados, utiliza SIEMPRE print(). Los valores no impresos NO serán visibles.
+            REGLAS DE FORMATO (ESTRICTAS):
+            1. UTILIZA ÚNICAMENTE Markdown estándar. 
+            2. PROHIBIDO: NO uses etiquetas <|channel|>, <|thought|>, <|message|>. NUNCA.
+            3. Usa ```python [código] ``` y siempre print() para ver resultados.
 
-            ESTRATEGIA DE DATOS:
-            1. PRIORIDAD CACHE: Si el análisis es sobre una institución o un profesor, CARGA el archivo parquet correspondiente:
-               - data/cache/papers_institucion.parquet (Columnas: entity_name, title, year, citations, etc.)
-               - data/cache/papers_profesor.parquet (Si buscas un autor específico)
-            2. GRAFO: Usa 'agent.tools_hybrid.query_knowledge_graph_cypher' para relaciones complejas.
-            
-            EJEMPLO DE EJECUCIÓN EXITOSA:
-            Voy a filtrar los artículos de la facultad en los parquets.
-            ```python
-            import pandas as pd
-            df = pd.read_parquet('data/cache/papers_institucion.parquet')
-            # Análisis aquí...
-            print(df.head())
-            ```
+            ESTRATEGIA DE DATOS Y ESQUEMAS (CRÍTICO):
+            1. INSTITUCIÓN: 'data/cache/papers_institucion.parquet'
+               - Columnas clave: ['Title', 'year', 'citations', 'entity_name', 'DOI', 'primary_topic_name']
+               - NOTA: NO tiene columna 'authors'. Para buscar autores, usa el Grafo o el Parquet de Profesores.
+            2. PROFESORES: 'data/cache/papers_profesor.parquet'
+               - Columnas clave: ['academic_name', 'Title', 'year', 'citations', 'orcid']
+            3. GRAFO: 'agent.tools_hybrid.query_knowledge_graph_cypher' para buscar por autor.
+               - Ejemplo: MATCH (a:Author {name: '...'})-[:AUTHORED]->(p:Paper) RETURN p.title AS Title, p.year AS year
 
-            AVISO: Cualquier intento de usar <|channel|> resultará en un fallo del sistema. Escribe SOLO Python en bloques de código.
+            ERRORES COMUNES A EVITAR:
+            - NO uses df['authors'] en el parquet de la institución (no existe).
+            - Usa 'Title' (con T mayúscula) en lugar de 'title'.
             """
 
     async def ask(self, session_id: str, prompt: str, mode: str = "plan_and_execute", entity_context: str = None):
@@ -170,6 +165,13 @@ class InterpreterOrchestrator:
                         
         except Exception as e:
             final_answer += f"\n[Ha ocurrido un error durante la ejecución: {str(e)}]"
+
+        # LIMPIEZA FINAL: Eliminar cualquier tag residual que el modelo haya alucinado
+        # Elimina <|channel|>, <|thought|>, <|message|>, y sus variantes
+        final_answer = re.sub(r"<\|.*?\|>", "", final_answer)
+        # Eliminar posibles bloques de "commentary to=..." alucinado fuera de código
+        final_answer = re.sub(r"commentary to=\S+", "", final_answer)
+        final_answer = final_answer.strip()
 
         # Save to memory
         self.memory.add_message(session_id, "user", prompt)
