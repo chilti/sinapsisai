@@ -267,7 +267,7 @@ def render_institucion_view(entity_name):
         st.markdown("##### Acceso Abierto y Costos")
         ca1, ca2, ca3 = st.columns(3)
         apc_total = total.get('apc_paid_usd', 0) or 0
-        ca1.metric("APC Pagado Total",     f"${apc_total:,.0f} USD")
+        ca1.metric("APC Total",     f"${apc_total:,.0f} USD")
         ca2.metric("% Papers con APC",     f"{total.get('pct_apc',0):.1f}%")
         ca3.metric("Vida Media Citas",     f"{total.get('half_life_avg',0):.1f} años")
 
@@ -294,10 +294,18 @@ def render_institucion_view(entity_name):
         # Glosario Metodológico
         with st.expander("ℹ️ ¿Qué significan estos indicadores?"):
             st.markdown("""
-            - **FWCI (Field-Weighted Citation Impact):** Relación entre las citas recibidas y el promedio mundial esperado para el mismo año, disciplina y tipo de documento (Mundial = 1.0).
+            - **FWCI (Field-Weighted Citation Impact):** Relación entre las citas recibidas y el promedio esperado para el mismo año y disciplina (Mundial = 1.0).
             - **Percentil Promedio:** Posición promedio global de los artículos respecto a sus citas (donde 99 es el decil de mayor impacto).
-            - **% Top 10% / Top 1%:** Porcentaje de la producción científica que se ubica entre el 10% o 1% más citado a nivel mundial en su campo.
-            - **% Open Access:** Porcentaje de documentos disponibles en acceso abierto (Vía Dorada, Verde, Híbrida o Bronce).
+            - **% Top 10% / Top 1%:** Porcentaje de la producción científica que se ubica entre el 10% o 1% más citado a nivel mundial.
+            - **% Open Access:** Porcentaje de documentos en acceso abierto (Vía Dorada, Verde, Híbrida o Bronce).
+            - **Citas/año (avg):** Velocidad promedio de citación; cuántas citas recibe un artículo cada año calendario desde su publicación.
+            - **Citas últ. 3 años:** Citas frescas recolectadas en los tres años más recientes.
+            - **% Internacional:** Porcentaje de artículos donde participa al menos una institución extranjera.
+            - **Países/paper (avg):** Promedio de países involucrados por publicación.
+            - **Autores/paper (avg):** Promedio de autores individuales por publicación.
+            - **APC Total:** Suma del costo histórico de las Cuotas por Procesamiento de Artículo (Article Processing Charges). Este valor es referencial al "precio de lista de OA de la revista", no implica un gasto emitido directamente por el investigador.
+            - **Vida Media Citas:** Años que tarda en promedio un artículo en acumular el 50% de sus citas totales actuales.
+            - **Gini temático:** 0 = enfocado en un solo tema, 1 = producción totalmente dispersa.
             """)
 
     if df_annual is not None and not df_annual.empty:
@@ -563,7 +571,7 @@ def render_investigador_view(entity_name):
     st.markdown("##### Acceso Abierto y Costos")
     ca1, ca2, ca3 = st.columns(3)
     apc_inv = inv_data.get('apc_paid_usd', 0) or 0
-    ca1.metric("APC Pagado Total",  f"${apc_inv:,.0f} USD")
+    ca1.metric("APC Total",  f"${apc_inv:,.0f} USD")
     ca2.metric("% Papers con APC", f"{inv_data.get('pct_apc',0):.1f}%")
     ca3.metric("Vida Media Citas", f"{inv_data.get('half_life_avg',0):.1f} años")
 
@@ -590,11 +598,16 @@ def render_investigador_view(entity_name):
     with st.expander("ℹ️ ¿Qué significan estos indicadores?"):
         st.markdown("""
         - **FWCI:** Relación citas recibidas / promedio mundial para el mismo año y disciplina (1.0 = media mundial).
-        - **Percentil / Top 10% / Top 1%:** Posición global en citación dentro del campo.
-        - **Velocidad:** Citas promedio recibidas cada año de vida del paper.
-        - **Vida Media:** Años hasta que el paper acumula el 50% de sus citas.
-        - **Gini temático:** 0 = enfocado en un solo tema, 1 = producción totalmente dispersa.
-        - **% Open Access / Tipos OA:** Gold (revista OA), Green (repositorio), Hybrid (elección del autor), Bronze (libre sin licencia abierta).
+        - **Percentil / Top 10% / Top 1%:** Posición global en citación dentro del campo de conocimiento.
+        - **Citas/año (avg):** Velocidad promedio de citación anual que mantienen los artículos desde su fecha de publicación.
+        - **Citas últ. 3 años:** Sumatoria total de citas recientes acumuladas en los últimos 36 meses.
+        - **% Internacional:** Proporción de papers co-escritos con al menos un autor de otro país.
+        - **Países/paper y Autores/paper:** Densidad de colaboración geográfica y de red por publicación.
+        - **APC Total:** Costo de lista estimado (USD) de las Cuotas de Acceso Abierto pagadas (Article Processing Charges). No necesariamente pagadas por el autor, sino por fondos, universidades o consorcios.
+        - **% Papers con APC:** Porcentaje de la producción que fue publicada en revistas que manejan cuotas.
+        - **Vida Media Citas:** Años tras la publicación hasta que el paper recaba el 50% de su impacto.
+        - **Gini temático:** 0 = muy enfocado en un puro tema, 1 = producción en múltiples frentes diversos.
+        - **% Open Access / Tipos OA:** Gold (revista OA), Green (repositorio intermedio), Hybrid (revista de paga que libera el pdf por petición del autor), Bronze (libre disponibilidad sin licencia explícita).
         """)
 
 
