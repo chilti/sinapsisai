@@ -207,9 +207,18 @@ def obtener_metadatos_de_orcid(orcid_url):
                     if isinstance(ext_ids_list, dict):
                         ext_ids_list = [ext_ids_list]
 
-                # Buscar DOI primero
-                doi = next((eid.get('external-id-value') for eid in ext_ids_list 
-                            if isinstance(eid, dict) and eid.get('external-id-type') == 'doi'), None)
+                # Buscar DOI primero y normalizarlo (ORCID puede devolver URL completa)
+                _doi_raw = next((eid.get('external-id-value') for eid in ext_ids_list
+                                 if isinstance(eid, dict) and eid.get('external-id-type') == 'doi'), None)
+                if _doi_raw:
+                    doi = (str(_doi_raw).strip()
+                           .replace('https://doi.org/', '')
+                           .replace('http://doi.org/',  '')
+                           .replace('https://dx.doi.org/', '')
+                           .replace('http://dx.doi.org/', '')
+                           .strip('/'))
+                else:
+                    doi = None
                 
                 # Si no hay DOI, intentar resolver desde arXiv
                 if not doi:
@@ -308,13 +317,20 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
             record = base_metadata.copy()
             text_for_embedding = f"Title: {record.get('Title')}\n"
             
-            # Enriquecemos con OpenAlex
+            # Enriquecemos con OpenAlex (normaliza DOI, guarda orcid-work: papers sin lookup)
             try:
-                work = pyalex.Works()["https://doi.org/" + doi]
+                _doi_clean = (doi.replace('https://doi.org/', '')
+                                 .replace('http://doi.org/',   '')
+                                 .replace('https://dx.doi.org/', '')
+                                 .strip('/') if doi and not doi.startswith('orcid-work:') else None)
+                if not _doi_clean:
+                    raise ValueError("No es un DOI resolvible en OpenAlex")
+                work = pyalex.Works()["https://doi.org/" + _doi_clean]
                 authorships = work.get('authorships', [])
                 record['Authors'] = "; ".join([au['author']['display_name'] for au in authorships])
                 record['Keywords_oa'] = "; ".join([kw['display_name'] for kw in work.get('keywords', [])])
                 record['Abstract_oa'] = deconstruct_abstract(work.get('abstract_inverted_index'))
+                record['openalex_url'] = work.get('id')  # ej: https://openalex.org/W2741809807
                 
                 if record['Abstract_oa']:
                     record['Abstract'] = record['Abstract_oa']
