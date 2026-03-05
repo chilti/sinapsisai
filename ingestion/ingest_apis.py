@@ -316,8 +316,8 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
 
         batch_payloads = []
         batch_texts = []
-        print('api_key: '+str(pyalex.config.api_key))
-        print('api:     '+str(os.getenv("OPENALEX_API_KEY")))
+        #print('api_key: '+str(pyalex.config.api_key))
+        #print('api:     '+str(os.getenv("OPENALEX_API_KEY")))
         for doi, base_metadata in meta_unificada.items():
             record = base_metadata.copy()
             text_for_embedding = f"Title: {record.get('Title')}\n"
@@ -339,13 +339,13 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                 record['Abstract_oa'] = deconstruct_abstract(work.get('abstract_inverted_index'))
                 record['openalex_url'] = work.get('id')  # ej: https://openalex.org/W2741809807
                 record['Title'] = work.get('title')
-                print(record.get("Title"))
+                #print(record.get("Title"))
                 
                 if record['Abstract_oa']:
                     record['Abstract'] = record['Abstract_oa']
                     
                 record['Cited_by'] = work.get('cited_by_count', record.get('Cited_by', 0))
-                print(record.get("Cited_by"))
+                #print(record.get("Cited_by"))
                 # ── KPIs de impacto ────────────────────────────────────────────
                 record['fwci'] = work.get('fwci', None)
                 record['open_access'] = work.get('open_access', {})
