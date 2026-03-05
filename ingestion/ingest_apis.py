@@ -12,7 +12,7 @@ import time
 import requests
 import pyalex
 import httpx
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
 import sys
 try:
@@ -32,11 +32,11 @@ try:
 except Exception:
     print("Nota: pybliometrics puede no estar completamente configurado con la API key de Scopus.")
 
-load_dotenv()
+load_dotenv(find_dotenv())
 
-#pyalex.config.email = os.getenv("EMAIL_ADDRESS", "[EMAIL_ADDRESS]")
-
-pyalex.config.api_key = os.getenv("OPENALEX_API_KEY")
+pyalex.config.email = os.getenv("EMAIL_ADDRESS", "sin_correo@ciencias.unam.mx")
+if os.getenv("OPENALEX_API_KEY"):
+    pyalex.config.api_key = os.getenv("OPENALEX_API_KEY")
 
 from langchain_openai import OpenAIEmbeddings
 
