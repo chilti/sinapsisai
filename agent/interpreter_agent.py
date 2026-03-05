@@ -2,7 +2,7 @@ import os
 import io
 import json
 import asyncio
-from agent.memory_manager import BaseMemoryManager
+from agent.memory_manager import SessionMemoryManager
 
 try:
     from interpreter import interpreter
@@ -11,7 +11,7 @@ except ImportError:
     interpreter = None
 
 class InterpreterOrchestrator:
-    def __init__(self, memory_manager: BaseMemoryManager):
+    def __init__(self, memory_manager: SessionMemoryManager):
         self.memory = memory_manager
         
         # Configure the open interpreter instance
