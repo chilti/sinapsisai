@@ -331,12 +331,14 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                 record['Keywords_oa'] = "; ".join([kw['display_name'] for kw in work.get('keywords', [])])
                 record['Abstract_oa'] = deconstruct_abstract(work.get('abstract_inverted_index'))
                 record['openalex_url'] = work.get('id')  # ej: https://openalex.org/W2741809807
+                record['Title'] = work.get('title')
+                print(record.get("Title"))
                 
                 if record['Abstract_oa']:
                     record['Abstract'] = record['Abstract_oa']
                     
                 record['Cited_by'] = work.get('cited_by_count', record.get('Cited_by', 0))
-                
+                print(record.get("Cited_by"))
                 # ── KPIs de impacto ────────────────────────────────────────────
                 record['fwci'] = work.get('fwci', None)
                 record['open_access'] = work.get('open_access', {})

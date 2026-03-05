@@ -250,6 +250,7 @@ def extract_academic_papers():
                 'Source': source,
                 'DOI':    doi_link,
                 'Link':   doi_link,
+                'openalex_url': raw_meta.get('openalex_url'),
                 # ── Impacto ────────────────────────────────────────────────────
                 'fwci':                         fwci,
                 'is_oa':                        int(is_oa),
