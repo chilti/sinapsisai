@@ -29,8 +29,9 @@ from .council_config import (
     CONSEJERA_APPROVAL,
     ESTUDIANTE_APPROVAL,
     CONSENSUS_SIGNAL,
-    get_tools_catalog,
-    get_db_schema,
+    # get_tools_catalog,  # DESACTIVADO: requiere hybrid_tools que puede fallar
+    # get_db_schema,      # DESACTIVADO: requiere Neo4j/Qdrant que pueden no estar disponibles
+    get_parquet_catalog,  # ACTIVO: usa solo parquets pre-calculados (nunca falla)
 )
 
 ALL_APPROVAL_SIGNALS = [
@@ -64,8 +65,9 @@ async def _run_council_async(
     on_message: Optional[Callable[[str, str], None]] = None,
 ) -> tuple[str, Path]:
     model_client = make_model_client()
-    tools_catalog = get_tools_catalog()
-    db_schema = get_db_schema()
+    parquet_catalog = get_parquet_catalog()
+    # tools_catalog = get_tools_catalog()  # DESACTIVADO: puede fallar si hybrid_tools no carga
+    # db_schema = get_db_schema()          # DESACTIVADO: requiere Neo4j y Qdrant
 
     # ── 7 agentes del Consejo ──────────────────────────────────────────────────
 
@@ -174,8 +176,9 @@ async def _run_council_async(
     )
 
     # ── Tarea inicial ──────────────────────────────────────────────────────────
-    db_schema_text = db_schema
-    tools_text = tools_catalog
+    # NOTA: db_schema_text y tools_text desactivados. Solo se usa el catálogo de parquets.
+    # db_schema_text = db_schema
+    # tools_text = tools_catalog
 
     approval_instructions = (
         f"Cuando estés convencido/a del plan, escribe tu señal de aprobación. "
@@ -185,14 +188,18 @@ async def _run_council_async(
     task = (
         f"Diseñen un **Plan de Estudio Bibliométrico** para **{entity}** (UNAM).\n\n"
         f"**Objetivo del estudio**: {objective}\n\n"
-        f"{db_schema_text}\n\n"
-        f"**Herramientas disponibles para el análisis**:\n{tools_text}\n\n"
+        f"## Fuente de datos disponible\n"
+        f"El análisis se basa EXCLUSIVAMENTE en archivos Parquet pre-calculados. "
+        f"NO hay acceso a Neo4j, Qdrant, OpenAlex, Scopus ni APIs externas.\n\n"
+        f"{parquet_catalog}\n\n"
         f"Deliberen desde sus perspectivas únicas. El plan DEBE:\n"
-        f"- Ser ejecutable con los datos y herramientas listados arriba\n"
-        f"- Priorizar datos que YA EXISTEN en Neo4j/Qdrant\n"
+        f"- Ser ejecutable con los parquets listados arriba (cargar con `pd.read_parquet`)\n"
+        f"- NO proponer pasos que requieran Neo4j, Qdrant, OpenAlex, Scopus u otras APIs\n"
         f"- Proponer métricas diversas (no solo factor de impacto)\n"
         f"- Considerar equidad, sesgos y diversidad en el análisis\n"
-        f"- Ser útil para quienes toman decisiones de política científica\n\n"
+        f"- Ser útil para quienes toman decisiones de política científica\n"
+        f"- Si un análisis deseable no puede hacerse con los parquets actuales, "
+        f"  indicarlo explícitamente como recomendación futura.\n\n"
         f"{approval_instructions}"
     )
 

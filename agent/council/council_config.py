@@ -307,3 +307,106 @@ def get_tools_catalog() -> str:
             "- `Python_CodeExecutor`: Ejecuta código Python (plotly, pandas, matplotlib, networkx, pyalex, pybliometrics, umap-learn, scikit-learn, somoclu)\n"
             f"\n(Error al cargar catálogo dinámico: {e})"
         )
+
+
+# ── Catálogo EXCLUSIVO de parquets pre-calculados ────────────────────────────
+
+def get_parquet_catalog() -> str:
+    """
+    Devuelve una descripción detallada de los archivos Parquet pre-calculados
+    disponibles en data/cache/. Esta es la ÚNICA fuente de datos que el Consejo
+    Estratégico debe usar: no requiere conexión a Neo4j, Qdrant ni APIs externas,
+    por lo que sus consultas nunca fallan por problemas de conectividad.
+
+    Carga dinámicamente el listado real de parquets disponibles y sus columnas.
+    """
+    import sys, os
+    import pandas as pd
+
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+
+    cache_dir = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "data", "cache")
+    )
+
+    # Descripción canónica de cada parquet conocido
+    KNOWN_PARQUETS = {
+        "papers_profesor.parquet": (
+            "**Todos los papers de cada académico** — incluye papers producidos en "
+            "OTRAS instituciones antes o durante su adscripción actual. "
+            "Útil para el perfil completo de carrera."
+        ),
+        "investigador_total.parquet": (
+            "**Métricas totales por investigador** — agrupado por investigador "
+            "(suma de toda su carrera)."
+        ),
+        "investigador_annual.parquet": (
+            "**Métricas anuales por investigador** — para trayectorias temporales."
+        ),
+        "institucion_total.parquet": (
+            "**Papers de la institución** (WoS/OpenAlex) — solo papers producidos "
+            "BAJO la afiliación institucional actual. Más riguroso para reportes oficiales."
+        ),
+        "institucion_annual.parquet": (
+            "**Métricas institucionales por año** — evolución temporal de la institución."
+        ),
+        "topics_investigador.parquet": (
+            "**Jerarquía temática (OpenAlex) por investigador** — dominios, campos, "
+            "subtemas y tópicos de investigación."
+        ),
+    }
+
+    lines = [
+        "## Datos pre-calculados disponibles (Parquets en `data/cache/`)\n",
+        "Carga los archivos con `pd.read_parquet('data/cache/<archivo>')` en el ejecutor Python.\n",
+        "> ✅ **ÚNICA FUENTE DE DATOS DEL CONSEJO**: Usa exclusivamente estos parquets.",
+        "> No se invocan herramientas externas (Neo4j, Qdrant, OpenAlex, Scopus, etc.)\n",
+    ]
+
+    # Intentar leer columnas reales de los parquets disponibles
+    if os.path.isdir(cache_dir):
+        available = [f for f in os.listdir(cache_dir) if f.endswith(".parquet")]
+        for fname in sorted(available):
+            desc = KNOWN_PARQUETS.get(fname, "(archivo pre-calculado)")
+            fpath = os.path.join(cache_dir, fname)
+            try:
+                df = pd.read_parquet(fpath, engine="pyarrow")
+                cols = ", ".join(f"`{c}`" for c in df.columns[:12])
+                extra = " …" if len(df.columns) > 12 else ""
+                nrows = f"{len(df):,}"
+                lines.append(
+                    f"### `{fname}`\n"
+                    f"- **Descripción**: {desc}\n"
+                    f"- **Filas**: {nrows}\n"
+                    f"- **Columnas**: {cols}{extra}\n"
+                )
+            except Exception as ex:
+                lines.append(
+                    f"### `{fname}`\n"
+                    f"- **Descripción**: {desc}\n"
+                    f"- ⚠️ No se pudieron leer las columnas: {ex}\n"
+                )
+    else:
+        # Directorio no encontrado: listar solo los conocidos
+        lines.append(f"> ⚠️ No se encontró el directorio `{cache_dir}`. Listado estimado:\n")
+        for fname, desc in KNOWN_PARQUETS.items():
+            lines.append(f"- **`{fname}`**: {desc}")
+
+    lines.append(
+        "\n## Cómo usar los parquets en el plan\n\n"
+        "Propón pasos concretos con código Python usando `pd.read_parquet(...)`. "
+        "Ejemplo mínimo:\n"
+        "```python\n"
+        "import pandas as pd\n"
+        "df = pd.read_parquet('data/cache/investigador_total.parquet')\n"
+        "# Filtrar por entidad\n"
+        "df_ent = df[df['entities'].str.contains('<ENTIDAD>', case=False, na=False)]\n"
+        "print(df_ent[['academic_name','h_index','fwci_avg','pct_open_access']].head(20))\n"
+        "```\n\n"
+        "> ⚠️ **RESTRICCIÓN ABSOLUTA**: El Consejo Estratégico NO tiene acceso a Neo4j, "
+        "Qdrant, OpenAlex, Scopus, Web of Science ni ninguna API externa. "
+        "Si un objetivo no puede lograrse con los parquets listados arriba, indícalo "
+        "explícitamente y propón qué dato adicional habría que pre-calcular en el futuro."
+    )
+
+    return "\n".join(lines)

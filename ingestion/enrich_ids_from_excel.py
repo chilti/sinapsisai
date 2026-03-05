@@ -61,10 +61,12 @@ def _normalize_name(name: str) -> str:
 
 
 def _excel_full_name(row) -> str:
-    """Construye el nombre completo en formato 'APELLIDO, NOMBRE' desde el Excel."""
-    first = _normalize_name(str(row.get('first_name', '') or ''))
-    last  = _normalize_name(str(row.get('last_name',  '') or ''))
-    return f"{last}, {first}" if last else first
+    """Construye el nombre completo en formato 'APELLIDO1 APELLIDO2, NOMBRE' desde el Excel."""
+    first   = _normalize_name(str(row.get('first_name', '') or ''))
+    last    = _normalize_name(str(row.get('last_name',  '') or ''))
+    surname = _normalize_name(str(row.get('sur_name',   '') or ''))  # segundo apellido
+    apellidos = ' '.join(part for part in [last, surname] if part)
+    return f"{apellidos}, {first}" if apellidos else first
 
 
 def _json_full_name(key: str) -> str:
@@ -179,7 +181,7 @@ def enrich(json_path: Path, excel_path: Path, dry_run: bool = False):
             print(f"  ⚠️  [{orig_json_key}]  ORCID conflicto: json={orcid_json}  excel={orcid_excel}  → se mantiene JSON")
 
         # Scopus: Excel → JSON
-        scopus_excel = _clean_scopus(row.get('Scopus ID', '') or '')
+        scopus_excel = _clean_scopus(row.get('authorID', '') or '')
         scopus_json  = _clean_scopus(entry.get('scopus', '') or '')
         if scopus_excel and not scopus_json:
             entry['scopus'] = scopus_excel
@@ -216,8 +218,8 @@ def enrich(json_path: Path, excel_path: Path, dry_run: bool = False):
             excel_updated += 1
             print(f"  📊 [{excel_display}]  ORCID  → Excel  {orcid_json_cleaned}")
 
-        if not _clean_scopus(row.get('Scopus ID', '') or '') and scopus_json_cleaned:
-            df_excel.at[excel_idx, 'Scopus ID'] = scopus_json_cleaned
+        if not _clean_scopus(row.get('authorID', '') or '') and scopus_json_cleaned:
+            df_excel.at[excel_idx, 'authorID']        = scopus_json_cleaned
             df_excel.at[excel_idx, 'Scopus_from_json'] = '✓'
             df_excel.at[excel_idx, 'json_key'] = orig_json_key
             excel_updated += 1
