@@ -107,8 +107,7 @@ def get_embedding(text: str) -> list:
     except Exception as e:
         raise Exception(f"Fallo en servidor de Embeddings ({url}): {str(e)}")
 
-@tool
-def search_scientific_papers_semantic(query: str, limit: int = 20, entity_context: Optional[str] = None) -> str:
+def search_scientific_papers_semantic(query: str, limit: int = 20, entity_context: Optional[str] = None) -> dict:
     """
     Realiza una búsqueda semántica en la base de datos vectorial (Qdrant).
     Útil para encontrar temas relacionados, conceptos abstractos o papers que hablen
@@ -179,7 +178,6 @@ def search_scientific_papers_semantic(query: str, limit: int = 20, entity_contex
 # Alias para compatibilidad con el prompt del agente
 search_scientific_papers = search_scientific_papers_semantic
 
-@tool
 def get_author_coauthors_graph(author_name: str) -> str:
     """
     Consulta el Grafo de Conocimiento (Neo4j) para encontrar coautores de un investigador.
@@ -202,7 +200,6 @@ def get_author_coauthors_graph(author_name: str) -> str:
         
     return json.dumps({"author_query": author_name, "coauthors": coauthors}, ensure_ascii=False)
 
-@tool
 def query_knowledge_graph_cypher(cypher_query: str) -> str:
     """
     Ejecuta una consulta Cypher directa sobre el Grafo de Conocimiento (Neo4j).
@@ -253,7 +250,6 @@ def query_knowledge_graph_cypher(cypher_query: str) -> str:
 # DuckDuckGo Search
 search_ddg = DuckDuckGoSearchRun()
 
-@tool
 def web_search(query: str) -> str:
     """
     Útil para buscar información en internet. 
@@ -266,7 +262,6 @@ def web_search(query: str) -> str:
 wikipedia_api_wrapper = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=4000)
 wikipedia_tool_instance = WikipediaQueryRun(api_wrapper=wikipedia_api_wrapper)
 
-@tool
 def wikipedia_search(query: str) -> str:
     """
     Consulta Wikipedia para obtener resúmenes informativos sobre conceptos, 
@@ -276,7 +271,6 @@ def wikipedia_search(query: str) -> str:
 
 # --- Herramientas OpenAlex (Recuperación Directa) ---
 
-@tool
 def recoverFromOpenAlex(doi: str, fields: Optional[str] = None) -> str:
     """Recupera el registro bibliográfico de un paper desde OpenAlex usando su DOI.
     
@@ -298,7 +292,6 @@ def recoverFromOpenAlex(doi: str, fields: Optional[str] = None) -> str:
     except Exception as e:
         return f"Error recuperando DOI {doi}: {str(e)}"
 
-@tool
 def searchAuthorInOpenAlex(fullname: str, n: int = 5) -> str:
     """
     Busca los n autores más parecidos en OpenAlex al nombre dado.
@@ -321,7 +314,6 @@ def searchAuthorInOpenAlex(fullname: str, n: int = 5) -> str:
     except Exception as e:
         return f"Error buscando autor: {str(e)}"
 
-@tool
 def recoverAuthorWorksFromOpenAlex(author_id: str, n: int = 10) -> str:
     """
     Recupera los primeros n trabajos de un autor en OpenAlex a partir de su author_id (ej. A5023888360).
@@ -352,7 +344,6 @@ def recoverAuthorWorksFromOpenAlex(author_id: str, n: int = 10) -> str:
 
 # --- Herramientas de Propósito General (Fase 2) ---
 
-@tool
 def get_entity_statistics(entity_name: str) -> str:
     """
     Obtiene estadísticas completas de producción científica para una entidad UNAM.
@@ -401,7 +392,6 @@ def get_entity_statistics(entity_name: str) -> str:
         return f"Error calculando estadísticas: {str(e)}"
 
 
-@tool
 def get_researcher_profile(name_fragment: str) -> str:
     """
     Recupera el perfil académico completo de un investigador de la UNAM buscando 
@@ -467,7 +457,6 @@ def get_researcher_profile(name_fragment: str) -> str:
         return f"Error recuperando perfil: {str(e)}"
 
 
-@tool
 def get_trending_topics(entity_name: Optional[str] = None, start_year: int = 2018) -> str:
     """
     Retorna los tópicos de investigación con mayor crecimiento en publicaciones
@@ -507,7 +496,6 @@ def get_trending_topics(entity_name: Optional[str] = None, start_year: int = 201
 
 
 
-@tool
 def get_coauthorship_network_for_entity(entity_name: str, start_year: int = 2015, limit_nodes: int = 50) -> str:
     """
     Construye la red de coautoría de TODOS los investigadores de una entidad UNAM.
@@ -571,7 +559,6 @@ def get_coauthorship_network_for_entity(entity_name: str, start_year: int = 2015
         return f"Error construyendo red de coautoría: {str(e)}"
 
 
-@tool
 def get_topic_evolution(entity_name: str, start_year: int = 2018, end_year: int = 2024) -> str:
     """
     Retorna la evolución año-a-año de los temas de investigación de una entidad.
@@ -629,7 +616,6 @@ def get_topic_evolution(entity_name: str, start_year: int = 2018, end_year: int 
         return f"Error calculando evolución temática: {str(e)}"
 
 
-@tool
 def get_sdg_distribution(
     entity_name: str,
     start_year: int = 2018,
@@ -737,7 +723,6 @@ def get_sdg_distribution(
         return f"Error en get_sdg_distribution: {str(e)}"
 
 
-@tool
 def get_international_collaboration_stats(
     entity_name: str,
     start_year: int = 2015,
@@ -882,21 +867,69 @@ def get_international_collaboration_stats(
         return f"Error en get_international_collaboration_stats: {str(e)}"
 
 
-# Lista de herramientas híbridas para exportar
+# --- Dualidad: Funciones Callables y Herramientas LangChain ---
+
+class CallableTool:
+    """
+    Envoltorio que permite que un objeto se comporte como una función normal
+    (para el Interpreter Agent) pero también tenga los métodos de LangChain
+    como .invoke() y .run() (para el Multi-Agente).
+    """
+    def __init__(self, langchain_tool, original_func):
+        self.tool = langchain_tool
+        self.original_func = original_func
+        self.__doc__ = original_func.__doc__
+        self.__name__ = original_func.__name__
+
+    def __call__(self, *args, **kwargs):
+        return self.original_func(*args, **kwargs)
+
+    def invoke(self, *args, **kwargs):
+        # LangChain tools .invoke suele recibir un dict o args
+        return self.tool.invoke(*args, **kwargs)
+
+    def run(self, *args, **kwargs):
+        return self.tool.run(*args, **kwargs)
+        
+    @property
+    def args(self):
+        return self.tool.args
+
+# Envolvemos las funciones para que funcionen en ambos mundos
+search_scientific_papers_semantic = CallableTool(tool(search_scientific_papers_semantic), search_scientific_papers_semantic)
+get_author_coauthors_graph = CallableTool(tool(get_author_coauthors_graph), get_author_coauthors_graph)
+get_coauthorship_network_for_entity = CallableTool(tool(get_coauthorship_network_for_entity), get_coauthorship_network_for_entity)
+query_knowledge_graph_cypher = CallableTool(tool(query_knowledge_graph_cypher), query_knowledge_graph_cypher)
+get_entity_statistics = CallableTool(tool(get_entity_statistics), get_entity_statistics)
+get_researcher_profile = CallableTool(tool(get_researcher_profile), get_researcher_profile)
+get_trending_topics = CallableTool(tool(get_trending_topics), get_trending_topics)
+get_topic_evolution = CallableTool(tool(get_topic_evolution), get_topic_evolution)
+get_sdg_distribution = CallableTool(tool(get_sdg_distribution), get_sdg_distribution)
+get_international_collaboration_stats = CallableTool(tool(get_international_collaboration_stats), get_international_collaboration_stats)
+web_search = CallableTool(tool(web_search), web_search)
+wikipedia_search = CallableTool(tool(wikipedia_search), wikipedia_search)
+recoverFromOpenAlex = CallableTool(tool(recoverFromOpenAlex), recoverFromOpenAlex)
+searchAuthorInOpenAlex = CallableTool(tool(searchAuthorInOpenAlex), searchAuthorInOpenAlex)
+recoverAuthorWorksFromOpenAlex = CallableTool(tool(recoverAuthorWorksFromOpenAlex), recoverAuthorWorksFromOpenAlex)
+
+# Alias para compatibilidad con el prompt del agente
+search_scientific_papers = search_scientific_papers_semantic
+
+# Lista de herramientas híbridas para exportar (RAGOrchestrator)
 hybrid_tools = [
-    search_scientific_papers_semantic,
-    get_author_coauthors_graph,
-    get_coauthorship_network_for_entity,
-    query_knowledge_graph_cypher,
-    get_entity_statistics,
-    get_researcher_profile,
-    get_trending_topics,
-    get_topic_evolution,
-    get_sdg_distribution,
-    get_international_collaboration_stats,
-    web_search,
-    wikipedia_search,
-    recoverFromOpenAlex,        # Consolida recoverFromOpenAlex + recoverFieldFromRecordFromOpenAlex
-    searchAuthorInOpenAlex,
-    recoverAuthorWorksFromOpenAlex
+    search_scientific_papers_semantic.tool,
+    get_author_coauthors_graph.tool,
+    get_coauthorship_network_for_entity.tool,
+    query_knowledge_graph_cypher.tool,
+    get_entity_statistics.tool,
+    get_researcher_profile.tool,
+    get_trending_topics.tool,
+    get_topic_evolution.tool,
+    get_sdg_distribution.tool,
+    get_international_collaboration_stats.tool,
+    web_search.tool,
+    wikipedia_search.tool,
+    recoverFromOpenAlex.tool,
+    searchAuthorInOpenAlex.tool,
+    recoverAuthorWorksFromOpenAlex.tool
 ]
