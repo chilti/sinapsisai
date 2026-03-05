@@ -59,18 +59,21 @@ class InterpreterOrchestrator:
             Tu misión principal es analizar datos científicos escribiendo y ejecutando código Python de manera iterativa.
 
             REGLA DE FORMATO CRITICA:
-            NO uses etiquetas como <|channel|>, <|message|>, <|thought|>, o similares.
-            Para ejecutar código, DEBES usar ÚNICAMENTE bloques de código markdown estándar. 
+            1. NO uses etiquetas como <|channel|>, <|message|>, <|thought|>, o similares.
+            2. Para ejecutar código, DEBES usar ÚNICAMENTE bloques de código markdown estándar. 
+            3. NO intentes llamar a funciones como commentary() o message() fuera de bloques de código.
             Cualquier otra forma de llamar herramientas fallará.
 
             EJEMPLO DE FORMATO CORRECTO:
-            Para buscar un autor y contar sus papers, tu respuesta debe verse así:
-            
-            Voy a buscar los papers de Humberto Carrillo.
+            Voy a buscar los papers de Humberto Carrillo usando búsqueda semántica.
             ```python
-            from agent.tools_hybrid import search_scientific_papers
-            papers = search_scientific_papers("Humberto Carrillo")
+            from agent.tools_hybrid import search_scientific_papers_semantic
+            # Esta herramienta retorna un diccionario. Los resultados están en la clave 'resultados'
+            response = search_scientific_papers_semantic("Humberto Carrillo")
+            papers = response.get("resultados", [])
             print(f"Encontré {len(papers)} publicaciones.")
+            for p in papers[:3]:
+                print(f"- {p.get('title')} ({p.get('year')})")
             ```
 
             EJEMPLO DE LO QUE NO DEBES HACER:
@@ -79,15 +82,17 @@ class InterpreterOrchestrator:
             RECUERDA: Siempre usa print() para ver los resultados de tu código.
 
             HERRAMIENTAS NATIVAS RECOMENDADAS:
-            Puedes importar y usar libremente las herramientas pre-existentes del proyecto para facilitar tu trabajo:
+            Puedes importar y usar libremente las herramientas pre-existentes del proyecto:
             ```python
-            # Para consultar la base de grafos Neo4j (siempre retorna diccionarios con la respuesta)
-            from agent.tools_hybrid import query_knowledge_graph_cypher
-            data = query_knowledge_graph_cypher("MATCH (p:Paper) RETURN p.title LIMIT 5")
+            # Para búsqueda semántica (RECOMENDADO para temas y autores)
+            from agent.tools_hybrid import search_scientific_papers_semantic
+            results = search_scientific_papers_semantic("IA en medicina", entity_context="Facultad de Medicina")
+            papers = results.get("resultados", [])
             
-            # Para extraer de OpenAlex
-            from agent.tools_hybrid import search_scientific_papers
-            papers = search_scientific_papers("inteligencia artificial")
+            # Para consultar la base de grafos Neo4j (Retorna lista de diccionarios)
+            from agent.tools_hybrid import query_knowledge_graph_cypher
+            data = query_knowledge_graph_cypher("MATCH (p:Paper) RETURN p.title AS title, p.year AS year LIMIT 5")
+            # data es una lista de diccionarios: [{'title': '...', 'year': ...}, ...]
             
             # Para trabajar con DataFrames desde los parquets cacheados:
             import pandas as pd
@@ -153,7 +158,7 @@ class InterpreterOrchestrator:
                             intermediate_steps.append({
                                 "type": "tool_call",
                                 "name": "python_interpreter",
-                                "args": {"code": chunk["content"]}
+                                "args": {"code": str(chunk["content"])}
                             })
                         else:
                             intermediate_steps[-1]["args"]["code"] += str(chunk["content"])
@@ -163,7 +168,7 @@ class InterpreterOrchestrator:
                             intermediate_steps.append({
                                 "type": "tool_result",
                                 "name": "python_interpreter_output",
-                                "content": chunk["content"]
+                                "content": str(chunk["content"])
                             })
                         else:
                             intermediate_steps[-1]["content"] += str(chunk["content"])

@@ -172,9 +172,12 @@ def search_scientific_papers_semantic(query: str, limit: int = 20, entity_contex
         if fallback_used:
             output["_advertencia"] = f"El campo 'entity' no está poblado en Qdrant para '{entity_context}'. Se muestran resultados globales. Re-ingesta necesaria."
         output["resultados"] = top_results
-        return json.dumps(output, ensure_ascii=False)
+        return output
     except Exception as e:
         return f"Error en búsqueda semántica: {str(e)}"
+
+# Alias para compatibilidad con el prompt del agente
+search_scientific_papers = search_scientific_papers_semantic
 
 @tool
 def get_author_coauthors_graph(author_name: str) -> str:
