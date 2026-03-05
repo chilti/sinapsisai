@@ -42,12 +42,14 @@ class InterpreterOrchestrator:
             self.interpreter.llm.api_base = auth_url
             self.interpreter.llm.api_key = api_key
             
+            # Forzar a usar lenguaje natural y bloques de código (no Function Calling nativo)
+            # Esto es más robusto para modelos locales/costomizados
+            self.interpreter.llm.supports_functions = False
+            
             # Disable confirmation to run autonomously
             self.interpreter.auto_run = True
             # Limit steps to prevent infinite loops
             self.interpreter.max_steps = 15
-            # Importante: No usar .local = True si queremos usar el LLM remoto config arriba
-            # .local en versiones recientes de OI a veces intenta usar modelos locales vía local-server
             self.interpreter.offline = False 
             self.interpreter.safe_mode = "off"
             
@@ -55,6 +57,12 @@ class InterpreterOrchestrator:
             self.interpreter.system_message += """
             Eres un agente 'Plan-and-Execute' de Sinapsis AI, experto en análisis de datos bibliométricos y cienciometría.
             Tu misión principal es analizar datos científicos escribiendo y ejecutando código Python de manera iterativa.
+
+            IMPORTANTE: Solo puedes ejecutar código Python escribiendo bloques de código markdown:
+            ```python
+            print("Hola mundo")
+            ```
+            No intentes usar otras herramientas o etiquetas especiales. Solo Python.
 
             HERRAMIENTAS NATIVAS RECOMENDADAS:
             Puedes importar y usar libremente las herramientas pre-existentes del proyecto para facilitar tu trabajo:
