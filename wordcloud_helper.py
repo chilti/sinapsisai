@@ -34,7 +34,7 @@ def generate_wordcloud_image(
     width: int = 800,
     height: int = 400,
     background_color: str = "white",
-    max_words: int = 240,
+    max_words: int = 1000,
 ) -> bytes | None:
     """
     Genera una imagen PNG de nube de palabras.

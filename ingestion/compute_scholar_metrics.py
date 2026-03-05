@@ -733,7 +733,7 @@ def process_and_save():
             for kws in grp['keywords']:
                 if isinstance(kws, list):
                     cnt.update([k for k in kws if k])
-            for kw, freq in cnt.most_common(150):
+            for kw, freq in cnt.most_common(1000):
                 kw_rows.append({'academic_name': ac_name, 'keyword': kw, 'freq': freq})
         if kw_rows:
             pd.DataFrame(kw_rows).to_parquet(CACHE_DIR / 'keywords_investigador.parquet', index=False)
@@ -785,7 +785,7 @@ def process_and_save():
                 for kws in grp['keywords']:
                     if isinstance(kws, list):
                         cnt.update([k for k in kws if k])
-                for kw, freq in cnt.most_common(300):
+                for kw, freq in cnt.most_common(1000):
                     kw_inst_rows.append({'entity_name': e_name, 'keyword': kw, 'freq': freq})
             if kw_inst_rows:
                 pd.DataFrame(kw_inst_rows).to_parquet(CACHE_DIR / 'keywords_institucion.parquet', index=False)
