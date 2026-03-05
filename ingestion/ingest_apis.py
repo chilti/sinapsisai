@@ -35,7 +35,7 @@ except Exception:
 load_dotenv()
 
 #pyalex.config.email = os.getenv("EMAIL_ADDRESS", "[EMAIL_ADDRESS]")
-print(os.getenv("OPENALEX_API_KEY"))
+
 pyalex.config.api_key = os.getenv("OPENALEX_API_KEY")
 
 from langchain_openai import OpenAIEmbeddings
@@ -314,7 +314,7 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
 
         batch_payloads = []
         batch_texts = []
-        
+        print('api_key: '+pyalex.config.api_key)
         for doi, base_metadata in meta_unificada.items():
             record = base_metadata.copy()
             text_for_embedding = f"Title: {record.get('Title')}\n"
