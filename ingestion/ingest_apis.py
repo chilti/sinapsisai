@@ -35,6 +35,7 @@ except Exception:
 load_dotenv()
 
 pyalex.config.email = os.getenv("EMAIL_ADDRESS", "[EMAIL_ADDRESS]")
+pyalex.config.api_key = os.getenv("OPENALEX_API_KEY")
 
 from langchain_openai import OpenAIEmbeddings
 
@@ -257,7 +258,7 @@ def obtener_metadatos_de_orcid(orcid_url):
     return metadatos
 
 # --- Lógica principal de ingesta ---
-pyalex.config.email = "tu_correo@ciencias.unam.mx"
+"
 def process_and_ingest_academics(json_path, force=False, force_local=False, target_name=None):
     if not os.path.exists(json_path):
         print(f"No se encontró el archivo: {json_path}")
