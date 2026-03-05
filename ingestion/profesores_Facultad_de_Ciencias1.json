@@ -1,0 +1,53 @@
+{
+    "CARRILLO CALVET, HUMBERTO ANDRES": {
+        "original_name": "CARRILLO CALVET, HUMBERTO ANDRES",
+        "entity": "Facultad de Ciencias",
+        "already_in_db": false,
+        "siia": "https://web.siia.unam.mx/siia-publico/c/busqueda_individual.php?id=127734",
+        "scopus": [
+            "21233675900"
+        ],
+        "orcid": "https://orcid.org/0000-0003-3659-6769",
+        "areas": [
+            "Computer science, cybernetics",
+            "Computer science, information systems",
+            "Computer science, interdisciplinary applications",
+            "Environmental sciences",
+            "Immunology",
+            "Information science and library science",
+            "Jcs 2008",
+            "Materials science, characterization & testing",
+            "Mathematics, interdisciplinary applications",
+            "Medicine, general and internal",
+            "Medicine, research and experimental",
+            "Nuclear science & technology",
+            "Physics, multidisciplinary",
+            "Psychiatry",
+            "Public, environmental and occupational health",
+            "Respiratory system",
+            "Arts and humanities (miscellaneous)",
+            "Communication",
+            "Computer Science (miscellaneous)",
+            "Chemical Engineering (miscellaneous)",
+            "Engineering (miscellaneous)",
+            "Environmental engineering",
+            "Geotechnical Engineering and Engineering Geology",
+            "Hardware and architecture",
+            "Health Informatics",
+            "Health Policy",
+            "Health, toxicology and mutagenesis",
+            "Immunology",
+            "Infectious diseases",
+            "Instrumentation",
+            "Library and information sciences",
+            "Media technology",
+            "Medicine (miscellaneous)",
+            "Multidisciplinary",
+            "Museology",
+            "Pharmaceutical science",
+            "Physics and astronomy (miscellaneous)",
+            "Social sciences (miscellaneous)",
+            "Software"
+        ]
+    }
+}
