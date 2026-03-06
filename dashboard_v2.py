@@ -87,10 +87,15 @@ def fetch_database_live_stats(entity_name=None):
     try:
         neo = Neo4jGraphStore()
         graph_stats = neo.get_database_statistics()
-        if entity_name:
+        
+        if entity_name == "Facultad de Ciencias":
+            # Caso especial: Colaboración FC - ICN
+            graph_sample = neo.get_collaboration_sample_graph("Facultad de Ciencias", "Instituto de Ciencias Nucleares", limit=150)
+        elif entity_name:
             graph_sample = neo.get_funder_sample_graph(entity_name, limit=150)
         else:
             graph_sample = neo.get_sample_graph(limit=80)
+            
         neo.close()
     except Exception as e:
         graph_stats = {"error": str(e), "nodes": {}, "relationships": 0}
