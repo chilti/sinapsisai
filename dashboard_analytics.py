@@ -250,7 +250,7 @@ def render_institucion_view(entity_name):
         # KPIs (Fila 2)
         st.markdown("##### Métricas de Excelencia")
         c5, c6, c7, c8 = st.columns(4)
-        c5.metric("Percentil Promedio", f"{total.get('percentile_avg',50):.1f}")
+        c5.metric("Percentil Promedio", f"{100*total.get('percentile_avg',50):.1f}")
         c6.metric("% Top 10%", f"{total.get('pct_top_10',0):.1f}%")
         c7.metric("% Top 1%", f"{total.get('pct_1',0):.1f}%")
 
