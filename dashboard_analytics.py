@@ -531,10 +531,15 @@ def render_investigador_view(entity_name):
             st.markdown(f"- **ORCID:** [Ver Perfil]({orcid_link})")
         
         if inv_scopus:
-            # Si hay varios, tomamos el primero para el enlace principal
-            sid = str(inv_scopus).split(';')[0].strip()
-            scopus_link = sid if "http" in sid else f"https://www.scopus.com/authid/detail.uri?authorId={sid}"
-            st.markdown(f"- **Scopus:** [Ver Perfil]({scopus_link})")
+            # Extraer el primer ID numérico de forma robusta (maneja strings de listas, punto y coma, etc)
+            import re
+            all_ids = re.findall(r'\d+', str(inv_scopus))
+            if all_ids:
+                sid = all_ids[0]
+                scopus_link = f"https://www.scopus.com/authid/detail.uri?authorId={sid}"
+                st.markdown(f"- **Scopus:** [Ver Perfil]({scopus_link})")
+            elif "http" in str(inv_scopus):
+                st.markdown(f"- **Scopus:** [Ver Perfil]({inv_scopus})")
             
     
 
