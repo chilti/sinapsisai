@@ -70,7 +70,7 @@ def mostrar_banners_destacados(df):
 # Helpers de visualización para indicadores nuevos
 # ══════════════════════════════════════════════════════════════════════════
 
-def _render_oa_donut(data_row, key_suffix=""):
+def _render_oa_donut(data_row, key_suffix="", return_fig=False):
     """Mini donut de distribución OA (gold/green/hybrid/bronze/closed)."""
     labels = ["Gold", "Green", "Hybrid", "Bronze", "Closed"]
     cols_  = ["pct_oa_gold","pct_oa_green","pct_oa_hybrid","pct_oa_bronze","pct_oa_closed"]
@@ -89,10 +89,12 @@ def _render_oa_donut(data_row, key_suffix=""):
         annotations=[dict(text=f"{total_oa:.0f}%<br><span style='font-size:11px'>OA</span>",
                           x=0.5, y=0.5, font_size=16, showarrow=False)],
     )
+    if return_fig:
+        return fig
     st.plotly_chart(fig, use_container_width=True, key=f"donut_oa_{key_suffix}")
 
 
-def _render_velocity_sparkline(df_papers, name_col, name_val, key_suffix=""):
+def _render_velocity_sparkline(df_papers, name_col, name_val, key_suffix="", return_fig=False):
     """Sparkline de trayectoria de citas acumuladas por año."""
     from collections import defaultdict
     df_p = df_papers[df_papers[name_col] == name_val].copy()
@@ -124,10 +126,12 @@ def _render_velocity_sparkline(df_papers, name_col, name_val, key_suffix=""):
         yaxis=dict(showgrid=True, gridcolor="#eee"),
         template="plotly_white",
     )
+    if return_fig:
+        return fig
     st.plotly_chart(fig, use_container_width=True, key=f"spark_{key_suffix}")
 
 
-def _render_choropleth_collab(df_papers, name_col, name_val, title="Países colaboradores", key_suffix=""):
+def _render_choropleth_collab(df_papers, name_col, name_val, title="Países colaboradores", key_suffix="", return_fig=False):
     """Choropleth world map de países colaboradores (ISO-alpha-2 en campo 'countries')."""
     from collections import Counter
     df_p = df_papers[df_papers[name_col] == name_val].copy()
@@ -169,10 +173,12 @@ def _render_choropleth_collab(df_papers, name_col, name_val, title="Países cola
                  showland=True, landcolor="#f0f0f0"),
         coloraxis_colorbar=dict(title="Papers", len=0.6),
     )
+    if return_fig:
+        return fig_alt
     st.plotly_chart(fig_alt, use_container_width=True, key=f"choro_{key_suffix}")
 
 
-def _render_keywords_section(df_kw, name_col, name_val, title="Keywords principales", key_suffix=""):
+def _render_keywords_section(df_kw, name_col, name_val, title="Keywords principales", key_suffix="", return_fig=False):
     """Nube de palabras o barras horizontales de keywords."""
     df_k = df_kw[df_kw[name_col] == name_val].sort_values("freq", ascending=False).head(50)
     if df_k.empty:
@@ -193,10 +199,12 @@ def _render_keywords_section(df_kw, name_col, name_val, title="Keywords principa
     fig.update_layout(height=420, margin=dict(t=30,b=10),
                       yaxis=dict(categoryorder="total ascending"),
                       showlegend=False, coloraxis_showscale=False)
+    if return_fig:
+        return fig
     st.plotly_chart(fig, use_container_width=True, key=f"kw_bar_{key_suffix}")
 
 
-def _render_radar_visibilidad(data_row, title="Perfil de Visibilidad", key_suffix=""):
+def _render_radar_visibilidad(data_row, title="Perfil de Visibilidad", key_suffix="", return_fig=False):
     """Radar chart con 6 ejes de visibilidad e indexación."""
     metrics = {
         "PubMed":       float(data_row.get("pct_pubmed",        0) or 0),
@@ -221,6 +229,8 @@ def _render_radar_visibilidad(data_row, title="Perfil de Visibilidad", key_suffi
         height=320, margin=dict(t=50,b=10,l=30,r=30),
         template="plotly_white",
     )
+    if return_fig:
+        return fig
     st.plotly_chart(fig, use_container_width=True, key=f"radar_{key_suffix}")
 
 
@@ -303,7 +313,7 @@ def render_institucion_view(entity_name):
             - **% Internacional:** Porcentaje de artículos donde participa al menos una institución extranjera.
             - **Países/paper (avg):** Promedio de países involucrados por publicación.
             - **Autores/paper (avg):** Promedio de autores individuales por publicación.
-            - **APC Total:** Suma del costo histórico de las Cuotas por Procesamiento de Artículo (Article Processing Charges). Este valor es referencial al "precio de lista de OA de la revista", no implica un gasto emitido directamente por el investigador.
+            - **APC Total:** Suma del costo histórico de las Cuotas por Procesamiento de Artículo (Article Processing Charges) de todos los artículos en los que participó al menos un académico de la Institución. Este valor es referencial al "precio de lista de OA de la revista" y no significa que la Facultad lo haya pagado, ya que pudo ser cubierto por fondos de investigación, otras universidades o consorcios.
             - **Vida Media Citas:** Años que tarda en promedio un artículo en acumular el 50% de sus citas totales actuales.
             - **Gini temático:** 0 = enfocado en un solo tema, 1 = producción totalmente dispersa.
             """)
@@ -483,6 +493,34 @@ def render_institucion_view(entity_name):
             "OpenAlex": st.column_config.LinkColumn("Enlace OpenAlex")
         })
 
+        # ── Reporte Bibliométrico IA ──────────────────────────────────────────────────
+        st.markdown("---")
+        st.subheader("📄 Reporte Bibliométrico con Inteligencia Artificial")
+        st.markdown("Genera o descarga un reporte analítico consolidado, interpretado por LLM, incluyendo las gráficas interactivas mostradas arriba.")
+        import re
+        safe_name = "".join([c if c.isalnum() else "_" for c in entity_name])
+        report_path = os.path.join(BASE_PATH, 'reports', f"report_inst_{safe_name}.html")
+        
+        if os.path.exists(report_path):
+            with open(report_path, "r", encoding="utf-8") as f:
+                html_data = f.read()
+            
+            c_rep1, c_rep2 = st.columns([1, 1])
+            with c_rep1:
+                st.download_button("⬇️ Descargar Reporte (HTML)", data=html_data, file_name=f"Reporte_Institucion_{safe_name}.html", mime="text/html")
+            with c_rep2:
+                if st.button("🔄 Regenerar Reporte con IA", key=f"btn_regen_inst_{safe_name}"):
+                    with st.spinner("Regenerando análisis y reporte con el modelo LLM local... Esto tomará algunos segundos."):
+                        import subprocess
+                        subprocess.run([sys.executable, "report_generator.py", "--type", "inst", "--name", entity_name])
+                    st.rerun()
+        else:
+            if st.button("✨ Generar Reporte con IA", key=f"btn_gen_inst_{safe_name}"):
+                with st.spinner("Generando análisis y reporte con el modelo LLM local... Esto tomará algunos segundos."):
+                    import subprocess
+                    subprocess.run([sys.executable, "report_generator.py", "--type", "inst", "--name", entity_name])
+                st.rerun()
+
 def render_investigador_view(entity_name):
     st.header(f"👤 Vista por Investigador ({entity_name})")
 
@@ -531,13 +569,13 @@ def render_investigador_view(entity_name):
             st.markdown(f"- **ORCID:** [Ver Perfil]({orcid_link})")
         
         if inv_scopus:
-            # Extraer el primer ID numérico de forma robusta (maneja strings de listas, punto y coma, etc)
+            # Extraer todos los IDs numéricos de forma robusta
             import re
             all_ids = re.findall(r'\d+', str(inv_scopus))
             if all_ids:
-                sid = all_ids[0]
-                scopus_link = f"https://www.scopus.com/authid/detail.uri?authorId={sid}"
-                st.markdown(f"- **Scopus:** [Ver Perfil]({scopus_link})")
+                for sid in all_ids:
+                    scopus_link = f"https://www.scopus.com/authid/detail.uri?authorId={sid}"
+                    st.markdown(f"- **Scopus ({sid}):** [Ver Perfil]({scopus_link})")
             elif "http" in str(inv_scopus):
                 st.markdown(f"- **Scopus:** [Ver Perfil]({inv_scopus})")
             
@@ -608,7 +646,7 @@ def render_investigador_view(entity_name):
         - **Citas últ. 3 años:** Sumatoria total de citas recientes acumuladas en los últimos 36 meses.
         - **% Internacional:** Proporción de papers co-escritos con al menos un autor de otro país.
         - **Países/paper y Autores/paper:** Densidad de colaboración geográfica y de red por publicación.
-        - **APC Total:** Costo de lista estimado (USD) de las Cuotas de Acceso Abierto pagadas (Article Processing Charges). No necesariamente pagadas por el autor, sino por fondos, universidades o consorcios.
+        - **APC Total:** Costo de lista estimado (USD) de las Cuotas de Acceso Abierto (Article Processing Charges) de los artículos en los que participó el académico. Este valor es referencial y no significa que la Facultad lo haya pagado; los costos pudieron ser cubiertos por fondos internacionales, universidades o consorcios.
         - **% Papers con APC:** Porcentaje de la producción que fue publicada en revistas que manejan cuotas.
         - **Vida Media Citas:** Años tras la publicación hasta que el paper recaba el 50% de su impacto.
         - **Gini temático:** 0 = muy enfocado en un puro tema, 1 = producción en múltiples frentes diversos.
@@ -802,3 +840,32 @@ def render_investigador_view(entity_name):
         st.plotly_chart(fig_umap, width="stretch")
     else:
         st.info("El mapa UMAP no está disponible o faltan datos base calculados.")
+
+    # ── Reporte Bibliométrico IA ──────────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("📄 Reporte Bibliométrico con Inteligencia Artificial")
+    st.markdown("Genera o descarga un reporte analítico consolidado del investigador, interpretado por LLM, incluyendo las gráficas interactivas.")
+    
+    import re
+    safe_name = "".join([c if c.isalnum() else "_" for c in selected_inv])
+    report_path = os.path.join(BASE_PATH, 'reports', f"report_inv_{safe_name}.html")
+    
+    if os.path.exists(report_path):
+        with open(report_path, "r", encoding="utf-8") as f:
+            html_data = f.read()
+            
+        c_repA, c_repB = st.columns([1, 1])
+        with c_repA:
+            st.download_button("⬇️ Descargar Reporte (HTML)", data=html_data, file_name=f"Reporte_Investigador_{safe_name}.html", mime="text/html")
+        with c_repB:
+            if st.button("🔄 Regenerar Reporte con IA", key=f"btn_regen_inv_{safe_name}"):
+                with st.spinner("Regenerando análisis y reporte con el modelo LLM local... Esto tomará un par de minutos."):
+                    import subprocess
+                    subprocess.run([sys.executable, "report_generator.py", "--type", "inv", "--name", selected_inv])
+                st.rerun()
+    else:
+        if st.button("✨ Generar Reporte con IA", key=f"btn_gen_inv_{safe_name}"):
+            with st.spinner("Generando análisis y reporte con el modelo LLM local... Esto tomará un par de minutos."):
+                import subprocess
+                subprocess.run([sys.executable, "report_generator.py", "--type", "inv", "--name", selected_inv])
+            st.rerun()
