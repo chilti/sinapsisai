@@ -640,8 +640,8 @@ def aggregate_metrics(df_papers, group_cols):
             df_agg[col] *= 100
 
     # Llenar nulos - FWCI NO se debe llenar con citas/doc, se queda como NaN si no hay data.
-    df_agg['fwci_avg'] = df_agg['fwci_avg'].replace([np.inf, -np.inf], np.nan)
-    df_agg['percentile_avg'] = df_agg['percentile_avg'].replace([np.inf, -np.inf], np.nan)
+    df_agg['fwci_avg'] = df_agg['fwci_avg'].replace([np.inf, -np.inf], 0)
+    df_agg['percentile_avg'] = df_agg['percentile_avg'].replace([np.inf, -np.inf], 0)
     
     # Calcular Citations per Paper (CPP)
     df_agg['citations_per_paper'] = df_agg['citations'] / df_agg['num_documents'].replace(0, 1)
