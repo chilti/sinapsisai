@@ -27,8 +27,15 @@ llm_model = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
 
 def get_llm_analysis(prompt: str, system_prompt: str = "Eres un analista bibliométrico experto. Escribe siempre en un tono formal, objetivo y académico, evitando adjetivos exagerados. Sé conciso.") -> str:
     try:
-        url = base_url.rstrip("/") + "/chat/completions"
-        auth = (user, password) if user and password else None
+        auth_url = base_url
+        if user and password:
+            if "://" in base_url:
+                protocol, rest = base_url.split("://", 1)
+                auth_url = f"{protocol}://{user}:{password}@{rest}"
+            else:
+                auth_url = f"http://{user}:{password}@{base_url}"
+
+        url = auth_url.rstrip("/") + "/chat/completions"
         
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -45,7 +52,7 @@ def get_llm_analysis(prompt: str, system_prompt: str = "Eres un analista bibliom
             "max_tokens": 1200
         }
         
-        with httpx.Client(verify=False, auth=auth, timeout=180.0) as client:
+        with httpx.Client(verify=False, timeout=180.0) as client:
             response = client.post(url, headers=headers, json=payload)
             response.raise_for_status()
             
