@@ -399,20 +399,36 @@ def generate_html_report(entity_type: str, entity_name: str) -> str:
         <meta charset="UTF-8">
         <title>Reporte Bibliométrico: {entity_name}</title>
         <style>
-            body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 40px auto; max-width: 950px; line-height: 1.6; color: #333; }}
-            h1 {{ color: #002B5C; border-bottom: 2px solid #D4AF37; padding-bottom: 10px; font-size: 28px; }}
-            h2 {{ color: #002B5C; margin-top: 50px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }}
-            .markdown-text {{ font-size: 15px; background: #fafafa; padding: 15px; border-radius: 6px; border-left: 3px solid #ccc; margin-bottom: 20px; }}
-            .markdown-text p {{ margin: 0 0 10px 0; }}
-            .markdown-text ul {{ margin: 0; padding-left: 20px; }}
-            .markdown-text strong {{ color: #002B5C; }}
-            .summary-box {{ background-color: #f8f9fa; border-left: 4px solid #002B5C; padding: 15px; margin: 20px 0; font-style: italic; }}
-            .metrics-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; margin-top: 20px; }}
-            .metric-card {{ background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; border-top: 3px solid #D4AF37; }}
-            .metric-value {{ font-size: 24px; font-weight: bold; color: #002B5C; }}
-            .metric-label {{ font-size: 14px; color: #666; }}
-            .chart {{ margin-top: 30px; margin-bottom: 40px; width: 100%; overflow: hidden; }}
-            @media print {{ body {{ margin: 0; max-width: 100%; }} }}
+            @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,300&family=Open+Sans:wght@400;600&display=swap');
+            body {{ font-family: 'Merriweather', Georgia, serif; margin: 40px auto; max-width: 1000px; line-height: 1.7; color: #222; background-color: #fbfbfb; }}
+            h1 {{ font-family: 'Open Sans', Arial, sans-serif; color: #111; border-bottom: 3px double #111; padding-bottom: 15px; font-size: 32px; text-align: center; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }}
+            h2 {{ font-family: 'Open Sans', Arial, sans-serif; color: #333; margin-top: 40px; border-bottom: 1px solid #ccc; padding-bottom: 5px; font-size: 20px; text-transform: uppercase; letter-spacing: 0.5px; }}
+            
+            /* Journal Text Layout */
+            .markdown-text {{ font-size: 15px; text-align: justify; margin-bottom: 30px; column-count: 2; column-gap: 40px; }}
+            .markdown-text p {{ margin: 0 0 15px 0; text-indent: 1.5em; }}
+            .markdown-text p:first-of-type {{ text-indent: 0; }}
+            .markdown-text ul {{ text-align: left; margin: 0 0 15px 0; padding-left: 20px; }}
+            .markdown-text strong {{ color: #111; font-family: 'Open Sans', sans-serif; }}
+            
+            /* Dropcap for Executive Summary */
+            .summary-box {{ padding: 20px; margin: 25px 0; font-size: 16px; border-top: 2px solid #D4AF37; border-bottom: 2px solid #D4AF37; text-align: justify; }}
+            .summary-box p:first-of-type::first-letter {{ color: #002B5C; float: left; font-size: 55px; line-height: 45px; padding-top: 4px; padding-right: 8px; padding-left: 3px; font-family: 'Georgia', serif; }}
+            
+            /* Minimalist Metrics Grid */
+            .metrics-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 40px; margin-top: 10px; }}
+            .metric-card {{ background: transparent; padding: 15px 5px; text-align: center; border-bottom: 1px dashed #ccc; }}
+            .metric-value {{ font-family: 'Open Sans', sans-serif; font-size: 26px; font-weight: 600; color: #002B5C; }}
+            .metric-label {{ font-family: 'Open Sans', sans-serif; font-size: 12px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; }}
+            
+            .chart {{ margin-top: 20px; margin-bottom: 40px; width: 100%; overflow: hidden; background: #fff; border: 1px solid #eaeaea; box-shadow: 0 1px 3px rgba(0,0,0,0.05); padding: 15px; box-sizing: border-box; }}
+            
+            /* Print adjustments for PDF export */
+            @media print {{ 
+                body {{ background-color: #fff; }}
+                .chart {{ page-break-inside: avoid; box-shadow: none; border: none; }}
+                h2 {{ page-break-after: avoid; }}
+            }}
         </style>
     </head>
     <body>

@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import streamlit.components.v1 as components
 import os
 import sys
 import json
@@ -505,6 +506,9 @@ def render_institucion_view(entity_name):
             with open(report_path, "r", encoding="utf-8") as f:
                 html_data = f.read()
             
+            st.markdown("### Previsualización del Reporte (Estilo Revista Científica)")
+            components.html(html_data, height=850, scrolling=True)
+            
             c_rep1, c_rep2 = st.columns([1, 1])
             with c_rep1:
                 st.download_button("⬇️ Descargar Reporte (HTML)", data=html_data, file_name=f"Reporte_Institucion_{safe_name}.html", mime="text/html")
@@ -853,6 +857,9 @@ def render_investigador_view(entity_name):
     if os.path.exists(report_path):
         with open(report_path, "r", encoding="utf-8") as f:
             html_data = f.read()
+            
+        st.markdown("### Previsualización del Reporte (Estilo Revista Científica)")
+        components.html(html_data, height=800, scrolling=True)
             
         c_repA, c_repB = st.columns([1, 1])
         with c_repA:
