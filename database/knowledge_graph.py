@@ -21,7 +21,9 @@ class Neo4jGraphStore:
             "CREATE CONSTRAINT institution_id IF NOT EXISTS FOR (i:Institution) REQUIRE i.id IS UNIQUE",
             "CREATE CONSTRAINT concept_id IF NOT EXISTS FOR (c:Concept) REQUIRE c.id IS UNIQUE",
             "CREATE CONSTRAINT academic_id IF NOT EXISTS FOR (a:Academic) REQUIRE a.id IS UNIQUE",
-            "CREATE CONSTRAINT entity_id IF NOT EXISTS FOR (e:Entity) REQUIRE e.name IS UNIQUE"
+            "CREATE CONSTRAINT entity_id IF NOT EXISTS FOR (e:Entity) REQUIRE e.name IS UNIQUE",
+            "CREATE CONSTRAINT funder_id IF NOT EXISTS FOR (f:Funder) REQUIRE f.name IS UNIQUE",
+            "CREATE CONSTRAINT award_id IF NOT EXISTS FOR (aw:Award) REQUIRE aw.id IS UNIQUE"
         ]
         with self.driver.session() as session:
             for query in queries:
@@ -48,6 +50,32 @@ class Neo4jGraphStore:
         for k in top_level_keys:
             if k in data:
                 raw[k] = data[k]
+
+        # Extracción de funders/awards desde raw ('grants' en OpenAlex)
+        funders_list = []
+        awards_list = []
+        grants = raw.get("grants", [])
+        for g in grants:
+            if g.get("funder_display_name"):
+                funders_list.append({
+                    "name": g.get("funder_display_name"),
+                    "openalex_id": g.get("funder") or ""
+                })
+            if g.get("award_id"):
+                awards_list.append(g.get("award_id"))
+                
+        # eliminar duplicados si los hay
+        unique_funders = []
+        seen_f = set()
+        for f in funders_list:
+            if f["name"] not in seen_f:
+                unique_funders.append(f)
+                seen_f.add(f["name"])
+                
+        unique_awards = list(set(awards_list))
+        
+        data["funders"] = unique_funders
+        data["awards"]  = unique_awards
 
         data["raw_metadata_json"] = json.dumps(raw, ensure_ascii=False)
 
@@ -76,6 +104,17 @@ class Neo4jGraphStore:
         MERGE (c:Concept {id: coalesce(concept.id, concept.name)})
         SET c.name = concept.name
         MERGE (p)-[:HAS_CONCEPT]->(c)
+        
+        WITH p
+        FOREACH (funder IN $funders | 
+            MERGE (f:Funder {name: funder.name})
+            SET f.openalex_id = funder.openalex_id
+            MERGE (p)-[:FUNDED_BY]->(f)
+        )
+        FOREACH (award_id IN $awards | 
+            MERGE (aw:Award {id: award_id})
+            MERGE (p)-[:HAS_AWARD]->(aw)
+        )
         """
         with self.driver.session() as session:
             try:
@@ -105,6 +144,30 @@ class Neo4jGraphStore:
         else:
             data["raw_metadata_json"] = "{}"
 
+        # Extracción de funders/awards desde raw_metadata ('grants' en OpenAlex)
+        funders_list = []
+        awards_list = []
+        grants = []
+        if isinstance(data.get("raw_metadata"), dict):
+            grants = data["raw_metadata"].get("grants", [])
+        for g in grants:
+            if g.get("funder_display_name"):
+                funders_list.append({
+                    "name": g.get("funder_display_name"),
+                    "openalex_id": g.get("funder") or ""
+                })
+            if g.get("award_id"):
+                awards_list.append(g.get("award_id"))
+                
+        unique_funders = []
+        seen_f = set()
+        for f in funders_list:
+            if f["name"] not in seen_f:
+                unique_funders.append(f)
+                seen_f.add(f["name"])
+                
+        unique_awards = list(set(awards_list))
+
         # Parametros para la query
         params = {
             "doi": data.get("doi", ""),
@@ -115,7 +178,9 @@ class Neo4jGraphStore:
             "academic_name": academic_name,
             "orcid": orcid,
             "scopus_id": scopus_id,
-            "siia_url": siia_url
+            "siia_url": siia_url,
+            "funders": unique_funders,
+            "awards": unique_awards
         }
 
         # Si no hay DOI válido, no podemos ligarlos estrictamente o creamos id random
@@ -145,6 +210,17 @@ class Neo4jGraphStore:
             p.raw_metadata = $raw_metadata
 
         MERGE (a)-[:AUTHORED]->(p)
+        
+        WITH p
+        FOREACH (funder IN $funders | 
+            MERGE (f:Funder {name: funder.name})
+            SET f.openalex_id = funder.openalex_id
+            MERGE (p)-[:FUNDED_BY]->(f)
+        )
+        FOREACH (award_id IN $awards | 
+            MERGE (aw:Award {id: award_id})
+            MERGE (p)-[:HAS_AWARD]->(aw)
+        )
         """
         
         with self.driver.session() as session:
@@ -236,6 +312,45 @@ class Neo4jGraphStore:
         with self.driver.session() as session:
             try:
                 result = session.run(query)
+                for record in result:
+                    n = record["n"]
+                    m = record["m"]
+                    r = record["r"]
+                    
+                    n_id = n.element_id
+                    m_id = m.element_id
+                    
+                    if n_id not in nodes:
+                        nodes[n_id] = {
+                            "id": n_id, 
+                            "label": list(n.labels)[0] if n.labels else "Unknown", 
+                            "title": n.get("name", n.get("title", str(n_id)))
+                        }
+                    if m_id not in nodes:
+                        nodes[m_id] = {
+                            "id": m_id, 
+                            "label": list(m.labels)[0] if m.labels else "Unknown", 
+                            "title": m.get("name", m.get("title", str(m_id)))
+                        }
+                        
+                    edges.append({"source": n_id, "target": m_id, "label": r.type})
+                return {"nodes": list(nodes.values()), "edges": edges}
+            except Exception as e:
+                return {"error": str(e)}
+
+    def get_funder_sample_graph(self, entity_name: str, limit: int = 150) -> dict:
+        """Extrae una sub-muestra del grafo para una entidad, enfocada en financiadores."""
+        query = f"""
+        MATCH (e:Entity {{name: $entity_name}})<-[r0:AFFILIATED_TO]-(a:Academic)-[r1:AUTHORED]->(p:Paper)-[r2:FUNDED_BY]->(f:Funder)
+        WITH e, a, p, f, r0, r1, r2 LIMIT {limit // 3}
+        UNWIND [[a, r0, e], [a, r1, p], [p, r2, f]] AS triple
+        RETURN triple[0] AS n, triple[1] AS r, triple[2] AS m
+        """
+        nodes = {}
+        edges = []
+        with self.driver.session() as session:
+            try:
+                result = session.run(query, entity_name=entity_name)
                 for record in result:
                     n = record["n"]
                     m = record["m"]

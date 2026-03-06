@@ -139,10 +139,11 @@ def extract_new_fields(work: dict) -> dict:
         'primary_topic_field':    (pt.get('field') or {}).get('display_name'),
         'primary_topic_subfield': (pt.get('subfield') or {}).get('display_name'),
         'primary_topic_domain':   (pt.get('domain') or {}).get('display_name'),
-        # Topics + keywords + SDGs
+        # Topics + keywords + SDGs + grants
         'OpenAlex_Topics': topics,
         'keywords':        [k.get('display_name') for k in work.get('keywords', [])[:15]],
         'sustainable_development_goals': sdgs,
+        'grants':          work.get('grants', []),
     }
 
 
@@ -248,10 +249,43 @@ def patch_all_fields(entity_filter: str = None, dry_run: bool = False, skip_exis
                     meta = _parse_raw_meta(raw_meta_json)
                     new_fields = extract_new_fields(oa_data[clean])
                     meta.update(new_fields)
-                    session.run(
-                        "MATCH (p:Paper {id: $id}) SET p.raw_metadata = $meta",
-                        id=doi_full, meta=json.dumps(meta, ensure_ascii=False)
+                    
+                    grants = new_fields.get("grants", [])
+                    funders_list = []
+                    awards_list = []
+                    for g in grants:
+                        if g.get("funder_display_name"):
+                            funders_list.append({
+                                "name": g.get("funder_display_name"),
+                                "openalex_id": g.get("funder") or ""
+                            })
+                        if g.get("award_id"):
+                            awards_list.append(g.get("award_id"))
+                    
+                    unique_funders = []
+                    seen_f = set()
+                    for f in funders_list:
+                        if f["name"] not in seen_f:
+                            unique_funders.append(f)
+                            seen_f.add(f["name"])
+                    unique_awards = list(set(awards_list))
+
+                    update_query = """
+                    MATCH (p:Paper {id: $id})
+                    SET p.raw_metadata = $meta
+                    WITH p
+                    FOREACH (funder IN $funders | 
+                        MERGE (f:Funder {name: funder.name})
+                        SET f.openalex_id = funder.openalex_id
+                        MERGE (p)-[:FUNDED_BY]->(f)
                     )
+                    FOREACH (award_id IN $awards | 
+                        MERGE (aw:Award {id: award_id})
+                        MERGE (p)-[:HAS_AWARD]->(aw)
+                    )
+                    """
+                    session.run(update_query, id=doi_full, meta=json.dumps(meta, ensure_ascii=False),
+                                funders=unique_funders, awards=unique_awards)
                     updated += 1
                 except Exception as e:
                     print(f"\n  ❌ Error en {doi_full}: {e}", flush=True)

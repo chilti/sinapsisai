@@ -82,12 +82,15 @@ def _run_async_in_thread(coro):
     return future.result()
 
 @st.cache_data(ttl=30)
-def fetch_database_live_stats():
+def fetch_database_live_stats(entity_name=None):
     """Obtiene los conteos globales de forma cacheada para no saturar las DBs."""
     try:
         neo = Neo4jGraphStore()
         graph_stats = neo.get_database_statistics()
-        graph_sample = neo.get_sample_graph(limit=80)
+        if entity_name:
+            graph_sample = neo.get_funder_sample_graph(entity_name, limit=150)
+        else:
+            graph_sample = neo.get_sample_graph(limit=80)
         neo.close()
     except Exception as e:
         graph_stats = {"error": str(e), "nodes": {}, "relationships": 0}
@@ -649,7 +652,7 @@ with tab_about:
     st.header("🗄️ Estado en Vivo de Bases de Datos")
     st.markdown("Métricas extraídas en tiempo real reflejando la ingesta actual de documentos semánticos y en el Grafo.")
     
-    graph_stats, qdrant_stats, graph_sample, qdrant_schema = fetch_database_live_stats()
+    graph_stats, qdrant_stats, graph_sample, qdrant_schema = fetch_database_live_stats(selected_entity)
     
     col_q, col_n = st.columns([1, 1.5])
     
@@ -750,6 +753,8 @@ with tab_about:
             elif node["label"] == "SDG": color = "#ef4444"
             elif node["label"] == "Entity": color = "#6366f1"
             elif node["label"] == "Institution": color = "#6366f1"
+            elif node["label"] == "Funder": color = "#eab308"
+            elif node["label"] == "Award": color = "#fbbf24"
             
             # Sanitizar textos por caracteres raros
             title_text = str(node.get("title", ""))[:45]
