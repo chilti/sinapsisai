@@ -68,7 +68,8 @@ def get_report_path(entity_type: str, entity_name: str) -> tuple[str, str]:
 
 def fig_to_html(fig):
     if not fig: return ""
-    return "<div class='chart'>" + pio.to_html(fig, full_html=False, include_plotlyjs='cdn' if 'window.Plotly' not in pio.to_html(fig, full_html=False) else False) + "</div>"
+    # Injecting the plotly lib via CDN unconditionally since this HTML isn't tied to a JS framework header
+    return "<div class='chart'>" + pio.to_html(fig, full_html=False, include_plotlyjs='cdn') + "</div>"
 
 def generate_html_report(entity_type: str, entity_name: str) -> str:
     """Generates a comprehensive HTML report for an institution or researcher."""
