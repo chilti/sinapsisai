@@ -509,10 +509,15 @@ def render_institucion_view(entity_name):
             st.markdown("### Previsualización del Reporte (Estilo Revista Científica)")
             components.html(html_data, height=850, scrolling=True)
             
-            c_rep1, c_rep2 = st.columns([1, 1])
+            c_rep1, c_rep2, c_rep3 = st.columns([1.2, 1.5, 1.2])
             with c_rep1:
                 st.download_button("⬇️ Descargar Reporte (HTML)", data=html_data, file_name=f"Reporte_Institucion_{safe_name}.html", mime="text/html")
             with c_rep2:
+                import base64
+                b64 = base64.b64encode(html_data.encode("utf-8")).decode("utf-8")
+                href = f'<a href="data:text/html;base64,{b64}" target="_blank" style="display:inline-block; padding:0.4rem 1rem; background-color:#002B5C; color:white; border-radius:0.4rem; text-decoration:none; text-align:center;">↗️ Abrir en nueva pestaña</a>'
+                st.markdown(href, unsafe_allow_html=True)
+            with c_rep3:
                 if st.button("🔄 Regenerar Reporte con IA", key=f"btn_regen_inst_{safe_name}"):
                     with st.spinner("Regenerando análisis y reporte con el modelo LLM local... Esto tomará algunos segundos."):
                         import subprocess
@@ -861,10 +866,15 @@ def render_investigador_view(entity_name):
         st.markdown("### Previsualización del Reporte (Estilo Revista Científica)")
         components.html(html_data, height=800, scrolling=True)
             
-        c_repA, c_repB = st.columns([1, 1])
+        c_repA, c_repB, c_repC = st.columns([1.2, 1.5, 1.2])
         with c_repA:
             st.download_button("⬇️ Descargar Reporte (HTML)", data=html_data, file_name=f"Reporte_Investigador_{safe_name}.html", mime="text/html")
         with c_repB:
+            import base64
+            b64 = base64.b64encode(html_data.encode("utf-8")).decode("utf-8")
+            href = f'<a href="data:text/html;base64,{b64}" target="_blank" style="display:inline-block; padding:0.4rem 1rem; background-color:#002B5C; color:white; border-radius:0.4rem; text-decoration:none; text-align:center;">↗️ Abrir en nueva pestaña</a>'
+            st.markdown(href, unsafe_allow_html=True)
+        with c_repC:
             if st.button("🔄 Regenerar Reporte con IA", key=f"btn_regen_inv_{safe_name}"):
                 with st.spinner("Regenerando análisis y reporte con el modelo LLM local... Esto tomará un par de minutos."):
                     import subprocess
