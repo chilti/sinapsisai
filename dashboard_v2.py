@@ -654,6 +654,30 @@ with tab_inv:
 # TAB 4: Acerca de / Estado DB
 # =======================================================
 with tab_about:
+    st.header("👥 Equipo de Trabajo")
+    
+    col_team1, col_team2 = st.columns(2)
+    
+    with col_team1:
+        st.markdown("#### Facultad de Ciencias")
+        st.markdown("- Dr. Humberto Andrés Carrillo Calvet")
+        st.markdown("- Dr. José Luis Jiménez Andrade")
+        st.markdown("- Dra. María Victoria Guzmán Sánchez")
+        
+        st.markdown("#### Centro de Ciencias de la Complejidad")
+        st.markdown("- Dr. Ricardo Arencibia Jorge")
+        st.markdown("- M. en C. Romel Calero Ramos")
+
+    with col_team2:
+        st.markdown("#### Instituto de Ciencias Nucleares")
+        st.markdown("- M.en C. Mayelin Mirabal Sosa")
+
+        st.markdown("#### Estudiantes de la Facultad de Ciencias")
+        st.markdown("- **Ana Valeria Deloya Andrade**: Ingeniería de Prompts para describir y analizar gráficas.")
+        st.markdown("- **Rodrigo Aldair Ortega Venegas**: Visualización de los Objetivos de Desarrollo Sostenible.")
+        st.markdown("- **Leonardo Vázquez Rodríguez**: Visualización de Trayectorias.")
+    
+    st.markdown("---")
     st.header("🗄️ Estado en Vivo de Bases de Datos")
     st.markdown("Métricas extraídas en tiempo real reflejando la ingesta actual de documentos semánticos y en el Grafo.")
     
