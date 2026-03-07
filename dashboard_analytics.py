@@ -236,6 +236,39 @@ def _render_radar_visibilidad(data_row, title="Perfil de Visibilidad", key_suffi
 
 
 def render_institucion_view(entity_name):
+    # Inyectar CSS global para estilizar st.metric como las tarjetas doradas del reporte
+    st.markdown("""
+        <style>
+        [data-testid="stMetric"] {
+            background-color: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            text-align: center;
+            border-top: 4px solid #D4AF37;
+            border-bottom: 1px solid #eaeaea;
+            border-left: 1px solid #eaeaea;
+            border-right: 1px solid #eaeaea;
+        }
+        [data-testid="stMetricLabel"] {
+            justify-content: center;
+            font-size: 13px !important;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        [data-testid="stMetricValue"] {
+            font-size: 30px !important;
+            font-weight: 700;
+            color: #002B5C;
+        }
+        /* Ajustar el delta si existe para que quede centrado también */
+        [data-testid="stMetricDelta"] {
+            justify-content: center;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     st.header(f"🏢 Vista de la Institución: {entity_name}")
     st.markdown(f"Panorama Analítico de la Producción de **{entity_name}**. La producción fué descargada desde Web of Science. Los indicaddores fueron extraidos de la base de datos abierta OpenAlex.")
 
@@ -506,18 +539,10 @@ def render_institucion_view(entity_name):
             with open(report_path, "r", encoding="utf-8") as f:
                 html_data = f.read()
             
-            st.markdown("### Previsualización del Reporte (Estilo Revista Científica)")
-            components.html(html_data, height=850, scrolling=True)
-            
-            c_rep1, c_rep2, c_rep3 = st.columns([1.2, 1.5, 1.2])
+            c_rep1, c_rep2 = st.columns([1, 1])
             with c_rep1:
                 st.download_button("⬇️ Descargar Reporte (HTML)", data=html_data, file_name=f"Reporte_Institucion_{safe_name}.html", mime="text/html")
             with c_rep2:
-                import base64
-                b64 = base64.b64encode(html_data.encode("utf-8")).decode("utf-8")
-                href = f'<a href="data:text/html;base64,{b64}" target="_blank" style="display:inline-block; padding:0.4rem 1rem; background-color:#002B5C; color:white; border-radius:0.4rem; text-decoration:none; text-align:center;">↗️ Abrir en nueva pestaña</a>'
-                st.markdown(href, unsafe_allow_html=True)
-            with c_rep3:
                 if st.button("🔄 Regenerar Reporte con IA", key=f"btn_regen_inst_{safe_name}"):
                     with st.spinner("Regenerando análisis y reporte con el modelo LLM local... Esto tomará algunos segundos."):
                         import subprocess
@@ -531,6 +556,37 @@ def render_institucion_view(entity_name):
                 st.rerun()
 
 def render_investigador_view(entity_name):
+    # Inyectar CSS global para estilizar st.metric como las tarjetas doradas del reporte
+    st.markdown("""
+        <style>
+        [data-testid="stMetric"] {
+            background-color: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            text-align: center;
+            border-top: 4px solid #D4AF37;
+            border-bottom: 1px solid #eaeaea;
+            border-left: 1px solid #eaeaea;
+            border-right: 1px solid #eaeaea;
+        }
+        [data-testid="stMetricLabel"] {
+            justify-content: center;
+            font-size: 13px !important;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        [data-testid="stMetricValue"] {
+            font-size: 30px !important;
+            font-weight: 700;
+            color: #002B5C;
+        }
+        [data-testid="stMetricDelta"] {
+            justify-content: center;
+        }
+        </style>
+    """, unsafe_allow_html=True)
     st.header(f"👤 Vista por Investigador ({entity_name})")
 
     df_inv_tot = get_cached_data("investigador_total.parquet")
@@ -863,18 +919,10 @@ def render_investigador_view(entity_name):
         with open(report_path, "r", encoding="utf-8") as f:
             html_data = f.read()
             
-        st.markdown("### Previsualización del Reporte (Estilo Revista Científica)")
-        components.html(html_data, height=800, scrolling=True)
-            
-        c_repA, c_repB, c_repC = st.columns([1.2, 1.5, 1.2])
+        c_repA, c_repB = st.columns([1, 1])
         with c_repA:
             st.download_button("⬇️ Descargar Reporte (HTML)", data=html_data, file_name=f"Reporte_Investigador_{safe_name}.html", mime="text/html")
         with c_repB:
-            import base64
-            b64 = base64.b64encode(html_data.encode("utf-8")).decode("utf-8")
-            href = f'<a href="data:text/html;base64,{b64}" target="_blank" style="display:inline-block; padding:0.4rem 1rem; background-color:#002B5C; color:white; border-radius:0.4rem; text-decoration:none; text-align:center;">↗️ Abrir en nueva pestaña</a>'
-            st.markdown(href, unsafe_allow_html=True)
-        with c_repC:
             if st.button("🔄 Regenerar Reporte con IA", key=f"btn_regen_inv_{safe_name}"):
                 with st.spinner("Regenerando análisis y reporte con el modelo LLM local... Esto tomará un par de minutos."):
                     import subprocess

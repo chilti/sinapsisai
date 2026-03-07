@@ -219,14 +219,19 @@ def generate_html_report(entity_type: str, entity_name: str) -> str:
             for n in graph_data["nodes"]:
                 node_id = n["id"]
                 node_ids.add(node_id)
-                label = n.get("label", str(node_id))
-                group = n.get("group", "Unknown")
+                
+                # In Neo4j output: 'label' holds the Node class (e.g. Academic), 'title' holds the actual name
+                node_class = n.get("label", "Unknown")
+                visible_name = n.get("title", str(node_id))
+                
                 color = "#97C2FC" # default
-                if group == "Academic": color = "#FFC0CB"
-                elif group == "Paper": color = "#ADD8E6"
-                elif group == "Institution": color = "#D4AF37"
-                elif group == "Entity": color = "#D4AF37"
-                net.add_node(node_id, label=label, title=label, color=color, group=group)
+                if node_class == "Academic": color = "#FFC0CB"
+                elif node_class == "Paper": color = "#ADD8E6"
+                elif node_class == "Institution": color = "#D4AF37"
+                elif node_class == "Entity": color = "#D4AF37"
+                elif node_class == "Funder": color = "#8FBC8F"
+                
+                net.add_node(node_id, label=visible_name, title=f"{node_class}: {visible_name}", color=color, group=node_class)
             for e in graph_data["edges"]:
                 source = e["source"]
                 target = e["target"]
