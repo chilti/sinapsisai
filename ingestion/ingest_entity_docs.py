@@ -68,6 +68,27 @@ class EntityDocsIngestor:
             
         print(f"\n🎉 Ingesta de {file_path} completada con éxito para la entidad '{entity_name}'.")
 
+    def ingest_directory(self, directory_path: str, entity_name: str):
+        print(f"📂 Escaneando directorio para la Entidad '{entity_name}': {directory_path}")
+        if not os.path.isdir(directory_path):
+            print(f"❌ Error: {directory_path} no es un directorio válido.")
+            return
+
+        # Buscamos archivos .txt (WoS) y .bib (BibTeX)
+        files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) 
+                 if f.endswith('.txt') or f.endswith('.bib') or f.endswith('.txt.txt')]
+        
+        if not files:
+            print(f"⚠️ No se encontraron archivos de soporte (.txt, .bib) en {directory_path}")
+            return
+
+        print(f"🔍 Encontrados {len(files)} archivos para procesar.")
+        for file_path in sorted(files):
+            try:
+                self.ingest_file(file_path, entity_name)
+            except Exception as e:
+                print(f"❌ Error procesando {file_path}: {e}")
+
     def _process_batch(self, batch: List[Dict[str, Any]], start_idx: int, total: int, entity_name: str):
         print(f"📦 Procesando lote {start_idx // self.batch_size + 1} ({start_idx}/{total})...", end="\r")
         
@@ -83,12 +104,12 @@ class EntityDocsIngestor:
                 works = pyalex.Works().filter(doi=doi_query).get()
                 for w in works:
                     if w.get('doi'):
-                        openalex_data[w['doi'].replace("https://doi.org/", "")] = w
+                        openalex_data[w['doi'].replace("https://doi.org/", "").lower()] = w
             except Exception as e:
                 pass
                 
         for record in batch:
-            doi = record.get('doi', '')
+            doi = record.get('doi', '').lower()
             
             if doi and doi in openalex_data:
                 work = openalex_data[doi]
@@ -248,13 +269,18 @@ class EntityDocsIngestor:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Ingesta de documentos por Entidad (WoS .txt o .bib)")
-    parser.add_argument("--file", type=str, required=True, help="Ruta al archivo WoS .txt o BibTeX .bib")
+    parser.add_argument("path", help="Ruta al archivo (.txt, .bib) o al directorio que contiene los archivos.")
     parser.add_argument("--entity", type=str, required=True, help="Nombre de la Entidad (ej. 'Facultad de Ciencias')")
+    parser.add_argument("--batch", type=int, default=20, help="Tamaño del lote (default: 20)")
     
     args = parser.parse_args()
     
-    if os.path.exists(args.file):
-        ingestor = EntityDocsIngestor(batch_size=20)
-        ingestor.ingest_file(args.file, args.entity)
+    ingestor = EntityDocsIngestor(batch_size=args.batch)
+    
+    if os.path.exists(args.path):
+        if os.path.isdir(args.path):
+            ingestor.ingest_directory(args.path, args.entity)
+        else:
+            ingestor.ingest_file(args.path, args.entity)
     else:
-        print(f"Archivo no encontrado: {args.file}")
+        print(f"La ruta no existe: {args.path}")

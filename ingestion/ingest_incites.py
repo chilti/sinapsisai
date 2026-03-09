@@ -42,7 +42,7 @@ class InCitesIngestor:
         )
         self.batch_size = batch_size
 
-    def ingest_directory(self, directory_path: str):
+    def ingest_directory(self, directory_path: str, entity_name: str = None):
         print(f"📂 Escaneando directorio InCites: {directory_path}")
         if not os.path.isdir(directory_path):
             print(f"❌ Error: {directory_path} no es un directorio válido.")
@@ -58,43 +58,38 @@ class InCitesIngestor:
         print(f"🔍 Encontrados {len(files)} archivos para procesar.")
         for file_path in sorted(files):
             try:
-                self.ingest_file(file_path)
+                self.ingest_file(file_path, entity_name)
             except Exception as e:
                 print(f"❌ Error procesando {file_path}: {e}")
 
-    def ingest_file(self, file_path: str):
+    def ingest_file(self, file_path: str, entity_name: str = None):
         print(f"\n📑 Procesando archivo InCites: {file_path}")
+        if entity_name: print(f"🏢 Entidad objetivo: {entity_name}")
         
-        # Leer Excel - InCites suele tener los datos en la primera hoja
         df = pd.read_excel(file_path)
-        
-        # Limpieza básica de columnas (quitar espacios)
         df.columns = [c.strip() for c in df.columns]
         
-        # Registros mapeados al formato interno
         records = []
         for _, row in df.iterrows():
             doi = str(row.get('DOI', '')).strip()
-            if doi == 'nan': doi = ''
+            if doi.lower() == 'nan': doi = ''
             
-            # Formatear registro para batch
             record = {
                 "paper_id": str(row.get('Accession Number', '')),
                 "title": str(row.get('Article Title', 'No Title')),
                 "year": self._extract_year(row.get('Publication Date')),
                 "doi": doi,
-                "abstract": "", # InCites excel export usually doesn't have abstract, but we keep the key
                 "authors_list": str(row.get('Authors', '')).split(';'),
                 "journal": str(row.get('Source', ''))
             }
             records.append(record)
 
         total = len(records)
-        print(f"✅ {total} registros cargados. Iniciando ingesta por lotes de {self.batch_size}...")
+        print(f"✅ {total} registros cargados. Iniciando ingesta por lotes de {self.batch_size} (con enriquecimiento OpenAlex)...")
 
         for i in range(0, total, self.batch_size):
             batch = records[i:i + self.batch_size]
-            self._process_batch(batch, i, total)
+            self._process_batch(batch, i, total, entity_name)
             
         print(f"🎉 Finalizada ingesta de {os.path.basename(file_path)}")
 
@@ -102,29 +97,66 @@ class InCitesIngestor:
         try:
             if pd.isna(date_val): return 0
             date_str = str(date_val)
-            # Intentar extraer 4 dígitos consecutivos
             import re
             match = re.search(r'\b(19|20)\d{2}\b', date_str)
             return int(match.group(0)) if match else 0
         except:
             return 0
 
-    def _process_batch(self, batch: List[Dict[str, Any]], start_idx: int, total: int):
+    def _process_batch(self, batch: List[Dict[str, Any]], start_idx: int, total: int, entity_name: str = None):
         print(f"📦 Procesando lote {start_idx // self.batch_size + 1} ({start_idx}/{total})...", end="\r")
         
+        # 1. Enriquecimiento OpenAlex (Batch)
+        dois_in_batch = [rec.get('doi') for rec in batch if rec.get('doi')]
+        openalex_data = {}
+        if dois_in_batch:
+            try:
+                doi_query = "|".join([f"https://doi.org/{d}" for d in dois_in_batch])
+                works = pyalex.Works().filter(doi=doi_query).get()
+                for w in works:
+                    if w.get('doi'):
+                        openalex_data[w['doi'].replace("https://doi.org/", "").lower()] = w
+            except Exception:
+                pass
+
         texts_to_embed = []
         payloads = []
         
         for record in batch:
-            # Solo embed de título ya que usualmente no hay abstract en InCites Excel
-            text_content = f"Title: {record['title']}"
+            doi = record.get('doi', '').lower()
+            
+            # Si hay datos de OpenAlex, enriquecer record
+            if doi and doi in openalex_data:
+                work = openalex_data[doi]
+                record['citations'] = work.get('cited_by_count', 0)
+                # Copiar campos clave para Neo4j (add_paper los usará)
+                record['fwci'] = work.get('fwci')
+                record['open_access'] = work.get('open_access', {})
+                # ... otros campos se guardan en raw_metadata vía add_paper si se desea, 
+                # pero aquí nos enfocamos en lo que add_paper e ingest_entity_docs hacen.
+                
+                # Abstract desde OpenAlex
+                if not record.get('abstract') and work.get('abstract_inverted_index'):
+                    inverted = work.get('abstract_inverted_index')
+                    try:
+                        abs_len = max(pos for v in inverted.values() for pos in v) + 1
+                        abs_list = [""] * abs_len
+                        for word, positions in inverted.items():
+                            for pos in positions: abs_list[pos] = word
+                        record['abstract'] = " ".join(filter(None, abs_list))
+                    except Exception: pass
+
+            title = record.get('title', 'No Title')
+            abstract = record.get('abstract', '')
+            text_content = f"Title: {title}\nAbstract: {abstract}".strip()
             texts_to_embed.append(text_content)
             
             payloads.append({
                 "paper_id": record["paper_id"],
-                "title": record["title"],
+                "title": title,
                 "year": record["year"],
                 "doi": record["doi"],
+                "entity": entity_name,
                 "source": "InCites",
                 "text": text_content
             })
@@ -141,25 +173,34 @@ class InCitesIngestor:
                     "year": record["year"],
                     "doi": record["doi"],
                     "authors": record["authors_list"],
-                    "source": record["journal"]
+                    "source": record["journal"],
+                    "citations": record.get("citations", 0),
+                    "abstract": record.get("abstract", "")
                 })
+                if entity_name and record.get("doi"):
+                    self.graph_store.add_entity_paper_link(entity_name, record["doi"])
         except Exception as e:
             print(f"\n❌ Error en lote {start_idx}: {e}")
 
 if __name__ == "__main__":
     import argparse
+    import pyalex as pyalex_lib # Evitar conflicto de nombre
     
-    parser = argparse.ArgumentParser(description="Ingesta de registros InCites (Excel) a Qdrant y Neo4j.")
+    parser = argparse.ArgumentParser(description="Ingesta de registros InCites (Excel) con enriquecimiento OpenAlex.")
     parser.add_argument("path", help="Ruta al archivo .xlsx o al directorio que contiene los archivos de InCites.")
-    parser.add_argument("--batch", type=int, default=30, help="Tamaño del lote (default: 30).")
+    parser.add_argument("--entity", type=str, default=None, help="Nombre de la entidad (ej. 'UNAM') para vincular los papers.")
+    parser.add_argument("--batch", type=int, default=20, help="Tamaño del lote (default: 20).")
     
     args = parser.parse_args()
+    
+    # Configurar PyAlex si es necesario
+    pyalex_lib.config.email = "test@example.com"
     
     ingestor = InCitesIngestor(batch_size=args.batch)
     
     if os.path.isdir(args.path):
-        ingestor.ingest_directory(args.path)
+        ingestor.ingest_directory(args.path, args.entity)
     elif os.path.isfile(args.path):
-        ingestor.ingest_file(args.path)
+        ingestor.ingest_file(args.path, args.entity)
     else:
         print(f"❌ La ruta no existe: {args.path}")
