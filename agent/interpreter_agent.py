@@ -59,29 +59,18 @@ class InterpreterOrchestrator:
             Eres un agente 'Plan-and-Execute' de Sinapsis AI, experto en análisis de datos científicos.
             Tu misión es analizar la producción científica usando Python de manera iterativa.
 
-            REGLAS DE FORMATO (ESTRICTAS):
-            1. UTILIZA ÚNICAMENTE Markdown estándar para tus explicaciones. 
-            2. PROHIBIDO: NO uses etiquetas <|channel|>, <|thought|>, <|message|>. NUNCA.
-            3. Para ejecutar código, usa bloques ```python [código] ```. 
-            4. Dentro del bloque de código, NO uses delimitadores markdown (```). Solo código Python puro.
-            5. Usa SIEMPRE print() para ver resultados.
+            ESTRATEGIA DE DATOS (Parquet en 'data/cache/'):
+            - 'institucion_annual.parquet' / 'institucion_total.parquet': entity_name, year, num_documents, citations, fwci_avg, percentile_avg, pct_top_10, pct_1, pct_open_access, ..., gini_topics, domain_diversity, unique_topics, top_topic, top_domain
+            - 'investigador_annual.parquet' / 'investigador_total.parquet': academic_name, entities, year, num_documents, citations, fwci_avg, percentile_avg, pct_top_10, pct_1, pct_open_access, ..., orcid, scopus_id, siia_url, citations_per_paper, h_index, (total incluye gini_topics, etc.)
+            - 'papers_institucion.parquet' / 'papers_profesor.parquet': paper_id, year, citations, Title, Source, DOI, fwci, is_oa, oa_status, is_in_top_10_percent, is_in_top_1_percent, citation_normalized_percentile, counts_by_year, referenced_works_count, apc_paid_usd, author_count, countries, license, locations_count, primary_topic_name, ODS_Nombre, etc.
+            - 'topics_institucion.parquet' / 'topics_investigador.parquet': academic_name, domain, field, subfield, topic, value
+            - 'umap_investigadores.parquet': academic_name, entities, ..., umap_x, umap_y
 
-            ESTRATEGIA DE DATOS (CRÍTICO):
-            1. PAPERS INSTITUCIÓN: 'data/cache/papers_institucion.parquet'
-               - Columnas: ['Title', 'year', 'citations', 'entity_name', 'DOI']
-               - ADVERTENCIA: NO tiene columna 'authors'. Usa el Grafo para buscar autores.
-            2. PAPERS PROFESOR: 'data/cache/papers_profesor.parquet'
-               - Columnas: ['academic_name', 'Title', 'year', 'citations']
-            
-            PATRÓN DE IMPORTACIÓN (Usa esto para buscar autores):
-            CORRECTO:
-            ```python
-            from agent.tools_hybrid import query_knowledge_graph_cypher
-            results = query_knowledge_graph_cypher("MATCH (a:Author {name: '...'})-[:AUTHORED]->(p:Paper) RETURN p.title AS Title")
-            ```
-            INCORRECTO: No intentes usar 'agent.tools_hybrid...' sin importar la función específica primero.
-
-            RECUERDA: La columna de títulos es 'Title' (con T mayúscula).
+            REGLAS:
+            1. Usa bloques ```python [código] ```. NO use etiquetas <|channel|>.
+            2. SIEMPRE usa print() para ver resultados.
+            3. La columna de títulos es 'Title' (con T mayúscula).
+            4. PAPERS_INSTITUCION NO tiene columna 'authors'. Usa el Grafo para buscar autores si es necesario.
             """
 
     async def ask(self, session_id: str, prompt: str, mode: str = "plan_and_execute", entity_context: str = None):
