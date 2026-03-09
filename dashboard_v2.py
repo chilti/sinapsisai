@@ -130,6 +130,10 @@ if "orchestrator" not in st.session_state:
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
+if "pending_plan" not in st.session_state:
+    st.session_state.pending_plan = None
+    st.session_state.pending_prompt = None
+
 
 # ---- Sidebar ----
 with st.sidebar:
@@ -522,14 +526,8 @@ with tab_chat:
     
     plan_mode_internal = "plan_and_execute"
     if "Analítico" in assistant_type:
-        plan_mode = st.radio(
-            "Modo de Misión",
-            ["▶️ Planear y Ejecutar Directo", "📝 Solo Generar Plan", "⚙️ Ejecutar Plan Guardado"],
-            horizontal=True
-        )
-        if "Solo" in plan_mode: plan_mode_internal = "plan_only"
-        elif "Guardado" in plan_mode: plan_mode_internal = "execute_plan"
-        else: plan_mode_internal = "plan_and_execute"
+        st.info("💡 **Aviso**: El asistente generará primero un plan y solicitará tu aprobación antes de ejecutar cualquier código.")
+        plan_mode_internal = "plan_only"
         
     st.markdown("---")
 
@@ -557,86 +555,126 @@ with tab_chat:
                 if message.get("image"):
                     st.image(message["image"])
 
+    # ---- Botón de Confirmación de Plan ----
+    if st.session_state.pending_plan:
+        with st.chat_message("assistant"):
+            st.warning("⚠️ **Plan detectado**. ¿Deseas proceder con la ejecución del código Python?")
+            col_conf1, col_conf2 = st.columns([1,1])
+            with col_conf1:
+                if st.button("🚀 Aprobar y Ejecutar Código", use_container_width=True, type="primary"):
+                    # Ejecutar el plan
+                    current_plan = st.session_state.pending_plan
+                    st.session_state.pending_plan = None # Limpiar para evitar recursión
+                    
+                    with st.chat_message("assistant"):
+                        placeholder = st.empty()
+                        placeholder.markdown("⚙️ *Ejecutando el plan aprobado...*")
+                        try:
+                            # Capturar de nuevo los objetos
+                            interpreter_orch = st.session_state.interpreter_orchestrator
+                            session_id = st.session_state.session_id
+                            
+                            async def run_plan():
+                                return await interpreter_orch.ask(
+                                    session_id, current_plan, mode="execute_plan", entity_context=selected_entity
+                                )
+                            
+                            response_data = _run_async_in_thread(run_plan())
+                            
+                            # Mostrar respuesta
+                            response = response_data.get("answer", "") if isinstance(response_data, dict) else response_data
+                            placeholder.markdown(response)
+                            
+                            # Manejar imagen
+                            img_data = None
+                            if os.path.exists("interpreter_output.png"):
+                                with open("interpreter_output.png", "rb") as f:
+                                    img_data = f.read()
+                                st.image(img_data)
+                                os.remove("interpreter_output.png")
+                                
+                            # Guardar en historial
+                            st.session_state.chat_history.append({
+                                "role": "assistant",
+                                "content": response,
+                                "image": img_data,
+                                "reasoning": response_data.get("intermediate_steps", []) if isinstance(response_data, dict) else []
+                            })
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error en ejecución: {e}")
+            with col_conf2:
+                if st.button("❌ Cancelar", use_container_width=True):
+                    st.session_state.pending_plan = None
+                    st.session_state.pending_prompt = None
+                    st.rerun()
+
     # ---- Input del usuario ----
     if prompt := st.chat_input("Escribe tu consulta científica aquí..."):
-        st.session_state.chat_history.append({"role": "user", "content": prompt})
-        with chat_container:
-            with st.chat_message("user"):
-                st.markdown(prompt)
+        # Si hay un plan pendiente, avisar o ignorar
+        if st.session_state.pending_plan:
+            st.info("Por favor, aprueba o cancela el plan actual antes de enviar una nueva consulta.")
+        else:
+            st.session_state.chat_history.append({"role": "user", "content": prompt})
+            with chat_container:
+                with st.chat_message("user"):
+                    st.markdown(prompt)
 
-        with chat_container:
-            with st.chat_message("assistant"):
-                placeholder = st.empty()
-                placeholder.markdown("🔍 *Consultando fuentes y analizando datos...*")
+            with chat_container:
+                with st.chat_message("assistant"):
+                    placeholder = st.empty()
+                    placeholder.markdown("🔍 *Consultando fuentes y analizando datos...*")
 
-                response = ""
-                try:
-                    # Capturamos session_id y orchestrator antes de entrar al hilo
-                    session_id = st.session_state.session_id
-                    orchestrator = st.session_state.orchestrator
-                    interpreter_orch = st.session_state.interpreter_orchestrator
+                    response = ""
+                    try:
+                        session_id = st.session_state.session_id
+                        orchestrator = st.session_state.orchestrator
+                        interpreter_orch = st.session_state.interpreter_orchestrator
 
-                    async def ask_agent():
-                        if "Analítico" in assistant_type:
-                            return await interpreter_orch.ask(
-                                session_id, prompt, mode=plan_mode_internal, entity_context=selected_entity
-                            )
-                        else:
-                            return await orchestrator.ask(session_id, prompt, entity_context=selected_entity)
+                        async def ask_agent():
+                            if "Analítico" in assistant_type:
+                                # Forzamos PLAN_ONLY para el nuevo flujo
+                                return await interpreter_orch.ask(
+                                    session_id, prompt, mode="plan_only", entity_context=selected_entity
+                                )
+                            else:
+                                return await orchestrator.ask(session_id, prompt, entity_context=selected_entity)
 
-                    response_data = _run_async_in_thread(ask_agent())
-                    
-                    if isinstance(response_data, dict):
-                        response = response_data.get("answer", "")
-                        intermediate_steps = response_data.get("intermediate_steps", [])
+                        response_data = _run_async_in_thread(ask_agent())
                         
-                        # Mostrar razonamiento en un expansor antes de la respuesta final
-                        if intermediate_steps:
-                            with st.expander("🧠 Razonamiento del Asistente (Pasos Ejecutados)", expanded=False):
-                                for step in intermediate_steps:
-                                    if step["type"] == "tool_call":
-                                        st.code(f"🛠️ Llamando a: {step['name']}\nArgumentos: {json.dumps(step['args'], indent=2, ensure_ascii=False)}")
-                                    elif step["type"] == "tool_result":
-                                        st.caption(f"📥 Resultado de {step['name']}:")
-                                        st.code(step["content"], language="json" if any(x in step['name'] for x in ["Alex", "search", "query"]) else None)
-                    else:
-                        response = response_data
-                    
-                    placeholder.markdown(response)
+                        if isinstance(response_data, dict):
+                            response = response_data.get("answer", "")
+                            intermediate_steps = response_data.get("intermediate_steps", [])
+                            
+                            if intermediate_steps:
+                                with st.expander("🧠 Razonamiento del Asistente", expanded=False):
+                                    for step in intermediate_steps:
+                                        if step["type"] == "tool_call":
+                                            st.code(f"🛠️ Llamando a: {step['name']}")
+                                        elif step["type"] == "tool_result":
+                                            st.caption(f"📥 Resultado de {step['name']}:")
+                                            st.code(step["content"][:200] + "...", language="json")
+                        else:
+                            response = response_data
+                        
+                        placeholder.markdown(response)
 
-                except Exception as e:
-                    import traceback
-                    err = traceback.format_exc()
-                    print(err)
-                    placeholder.error(f"Error en orquestación: {e}")
-                    response = f"Error: {e}"
+                        # Si era modo analítico, guardamos el plan para ejecución posterior
+                        if "Analítico" in assistant_type:
+                            st.session_state.pending_plan = response
+                            st.session_state.pending_prompt = prompt
 
-                # Detectar imagen generada por el intérprete
-                img_data = None
-                if os.path.exists("interpreter_output.png"):
-                    with open("interpreter_output.png", "rb") as f:
-                        img_data = f.read()
-                    st.image(img_data)
-                    os.remove("interpreter_output.png")
+                    except Exception as e:
+                        import traceback
+                        placeholder.error(f"Error en orquestación: {e}")
+                        response = f"Error: {e}"
 
-                st.session_state.chat_history.append({
-                    "role": "assistant",
-                    "content": response,
-                    "image": img_data,
-                    "reasoning": intermediate_steps if 'intermediate_steps' in locals() else []
-                })
-
-                # Inyectar JS para auto-scroll
-                import streamlit.components.v1 as components
-                components.html(
-                    """
-                    <script>
-                        var body = window.parent.document.querySelector(".main");
-                        body.scrollTop = body.scrollHeight;
-                    </script>
-                    """,
-                    height=0,
-                )
+                    st.session_state.chat_history.append({
+                        "role": "assistant",
+                        "content": response,
+                        "reasoning": intermediate_steps if 'intermediate_steps' in locals() else []
+                    })
+                    st.rerun()
 
 # =======================================================
 # TAB 2: Vista de la Institución
