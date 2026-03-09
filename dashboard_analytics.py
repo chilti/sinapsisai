@@ -235,6 +235,52 @@ def _render_radar_visibilidad(data_row, title="Perfil de Visibilidad", key_suffi
     st.plotly_chart(fig, use_container_width=True, key=f"radar_{key_suffix}")
 
 
+def _render_thematic_evolution(df_evol, name_col, name_val, key_suffix=""):
+    """Renderiza la tabla de evolución temática histórica."""
+    st.markdown("---")
+    st.subheader("📈 Evolución Histórica de Perfiles de Conocimiento")
+    st.markdown("Distribución anual del número de artículos por nivel temático de OpenAlex.")
+
+    if df_evol is None or df_evol.empty:
+        st.info("Datos de evolución temática no disponibles en el caché.")
+        return
+
+    df_p = df_evol[df_evol[name_col] == name_val].copy()
+    if df_p.empty:
+        st.info("No se encontraron registros de evolución temática para esta selección.")
+        return
+
+    # Selección del Nivel Temático
+    st.markdown("**Selección del Nivel Temático:**")
+    nivel = st.radio(
+        "Ver por:",
+        ["Dominio", "Campo", "Subcampo", "Tópico"],
+        horizontal=True,
+        key=f"nivel_evol_{key_suffix}"
+    )
+    
+    nivel_map = {
+        "Dominio": "domain",
+        "Campo": "field",
+        "Subcampo": "subfield",
+        "Tópico": "topic"
+    }
+    col_tema = nivel_map[nivel]
+
+    # Agrupar por nivel y año para obtener el conteo de artículos
+    df_pivot = df_p.groupby([col_tema, 'year'])['value'].sum().reset_index()
+    
+    # Pivotar para tener años en columnas
+    df_pivot = df_pivot.pivot(index=col_tema, columns='year', values='value').fillna(0).astype(int)
+    
+    # Ordenar por el total para mostrar los más relevantes arriba
+    df_pivot['Total'] = df_pivot.sum(axis=1)
+    df_pivot = df_pivot.sort_values('Total', ascending=False)
+    
+    # Mostrar la tabla
+    st.dataframe(df_pivot, use_container_width=True)
+
+
 def render_institucion_view(entity_name):
     # Inyectar CSS global para estilizar st.metric como las tarjetas doradas del reporte
     st.markdown("""
@@ -388,6 +434,10 @@ def render_institucion_view(entity_name):
             )
             fig_sun.update_layout(margin=dict(t=50, l=0, r=0, b=10), height=700)
             st.plotly_chart(fig_sun, width="stretch")
+
+            # --- Evolución Histórica Institucional ---
+            df_evol_inst = get_cached_data("thematic_evolution_institucion.parquet")
+            _render_thematic_evolution(df_evol_inst, 'entity_name', entity_name, key_suffix=f"inst_{entity_name}")
 
     # ── Vocabulario Científico (WordCloud) ────────────────────────────────────────
     df_kw_inst = get_cached_data("keywords_institucion.parquet")
@@ -766,6 +816,10 @@ def render_investigador_view(entity_name):
             )
             fig_sun_inv.update_layout(margin=dict(t=10, l=0, r=0, b=10), height=600)
             st.plotly_chart(fig_sun_inv, width="stretch")
+
+            # --- Evolución Histórica Investigador ---
+            df_evol_inv = get_cached_data("thematic_evolution_investigador.parquet")
+            _render_thematic_evolution(df_evol_inv, 'academic_name', selected_inv, key_suffix=f"inv_{selected_inv}")
 
     # ── WordCloud de Keywords ─────────────────────────────────────────────────────
     df_kw_inv = get_cached_data("keywords_investigador.parquet")

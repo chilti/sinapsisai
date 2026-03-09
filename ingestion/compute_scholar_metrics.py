@@ -697,12 +697,19 @@ def process_and_save():
     if topics_list:
         df_topics = pd.DataFrame(topics_list)
         df_topics['count'] = 1
+        # Evolución (con año)
+        df_topics_evol = df_topics.groupby(['academic_name', 'year', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
+        df_topics_evol.to_parquet(CACHE_DIR / 'thematic_evolution_investigador.parquet', index=False)
+        
+        # Totales (para Sunburst, agrupado sin año)
         df_topics_agg = df_topics.groupby(['academic_name', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
+        df_topics_agg.to_parquet(CACHE_DIR / 'topics_investigador.parquet', index=False)
     else:
         # Escribir parquet vacío para que el dashboard muestre mensaje en vez de None
         print("⚠️  No se encontraron tópicos en raw_metadata ni en nodos :Topic del grafo.")
         df_topics_agg = pd.DataFrame(columns=['academic_name', 'domain', 'field', 'subfield', 'topic', 'value'])
-    df_topics_agg.to_parquet(CACHE_DIR / 'topics_investigador.parquet', index=False)
+        df_topics_agg.to_parquet(CACHE_DIR / 'topics_investigador.parquet', index=False)
+        pd.DataFrame(columns=['academic_name', 'year', 'domain', 'field', 'subfield', 'topic', 'value']).to_parquet(CACHE_DIR / 'thematic_evolution_investigador.parquet', index=False)
     # Limpiar archivos de versiones anteriores si existen
     if os.path.exists(CACHE_DIR / 'concepts_investigador.parquet'):
         os.remove(CACHE_DIR / 'concepts_investigador.parquet')
@@ -807,20 +814,28 @@ def process_and_save():
         inst_topics_list = []
         for _, row in df_inst_raw.iterrows():
             e_name = row['entity_name']
+            year = row['year']
             topics = row.get('topics', [])
             if isinstance(topics, list):
                 for t in topics:
                     if isinstance(t, dict) and t.get('topic'):
                         inst_topics_list.append({
                             'entity_name': e_name,
+                            'year': year,
                             'domain': t.get('domain', 'Unknown'),
                             'field': t.get('field', 'Unknown'),
                             'subfield': t.get('subfield', 'Unknown'),
                             'topic': t.get('topic', 'Unknown')
                         })
         if inst_topics_list:
-            df_inst_t = pd.DataFrame(inst_topics_list)
-            df_inst_t = df_inst_t.groupby(['entity_name', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
+            df_inst_t_raw = pd.DataFrame(inst_topics_list)
+            # Aseguramos que 'year' existe en inst_topics_list
+            # Evolución (con año)
+            df_inst_evol = df_inst_t_raw.groupby(['entity_name', 'year', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
+            df_inst_evol.to_parquet(CACHE_DIR / 'thematic_evolution_institucion.parquet', index=False)
+            
+            # Totales (sin año)
+            df_inst_t = df_inst_t_raw.groupby(['entity_name', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
             df_inst_t.to_parquet(CACHE_DIR / 'topics_institucion.parquet', index=False)
     else:
         print("⚠ No hay artículos cargados por Entidad. Institucion View estará vacía.")
