@@ -56,6 +56,26 @@ class WoSIngestor:
             
         print(f"\n🎉 Ingesta de {file_path} completada con éxito.")
 
+    def ingest_directory(self, directory_path: str):
+        print(f"📂 Escaneando directorio: {directory_path}")
+        if not os.path.isdir(directory_path):
+            print(f"❌ Error: {directory_path} no es un directorio válido.")
+            return
+
+        files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) 
+                 if f.endswith('.txt') or f.endswith('.txt.txt')] # Soporte para extensiones comunes de WoS
+        
+        if not files:
+            print(f"⚠️ No se encontraron archivos .txt en {directory_path}")
+            return
+
+        print(f"🔍 Encontrados {len(files)} archivos para procesar.")
+        for file_path in sorted(files):
+            try:
+                self.ingest_file(file_path)
+            except Exception as e:
+                print(f"❌ Error procesando {file_path}: {e}")
+
     def _process_batch(self, batch: List[Dict[str, Any]], start_idx: int, total: int):
         print(f"📦 Procesando lote {start_idx // self.batch_size + 1} ({start_idx}/{total})...", end="\r")
         
@@ -65,15 +85,18 @@ class WoSIngestor:
         
         for record in batch:
             # Combinamos título y abstract para mejor búsqueda semántica
-            text_content = f"Title: {record['title']}\nAbstract: {record['abstract']}"
+            # Manejamos posibles valores nulos
+            title = record.get('title', 'No Title')
+            abstract = record.get('abstract', 'No Abstract Available')
+            text_content = f"Title: {title}\nAbstract: {abstract}"
             texts_to_embed.append(text_content)
             
             payloads.append({
-                "paper_id": record["paper_id"],
-                "title": record["title"],
-                "year": record["year"],
-                "doi": record["doi"],
-                "text": text_content # Guardamos el texto también en el payload
+                "paper_id": record.get("paper_id", ""),
+                "title": title,
+                "year": record.get("year", 0),
+                "doi": record.get("doi", ""),
+                "text": text_content
             })
 
         # 2. Generar Embeddings
@@ -85,19 +108,25 @@ class WoSIngestor:
             
             # 4. Sincronizar con Neo4j
             for record in batch:
-                # El método add_paper en knowledge_graph.py espera una estructura específica
-                # Adaptamos si es necesario o usamos una versión simplificada
                 self.graph_store.add_paper(record)
                 
         except Exception as e:
             print(f"\n❌ Error en lote {start_idx}: {e}")
 
 if __name__ == "__main__":
-    ingestor = WoSIngestor(batch_size=20)
+    import argparse
     
-    # Ingestar primero el archivo pequeño para prueba
-    small_file = r"C:\Users\jlja\Documents\Proyectos\RAGs\data\papers_2025_2026.txt"
-    if os.path.exists(small_file):
-        ingestor.ingest_file(small_file)
+    parser = argparse.ArgumentParser(description="Ingesta de registros Web of Science (WoS) a Qdrant y Neo4j.")
+    parser.add_argument("path", help="Ruta al archivo .txt o al directorio que contiene los archivos de WoS.")
+    parser.add_argument("--batch", type=int, default=20, help="Tamaño del lote para procesamiento (default: 20).")
+    
+    args = parser.parse_args()
+    
+    ingestor = WoSIngestor(batch_size=args.batch)
+    
+    if os.path.isdir(args.path):
+        ingestor.ingest_directory(args.path)
+    elif os.path.isfile(args.path):
+        ingestor.ingest_file(args.path)
     else:
-        print(f"Archivo no encontrado: {small_file}")
+        print(f"❌ La ruta proporcionada no existe: {args.path}")

@@ -5,6 +5,8 @@ __pycache__/
 .env
 *.db
 *.parquet
+*.xlsx
+*.xls
 
 # Databases & local storage
 neo4j_data/
@@ -18,6 +20,11 @@ milvus_data/
 .vscode/
 .idea/
 
-data/cache/
+data/
+ingestion/*.json
 old_code/
 reports/
+*.log
+temp_*.txt
+schemas.txt
+temp_schemas.txt
