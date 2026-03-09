@@ -667,6 +667,7 @@ with tab_about:
         st.markdown("#### Centro de Ciencias de la Complejidad")
         st.markdown("- Dr. Ricardo Arencibia Jorge")
         st.markdown("- M. en C. Romel Calero Ramos")
+        st.markdown("- M. en C. Lorena Delago Quiroz")
 
     with col_team2:
         st.markdown("#### Instituto de Ciencias Nucleares")
