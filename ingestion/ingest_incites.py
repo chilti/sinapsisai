@@ -38,7 +38,8 @@ class InCitesIngestor:
             base_url=base_url,
             api_key="lm-studio",
             default_headers=headers,
-            http_client=http_client
+            http_client=http_client,
+            check_embedding_ctx_length=False # Alineación con otros scripts
         )
         self.batch_size = batch_size
 
@@ -66,17 +67,22 @@ class InCitesIngestor:
         print(f"\n📑 Procesando archivo InCites: {file_path}")
         if entity_name: print(f"🏢 Entidad objetivo: {entity_name}")
         
-        df = pd.read_excel(file_path)
-        df.columns = [c.strip() for c in df.columns]
+        # InCites suele tener los datos en la primera hoja
+        # Agregamos dtype=str para evitar problemas de tipos iniciales
+        df = pd.read_excel(file_path, dtype=str)
+        df.columns = [str(c).strip() for c in df.columns]
         
         records = []
         for _, row in df.iterrows():
             doi = str(row.get('DOI', '')).strip()
             if doi.lower() == 'nan': doi = ''
             
+            title = str(row.get('Article Title', 'No Title')).strip()
+            if title.lower() == 'nan': title = 'No Title'
+
             record = {
                 "paper_id": str(row.get('Accession Number', '')),
-                "title": str(row.get('Article Title', 'No Title')),
+                "title": title,
                 "year": self._extract_year(row.get('Publication Date')),
                 "doi": doi,
                 "authors_list": str(row.get('Authors', '')).split(';'),
@@ -111,8 +117,12 @@ class InCitesIngestor:
         
         for record in batch:
             title = record.get('title', 'No Title')
-            # InCites Excel no tiene abstract por defecto
-            text_content = f"Title: {title}"
+            text_content = f"Title: {title}".strip()
+            
+            # Validación de texto mínima para evitar errores de API
+            if not text_content or len(text_content) < 5:
+                text_content = f"Documento de InCites ID {record.get('paper_id', 'Unknown')}"
+                
             texts_to_embed.append(text_content)
             
             payloads.append({
@@ -126,21 +136,22 @@ class InCitesIngestor:
             })
 
         try:
-            embeddings = self.embeddings_model.embed_documents(texts_to_embed)
-            self.vector_store.add_documents(payloads, embeddings)
-            
-            for record in batch:
-                # Sincronizamos con el Grafo
-                self.graph_store.add_paper({
-                    "paper_id": record["paper_id"],
-                    "title": record["title"],
-                    "year": record["year"],
-                    "doi": record["doi"],
-                    "authors": record["authors_list"],
-                    "source": record["journal"]
-                })
-                if entity_name and record.get("doi"):
-                    self.graph_store.add_entity_paper_link(entity_name, record["doi"])
+            if texts_to_embed:
+                embeddings = self.embeddings_model.embed_documents(texts_to_embed)
+                self.vector_store.add_documents(payloads, embeddings)
+                
+                for record in batch:
+                    # Sincronizamos con el Grafo
+                    self.graph_store.add_paper({
+                        "paper_id": record["paper_id"],
+                        "title": record["title"],
+                        "year": record["year"],
+                        "doi": record["doi"],
+                        "authors": record["authors_list"],
+                        "source": record["journal"]
+                    })
+                    if entity_name and record.get("doi"):
+                        self.graph_store.add_entity_paper_link(entity_name, record["doi"])
         except Exception as e:
             print(f"\n❌ Error en lote {start_idx}: {e}")
 
