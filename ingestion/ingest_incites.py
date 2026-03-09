@@ -80,13 +80,17 @@ class InCitesIngestor:
             title = str(row.get('Article Title', 'No Title')).strip()
             if title.lower() == 'nan': title = 'No Title'
 
+            # Limpieza y división de autores (separados por punto y coma)
+            authors_raw = str(row.get('Authors', '')).split(';')
+            authors_list = [a.strip() for a in authors_raw if a.strip() and a.strip().lower() != 'nan']
+            
             record = {
                 "paper_id": str(row.get('Accession Number', '')),
                 "title": title,
                 "year": self._extract_year(row.get('Publication Date')),
                 "doi": doi,
-                "authors_list": str(row.get('Authors', '')).split(';'),
-                "journal": str(row.get('Source', ''))
+                "authors": authors_list, # Neo4jGraphStore espera 'authors' (plural)
+                "source": str(row.get('Source', ''))
             }
             records.append(record)
 
@@ -147,8 +151,8 @@ class InCitesIngestor:
                         "title": record["title"],
                         "year": record["year"],
                         "doi": record["doi"],
-                        "authors": record["authors_list"],
-                        "source": record["journal"]
+                        "authors": record["authors"],
+                        "source": record["source"]
                     })
                     if entity_name and record.get("doi"):
                         self.graph_store.add_entity_paper_link(entity_name, record["doi"])

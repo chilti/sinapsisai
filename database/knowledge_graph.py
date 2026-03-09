@@ -35,14 +35,45 @@ class Neo4jGraphStore:
     def add_paper(self, paper_data: Dict[str, Any]):
         """
         Inserta un paper y sus relaciones (autores, conceptos) en el grafo.
+        Soporta autores y conceptos como listas de strings o listas de diccionarios.
         """
         import json
         
-        # Preparar data asegurando que metadata sea string de JSON
+        # Preparar data
         data = paper_data.copy()
+        
+        # Valores por defecto para evitar errores en Cypher
+        data.setdefault("citations", 0)
+        data.setdefault("doi", "")
+        data.setdefault("title", "Unknown Title")
+        data.setdefault("year", 0)
+        
+        # Normalizar autores: string -> {"name": s}
+        authors_raw = data.get("authors", [])
+        normalized_authors = []
+        for a in authors_raw:
+            if isinstance(a, str):
+                normalized_authors.append({"name": a.strip()})
+            elif isinstance(a, dict):
+                # Asegurar que tenga la clave 'name'
+                if "name" not in a and "display_name" in a:
+                    a["name"] = a["display_name"]
+                normalized_authors.append(a)
+        data["authors"] = normalized_authors
+
+        # Normalizar conceptos/keywords
+        concepts_raw = data.get("concepts", [])
+        normalized_concepts = []
+        for c in concepts_raw:
+            if isinstance(c, str):
+                normalized_concepts.append({"name": c.strip()})
+            elif isinstance(c, dict):
+                normalized_concepts.append(c)
+        data["concepts"] = normalized_concepts
+
         raw = data.get("raw_metadata", {}).copy()
         
-        # Si hay campos planos (como los inyectados por ingest_entity_docs), los movemos a raw_metadata
+        # Si hay campos planos, los movemos a raw_metadata
         top_level_keys = [
             "fwci", "citation_normalized_percentile", "is_in_top_1_percent", 
             "is_in_top_10_percent", "OpenAlex_Topics", "open_access"
@@ -51,7 +82,7 @@ class Neo4jGraphStore:
             if k in data:
                 raw[k] = data[k]
 
-        # Extracción de funders/awards desde raw ('grants' en OpenAlex)
+        # Extracción de funders/awards desde raw
         funders_list = []
         awards_list = []
         grants = raw.get("grants", [])
@@ -64,7 +95,6 @@ class Neo4jGraphStore:
             if g.get("award_id"):
                 awards_list.append(g.get("award_id"))
                 
-        # eliminar duplicados si los hay
         unique_funders = []
         seen_f = set()
         for f in funders_list:
@@ -76,7 +106,6 @@ class Neo4jGraphStore:
         
         data["funders"] = unique_funders
         data["awards"]  = unique_awards
-
         data["raw_metadata_json"] = json.dumps(raw, ensure_ascii=False)
 
         query = """
@@ -86,14 +115,11 @@ class Neo4jGraphStore:
         
         WITH p
         UNWIND $authors AS author
-        MERGE (a:Author {id: author.name}) // Usando name como ID simplificado por ahora, o author.id
+        MERGE (a:Author {id: author.name})
         SET a.name = author.name
         MERGE (a)-[:AUTHORED]->(p)
         
         WITH p, author, a
-        // Comprobar si hay institutions en author, o saltar si no hay
-        // En tu parser original no hay institutions por author, sino globales del paper.
-        // Pero mantenemos compatibilidad por si la data la trae:
         UNWIND (CASE WHEN author.institutions IS NOT NULL THEN author.institutions ELSE [] END) AS inst
         MERGE (i:Institution {id: inst.id})
         SET i.name = inst.name
