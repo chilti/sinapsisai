@@ -7,7 +7,8 @@ import os
 import io
 
 # Configuración ClickHouse (Ajustar si el servidor tiene credenciales distintas)
-CH_HOST = "localhost" # Asumiendo que corre en el mismo servidor o es accesible localmente
+CH_HOST = "127.0.0.1" 
+CH_PORT = 8123
 CH_USER = "admin"
 CH_PASS = "admin"
 CH_DB   = "openalex"
@@ -17,7 +18,13 @@ ZIP_PATH = "/mnt/expansion/30375589_orcid2025.zip"
 TARGET_TAR = "ORCID_2025_10_summaries.tar.gz"
 
 def get_client():
-    return clickhouse_connect.get_client(host=CH_HOST, username=CH_USER, password=CH_PASS, database=CH_DB)
+    return clickhouse_connect.get_client(
+        host=CH_HOST, 
+        port=CH_PORT, 
+        username=CH_USER, 
+        password=CH_PASS, 
+        database=CH_DB
+    )
 
 def parse_orcid_xml(xml_content):
     """Parsea lo básico de un XML de ORCID v3.0"""
