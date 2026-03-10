@@ -1,110 +1,113 @@
-"""
-load_orcid_dump.py
-──────────────────
-Script para ingerir el ORCID Public Data Dump (>200GB) en ClickHouse.
-Utiliza iterparse de lxml para procesamiento eficiente en memoria.
-"""
-
-import os
-import lxml.etree as ET
+# ingestion/load_orcid_dump.py
+import subprocess
+import tarfile
+import xml.etree.ElementTree as ET
 import clickhouse_connect
-import argparse
-import time
-from datetime import datetime
+import os
+import io
 
-# Namespaces de ORCID XML
-NS = {
-    'record': 'http://www.orcid.org/ns/record',
-    'person': 'http://www.orcid.org/ns/person',
-    'personal-details': 'http://www.orcid.org/ns/personal-details',
-    'activities': 'http://www.orcid.org/ns/activities',
-    'common': 'http://www.orcid.org/ns/common',
-    'history': 'http://www.orcid.org/ns/history',
-    'employment': 'http://www.orcid.org/ns/employment'
-}
+# Configuración ClickHouse (Ajustar si el servidor tiene credenciales distintas)
+CH_HOST = "localhost" # Asumiendo que corre en el mismo servidor o es accesible localmente
+CH_USER = "admin"
+CH_PASS = "admin"
+CH_DB   = "openalex"
 
-def parse_record(file_path):
-    """Parsea un archivo XML de ORCID individual o un stream."""
+# Ruta al dump en el servidor
+ZIP_PATH = "/mnt/expansion/30375589_orcid2025.zip"
+TARGET_TAR = "ORCID_2025_10_summaries.tar.gz"
+
+def get_client():
+    return clickhouse_connect.get_client(host=CH_HOST, username=CH_USER, password=CH_PASS, database=CH_DB)
+
+def parse_orcid_xml(xml_content):
+    """Parsea lo básico de un XML de ORCID v3.0"""
     try:
-        context = ET.iterparse(file_path, events=('end',), tag='{http://www.orcid.org/ns/record}record')
-        for event, elem in context:
-            record_data = {}
-            
-            # ORCID ID
-            orcid_path = elem.xpath('.//common:orcid-identifier/common:path', namespaces=NS)
-            record_data['orcid_id'] = orcid_path[0].text if orcid_path else None
-            
-            # Personal Details
-            person = elem.find('record:person', NS)
-            if person is not None:
-                details = person.find('person:personal-details', NS)
-                if details is not None:
-                    gn = details.find('personal-details:given-names', NS)
-                    fn = details.find('personal-details:family-name', NS)
-                    cn = details.find('personal-details:credit-name', NS)
-                    
-                    record_data['given_names'] = gn.text if gn is not None else ""
-                    record_data['family_names'] = fn.text if fn is not None else ""
-                    record_data['credit_name'] = cn.text if cn is not None else ""
-            
-            # Afiliación (Emplois mas recientes)
-            # Simplificado: Tomamos el primer empleo que aparezca
-            activities = elem.find('record:activities-summary', NS)
-            record_data['last_institution'] = ""
-            if activities is not None:
-                employments = activities.find('activities:employments', NS)
-                if employments is not None:
-                    # En el dump summary suele haber una lista de afiliaciones
-                    aff = employments.find('.//employment:organization', NS)
-                    if aff is not None:
-                        name = aff.find('common:name', NS)
-                        record_data['last_institution'] = name.text if name is not None else ""
-            
-            # Limpiar memoria
-            elem.clear()
-            while elem.getprevious() is not None:
-                del elem.getparent()[0]
-                
-            if record_data['orcid_id']:
-                yield record_data
+        root = ET.fromstring(xml_content)
+        ns = {
+            'common': 'http://www.orcid.org/ns/common',
+            'person': 'http://www.orcid.org/ns/person',
+            'activities': 'http://www.orcid.org/ns/activities',
+            'personal-details': 'http://www.orcid.org/ns/personal-details'
+        }
+        
+        orcid_id = root.find('.//common:path', ns).text if root.find('.//common:path', ns) is not None else ""
+        
+        person = root.find('.//person:person', ns)
+        given_names, family_name, credit_name = "", "", ""
+        if person is not None:
+            name_elem = person.find('person:name', ns)
+            if name_elem is not None:
+                gn = name_elem.find('personal-details:given-names', ns)
+                fn = name_elem.find('personal-details:family-name', ns)
+                cn = name_elem.find('personal-details:credit-name', ns)
+                given_names = gn.text if gn is not None else ""
+                family_name = fn.text if fn is not None else ""
+                credit_name = cn.text if cn is not None else ""
+
+        emails = [e.text for e in root.findall('.//person:email', ns) if e.text]
+        
+        last_aff, last_city, last_country = "", "", ""
+        activities = root.find('.//activities:activities-summary', ns)
+        if activities is not None:
+            employments = activities.find('activities:employments', ns)
+            if employments is not None:
+                emp_summaries = employments.findall('.//common:organization', ns)
+                if emp_summaries:
+                    org = emp_summaries[0]
+                    name_elem = org.find('common:name', ns)
+                    last_aff = name_elem.text if name_elem is not None else ""
+                    address = org.find('common:address', ns)
+                    if address is not None:
+                        city_elem = address.find('common:city', ns)
+                        country_elem = address.find('common:country', ns)
+                        last_city = city_elem.text if city_elem is not None else ""
+                        last_country = country_elem.text if country_elem is not None else ""
+
+        return [orcid_id, given_names, family_name, credit_name, emails, last_aff, last_city, last_country, "orcid_dump_2025"]
     except Exception as e:
-        print(f"Error parseando {file_path}: {e}")
+        return None
 
-def main():
-    parser = argparse.ArgumentParser(description="Ingesta dump de ORCID en ClickHouse.")
-    parser.add_argument("path", help="Ruta al directorio de XMLs de ORCID")
-    parser.add_argument("--host", default="localhost")
-    parser.add_argument("--batch", type=int, default=5000)
-    args = parser.parse_args()
-
-    client = clickhouse_connect.get_client(host=args.host, username='default', password='')
+def run_ingestion(batch_size=5000):
+    client = get_client()
+    cols = ['orcid', 'given_names', 'family_name', 'credit_name', 'emails', 
+            'last_affiliation', 'last_affiliation_city', 'last_affiliation_country', 'source_id']
+    
+    print(f"Iniciando ingesta desde {ZIP_PATH} -> {TARGET_TAR}...")
+    
+    # Usamos pipe para no descomprimir 46GB en disco
+    cmd = f"unzip -p {ZIP_PATH} {TARGET_TAR} | gunzip -c"
+    proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, bufsize=1024*1024)
     
     batch = []
     total = 0
-    start_time = time.time()
-
-    print(f"🚀 Iniciando ingesta desde {args.path}...")
     
-    # El dump de ORCID suele estar dividido en carpetas por los ultimos 3 digitos del ORCID
-    for root, dirs, files in os.walk(args.path):
-        for file in files:
-            if file.endswith(".xml"):
-                full_path = os.path.join(root, file)
-                for record in parse_record(full_path):
-                    batch.append(record)
-                    
-                    if len(batch) >= args.batch:
-                        client.insert('orcid.records', batch, column_names=list(batch[0].keys()))
-                        total += len(batch)
-                        batch = []
-                        elapsed = time.time() - start_time
-                        print(f"  → Ingestados: {total:,} | Velocidad: {total/elapsed:.0f} rec/s", end="\r")
-
-    if batch:
-        client.insert('orcid.records', batch, column_names=list(batch[0].keys()))
-        total += len(batch)
-
-    print(f"\n✅ Ingesta finalizada. Total: {total:,} registros en {time.time()-start_time:.1f}s")
+    try:
+        # tarfile puede leer de un stream
+        with tarfile.open(fileobj=proc.stdout, mode="r|") as tar:
+            for member in tar:
+                if member.isfile() and member.name.endswith(".xml"):
+                    f = tar.extractfile(member)
+                    if f:
+                        content = f.read()
+                        record = parse_orcid_xml(content)
+                        if record:
+                            batch.append(record)
+                            total += 1
+                        
+                        if len(batch) >= batch_size:
+                            client.insert('orcid_records', batch, column_names=cols)
+                            print(f"Insertados {total} registros...")
+                            batch = []
+                            
+            # Insertar remanente
+            if batch:
+                client.insert('orcid_records', batch, column_names=cols)
+                print(f"Ingesta finalizada. Total: {total}")
+                
+    except Exception as e:
+        print(f"Error durante la ingesta: {e}")
+    finally:
+        proc.terminate()
 
 if __name__ == "__main__":
-    main()
+    run_ingestion()

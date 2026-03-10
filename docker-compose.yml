@@ -6,8 +6,8 @@ services:
     image: qdrant/qdrant:latest
     container_name: qdrant
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
     volumes:
       - /mnt/expansion/dockers_drives/qdrant_storage:/qdrant/storage
     environment:
@@ -20,8 +20,8 @@ services:
     container_name: neo4j
     user: "${UID:-1000}:${GID:-1000}"
     ports:
-      - "7474:7474" # Browser GUI
-      - "7687:7687" # Bolt connection
+      - "127.0.0.1:7474:7474" # Browser GUI
+      - "127.0.0.1:7687:7687" # Bolt connection
     volumes:
       - /mnt/expansion/dockers_drives/neo4j_data:/data
       - /mnt/expansion/dockers_drives/neo4j_logs:/logs
@@ -39,14 +39,33 @@ services:
     image: lfoppiano/grobid:0.8.0
     container_name: grobid
     ports:
-      - "8070:8070"
+      - "127.0.0.1:8070:8070"
     environment:
       - JAVA_OPTS=-Xmx4g
     restart: unless-stopped
-    # Procesamiento no estructurado general
+  # Procesamiento no estructurado general
   unstructured-api:
     image: downloads.unstructured.io/unstructured-io/unstructured-api:latest
     container_name: unstructured-api
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+
+  # ClickHouse: Almacenamiento OLAP para metadatos masivos (ORCID/OpenAlex)
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse-server
+    ports:
+      - "127.0.0.1:8123:8123"
+      - "127.0.0.1:9000:9000"
+    volumes:
+      - /mnt/expansion/dockers_drives/clickhouse:/var/lib/clickhouse
+    environment:
+      - CLICKHOUSE_DB=openalex
+      - CLICKHOUSE_USER=admin
+      - CLICKHOUSE_PASSWORD=admin
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
     restart: unless-stopped
