@@ -48,7 +48,7 @@ services:
     image: downloads.unstructured.io/unstructured-io/unstructured-api:latest
     container_name: unstructured-api
     ports:
-      - "127.0.0.1:8001:8000"
+      - "127.0.0.1:8009:8000"
     restart: unless-stopped
 
   # ClickHouse: Almacenamiento OLAP para metadatos masivos (ORCID/OpenAlex)
