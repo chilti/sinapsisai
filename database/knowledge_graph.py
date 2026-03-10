@@ -274,6 +274,26 @@ class Neo4jGraphStore:
             except Exception as e:
                 pass
 
+    def check_paper_exists(self, paper_id_or_doi: str) -> bool:
+        """
+        Verifica si un artículo ya existe en Neo4j buscando por su ID (DOI o WOS ID).
+        """
+        if not paper_id_or_doi:
+            return False
+        query = "MATCH (p:Paper {id: $id}) RETURN count(p) > 0 as exists"
+        # También intentamos buscar por la propiedad .doi si el id no coincide exactamente (por prefijos https://doi.org/)
+        query_alt = "MATCH (p:Paper) WHERE p.id = $id OR p.doi = $id OR p.doi = $doi_clean RETURN count(p) > 0 as exists"
+        
+        doi_clean = paper_id_or_doi.replace("https://doi.org/", "").strip().lower()
+        
+        with self.driver.session() as session:
+            try:
+                result = session.run(query_alt, id=paper_id_or_doi, doi_clean=doi_clean)
+                record = result.single()
+                return record["exists"] if record else False
+            except Exception:
+                return False
+
     def add_academic_affiliation(self, academic_name: str, entity_name: str):
         """
         Vincula un Academic con un Entity institucional.

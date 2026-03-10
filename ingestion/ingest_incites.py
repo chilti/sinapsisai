@@ -39,11 +39,11 @@ class InCitesIngestor:
             api_key="lm-studio",
             default_headers=headers,
             http_client=http_client,
-            check_embedding_ctx_length=False # Alineación con otros scripts
+            check_embedding_ctx_length=False 
         )
         self.batch_size = batch_size
 
-    def ingest_directory(self, directory_path: str, entity_name: str = None):
+    def ingest_directory(self, directory_path: str, entity_name: str = None, skip_existing: bool = False):
         print(f"📂 Escaneando directorio InCites: {directory_path}")
         if not os.path.isdir(directory_path):
             print(f"❌ Error: {directory_path} no es un directorio válido.")
@@ -59,16 +59,15 @@ class InCitesIngestor:
         print(f"🔍 Encontrados {len(files)} archivos para procesar.")
         for file_path in sorted(files):
             try:
-                self.ingest_file(file_path, entity_name)
+                self.ingest_file(file_path, entity_name, skip_existing)
             except Exception as e:
                 print(f"❌ Error procesando {file_path}: {e}")
 
-    def ingest_file(self, file_path: str, entity_name: str = None):
+    def ingest_file(self, file_path: str, entity_name: str = None, skip_existing: bool = False):
         print(f"\n📑 Procesando archivo InCites: {file_path}")
         if entity_name: print(f"🏢 Entidad objetivo: {entity_name}")
         
         # InCites suele tener los datos en la primera hoja
-        # Agregamos dtype=str para evitar problemas de tipos iniciales
         df = pd.read_excel(file_path, dtype=str)
         df.columns = [str(c).strip() for c in df.columns]
         
@@ -89,7 +88,7 @@ class InCitesIngestor:
                 "title": title,
                 "year": self._extract_year(row.get('Publication Date')),
                 "doi": doi,
-                "authors": authors_list, # Neo4jGraphStore espera 'authors' (plural)
+                "authors": authors_list,
                 "source": str(row.get('Source', ''))
             }
             records.append(record)
@@ -99,7 +98,7 @@ class InCitesIngestor:
 
         for i in range(0, total, self.batch_size):
             batch = records[i:i + self.batch_size]
-            self._process_batch(batch, i, total, entity_name)
+            self._process_batch(batch, i, total, entity_name, skip_existing)
             
         print(f"🎉 Finalizada ingesta de {os.path.basename(file_path)}")
 
@@ -113,17 +112,29 @@ class InCitesIngestor:
         except:
             return 0
 
-    def _process_batch(self, batch: List[Dict[str, Any]], start_idx: int, total: int, entity_name: str = None):
+    def _process_batch(self, batch: List[Dict[str, Any]], start_idx: int, total: int, entity_name: str = None, skip_existing: bool = False):
         print(f"📦 Procesando lote {start_idx // self.batch_size + 1} ({start_idx}/{total})...", end="\r")
         
+        filtered_batch = []
+        if skip_existing:
+            for record in batch:
+                id_to_check = record.get('doi') or record.get('paper_id')
+                if self.graph_store.check_paper_exists(id_to_check):
+                    continue
+                filtered_batch.append(record)
+        else:
+            filtered_batch = batch
+
+        if not filtered_batch:
+            return
+
         texts_to_embed = []
         payloads = []
         
-        for record in batch:
+        for record in filtered_batch:
             title = record.get('title', 'No Title')
             text_content = f"Title: {title}".strip()
             
-            # Validación de texto mínima para evitar errores de API
             if not text_content or len(text_content) < 5:
                 text_content = f"Documento de InCites ID {record.get('paper_id', 'Unknown')}"
                 
@@ -144,8 +155,7 @@ class InCitesIngestor:
                 embeddings = self.embeddings_model.embed_documents(texts_to_embed)
                 self.vector_store.add_documents(payloads, embeddings)
                 
-                for record in batch:
-                    # Sincronizamos con el Grafo
+                for record in filtered_batch:
                     self.graph_store.add_paper({
                         "paper_id": record["paper_id"],
                         "title": record["title"],
@@ -166,14 +176,15 @@ if __name__ == "__main__":
     parser.add_argument("path", help="Ruta al archivo .xlsx o al directorio que contiene los archivos de InCites.")
     parser.add_argument("--entity", type=str, default=None, help="Nombre de la entidad (ej. 'UNAM') para vincular los papers.")
     parser.add_argument("--batch", type=int, default=30, help="Tamaño del lote (default: 30).")
+    parser.add_argument("--skip-existing", action="store_true", help="Saltar artículos que ya existen en la base de datos.")
     
     args = parser.parse_args()
     
     ingestor = InCitesIngestor(batch_size=args.batch)
     
     if os.path.isdir(args.path):
-        ingestor.ingest_directory(args.path, args.entity)
+        ingestor.ingest_directory(args.path, args.entity, args.skip_existing)
     elif os.path.isfile(args.path):
-        ingestor.ingest_file(args.path, args.entity)
+        ingestor.ingest_file(args.path, args.entity, args.skip_existing)
     else:
         print(f"❌ La ruta no existe: {args.path}")
