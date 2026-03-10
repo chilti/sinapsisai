@@ -9,8 +9,8 @@ USERNAME = "jlja"
 PASSWORD = "T3mporal123+-"
 REMOTE_PATH = "/mnt/expansion/30375589_orcid2025.zip"
 
-def check_remote_clickhouse():
-    print(f"Connecting to {HOSTNAME} to check ClickHouse...")
+def debug_server_deployment():
+    print(f"Connecting to {HOSTNAME} to debug deployment...")
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     
@@ -18,20 +18,27 @@ def check_remote_clickhouse():
         client.connect(HOSTNAME, username=USERNAME, password=PASSWORD)
         print("Connected.")
         
-        # Check if clickhouse process is running
-        stdin, stdout, stderr = client.exec_command("ps aux | grep clickhouse | grep -v grep")
-        print("ClickHouse process check:")
+        # Check what is using port 9000 with lsof
+        print("--- Process using Port 9000 ---")
+        stdin, stdout, stderr = client.exec_command("sudo -S lsof -i :9000")
+        stdin.write(PASSWORD + '\n')
+        stdin.flush()
         print(stdout.read().decode('utf-8'))
         
-        # Check listening ports
-        stdin, stdout, stderr = client.exec_command("netstat -tuln | grep -E ':8123|:9000'")
-        print("ClickHouse port check:")
+        # Check fuser as fallback
+        print("--- Fuser Port 9000 ---")
+        stdin, stdout, stderr = client.exec_command(f"sudo -S fuser 9000/tcp")
+        stdin.write(PASSWORD + '\n')
+        stdin.flush()
+        print(stdout.read().decode('utf-8'))
+        
+        # Check if clickhouse-server is installed via apt
+        print("--- Apt Policy Clickhouse ---")
+        stdin, stdout, stderr = client.exec_command("apt policy clickhouse-server")
         print(stdout.read().decode('utf-8'))
                 
     finally:
         client.close()
 
 if __name__ == "__main__":
-    if not os.path.exists("data"):
-        os.makedirs("data")
-    check_remote_clickhouse()
+    debug_server_deployment()
