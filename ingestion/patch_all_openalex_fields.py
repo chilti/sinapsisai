@@ -31,8 +31,16 @@ import time
 import argparse
 import ast
 
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+import httpx
+import os
+import ssl
+import time
+
+# Desactivar SSL verification globalmente (Nuclear Option)
 try:
-    sys.stdout.reconfigure(encoding='utf-8')
+    ssl._create_default_https_context = ssl._create_unverified_context
 except AttributeError:
     pass
 
@@ -162,7 +170,7 @@ def _parse_raw_meta(raw_meta_json):
 
 # ─── Script principal ───────────────────────────────────────────────────────
 
-def patch_all_fields(entity_filter: str = None, dry_run: bool = False, skip_existing: bool = False):
+def patch_all_fields(entity_filter: str = None, dry_run: bool = False, skip_existing: bool = False, limit: int = None, batch_size: int = 20):
     graph_store = Neo4jGraphStore()
 
     print("📋 Mapeando papers desde Neo4j...")
@@ -172,27 +180,35 @@ def patch_all_fields(entity_filter: str = None, dry_run: bool = False, skip_exis
             query = """
             MATCH (e:Entity {name: $entity})-[:HAS_PAPER]->(p:Paper)
             WHERE p.raw_metadata IS NOT NULL
-            RETURN p.id AS doi, p.raw_metadata AS meta
+            RETURN p.id AS id, p.doi AS doi, p.title AS title, p.raw_metadata AS meta
             UNION
             MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)
             WHERE p.raw_metadata IS NOT NULL
-            RETURN p.id AS doi, p.raw_metadata AS meta
+            RETURN p.id AS id, p.doi AS doi, p.title AS title, p.raw_metadata AS meta
             """
             result = session.run(query, entity=entity_filter)
         else:
-            result = session.run(
-                "MATCH (p:Paper) WHERE p.raw_metadata IS NOT NULL "
-                "RETURN p.id AS doi, p.raw_metadata AS meta"
-            )
-        seen_dois = set()
+            q = "MATCH (p:Paper) WHERE p.raw_metadata IS NOT NULL " \
+                "RETURN p.id AS id, p.doi AS doi, p.title AS title, p.raw_metadata AS meta"
+            if limit: q += f" LIMIT {limit}"
+            result = session.run(q)
+        seen_ids = set()
         for row in result:
-            if row['doi'] not in seen_dois:
-                papers.append((row['doi'], row['meta']))
-                seen_dois.add(row['doi'])
+            if row['id'] not in seen_ids:
+                papers.append({
+                    "id": row['id'],
+                    "doi": row['doi'],
+                    "title": row['title'],
+                    "meta": row['meta']
+                })
+                seen_ids.add(row['id'])
 
     # Filtrar DOIs válidos para OpenAlex
-    valid = [(doi, meta) for doi, meta in papers
-             if doi and doi.startswith("10.") and not doi.startswith("urn:")]
+    valid = [p for p in papers
+             if p['doi'] and p['doi'].startswith("10.") and not p['doi'].startswith("urn:")]
+    
+    if limit and len(valid) > limit:
+        valid = valid[:limit]
 
     if skip_existing:
         def _needs_patch(meta_json):
@@ -220,19 +236,39 @@ def patch_all_fields(entity_filter: str = None, dry_run: bool = False, skip_exis
 
     for i in range(0, total, batch_size):
         batch = valid[i:i + batch_size]
-        clean_dois = [d[0].replace("https://doi.org/", "").strip().lower() for d in batch]
+        clean_dois = [d["doi"].replace("https://doi.org/", "").strip().lower() for d in batch]
 
-        # Fetch individual por DOI (lookup directo, más confiable que .filter() con listas)
+        # Fetch individual por DOI o Título (fallback) con HTTPX para bypass de SSL
         oa_data = {}
-        for d in clean_dois:
-            url = f"https://doi.org/{d}"
-            try:
-                work = pyalex.Works()[url]
-                if work and work.get('doi'):
-                    oa_data[d] = work
-            except Exception:
-                pass
-            time.sleep(0.08)  # ~12 req/s respeta rate limit pública de OpenAlex
+        with httpx.Client(verify=False, timeout=15.0) as client:
+            for p_rec in batch:
+                d = p_rec["doi"].replace("https://doi.org/", "").strip().lower()
+                t = p_rec.get("title", "")
+                try:
+                    # Intento 1: Por DOI
+                    url = f"https://api.openalex.org/works/https://doi.org/{d}"
+                    params = {"mailto": pyalex.config.email}
+                    
+                    resp = client.get(url, params=params)
+                    if resp.status_code == 200:
+                        oa_data[d] = resp.json()
+                        print(f"  [OK DOI] {d}")
+                    else:
+                        if t and len(t) > 20:
+                            # Intento 2: Por Título (fallback)
+                            search_url = "https://api.openalex.org/works"
+                            search_params = {"search": t, "mailto": pyalex.config.email}
+                            
+                            resp = client.get(search_url, params=search_params)
+                            if resp.status_code == 200:
+                                results = resp.json().get("results", [])
+                                if results:
+                                    oa_data[d] = results[0]
+                                    print(f"  [OK Title] {t[:50]}...")
+                except Exception as e:
+                    print(f"  [Error API] {d}: {e}")
+                    pass
+                time.sleep(0.1)
 
         if not oa_data and not first_skip_printed:
             print(f"\n  ⚠️  Primer lote sin resultados de OpenAlex. DOI de prueba: {clean_dois[0]!r}", flush=True)
@@ -240,7 +276,11 @@ def patch_all_fields(entity_filter: str = None, dry_run: bool = False, skip_exis
 
         # Parchar en Neo4j
         with graph_store.driver.session() as session:
-            for doi_full, raw_meta_json in batch:
+            for p_rec in batch:
+                doi_full = p_rec["doi"]
+                paper_id = p_rec["id"]
+                raw_meta_json = p_rec["meta"]
+                
                 clean = doi_full.replace("https://doi.org/", "").strip().lower()
                 if clean not in oa_data:
                     skipped += 1
@@ -284,7 +324,7 @@ def patch_all_fields(entity_filter: str = None, dry_run: bool = False, skip_exis
                         MERGE (p)-[:HAS_AWARD]->(aw)
                     )
                     """
-                    session.run(update_query, id=doi_full, meta=json.dumps(meta, ensure_ascii=False),
+                    session.run(update_query, id=paper_id, meta=json.dumps(meta, ensure_ascii=False),
                                 funders=unique_funders, awards=unique_awards)
                     updated += 1
                 except Exception as e:
@@ -318,10 +358,20 @@ if __name__ == "__main__":
         "--skip-existing", action="store_true",
         help="Solo parchear papers que no tienen author_count o counts_by_year"
     )
+    parser.add_argument(
+        "--limit", type=int, default=None,
+        help="Límite máximo de papers a parchear"
+    )
+    parser.add_argument(
+        "--batch", type=int, default=20,
+        help="Tamaño del lote (batch)"
+    )
     args = parser.parse_args()
 
     patch_all_fields(
         entity_filter=args.entity,
         dry_run=args.dry_run,
         skip_existing=args.skip_existing,
+        limit=args.limit,
+        batch_size=args.batch
     )
