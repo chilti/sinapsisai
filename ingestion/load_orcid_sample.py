@@ -54,19 +54,16 @@ def parse_orcid_xml(xml_content):
     emails = [e.text for e in root.findall('.//person:email', ns) if e.text]
     
     # Affiliation (Empleos)
-    last_aff = ""
-    last_city = ""
-    last_country = ""
+    last_aff, last_city, last_country = "", "", ""
+    dois = []
     
     activities = root.find('.//activities:activities-summary', ns)
     if activities is not None:
+        # 1. Empleos
         employments = activities.find('activities:employments', ns)
         if employments is not None:
-            # En activities-summary no hay lista de employments detallada sino grupos/summaries
-            # Vamos a buscar el nombre de la organización en los summaries
             emp_summaries = employments.findall('.//common:organization', ns)
             if emp_summaries:
-                # Tomamos la primera (o última) según la lógica
                 org = emp_summaries[0]
                 name_elem = org.find('common:name', ns)
                 last_aff = name_elem.text if name_elem is not None else ""
@@ -76,8 +73,21 @@ def parse_orcid_xml(xml_content):
                     country_elem = address.find('common:country', ns)
                     last_city = city_elem.text if city_elem is not None else ""
                     last_country = country_elem.text if country_elem is not None else ""
+        
+        # 2. DOIs
+        works = activities.find('activities:works', ns)
+        if works is not None:
+            for work in works.findall('.//activities:work-summary', ns):
+                ext_ids = work.find('common:external-ids', ns)
+                if ext_ids is not None:
+                    for ext_id in ext_ids.findall('common:external-id', ns):
+                        id_type = ext_id.find('common:external-id-type', ns)
+                        if id_type is not None and id_type.text.lower() == 'doi':
+                            val = ext_id.find('common:external-id-value', ns)
+                            if val is not None and val.text:
+                                dois.append(val.text.lower().strip())
 
-    return [orcid_id, given_names, family_name, credit_name, emails, last_aff, last_city, last_country, "orcid_dump_2025"]
+    return [orcid_id, given_names, family_name, credit_name, emails, dois, last_aff, last_city, last_country, "orcid_dump_2025"]
 
 def load_files(file_paths):
     client = get_client()
@@ -94,8 +104,7 @@ def load_files(file_paths):
             
     if records:
         print(f"Inserting {len(records)} records into ClickHouse...")
-        # clickhouse-connect insert format: table, data, column_names
-        cols = ['orcid', 'given_names', 'family_name', 'credit_name', 'emails', 
+        cols = ['orcid', 'given_names', 'family_name', 'credit_name', 'emails', 'dois',
                 'last_affiliation', 'last_affiliation_city', 'last_affiliation_country', 'source_id']
         client.insert('orcid_records', records, column_names=cols)
         print("Insert complete.")

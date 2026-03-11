@@ -1,12 +1,15 @@
 -- setup_orcid_db.sql
 -- Definición de la tabla para el dump masivo de ORCID
 
-CREATE TABLE IF NOT EXISTS orcid_records (
+DROP TABLE IF EXISTS orcid_records;
+
+CREATE TABLE orcid_records (
     orcid String,
     given_names String,
     family_name String,
     credit_name String,
     emails Array(String),
+    dois Array(String),
     last_affiliation String,
     last_affiliation_city String,
     last_affiliation_country String,
@@ -14,7 +17,7 @@ CREATE TABLE IF NOT EXISTS orcid_records (
     last_modified DateTime DEFAULT now()
 ) ENGINE = MergeTree()
 ORDER BY (family_name, orcid)
-COMMENT 'Tabla para almacenar el dump público de ORCID 2024/2025';
+COMMENT 'Tabla para almacenar el dump público de ORCID (incluye DOIs para matching)';
 
 -- Índice experimental para búsqueda rápida de nombres
 -- (Opcional, se puede añadir después si la tabla es lenta)

@@ -68,8 +68,10 @@ def parse_orcid_xml(xml_content):
         emails = [e.text for e in root.findall('.//person:email', ns) if e.text]
         
         last_aff, last_city, last_country = "", "", ""
+        dois = []
         activities = root.find('.//activities:activities-summary', ns)
         if activities is not None:
+            # 1. Empleos para Affiliation
             employments = activities.find('activities:employments', ns)
             if employments is not None:
                 emp_summaries = employments.findall('.//common:organization', ns)
@@ -83,14 +85,27 @@ def parse_orcid_xml(xml_content):
                         country_elem = address.find('common:country', ns)
                         last_city = city_elem.text if city_elem is not None else ""
                         last_country = country_elem.text if country_elem is not None else ""
+            
+            # 2. Artículos (DOIs)
+            works = activities.find('activities:works', ns)
+            if works is not None:
+                for work in works.findall('.//activities:work-summary', ns):
+                    ext_ids = work.find('common:external-ids', ns)
+                    if ext_ids is not None:
+                        for ext_id in ext_ids.findall('common:external-id', ns):
+                            id_type = ext_id.find('common:external-id-type', ns)
+                            if id_type is not None and id_type.text.lower() == 'doi':
+                                val = ext_id.find('common:external-id-value', ns)
+                                if val is not None and val.text:
+                                    dois.append(val.text.lower().strip())
 
-        return [orcid_id, given_names, family_name, credit_name, emails, last_aff, last_city, last_country, "orcid_dump_2025"]
+        return [orcid_id, given_names, family_name, credit_name, emails, dois, last_aff, last_city, last_country, "orcid_dump_2025"]
     except Exception as e:
         return None
 
 def run_ingestion(batch_size=5000):
     client = get_client()
-    cols = ['orcid', 'given_names', 'family_name', 'credit_name', 'emails', 
+    cols = ['orcid', 'given_names', 'family_name', 'credit_name', 'emails', 'dois',
             'last_affiliation', 'last_affiliation_city', 'last_affiliation_country', 'source_id']
     
     print(f"Iniciando ingesta desde {ZIP_PATH} -> {TARGET_TAR}...")
