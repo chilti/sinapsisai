@@ -68,6 +68,7 @@ def extract_new_fields(work: dict) -> dict:
     return {
         'openalex_url':                 work.get('id'),
         'fwci':                         work.get('fwci'),
+        'cited_by_count':               work.get('cited_by_count', 0),
         'open_access':                  oa,
         'citation_normalized_percentile': (work.get('citation_normalized_percentile') or {}).get('value'),
         'is_in_top_1_percent':          (work.get('citation_normalized_percentile') or {}).get('is_in_top_1_percent', False),
@@ -245,16 +246,19 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
                         if found_doi: 
                             found_doi = found_doi.replace("https://doi.org/", "").lower()
                         
+                        # Extraer citas directamente para guardarlo ademas en Propiedades del Nodo
+                        citations_val = int(oa_work.get('cited_by_count', 0) or 0)
+                        
                         if found_doi and not doi_key.startswith("10."):
                             # Caso orcid-work -> DOI real descubierto
                             session.run("""
                                 MATCH (p:Paper {id: $id}) 
-                                SET p.raw_metadata = $json, p.doi = $new_doi
-                            """, id=p_rec['id'], json=json.dumps(meta, ensure_ascii=False), new_doi=found_doi)
+                                SET p.raw_metadata = $json, p.doi = $new_doi, p.citations = $citations
+                            """, id=p_rec['id'], json=json.dumps(meta, ensure_ascii=False), new_doi=found_doi, citations=citations_val)
                         else:
-                            # Actualización normal solo de metadata
-                            session.run("MATCH (p:Paper {id: $id}) SET p.raw_metadata = $json", 
-                                        id=p_rec['id'], json=json.dumps(meta, ensure_ascii=False))
+                            # Actualización normal
+                            session.run("MATCH (p:Paper {id: $id}) SET p.raw_metadata = $json, p.citations = $citations", 
+                                        id=p_rec['id'], json=json.dumps(meta, ensure_ascii=False), citations=citations_val)
                         updated += 1
                     except:
                         errors += 1

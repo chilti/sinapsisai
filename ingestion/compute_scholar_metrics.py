@@ -283,6 +283,26 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                 is_in_top_10_percent = np.nan
                 is_in_top_1_percent = np.nan
 
+            # Lógica de Citas: Priorizar OpenAlex
+            citations = row.get('citations')
+            if isinstance(citations, (int, float)) and not np.isnan(citations):
+                citations = int(citations)
+            elif isinstance(citations, str) and citations.isdigit():
+                citations = int(citations)
+            else:
+                citations = 0
+            
+            if has_oa_link:
+                oa_cites = raw_meta.get('cited_by_count')
+                if oa_cites is None:
+                    counts = raw_meta.get('counts_by_year', [])
+                    if isinstance(counts, list) and counts:
+                        oa_cites = sum(y.get('cited_by_count', 0) for y in counts)
+                    else:
+                        oa_cites = 0
+                if oa_cites is not None and int(oa_cites) > citations:
+                    citations = int(oa_cites)
+
             records.append({
                 'academic_name': row['academic_name'],
                 'orcid':     row['orcid'],
@@ -291,7 +311,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                 'entities':  ";".join(row['entities']) if row['entities'] else "",
                 'paper_id':  row['paper_id'],
                 'year':      row['year'],
-                'citations': row['citations'],
+                'citations': citations,
                 'Title':  title,
                 'Source': source,
                 'DOI':    doi_link,
@@ -486,11 +506,31 @@ def extract_entity_papers(entity_filter=None):
                     sdg_conf = first_sdg[0]['confidence']
                     sdg_reas = first_sdg[0]['reasoning']
 
+            # Lógica de Citas: Priorizar OpenAlex
+            citations = row.get('citations')
+            if isinstance(citations, (int, float)) and not np.isnan(citations):
+                citations = int(citations)
+            elif isinstance(citations, str) and citations.isdigit():
+                citations = int(citations)
+            else:
+                citations = 0
+            
+            if has_oa_link:
+                oa_cites = raw_meta.get('cited_by_count')
+                if oa_cites is None:
+                    counts = raw_meta.get('counts_by_year', [])
+                    if isinstance(counts, list) and counts:
+                        oa_cites = sum(y.get('cited_by_count', 0) for y in counts)
+                    else:
+                        oa_cites = 0
+                if oa_cites is not None and int(oa_cites) > citations:
+                    citations = int(oa_cites)
+
             records.append({
                 'entity_name': row['entity_name'],
                 'paper_id': row['paper_id'],
                 'year': row['year'],
-                'citations': row['citations'],
+                'citations': citations,
                 'Title': title,
                 'Source': source,
                 'DOI': doi_link,
