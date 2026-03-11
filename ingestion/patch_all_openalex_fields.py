@@ -174,7 +174,12 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
                     if 'author_count' in meta and 'counts_by_year' in meta:
                         skipped += 1
                         continue
-                if p['doi'] and p['doi'].startswith("10."):
+                
+                # Permitir papers con DOI real O con IDs temporales de ORCID si tienen título largo
+                has_real_doi = p['doi'] and str(p['doi']).startswith("10.")
+                has_title = p['title'] and len(str(p['title'])) > 20
+                
+                if has_real_doi or has_title:
                     to_patch.append(p)
                 else:
                     skipped += 1
@@ -187,39 +192,66 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
 
             # API FETCH
             oa_data = {}
-            with httpx.Client(verify=False, timeout=20.0) as client:
+            with httpx.Client(verify=False, timeout=25.0) as client:
                 for p_rec in to_patch:
-                    doi = p_rec['doi'].replace("https://doi.org/", "").strip().lower()
+                    doi_field = str(p_rec['doi'] or "")
+                    clean_doi = doi_field.replace("https://doi.org/", "").strip().lower()
+                    title = p_rec.get('title', "")
+                    
                     try:
-                        resp = client.get(f"https://api.openalex.org/works/https://doi.org/{doi}", 
-                                          params={"mailto": pyalex.config.email})
-                        if resp.status_code == 200:
-                            oa_data[doi] = resp.json()
-                        elif p_rec['title'] and len(p_rec['title']) > 20:
-                            # Fallback por título
+                        work_found = None
+                        # Intento 1: Solo si parece un DOI real
+                        if clean_doi.startswith("10."):
+                            resp = client.get(f"https://api.openalex.org/works/https://doi.org/{clean_doi}", 
+                                              params={"mailto": pyalex.config.email})
+                            if resp.status_code == 200:
+                                work_found = resp.json()
+                        
+                        # Intento 2: Búsqueda por Título (si no hay DOI o no se encontró por DOI)
+                        if not work_found and title and len(title) > 20:
+                            # Usamos búsqueda exacta por título si es posible
                             s_resp = client.get("https://api.openalex.org/works", 
-                                                params={"search": p_rec['title'], "mailto": pyalex.config.email})
+                                                params={"search": title, "mailto": pyalex.config.email})
                             if s_resp.status_code == 200:
-                                res = s_resp.json().get('results', [])
-                                if res: oa_data[doi] = res[0]
+                                results = s_resp.json().get('results', [])
+                                if results: 
+                                    # Tomamos el primero si el título coincide razonablemente
+                                    work_found = results[0]
+                        
+                        if work_found:
+                            oa_data[doi_field] = work_found
                     except: pass
                     time.sleep(0.05)
 
             # DB UPDATE
             with graph_store.driver.session() as session:
                 for p_rec in to_patch:
-                    doi_key = p_rec['doi'].replace("https://doi.org/", "").strip().lower()
+                    doi_key = str(p_rec['doi'] or "")
                     if doi_key not in oa_data:
                         errors += 1
                         continue
                     
                     try:
                         meta = _parse_raw_meta(p_rec['meta'])
-                        new_data = extract_new_fields(oa_data[doi_key])
+                        oa_work = oa_data[doi_key]
+                        new_data = extract_new_fields(oa_work)
                         meta.update(new_data)
                         
-                        session.run("MATCH (p:Paper {id: $id}) SET p.raw_metadata = $json", 
-                                    id=p_rec['id'], json=json.dumps(meta, ensure_ascii=False))
+                        # Si recuperamos un DOI de OpenAlex que no teníamos, lo actualizamos en el nodo
+                        found_doi = oa_work.get('doi')
+                        if found_doi: 
+                            found_doi = found_doi.replace("https://doi.org/", "").lower()
+                        
+                        if found_doi and not doi_key.startswith("10."):
+                            # Caso orcid-work -> DOI real descubierto
+                            session.run("""
+                                MATCH (p:Paper {id: $id}) 
+                                SET p.raw_metadata = $json, p.doi = $new_doi
+                            """, id=p_rec['id'], json=json.dumps(meta, ensure_ascii=False), new_doi=found_doi)
+                        else:
+                            # Actualización normal solo de metadata
+                            session.run("MATCH (p:Paper {id: $id}) SET p.raw_metadata = $json", 
+                                        id=p_rec['id'], json=json.dumps(meta, ensure_ascii=False))
                         updated += 1
                     except:
                         errors += 1
