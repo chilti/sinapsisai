@@ -301,10 +301,25 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
         meta_orcid = obtener_metadatos_de_orcid(orcid)
         
         # Combinar priorizando Scopus
+        def _clean_t(t): return "".join(c for c in str(t).lower() if c.isalnum())
+        scopus_titles = {_clean_t(d.get('Title', '')) for d in meta_scopus.values() if d.get('Title')}
+        
         meta_unificada = meta_scopus.copy()
         for doi, m_data in meta_orcid.items():
-            if doi not in meta_unificada:
-                meta_unificada[doi] = m_data
+            if doi in meta_unificada:
+                continue
+                
+            c_title = _clean_t(m_data.get('Title', ''))
+            # Si el paper viene de ORCID como 'orcid-work:' y su título ya estaba en los extraídos de Scopus,
+            # lo saltamos para no duplicar el registro que ya trae un DOI válido de Scopus.
+            if doi.startswith('orcid-work') and c_title in scopus_titles and c_title != "":
+                continue
+                
+            # A priorizar que el título no esté duplicado en general para evitar papers fantasmas
+            if c_title in scopus_titles and c_title != "":
+                continue
+                
+            meta_unificada[doi] = m_data
 
         
 
@@ -332,7 +347,27 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                     raise ValueError("No es un DOI resolvible en OpenAlex")
                 time.sleep(0.1)
                 print(f"    Consultando OpenAlex para {_doi_clean}...")
-                work = pyalex.Works()["https://doi.org/" + _doi_clean]
+                
+                work = None
+                try:
+                    work = pyalex.Works()["https://doi.org/" + _doi_clean]
+                except Exception as e:
+                    title_query = record.get('Title')
+                    if title_query and len(title_query) > 20:
+                        s_resp = http_client.get("https://api.openalex.org/works", params={"search": title_query, "mailto": pyalex.config.email})
+                        if s_resp.status_code == 200:
+                            results = s_resp.json().get('results', [])
+                            if results:
+                                candidate = results[0]
+                                cand_title = candidate.get('title') or ""
+                                def _clean(t): return "".join(c for c in str(t).lower() if c.isalnum())
+                                if _clean(title_query) == _clean(cand_title):
+                                    work = candidate
+                                    print(f"      ✅ Recuperado vía fallback de Título Exacto: {work.get('id')}")
+                
+                if not work:
+                    raise ValueError("No encontrado en OpenAlex (ni por DOI ni por Título Exacto)")
+
                 authorships = work.get('authorships', [])
                 record['Authors'] = "; ".join([au['author']['display_name'] for au in authorships])
                 record['Keywords_oa'] = "; ".join([kw['display_name'] for kw in work.get('keywords', [])])

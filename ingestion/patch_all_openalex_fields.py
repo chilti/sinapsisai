@@ -210,6 +210,9 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
                                               params={"mailto": pyalex.config.email})
                             if resp.status_code == 200:
                                 work_found = resp.json()
+                            elif resp.status_code == 429 or resp.status_code == 403:
+                                print(f"      [!] API BLOQUEADA (Intento 1) {resp.status_code}: Rate limit excedido.")
+                                time.sleep(2)
                         
                         # Intento 2: Búsqueda por Título (si no hay DOI o no se encontró por DOI)
                         if not work_found and title and len(title) > 20:
@@ -225,10 +228,14 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
                                     def _clean(t): return "".join(c for c in str(t).lower() if c.isalnum())
                                     if _clean(title) == _clean(cand_title):
                                         work_found = candidate
+                            elif s_resp.status_code == 429 or s_resp.status_code == 403:
+                                print(f"      [!] API BLOQUEADA (Intento 2) {s_resp.status_code}: Rate limit excedido.")
+                                time.sleep(2)
                         
                         if work_found:
                             oa_data[doi_field] = work_found
-                    except: pass
+                    except Exception as e:
+                        print(f"      [!] Error API para {clean_doi}: {e.__class__.__name__} - {e}")
                     time.sleep(0.05)
 
             # DB UPDATE
