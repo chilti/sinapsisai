@@ -6,6 +6,7 @@ Extrae datos de Neo4j y precalcula los indicadores para el dashboard.
 import os
 import sys
 import json
+import argparse
 import numpy as np
 
 try:
@@ -138,32 +139,72 @@ def compute_interdisciplinarity(topics_series) -> dict:
     }
 
 
-def extract_academic_papers():
-
+def extract_academic_papers(academic_filter=None, entity_filter=None):
     """Descarga los metadatos completos de todas las publicaciones por Académico."""
     graph_store = Neo4jGraphStore()
     
-    query = """
-    MATCH (a:Academic)-[:AUTHORED]->(p)
-    OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
-    OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
-    OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
-    RETURN a.name AS academic_name,
-           a.orcid AS orcid,
-           a.scopus_id AS scopus_id,
-           a.siia_url AS siia_url,
-           collect(DISTINCT e.name) AS entities,
-           p.id AS paper_id,
-           p.year AS year,
-           p.citations AS citations,
-           p.raw_metadata AS raw_metadata,
-           collect(DISTINCT {id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs,
-           collect(DISTINCT {topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}) AS graph_topics
-    """
+    if academic_filter:
+        print(f"  -> Filtrando por Académico: {academic_filter}")
+        query = """
+        MATCH (a:Academic {name: $academic})-[:AUTHORED]->(p)
+        OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
+        OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
+        OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
+        RETURN a.name AS academic_name,
+               a.orcid AS orcid,
+               a.scopus_id AS scopus_id,
+               a.siia_url AS siia_url,
+               collect(DISTINCT e.name) AS entities,
+               p.id AS paper_id,
+               p.year AS year,
+               p.citations AS citations,
+               p.raw_metadata AS raw_metadata,
+               collect(DISTINCT {id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs,
+               collect(DISTINCT {topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}) AS graph_topics
+        """
+        params = {"academic": academic_filter}
+    elif entity_filter:
+        print(f"  -> Filtrando por Entidad (Investigadores): {entity_filter}")
+        query = """
+        MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p)
+        OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
+        OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
+        RETURN a.name AS academic_name,
+               a.orcid AS orcid,
+               a.scopus_id AS scopus_id,
+               a.siia_url AS siia_url,
+               collect(DISTINCT e.name) AS entities,
+               p.id AS paper_id,
+               p.year AS year,
+               p.citations AS citations,
+               p.raw_metadata AS raw_metadata,
+               collect(DISTINCT {id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs,
+               collect(DISTINCT {topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}) AS graph_topics
+        """
+        params = {"entity": entity_filter}
+    else:
+        query = """
+        MATCH (a:Academic)-[:AUTHORED]->(p)
+        OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
+        OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
+        OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
+        RETURN a.name AS academic_name,
+               a.orcid AS orcid,
+               a.scopus_id AS scopus_id,
+               a.siia_url AS siia_url,
+               collect(DISTINCT e.name) AS entities,
+               p.id AS paper_id,
+               p.year AS year,
+               p.citations AS citations,
+               p.raw_metadata AS raw_metadata,
+               collect(DISTINCT {id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs,
+               collect(DISTINCT {topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}) AS graph_topics
+        """
+        params = {}
     
     records = []
     with graph_store.driver.session() as session:
-        result = session.run(query)
+        result = session.run(query, **params)
         for row in result:
             raw_meta = {}
             if row['raw_metadata']:
@@ -290,22 +331,40 @@ def extract_academic_papers():
     if records:
         yield pd.DataFrame(records)
 
-def extract_entity_papers():
+def extract_entity_papers(entity_filter=None):
     """Descarga los papers asociados históricamente a una Institución/Entidad."""
     graph_store = Neo4jGraphStore()
-    query = """
-    MATCH (e:Entity)-[:HAS_PAPER]->(p:Paper)
-    OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
-    RETURN e.name AS entity_name,
-           p.id AS paper_id,
-           p.year AS year,
-           p.citations AS citations,
-           p.raw_metadata AS raw_metadata,
-           collect({id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs
-    """
+    
+    if entity_filter:
+        print(f"  -> Filtrando por Entidad (Papers): {entity_filter}")
+        query = """
+        MATCH (e:Entity {name: $entity})
+        OPTIONAL MATCH (e)-[:HAS_PAPER]->(p:Paper)
+        OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
+        RETURN e.name AS entity_name,
+               p.id AS paper_id,
+               p.year AS year,
+               p.citations AS citations,
+               p.raw_metadata AS raw_metadata,
+               collect({id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs
+        """
+        params = {"entity": entity_filter}
+    else:
+        query = """
+        MATCH (e:Entity)-[:HAS_PAPER]->(p:Paper)
+        OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
+        RETURN e.name AS entity_name,
+               p.id AS paper_id,
+               p.year AS year,
+               p.citations AS citations,
+               p.raw_metadata AS raw_metadata,
+               collect({id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs
+        """
+        params = {}
+        
     records = []
     with graph_store.driver.session() as session:
-        result = session.run(query)
+        result = session.run(query, **params)
         for row in result:
             raw_meta = {}
             if row['raw_metadata']:
@@ -649,12 +708,12 @@ def aggregate_metrics(df_papers, group_cols):
     df_agg = df_agg.merge(h_series, on=group_cols, how='left')
     return df_agg
 
-def process_and_save():
+def process_and_save(entity_filter=None, academic_filter=None):
     print("Iniciando Pre-cálculo de Métricas desde Neo4j (Modo eficiente)...")
     
     # 1. Extracción y Enriquecimiento por lotes
     df_raw_list = []
-    for chunk_df in extract_academic_papers():
+    for chunk_df in extract_academic_papers(academic_filter=academic_filter, entity_filter=entity_filter):
         print(f"  → Procesando bloque de {len(chunk_df)} papers...")
         chunk_df['year'] = pd.to_numeric(chunk_df['year'], errors='coerce')
         chunk_df = chunk_df.dropna(subset=['year'])
@@ -768,7 +827,9 @@ def process_and_save():
     
     # 3. AGREGARES A NIVEL INSTITUCIÓN (Macro) - Ahora usa la información general de la Entidad
     print("⏳ Extrayendo y agregando métricas de DOIs de Entidades...")
-    df_inst_raw = extract_entity_papers()
+    # Si se filtró por académico, quizás no queremos procesar TODA la entidad, 
+    # pero si se filtró por entidad, sí. Si no hay filtro, todo.
+    df_inst_raw = extract_entity_papers(entity_filter=entity_filter)
     if not df_inst_raw.empty:
         df_inst_raw['year'] = pd.to_numeric(df_inst_raw['year'], errors='coerce')
         df_inst_raw = df_inst_raw.dropna(subset=['year'])
@@ -879,4 +940,9 @@ def process_and_save():
     print("\n🎉 Todas las métricas y Parquets se han generado exitosamente en data/cache/")
 
 if __name__ == "__main__":
-    process_and_save()
+    parser = argparse.ArgumentParser(description="Calcula y guarda métricas académicas en parquets.")
+    parser.add_argument("--entity", type=str, help="Nombre de la entidad para filtrar")
+    parser.add_argument("--academic", type=str, help="Nombre del académico para filtrar")
+    args = parser.parse_args()
+    
+    process_and_save(entity_filter=args.entity, academic_filter=args.academic)

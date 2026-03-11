@@ -78,32 +78,36 @@ def clasificar_paper(titulo, abstract):
         print(f"\nError procesando paper: {e}")
         return None
 
-def fetch_unclassified_papers(entity_filter=None, academic_filter=None):
+def fetch_unclassified_papers(entity_filter=None, academic_filter=None, force=False):
     """Obtiene los papers de Neo4j que aún no tienen clasificación SDG."""
+    where_clause = "WHERE COALESCE(p.sdg_processed, false) = false"
+    if force:
+        where_clause = "WHERE p.raw_metadata IS NOT NULL"
+
     if entity_filter:
-        query = """
-        MATCH (e:Entity {name: $entity})
+        query = f"""
+        MATCH (e:Entity {{name: $entity}})
         OPTIONAL MATCH (e)-[:HAS_PAPER]->(p1:Paper)
         OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p2:Paper)
         WITH collect(p1) + collect(p2) AS all_p
         UNWIND all_p AS p
-        WHERE COALESCE(p.sdg_processed, false) = false
+        {where_clause}
         RETURN DISTINCT p.doi AS doi, p.title AS title, p.raw_metadata AS metadata
         LIMIT 50
         """
         params = {"entity": entity_filter}
     elif academic_filter:
-        query = """
-        MATCH (a:Academic {name: $academic})-[:AUTHORED]->(p:Paper)
-        WHERE COALESCE(p.sdg_processed, false) = false
+        query = f"""
+        MATCH (a:Academic {{name: $academic}})-[:AUTHORED]->(p:Paper)
+        {where_clause}
         RETURN DISTINCT p.doi AS doi, p.title AS title, p.raw_metadata AS metadata
         LIMIT 50
         """
         params = {"academic": academic_filter}
     else:
-        query = """
+        query = f"""
         MATCH (p:Paper)
-        WHERE COALESCE(p.sdg_processed, false) = false
+        {where_clause}
         RETURN p.doi AS doi, p.title AS title, p.raw_metadata AS metadata
         LIMIT 50
         """
@@ -154,10 +158,12 @@ def assign_sdg_to_neo4j(doi, sdg_data):
     with neo4j.driver.session() as session:
         session.run(query, doi=doi, sdg_id=sdg_id, sdg_name=sdg_name, confidence=confidence, reasoning=reasoning)
 
-def run(entity_filter=None, academic_filter=None):
+def run(entity_filter=None, academic_filter=None, force=False):
     print("Iniciando clasificación SDG con LLM...")
+    if force:
+        print("  -> MODO FORZADO ACTIVADO (Re-procesando clasificados)")
     while True:
-        papers = fetch_unclassified_papers(entity_filter=entity_filter, academic_filter=academic_filter)
+        papers = fetch_unclassified_papers(entity_filter=entity_filter, academic_filter=academic_filter, force=force)
         if not papers:
             print("No hay más papers pendientes por clasificar.")
             break
@@ -194,6 +200,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Clasifica papers en Objetivos de Desarrollo Sostenible (SDG) usando LLM.")
     parser.add_argument("--entity", type=str, help="Nombre de la entidad para filtrar")
     parser.add_argument("--academic", type=str, help="Nombre del académico para filtrar")
+    parser.add_argument("--force", action="store_true", help="Forzar re-clasificación de papers ya procesados")
     args = parser.parse_args()
     
-    run(entity_filter=args.entity, academic_filter=args.academic)
+    run(entity_filter=args.entity, academic_filter=args.academic, force=args.force)

@@ -10,33 +10,38 @@ from database.knowledge_graph import Neo4jGraphStore
 load_dotenv()
 neo4j = Neo4jGraphStore()
 
-def extract_and_link_topics(entity_filter=None, academic_filter=None):
+def extract_and_link_topics(entity_filter=None, academic_filter=None, force=False):
     print("⏳ Iniciando extracción de Tópicos desde Neo4j...")
     
+    where_clause = "WHERE p.raw_metadata IS NOT NULL AND COALESCE(p.topics_extracted, false) = false"
+    if force:
+        print("  -> MODO FORZADO ACTIVADO (Re-procesando extraídos)")
+        where_clause = "WHERE p.raw_metadata IS NOT NULL"
+
     if entity_filter:
         print(f"  -> Filtrando por Entidad: {entity_filter}")
-        query_fetch = """
-        MATCH (e:Entity {name: $entity})
+        query_fetch = f"""
+        MATCH (e:Entity {{name: $entity}})
         OPTIONAL MATCH (e)-[:HAS_PAPER]->(p1:Paper)
         OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p2:Paper)
         WITH collect(p1) + collect(p2) AS all_p
         UNWIND all_p AS p
-        WHERE p.raw_metadata IS NOT NULL AND COALESCE(p.topics_extracted, false) = false
+        {where_clause}
         RETURN DISTINCT p.doi AS doi, p.raw_metadata AS metadata
         """
         params = {"entity": entity_filter}
     elif academic_filter:
         print(f"  -> Filtrando por Académico: {academic_filter}")
-        query_fetch = """
+        query_fetch = f"""
         MATCH (a:Academic {name: $academic})-[:AUTHORED]->(p:Paper)
-        WHERE p.raw_metadata IS NOT NULL AND COALESCE(p.topics_extracted, false) = false
+        {where_clause}
         RETURN DISTINCT p.doi AS doi, p.raw_metadata AS metadata
         """
         params = {"academic": academic_filter}
     else:
-        query_fetch = """
+        query_fetch = f"""
         MATCH (p:Paper)
-        WHERE p.raw_metadata IS NOT NULL AND COALESCE(p.topics_extracted, false) = false
+        {where_clause}
         RETURN p.doi AS doi, p.raw_metadata AS metadata
         """
         params = {}
@@ -104,6 +109,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extrae tópicos de OpenAlex desde metadata y los vincula en Neo4j.")
     parser.add_argument("--entity", type=str, help="Nombre de la entidad para filtrar")
     parser.add_argument("--academic", type=str, help="Nombre del académico para filtrar")
+    parser.add_argument("--force", action="store_true", help="Forzar re-extracción de tópicos ya procesados")
     args = parser.parse_args()
     
-    extract_and_link_topics(entity_filter=args.entity, academic_filter=args.academic)
+    extract_and_link_topics(entity_filter=args.entity, academic_filter=args.academic, force=args.force)
