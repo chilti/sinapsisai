@@ -18,13 +18,27 @@ ZIP_PATH = "/mnt/expansion/30375589_orcid2025.zip"
 TARGET_TAR = "ORCID_2025_10_summaries.tar.gz"
 
 def get_client():
-    return clickhouse_connect.get_client(
+    client = clickhouse_connect.get_client(
         host=CH_HOST, 
         port=CH_PORT, 
         username=CH_USER, 
         password=CH_PASS, 
         database=CH_DB
     )
+    
+    # Asegurar que la tabla existe antes de empezar
+    try:
+        with open('database/setup_orcid_db.sql', 'r', encoding='utf-8') as f:
+            sql = f.read()
+        for command in sql.split(';'):
+            lines = [line for line in command.splitlines() if not line.strip().startswith('--')]
+            cleaned = " ".join(lines).strip()
+            if cleaned:
+                client.command(cleaned)
+    except Exception as e:
+        print(f"Advertencia al preparar la tabla: {e}")
+        
+    return client
 
 def parse_orcid_xml(xml_content):
     """Parsea lo básico de un XML de ORCID v3.0"""
