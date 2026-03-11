@@ -316,7 +316,22 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                 'primary_topic_subfield': raw_meta.get('primary_topic_subfield'),
                 'primary_topic_score':    raw_meta.get('primary_topic_score'),
                 'keywords':              raw_meta.get('keywords') or [],
-                'topics': topics,
+                'topics': row.get('graph_topics', [])
+            })
+            
+            # temas y sdgs desde el grafo (Neo4j)
+            sdgs = row.get('sdgs', [])
+            sdg_id, sdg_name, sdg_conf, sdg_reas = None, None, None, None
+            if sdgs:
+                # Tomamos el primero que tenga ID válido
+                first_sdg = [s for s in sdgs if s.get('id') is not None]
+                if first_sdg:
+                    sdg_id = first_sdg[0].get('id')
+                    sdg_name = first_sdg[0].get('name')
+                    sdg_conf = first_sdg[0].get('confidence')
+                    sdg_reas = first_sdg[0].get('reasoning')
+
+            records[-1].update({
                 'ODS_ID': sdg_id,
                 'ODS_Nombre': sdg_name,
                 'ODS_Confianza': sdg_conf,
