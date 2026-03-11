@@ -823,8 +823,6 @@ def save_or_update_parquet(df, path, academic_filter=None, entity_filter=None, k
         else:
             combined_df = existing_df
             
-        # Quitar duplicados exactos por seguridad
-        combined_df = combined_df.drop_duplicates()
         combined_df.to_parquet(path, index=False)
         print(f"    [Merge] {path.name} actualizado incrementalmente.")
     except Exception as e:
@@ -949,6 +947,7 @@ def process_and_save(entity_filter=None, academic_filter=None):
     save_or_update_parquet(df_inv_recent, CACHE_DIR / 'investigador_recent.parquet', academic_filter, entity_filter, 'academic_name')
     
     # 3. AGREGADOS A NIVEL INSTITUCIÓN (Macro)
+    df_inst_raw = pd.DataFrame()
     if entity_filter or not academic_filter:
         print("⏳ Extrayendo y agregando métricas de DOIs de Entidades...")
         df_inst_raw = extract_entity_papers(entity_filter=entity_filter)
