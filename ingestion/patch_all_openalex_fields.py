@@ -196,47 +196,76 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
 
             # API FETCH
             oa_data = {}
-            with httpx.Client(verify=False, timeout=25.0) as client:
+            with httpx.Client(verify=False, timeout=60.0) as client:
+                # 1. Separar los que tienen DOI de los que no
+                doi_papers = []
+                title_papers = []
                 for p_rec in to_patch:
-                    doi_field = str(p_rec['doi'] or "")
-                    clean_doi = doi_field.replace("https://doi.org/", "").strip().lower()
-                    title = p_rec.get('title', "")
+                    raw_doi = str(p_rec['doi'] or "")
+                    clean_doi = raw_doi.replace("https://doi.org/", "").strip().lower()
+                    if clean_doi.startswith("10."):
+                        doi_papers.append((raw_doi, clean_doi))
+                    else:
+                        title_papers.append((raw_doi, p_rec.get('title', "")))
+
+                # 2. BATCH FETCH DE DOIs (Hasta 50 DOIs por petición)
+                batch_size = 50
+                for i in range(0, len(doi_papers), batch_size):
+                    chunk = doi_papers[i:i+batch_size]
+                    dois_filter = "|".join([cd for raw, cd in chunk])
+                    
+                    if not dois_filter: continue
                     
                     try:
-                        work_found = None
-                        # Intento 1: Solo si parece un DOI real
-                        if clean_doi.startswith("10."):
-                            resp = client.get(f"https://api.openalex.org/works/https://doi.org/{clean_doi}", 
-                                              params={"mailto": pyalex.config.email})
-                            if resp.status_code == 200:
-                                work_found = resp.json()
-                            elif resp.status_code == 429 or resp.status_code == 403:
-                                print(f"      [!] API BLOQUEADA (Intento 1) {resp.status_code}: Rate limit excedido.")
-                                time.sleep(2)
+                        resp = client.get("https://api.openalex.org/works", 
+                                          params={"filter": f"doi:{dois_filter}", "per-page": 50, "mailto": pyalex.config.email})
                         
-                        # Intento 2: Búsqueda por Título (si no hay DOI o no se encontró por DOI)
-                        if not work_found and title and len(title) > 20:
-                            # Usamos búsqueda exacta por título si es posible
-                            s_resp = client.get("https://api.openalex.org/works", 
-                                                params={"search": title, "mailto": pyalex.config.email})
-                            if s_resp.status_code == 200:
-                                results = s_resp.json().get('results', [])
-                                if results: 
-                                    # Tomamos el primero SOLO si el título coincide al 100%
-                                    candidate = results[0]
-                                    cand_title = candidate.get('title') or ""
-                                    def _clean(t): return "".join(c for c in str(t).lower() if c.isalnum())
-                                    if _clean(title) == _clean(cand_title):
-                                        work_found = candidate
-                            elif s_resp.status_code == 429 or s_resp.status_code == 403:
-                                print(f"      [!] API BLOQUEADA (Intento 2) {s_resp.status_code}: Rate limit excedido.")
-                                time.sleep(2)
-                        
-                        if work_found:
-                            oa_data[doi_field] = work_found
+                        if resp.status_code == 200:
+                            results = resp.json().get('results', [])
+                            # Mapear los resultados devueltos a sus llaves originales
+                            for work in results:
+                                w_doi = work.get('doi')
+                                if w_doi:
+                                    w_doi_clean = w_doi.replace("https://doi.org/", "").strip().lower()
+                                    # Encontrar a qué raw_doi original corresponde
+                                    for orig_raw, orig_clean in chunk:
+                                        if orig_clean == w_doi_clean:
+                                            oa_data[orig_raw] = work
+                                            break
+                        elif resp.status_code == 429 or resp.status_code == 403:
+                            print(f"      [!] API BLOQUEADA (Batch DOI) {resp.status_code}: Rate limit excedido. Esperando 5s...")
+                            time.sleep(5)
                     except Exception as e:
-                        print(f"      [!] Error API para {clean_doi}: {e.__class__.__name__} - {e}")
-                    time.sleep(0.05)
+                        print(f"      [!] Error API en Batch DOI: {e.__class__.__name__} - {e}")
+                    
+                    time.sleep(0.1) # Breve pausa por amabilidad
+                
+                # 3. IDENTIFICAR FALLOS Y FETCH INDIVIDUAL POR TÍTULO
+                # Agregamos los que tenían DOI pero fallaron en OpenAlex para intentarlos por título
+                for raw, clean in doi_papers:
+                    if raw not in oa_data:
+                        # Buscar el título original en los registros
+                        title = next((p['title'] for p in to_patch if str(p['doi'] or "") == raw), "")
+                        if title: title_papers.append((raw, title))
+
+                for raw_doi, title in title_papers:
+                    if not title or len(title) < 20: continue
+                    try:
+                        s_resp = client.get("https://api.openalex.org/works", 
+                                            params={"search": title, "mailto": pyalex.config.email})
+                        if s_resp.status_code == 200:
+                            results = s_resp.json().get('results', [])
+                            if results: 
+                                candidate = results[0]
+                                cand_title = candidate.get('title') or ""
+                                def _clean(t): return "".join(c for c in str(t).lower() if c.isalnum())
+                                if _clean(title) == _clean(cand_title):
+                                    oa_data[raw_doi] = candidate
+                        elif s_resp.status_code == 429 or s_resp.status_code == 403:
+                            print(f"      [!] API BLOQUEADA (Título) {s_resp.status_code}: Rate limit excedido. Esperando 5s...")
+                            time.sleep(5)
+                    except: pass
+                    time.sleep(0.1)
 
             # DB UPDATE
             with graph_store.driver.session() as session:
