@@ -216,8 +216,14 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                 except:
                     pass
             
-            # Check if paper has OpenAlex URL to confirm enrichment
-            has_oa_link = bool(raw_meta.get('openalex_url'))
+            # Identificar papers enriquecidos por OpenAlex (resiliente a campos faltantes en caché)
+            has_oa_link = any([
+                bool(raw_meta.get('openalex_url')),
+                bool(raw_meta.get('id')),
+                raw_meta.get('fwci') is not None,
+                bool(raw_meta.get('OpenAlex_Topics'))
+            ])
+            oa_url_raw = raw_meta.get('openalex_url') or raw_meta.get('id')
             
             title = raw_meta.get('Title') or raw_meta.get('title') or raw_meta.get('TI') or 'No Title'
             source = raw_meta.get('Source') or raw_meta.get('source_title') or raw_meta.get('journal_iso_source_abbreviation') or raw_meta.get('publication_name') or raw_meta.get('SO') or 'Unknown'
@@ -400,8 +406,14 @@ def extract_entity_papers(entity_filter=None):
                 except:
                     pass
             
-            # Check if paper has OpenAlex URL to confirm enrichment
-            has_oa_link = bool(raw_meta.get('openalex_url'))
+            # Identificar papers enriquecidos por OpenAlex (resiliente a campos faltantes)
+            has_oa_link = any([
+                bool(raw_meta.get('openalex_url')),
+                bool(raw_meta.get('id')),
+                raw_meta.get('fwci') is not None,
+                bool(raw_meta.get('OpenAlex_Topics'))
+            ])
+            oa_url_raw = raw_meta.get('openalex_url') or raw_meta.get('id')
             
             title = raw_meta.get('Title') or raw_meta.get('title') or raw_meta.get('TI') or 'No Title'
             source = raw_meta.get('Source') or raw_meta.get('source_title') or raw_meta.get('journal_iso_source_abbreviation') or raw_meta.get('publication_name') or raw_meta.get('SO') or 'Unknown'
@@ -741,6 +753,44 @@ def aggregate_metrics(df_papers, group_cols):
     df_agg = df_agg.merge(h_series, on=group_cols, how='left')
     return df_agg
 
+def save_or_update_parquet(df, path, academic_filter=None, entity_filter=None, key_col=None):
+    """
+    Guarda el dataframe en formato parquet. 
+    Si existe un filtro, solo elimina y actualiza las filas correspondientes a ese filtro,
+    manteniendo el resto de los datos intactos.
+    """
+    if not os.path.exists(path):
+        df.to_parquet(path, index=False)
+        return
+        
+    if not academic_filter and not entity_filter:
+        # Modo completo, sobreescribir normal
+        df.to_parquet(path, index=False)
+        return
+
+    try:
+        existing_df = pd.read_parquet(path)
+        
+        # Eliminar registros previos del académico o entidad filtrada
+        if academic_filter and key_col in existing_df.columns:
+            existing_df = existing_df[existing_df[key_col] != academic_filter]
+        elif entity_filter and key_col in existing_df.columns:
+            existing_df = existing_df[existing_df[key_col] != entity_filter]
+            
+        # Combinar datos filtrados existentes con nuevos
+        if not df.empty:
+            combined_df = pd.concat([existing_df, df], ignore_index=True)
+        else:
+            combined_df = existing_df
+            
+        # Quitar duplicados exactos por seguridad
+        combined_df = combined_df.drop_duplicates()
+        combined_df.to_parquet(path, index=False)
+        print(f"    [Merge] {path.name} actualizado incrementalmente.")
+    except Exception as e:
+        print(f"    [Aviso] Error al actualizar {path.name} incrementalmente: {e}. Se sobreescribirá.")
+        df.to_parquet(path, index=False)
+
 def process_and_save(entity_filter=None, academic_filter=None):
     print("Iniciando Pre-cálculo de Métricas desde Neo4j (Modo eficiente)...")
     
@@ -774,7 +824,7 @@ def process_and_save(entity_filter=None, academic_filter=None):
             df_raw[c] = df_raw[c].apply(lambda x: list(x) if isinstance(x, (list, tuple, np.ndarray)) else [])
 
     # Exportar listado general de papers de Académicos
-    df_raw.to_parquet(CACHE_DIR / 'papers_profesor.parquet', index=False)
+    save_or_update_parquet(df_raw, CACHE_DIR / 'papers_profesor.parquet', academic_filter, entity_filter, 'academic_name')
     
     # TOPICOS SUNBURST
     print("⏳ Precalculando agrupaciones de Tópicos (Sunburst)...")
@@ -799,17 +849,17 @@ def process_and_save(entity_filter=None, academic_filter=None):
         df_topics['count'] = 1
         # Evolución (con año)
         df_topics_evol = df_topics.groupby(['academic_name', 'year', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
-        df_topics_evol.to_parquet(CACHE_DIR / 'thematic_evolution_investigador.parquet', index=False)
+        save_or_update_parquet(df_topics_evol, CACHE_DIR / 'thematic_evolution_investigador.parquet', academic_filter, entity_filter, 'academic_name')
         
         # Totales (para Sunburst, agrupado sin año)
         df_topics_agg = df_topics.groupby(['academic_name', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
-        df_topics_agg.to_parquet(CACHE_DIR / 'topics_investigador.parquet', index=False)
+        save_or_update_parquet(df_topics_agg, CACHE_DIR / 'topics_investigador.parquet', academic_filter, entity_filter, 'academic_name')
     else:
         # Escribir parquet vacío para que el dashboard muestre mensaje en vez de None
         print("⚠️  No se encontraron tópicos en raw_metadata ni en nodos :Topic del grafo.")
         df_topics_agg = pd.DataFrame(columns=['academic_name', 'domain', 'field', 'subfield', 'topic', 'value'])
-        df_topics_agg.to_parquet(CACHE_DIR / 'topics_investigador.parquet', index=False)
-        pd.DataFrame(columns=['academic_name', 'year', 'domain', 'field', 'subfield', 'topic', 'value']).to_parquet(CACHE_DIR / 'thematic_evolution_investigador.parquet', index=False)
+        save_or_update_parquet(df_topics_agg, CACHE_DIR / 'topics_investigador.parquet', academic_filter, entity_filter, 'academic_name')
+        save_or_update_parquet(pd.DataFrame(columns=['academic_name', 'year', 'domain', 'field', 'subfield', 'topic', 'value']), CACHE_DIR / 'thematic_evolution_investigador.parquet', academic_filter, entity_filter, 'academic_name')
     # Limpiar archivos de versiones anteriores si existen
     if os.path.exists(CACHE_DIR / 'concepts_investigador.parquet'):
         os.remove(CACHE_DIR / 'concepts_investigador.parquet')
@@ -820,7 +870,7 @@ def process_and_save(entity_filter=None, academic_filter=None):
     print("⏳ Agregando métricas a nivel Investigador...")
     # Agregamos 'entities' para conservar las afiliaciones en el agrupamiento
     df_inv_annual = aggregate_metrics(df_raw, ['academic_name', 'entities', 'year'])
-    df_inv_annual.to_parquet(CACHE_DIR / 'investigador_annual.parquet', index=False)
+    save_or_update_parquet(df_inv_annual, CACHE_DIR / 'investigador_annual.parquet', academic_filter, entity_filter, 'academic_name')
     
     df_inv_tot = aggregate_metrics(df_raw, ['academic_name', 'entities'])
 
@@ -836,7 +886,7 @@ def process_and_save(entity_filter=None, academic_filter=None):
             df_inter = pd.DataFrame(inter_rows)
             df_inv_tot = df_inv_tot.merge(df_inter, on='academic_name', how='left')
 
-    df_inv_tot.to_parquet(CACHE_DIR / 'investigador_total.parquet', index=False)
+    save_or_update_parquet(df_inv_tot, CACHE_DIR / 'investigador_total.parquet', academic_filter, entity_filter, 'academic_name')
     
     # ── Keywords por investigador ──────────────────────────────────────────────
     print("⏳ Calculando keywords por investigador...")
@@ -851,12 +901,12 @@ def process_and_save(entity_filter=None, academic_filter=None):
             for kw, freq in cnt.most_common(1000):
                 kw_rows.append({'academic_name': ac_name, 'keyword': kw, 'freq': freq})
         if kw_rows:
-            pd.DataFrame(kw_rows).to_parquet(CACHE_DIR / 'keywords_investigador.parquet', index=False)
-            print(f"  → keywords_investigador.parquet: {len(kw_rows)} filas")
+            save_or_update_parquet(pd.DataFrame(kw_rows), CACHE_DIR / 'keywords_investigador.parquet', academic_filter, entity_filter, 'academic_name')
+            print(f"  → keywords_investigador.parquet: {len(kw_rows)} filas incremental o total")
 
     df_raw_recent = df_raw[(df_raw['year'] >= 2021) & (df_raw['year'] <= 2025)]
     df_inv_recent = aggregate_metrics(df_raw_recent, ['academic_name', 'entities'])
-    df_inv_recent.to_parquet(CACHE_DIR / 'investigador_recent.parquet', index=False)
+    save_or_update_parquet(df_inv_recent, CACHE_DIR / 'investigador_recent.parquet', academic_filter, entity_filter, 'academic_name')
     
     # 3. AGREGADOS A NIVEL INSTITUCIÓN (Macro)
     if entity_filter or not academic_filter:
@@ -875,7 +925,7 @@ def process_and_save(entity_filter=None, academic_filter=None):
                 df_inst_raw[c] = df_inst_raw[c].apply(lambda x: list(x) if isinstance(x, (list, tuple, np.ndarray)) else [])
 
         # Exportar listado general de papers de Institucion
-        df_inst_raw.to_parquet(CACHE_DIR / 'papers_institucion.parquet', index=False)
+        save_or_update_parquet(df_inst_raw, CACHE_DIR / 'papers_institucion.parquet', academic_filter, entity_filter, 'entity_name')
         
         df_inst_tot = aggregate_metrics(df_inst_raw, ['entity_name'])
 
@@ -890,7 +940,7 @@ def process_and_save(entity_filter=None, academic_filter=None):
                 df_inter_inst = pd.DataFrame(inter_rows_inst)
                 df_inst_tot = df_inst_tot.merge(df_inter_inst, on='entity_name', how='left')
 
-        df_inst_tot.to_parquet(CACHE_DIR / 'institucion_total.parquet', index=False)
+        save_or_update_parquet(df_inst_tot, CACHE_DIR / 'institucion_total.parquet', academic_filter, entity_filter, 'entity_name')
 
         # ── Keywords por entidad ───────────────────────────────────────────────
         if 'keywords' in df_inst_raw.columns:
@@ -904,12 +954,12 @@ def process_and_save(entity_filter=None, academic_filter=None):
                 for kw, freq in cnt.most_common(1000):
                     kw_inst_rows.append({'entity_name': e_name, 'keyword': kw, 'freq': freq})
             if kw_inst_rows:
-                pd.DataFrame(kw_inst_rows).to_parquet(CACHE_DIR / 'keywords_institucion.parquet', index=False)
-                print(f"  → keywords_institucion.parquet: {len(kw_inst_rows)} filas")
+                save_or_update_parquet(pd.DataFrame(kw_inst_rows), CACHE_DIR / 'keywords_institucion.parquet', academic_filter, entity_filter, 'entity_name')
+                print(f"  → keywords_institucion.parquet: {len(kw_inst_rows)} filas incremental o total")
 
     
         df_inst_ann = aggregate_metrics(df_inst_raw, ['entity_name', 'year'])
-        df_inst_ann.to_parquet(CACHE_DIR / 'institucion_annual.parquet', index=False)
+        save_or_update_parquet(df_inst_ann, CACHE_DIR / 'institucion_annual.parquet', academic_filter, entity_filter, 'entity_name')
         
         # Tópicos Entidad Real
         inst_topics_list = []
@@ -933,10 +983,11 @@ def process_and_save(entity_filter=None, academic_filter=None):
             # Aseguramos que 'year' existe en inst_topics_list
             # Evolución (con año)
             df_inst_evol = df_inst_t_raw.groupby(['entity_name', 'year', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
-            df_inst_evol.to_parquet(CACHE_DIR / 'thematic_evolution_institucion.parquet', index=False)
+            save_or_update_parquet(df_inst_evol, CACHE_DIR / 'thematic_evolution_institucion.parquet', academic_filter, entity_filter, 'entity_name')
             
             df_inst_t = df_inst_t_raw.groupby(['entity_name', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
-            df_inst_t.to_parquet(CACHE_DIR / 'topics_institucion.parquet', index=False)
+            save_or_update_parquet(df_inst_t, CACHE_DIR / 'topics_institucion.parquet', academic_filter, entity_filter, 'entity_name')
+
     else:
         if academic_filter and not entity_filter:
             print("⏩ Saltando métricas institucionales (Modo Académico detectado para velocidad).")
@@ -945,10 +996,17 @@ def process_and_save(entity_filter=None, academic_filter=None):
     
     # 4. PRECALCULO DE UMAP (Trayectorias)
     print("⏳ Proyectando UMAP de Trayectorias (Desempeño Académico)...")
-    if not df_inv_recent.empty and len(df_inv_recent) >= 3:
+    umap_df = df_inv_recent
+    if os.path.exists(CACHE_DIR / 'investigador_recent.parquet'):
+        try:
+            umap_df = pd.read_parquet(CACHE_DIR / 'investigador_recent.parquet')
+        except Exception:
+            pass
+
+    if not umap_df.empty and len(umap_df) >= 3:
         # Usamos FWCI, Citas Norm (Percentiles), Produccion y H-index para construir el espacio
         features = ['num_documents', 'pct_top_10', 'pct_1', 'percentile_avg', 'fwci_avg', 'h_index']
-        valid_df = df_inv_recent.dropna(subset=features).copy()
+        valid_df = umap_df.dropna(subset=features).copy()
         
         if len(valid_df) > 1:
             scaler = StandardScaler()

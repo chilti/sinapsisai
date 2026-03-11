@@ -66,6 +66,7 @@ def extract_new_fields(work: dict) -> dict:
     ]
 
     return {
+        'openalex_url':                 work.get('id'),
         'fwci':                         work.get('fwci'),
         'open_access':                  oa,
         'citation_normalized_percentile': (work.get('citation_normalized_percentile') or {}).get('value'),
@@ -77,6 +78,8 @@ def extract_new_fields(work: dict) -> dict:
         'author_count':               len(_auths),
         'countries_distinct_count':   work.get('countries_distinct_count', 0),
         'institutions_distinct_count': work.get('institutions_distinct_count', 0),
+        'countries':                  work.get('countries', []),
+        'coauthor_institutions':      coauthor_institutions,
         'journal_is_core':    _src.get('is_core', False),
         'primary_topic_name': pt.get('display_name'),
         'OpenAlex_Topics':    topics,
