@@ -93,7 +93,6 @@ def fetch_unclassified_papers(entity_filter=None, academic_filter=None, force=Fa
         UNWIND all_p AS p
         {where_clause}
         RETURN DISTINCT p.doi AS doi, p.title AS title, p.raw_metadata AS metadata
-        LIMIT 50
         """
         params = {"entity": entity_filter}
     elif academic_filter:
@@ -101,7 +100,6 @@ def fetch_unclassified_papers(entity_filter=None, academic_filter=None, force=Fa
         MATCH (a:Academic {{name: $academic}})-[:AUTHORED]->(p:Paper)
         {where_clause}
         RETURN DISTINCT p.doi AS doi, p.title AS title, p.raw_metadata AS metadata
-        LIMIT 50
         """
         params = {"academic": academic_filter}
     else:
@@ -109,7 +107,6 @@ def fetch_unclassified_papers(entity_filter=None, academic_filter=None, force=Fa
         MATCH (p:Paper)
         {where_clause}
         RETURN p.doi AS doi, p.title AS title, p.raw_metadata AS metadata
-        LIMIT 50
         """
         params = {}
     records = []
@@ -203,14 +200,14 @@ def run(entity_filter=None, academic_filter=None, force=False):
     print(f"✅ Se encontraron {total_total} papers para clasificar por ODS.")
     
     procesados = 0
-    while True:
-        papers = fetch_unclassified_papers(entity_filter=entity_filter, academic_filter=academic_filter, force=force)
-        if not papers:
-            print("No hay más papers pendientes por clasificar.")
-            break
-            
-        print(f"Procesando lote de {len(papers)} papers...")
-        for p in papers:
+    papers = fetch_unclassified_papers(entity_filter=entity_filter, academic_filter=academic_filter, force=force)
+    
+    if not papers:
+        print("No hay papers pendientes por clasificar.")
+        return
+
+    print(f"Procesando {len(papers)} papers...")
+    for p in papers:
             doi = p['doi']
             titulo = p['title']
             abstract = p['abstract']
