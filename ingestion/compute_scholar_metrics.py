@@ -172,11 +172,9 @@ def extract_academic_papers():
                 except:
                     pass
             
-            # Robust Extraction (handles both ingest_apis and ingest_entity_docs formats)
-            fwci = raw_meta.get('fwci')
-            if fwci is None and 'raw_metadata' in raw_meta:
-                fwci = raw_meta['raw_metadata'].get('fwci')
-
+            # Check if paper has OpenAlex URL to confirm enrichment
+            has_oa_link = bool(raw_meta.get('openalex_url'))
+            
             title = raw_meta.get('Title') or raw_meta.get('title') or raw_meta.get('TI') or 'No Title'
             source = raw_meta.get('Source') or raw_meta.get('source_title') or raw_meta.get('journal_iso_source_abbreviation') or raw_meta.get('publication_name') or raw_meta.get('SO') or 'Unknown'
             doi_link = "https://doi.org/" + row['paper_id'] if row['paper_id'] and not "urn:" in row['paper_id'] else None
@@ -202,44 +200,31 @@ def extract_academic_papers():
             is_in_top_10_percent = raw_meta.get('is_in_top_10_percent')
             if is_in_top_10_percent is None and 'raw_metadata' in raw_meta:
                 is_in_top_10_percent = raw_meta['raw_metadata'].get('is_in_top_10_percent')
-            is_in_top_10_percent = int(is_in_top_10_percent or 0)
-
+            
             is_in_top_1_percent = raw_meta.get('is_in_top_1_percent')
             if is_in_top_1_percent is None and 'raw_metadata' in raw_meta:
                 is_in_top_1_percent = raw_meta['raw_metadata'].get('is_in_top_1_percent')
-            is_in_top_1_percent = int(is_in_top_1_percent or 0)
 
-            citation_normalized_percentile = raw_meta.get('citation_normalized_percentile')
-            if citation_normalized_percentile is None and 'raw_metadata' in raw_meta:
-                citation_normalized_percentile = raw_meta['raw_metadata'].get('citation_normalized_percentile')
-            citation_normalized_percentile = float(citation_normalized_percentile) if citation_normalized_percentile is not None else np.nan
-            
-            if row['citations'] in (0, None):
-                fwci = 0.0
-                citation_normalized_percentile = 0.0
-            
-            topics = raw_meta.get('OpenAlex_Topics') or raw_meta.get('topics')
-            if topics is None and 'raw_metadata' in raw_meta:
-                topics = raw_meta['raw_metadata'].get('OpenAlex_Topics') or raw_meta['raw_metadata'].get('topics')
-            # Fallback: usar los nodos :Topic del grafo si raw_metadata no tiene topics
-            if not isinstance(topics, list) or not topics:
-                graph_topics = row.get('graph_topics', []) or []
-                topics = [
-                    {'topic': gt['topic'], 'domain': gt.get('domain', ''), 'field': gt.get('field', ''), 'subfield': gt.get('subfield', '')}
-                    for gt in graph_topics if gt.get('topic')
-                ]
-            if not isinstance(topics, list): topics = []
-            
-            # Manejo de ODS (primer ODS para retrocompatibilidad de columnas planas si se requiere, 
-            # pero la lista completa está en 'sdgs')
-            sdg_id, sdg_name, sdg_conf, sdg_reas = None, None, None, None
-            if row['sdgs']:
-                first_sdg = [s for s in row['sdgs'] if s['id'] is not None]
-                if first_sdg:
-                    sdg_id = first_sdg[0]['id']
-                    sdg_name = first_sdg[0]['name']
-                    sdg_conf = first_sdg[0]['confidence']
-                    sdg_reas = first_sdg[0]['reasoning']
+            # Impact Indicators (FWCI, Percentile, Top 10%, Top 1%)
+            # Only set numerical values if OA enrichment is confirmed
+            if has_oa_link:
+                fwci = raw_meta.get('fwci')
+                if fwci is None and 'raw_metadata' in raw_meta:
+                    fwci = raw_meta['raw_metadata'].get('fwci')
+                fwci = float(fwci) if fwci is not None else np.nan
+                
+                percentile = raw_meta.get('citation_normalized_percentile')
+                if percentile is None and 'raw_metadata' in raw_meta:
+                    percentile = raw_meta['raw_metadata'].get('citation_normalized_percentile')
+                percentile = float(percentile) if percentile is not None else np.nan
+                
+                is_in_top_10_percent = float(is_in_top_10_percent) if is_in_top_10_percent is not None else np.nan
+                is_in_top_1_percent = float(is_in_top_1_percent) if is_in_top_1_percent is not None else np.nan
+            else:
+                fwci = np.nan
+                percentile = np.nan
+                is_in_top_10_percent = np.nan
+                is_in_top_1_percent = np.nan
 
             records.append({
                 'academic_name': row['academic_name'],
@@ -255,12 +240,13 @@ def extract_academic_papers():
                 'DOI':    doi_link,
                 'Link':   doi_link,
                 'openalex_url': raw_meta.get('openalex_url'),
+                'has_oa_data':  int(has_oa_link),
                 'fwci':                         fwci,
                 'is_oa':                        int(is_oa),
                 'oa_status':                    oa_status,
                 'is_in_top_10_percent':         is_in_top_10_percent,
                 'is_in_top_1_percent':          is_in_top_1_percent,
-                'citation_normalized_percentile': citation_normalized_percentile,
+                'citation_normalized_percentile': percentile,
                 'counts_by_year':        raw_meta.get('counts_by_year') or [],
                 'referenced_works_count': int(raw_meta.get('referenced_works_count', 0) or 0),
                 'referenced_works':      raw_meta.get('referenced_works') or [],
@@ -328,11 +314,9 @@ def extract_entity_papers():
                 except:
                     pass
             
-            # Robust Extraction (handles both ingest_apis and ingest_entity_docs formats)
-            fwci = raw_meta.get('fwci')
-            if fwci is None and 'raw_metadata' in raw_meta:
-                fwci = raw_meta['raw_metadata'].get('fwci')
-
+            # Check if paper has OpenAlex URL to confirm enrichment
+            has_oa_link = bool(raw_meta.get('openalex_url'))
+            
             title = raw_meta.get('Title') or raw_meta.get('title') or raw_meta.get('TI') or 'No Title'
             source = raw_meta.get('Source') or raw_meta.get('source_title') or raw_meta.get('journal_iso_source_abbreviation') or raw_meta.get('publication_name') or raw_meta.get('SO') or 'Unknown'
             doi_link = "https://doi.org/" + row['paper_id'] if row['paper_id'] and not "urn:" in row['paper_id'] else None
@@ -358,21 +342,30 @@ def extract_entity_papers():
             is_in_top_10_percent = raw_meta.get('is_in_top_10_percent')
             if is_in_top_10_percent is None and 'raw_metadata' in raw_meta:
                 is_in_top_10_percent = raw_meta['raw_metadata'].get('is_in_top_10_percent')
-            is_in_top_10_percent = int(is_in_top_10_percent or 0)
-
+            
             is_in_top_1_percent = raw_meta.get('is_in_top_1_percent')
             if is_in_top_1_percent is None and 'raw_metadata' in raw_meta:
                 is_in_top_1_percent = raw_meta['raw_metadata'].get('is_in_top_1_percent')
-            is_in_top_1_percent = int(is_in_top_1_percent or 0)
 
-            citation_normalized_percentile = raw_meta.get('citation_normalized_percentile')
-            if citation_normalized_percentile is None and 'raw_metadata' in raw_meta:
-                citation_normalized_percentile = raw_meta['raw_metadata'].get('citation_normalized_percentile')
-            citation_normalized_percentile = float(citation_normalized_percentile) if citation_normalized_percentile is not None else np.nan
-            
-            if row['citations'] in (0, None):
-                fwci = 0.0
-                citation_normalized_percentile = 0.0
+            # Impact Indicators (Only if enriched)
+            if has_oa_link:
+                fwci = raw_meta.get('fwci')
+                if fwci is None and 'raw_metadata' in raw_meta:
+                    fwci = raw_meta['raw_metadata'].get('fwci')
+                fwci = float(fwci) if fwci is not None else np.nan
+                
+                percentile = raw_meta.get('citation_normalized_percentile')
+                if percentile is None and 'raw_metadata' in raw_meta:
+                    percentile = raw_meta['raw_metadata'].get('citation_normalized_percentile')
+                percentile = float(percentile) if percentile is not None else np.nan
+                
+                is_in_top_10_percent = float(is_in_top_10_percent) if is_in_top_10_percent is not None else np.nan
+                is_in_top_1_percent = float(is_in_top_1_percent) if is_in_top_1_percent is not None else np.nan
+            else:
+                fwci = np.nan
+                percentile = np.nan
+                is_in_top_10_percent = np.nan
+                is_in_top_1_percent = np.nan
             
             topics = raw_meta.get('OpenAlex_Topics') or raw_meta.get('topics')
             if topics is None and 'raw_metadata' in raw_meta:
@@ -399,13 +392,14 @@ def extract_entity_papers():
                 'DOI': doi_link,
                 'Link': doi_link,
                 'openalex_url': raw_meta.get('openalex_url'),
+                'has_oa_data':  int(has_oa_link),
                 # ── Impacto ────────────────────────────────────────────────────
                 'fwci':                         fwci,
                 'is_oa':                        int(is_oa),
                 'oa_status':                    oa_status,
                 'is_in_top_10_percent':         is_in_top_10_percent,
                 'is_in_top_1_percent':          is_in_top_1_percent,
-                'citation_normalized_percentile': citation_normalized_percentile,
+                'citation_normalized_percentile': percentile,
                 # ── Trayectoria de citas ────────────────────────────────────────
                 'counts_by_year':        raw_meta.get('counts_by_year') or [],
                 'referenced_works_count': int(raw_meta.get('referenced_works_count', 0) or 0),
@@ -472,10 +466,16 @@ def aggregate_metrics(df_papers, group_cols):
         df_papers['is_oa_bronze'] = (df_papers['oa_status'] == 'bronze').astype(int)
         df_papers['is_oa_closed'] = (df_papers['oa_status'] == 'closed').astype(int)
 
-    # ── Nuevos campos de alto impacto ───────────────────────────────
-    # Máscara de papers SIN enriquecimiento de OpenAlex.
-    # (fwci es el indicador más confiable de que OpenAlex procesó el paper)
-    _has_oa = df_papers.get('fwci', pd.Series([np.nan]*len(df_papers))).notna()
+    # Identificar papers con datos reales de OpenAlex (enriquecidos)
+    _has_oa = df_papers['has_oa_data'] == 1 if 'has_oa_data' in df_papers.columns else df_papers['openalex_url'].notna()
+
+    # Limpiar columnas de impacto: si no hay OA, deben ser NaN para no sesgar promedios
+    impact_cols = ['fwci', 'citation_normalized_percentile', 
+                   'is_in_top_10_percent', 'is_in_top_1_percent']
+    for col in impact_cols:
+        if col in df_papers.columns:
+            df_papers[col] = pd.to_numeric(df_papers[col], errors='coerce')
+            df_papers.loc[~_has_oa, col] = np.nan
 
     # Velocidad de citas por paper
     if 'counts_by_year' in df_papers.columns and 'year' in df_papers.columns:

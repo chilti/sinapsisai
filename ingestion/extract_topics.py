@@ -1,6 +1,7 @@
 import os
 import json
 import sys
+import argparse
 from dotenv import load_dotenv
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -9,19 +10,40 @@ from database.knowledge_graph import Neo4jGraphStore
 load_dotenv()
 neo4j = Neo4jGraphStore()
 
-def extract_and_link_topics():
-    print("⏳ Iniciando extracción de Tópicos desde Neo4j (APIPapers)...")
+def extract_and_link_topics(entity_filter=None, academic_filter=None):
+    print("⏳ Iniciando extracción de Tópicos desde Neo4j...")
     
-    # Usar COALESCE para evitar el warning de Neo4j sobre propiedades inexistentes
-    query_fetch = """
-    MATCH (p:Paper)
-    WHERE p.raw_metadata IS NOT NULL AND COALESCE(p.topics_extracted, false) = false
-    RETURN p.doi AS doi, p.raw_metadata AS metadata
-    """
+    if entity_filter:
+        print(f"  -> Filtrando por Entidad: {entity_filter}")
+        query_fetch = """
+        MATCH (e:Entity {name: $entity})
+        OPTIONAL MATCH (e)-[:HAS_PAPER]->(p1:Paper)
+        OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p2:Paper)
+        WITH collect(p1) + collect(p2) AS all_p
+        UNWIND all_p AS p
+        WHERE p.raw_metadata IS NOT NULL AND COALESCE(p.topics_extracted, false) = false
+        RETURN DISTINCT p.doi AS doi, p.raw_metadata AS metadata
+        """
+        params = {"entity": entity_filter}
+    elif academic_filter:
+        print(f"  -> Filtrando por Académico: {academic_filter}")
+        query_fetch = """
+        MATCH (a:Academic {name: $academic})-[:AUTHORED]->(p:Paper)
+        WHERE p.raw_metadata IS NOT NULL AND COALESCE(p.topics_extracted, false) = false
+        RETURN DISTINCT p.doi AS doi, p.raw_metadata AS metadata
+        """
+        params = {"academic": academic_filter}
+    else:
+        query_fetch = """
+        MATCH (p:Paper)
+        WHERE p.raw_metadata IS NOT NULL AND COALESCE(p.topics_extracted, false) = false
+        RETURN p.doi AS doi, p.raw_metadata AS metadata
+        """
+        params = {}
     
     updates = 0
     with neo4j.driver.session() as read_session:
-        result = read_session.run(query_fetch)
+        result = read_session.run(query_fetch, **params)
         papers = list(result)
         
         print(f"✅ Se encontraron {len(papers)} papers pendientes de extraer tópicos.")
@@ -79,4 +101,9 @@ def extract_and_link_topics():
     print(f"🎉 Extracción completada para {updates} papers.")
 
 if __name__ == "__main__":
-    extract_and_link_topics()
+    parser = argparse.ArgumentParser(description="Extrae tópicos de OpenAlex desde metadata y los vincula en Neo4j.")
+    parser.add_argument("--entity", type=str, help="Nombre de la entidad para filtrar")
+    parser.add_argument("--academic", type=str, help="Nombre del académico para filtrar")
+    args = parser.parse_args()
+    
+    extract_and_link_topics(entity_filter=args.entity, academic_filter=args.academic)

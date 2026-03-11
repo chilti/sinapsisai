@@ -2,6 +2,7 @@ import os
 import json
 import uuid
 import sys
+import argparse
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -77,17 +78,39 @@ def clasificar_paper(titulo, abstract):
         print(f"\nError procesando paper: {e}")
         return None
 
-def fetch_unclassified_papers():
+def fetch_unclassified_papers(entity_filter=None, academic_filter=None):
     """Obtiene los papers de Neo4j que aún no tienen clasificación SDG."""
-    query = """
-    MATCH (p:Paper)
-    WHERE COALESCE(p.sdg_processed, false) = false
-    RETURN p.doi AS doi, p.title AS title, p.raw_metadata AS metadata
-    LIMIT 50
-    """
+    if entity_filter:
+        query = """
+        MATCH (e:Entity {name: $entity})
+        OPTIONAL MATCH (e)-[:HAS_PAPER]->(p1:Paper)
+        OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p2:Paper)
+        WITH collect(p1) + collect(p2) AS all_p
+        UNWIND all_p AS p
+        WHERE COALESCE(p.sdg_processed, false) = false
+        RETURN DISTINCT p.doi AS doi, p.title AS title, p.raw_metadata AS metadata
+        LIMIT 50
+        """
+        params = {"entity": entity_filter}
+    elif academic_filter:
+        query = """
+        MATCH (a:Academic {name: $academic})-[:AUTHORED]->(p:Paper)
+        WHERE COALESCE(p.sdg_processed, false) = false
+        RETURN DISTINCT p.doi AS doi, p.title AS title, p.raw_metadata AS metadata
+        LIMIT 50
+        """
+        params = {"academic": academic_filter}
+    else:
+        query = """
+        MATCH (p:Paper)
+        WHERE COALESCE(p.sdg_processed, false) = false
+        RETURN p.doi AS doi, p.title AS title, p.raw_metadata AS metadata
+        LIMIT 50
+        """
+        params = {}
     records = []
     with neo4j.driver.session() as session:
-        result = session.run(query)
+        result = session.run(query, **params)
         for r in result:
             doi = r['doi']
             title = r['title']
@@ -131,10 +154,10 @@ def assign_sdg_to_neo4j(doi, sdg_data):
     with neo4j.driver.session() as session:
         session.run(query, doi=doi, sdg_id=sdg_id, sdg_name=sdg_name, confidence=confidence, reasoning=reasoning)
 
-def run():
+def run(entity_filter=None, academic_filter=None):
     print("Iniciando clasificación SDG con LLM...")
     while True:
-        papers = fetch_unclassified_papers()
+        papers = fetch_unclassified_papers(entity_filter=entity_filter, academic_filter=academic_filter)
         if not papers:
             print("No hay más papers pendientes por clasificar.")
             break
@@ -168,4 +191,9 @@ def run():
                  print(f"❌ Falló clasificación LLM para {doi}")
 
 if __name__ == "__main__":
-    run()
+    parser = argparse.ArgumentParser(description="Clasifica papers en Objetivos de Desarrollo Sostenible (SDG) usando LLM.")
+    parser.add_argument("--entity", type=str, help="Nombre de la entidad para filtrar")
+    parser.add_argument("--academic", type=str, help="Nombre del académico para filtrar")
+    args = parser.parse_args()
+    
+    run(entity_filter=args.entity, academic_filter=args.academic)
