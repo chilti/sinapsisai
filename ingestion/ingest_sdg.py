@@ -132,6 +132,42 @@ def fetch_unclassified_papers(entity_filter=None, academic_filter=None, force=Fa
             records.append({'doi': doi, 'title': title, 'abstract': abstract})
     return records
 
+def count_unclassified_papers(entity_filter=None, academic_filter=None, force=False):
+    """Obtiene el conteo total de papers pendientes."""
+    where_clause = "WHERE COALESCE(p.sdg_processed, false) = false"
+    if force:
+        where_clause = "WHERE p.raw_metadata IS NOT NULL"
+
+    if entity_filter:
+        query = f"""
+        MATCH (e:Entity {{name: $entity}})
+        OPTIONAL MATCH (e)-[:HAS_PAPER]->(p1:Paper)
+        OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p2:Paper)
+        WITH collect(p1) + collect(p2) AS all_p
+        UNWIND all_p AS p
+        {where_clause}
+        RETURN count(DISTINCT p) AS total
+        """
+        params = {"entity": entity_filter}
+    elif academic_filter:
+        query = f"""
+        MATCH (a:Academic {{name: $academic}})-[:AUTHORED]->(p:Paper)
+        {where_clause}
+        RETURN count(DISTINCT p) AS total
+        """
+        params = {"academic": academic_filter}
+    else:
+        query = f"""
+        MATCH (p:Paper)
+        {where_clause}
+        RETURN count(p) AS total
+        """
+        params = {}
+    
+    with neo4j.driver.session() as session:
+        result = session.run(query, **params)
+        return result.single()["total"]
+
 def assign_sdg_to_neo4j(doi, sdg_data):
     """Crea el Nodo SDG y la relación ADDRESSES en Neo4j."""
     sdg_id = str(sdg_data.get('sdg_id', '')).upper().strip()
@@ -162,6 +198,11 @@ def run(entity_filter=None, academic_filter=None, force=False):
     print("Iniciando clasificación SDG con LLM...")
     if force:
         print("  -> MODO FORZADO ACTIVADO (Re-procesando clasificados)")
+        
+    total_total = count_unclassified_papers(entity_filter=entity_filter, academic_filter=academic_filter, force=force)
+    print(f"✅ Se encontraron {total_total} papers para clasificar por ODS.")
+    
+    procesados = 0
     while True:
         papers = fetch_unclassified_papers(entity_filter=entity_filter, academic_filter=academic_filter, force=force)
         if not papers:
@@ -188,13 +229,17 @@ def run(entity_filter=None, academic_filter=None, force=False):
                 assign_sdg_to_neo4j(doi, res)
                 
                 sdg_result = res.get('sdg_id')
+                # Truncar título para el print
+                title_short = (titulo[:50] + '...') if len(titulo) > 50 else titulo
                 if not sdg_result or sdg_result.lower() == "null":
                     razon = res.get('reasoning', 'Sin justificación')
-                    print(f"✅ {doi} -> null ({razon})")
+                    print(f"  [{procesados+1}/{total_total}] {doi} ({title_short}) -> null ({razon})")
                 else:
-                    print(f"✅ {doi} -> {sdg_result}")
+                    print(f"  [{procesados+1}/{total_total}] {doi} ({title_short}) -> {sdg_result}")
             else:
                  print(f"❌ Falló clasificación LLM para {doi}")
+            
+            procesados += 1
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Clasifica papers en Objetivos de Desarrollo Sostenible (SDG) usando LLM.")
