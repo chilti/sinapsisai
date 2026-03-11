@@ -573,8 +573,8 @@ def render_institucion_view(entity_name):
         }).sort_values(by="Año", ascending=False)
         
         st.dataframe(df_display_inst, width="stretch", hide_index=True, column_config={
-            "DOI": st.column_config.LinkColumn("Enlace DOI"),
-            "OpenAlex": st.column_config.LinkColumn("Enlace OpenAlex")
+            "DOI": st.column_config.LinkColumn("Enlace DOI", display_text="Ver Link"),
+            "OpenAlex": st.column_config.LinkColumn("OpenAlex", display_text="Ver en OpenAlex")
         })
 
         # ── Reporte Bibliométrico IA ──────────────────────────────────────────────────
@@ -910,8 +910,8 @@ def render_investigador_view(entity_name):
         }).sort_values(by="Año", ascending=False)
         
         st.dataframe(df_display_prof, width="stretch", hide_index=True, column_config={
-            "DOI": st.column_config.LinkColumn("Enlace DOI"),
-            "OpenAlex": st.column_config.LinkColumn("Enlace OpenAlex")
+            "DOI": st.column_config.LinkColumn("Enlace DOI", display_text="Ver Link"),
+            "OpenAlex": st.column_config.LinkColumn("OpenAlex", display_text="Ver en OpenAlex")
         })
     
     # 5. Mapa UMAP
