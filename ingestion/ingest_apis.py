@@ -343,15 +343,18 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                                  .replace('http://doi.org/',   '')
                                  .replace('https://dx.doi.org/', '')
                                  .strip('/') if doi and not doi.startswith('orcid-work:') else None)
-                if not _doi_clean:
-                    raise ValueError("No es un DOI resolvible en OpenAlex")
-                time.sleep(0.1)
-                print(f"    Consultando OpenAlex para {_doi_clean}...")
                 
                 work = None
-                try:
-                    work = pyalex.Works()["https://doi.org/" + _doi_clean]
-                except Exception as e:
+                if _doi_clean:
+                    time.sleep(0.1)
+                    print(f"    Consultando OpenAlex para {_doi_clean}...")
+                    try:
+                        work = pyalex.Works()["https://doi.org/" + _doi_clean]
+                    except Exception as e:
+                        pass # Fallarán a intento por título abajo
+                
+                # ==== FALLBACK POR TÍTULO (Aplica si falló DOI o si no tenía DOI) ====
+                if not work:
                     title_query = record.get('Title')
                     if title_query and len(title_query) > 20:
                         s_resp = http_client.get("https://api.openalex.org/works", params={"search": title_query, "mailto": pyalex.config.email})
