@@ -16,6 +16,7 @@ CH_DB   = "openalex"
 
 # Paths
 SEED_PATH = "data/authors_mexico_seed.json"
+SNII_PATH = "data/Investigadores_vigentes_2025.xlsx"
 EXCEL_FILES = [
     "data/C3-autores.xlsx",
     "data/ListadoICN-ORCID.xlsx"
@@ -93,22 +94,48 @@ def load_existing_mappings():
                 print(f"Error cargando {f_path}: {e}")
     return mappings
 
+def load_snii_authors():
+    """Carga autores desde el archivo del SNII 2025"""
+    if not os.path.exists(SNII_PATH):
+        return []
+    try:
+        df = pd.read_excel(SNII_PATH)
+        # Ajustar nombres de columnas según inspección
+        name_col = 'NOMBRE DEL INVESTIGADOR'
+        inst_col = 'INSTITUCIÓN'
+        
+        authors = []
+        for _, row in df.iterrows():
+            authors.append({
+                "name": str(row[name_col]),
+                "main_affiliation": str(row[inst_col]),
+                "source": "SNII_2025"
+            })
+        return authors
+    except Exception as e:
+        print(f"Error cargando SNII: {e}")
+        return []
+
 def run_matching(limit=1000, min_score=0.85):
     client = get_client()
     existing_mappings = load_existing_mappings()
     print(f"Mapeos locales cargados: {len(existing_mappings)}")
     
-    if not os.path.exists(SEED_PATH):
-        print(f"No se encontró el archivo semilla: {SEED_PATH}")
-        return
+    all_authors = []
+    # 1. Cargar Seed de Neo4j (autores ya identificados localmente)
+    if os.path.exists(SEED_PATH):
+        with open(SEED_PATH, 'r', encoding='utf-8') as f:
+            all_authors.extend(json.load(f))
+    
+    # 2. Cargar SNII 2025
+    snii_authors = load_snii_authors()
+    print(f"Autores SNII cargados: {len(snii_authors)}")
+    all_authors.extend(snii_authors)
 
-    with open(SEED_PATH, 'r', encoding='utf-8') as f:
-        authors = json.load(f)
-
-    print(f"Procesando {min(len(authors), limit)} autores de la semilla...")
+    print(f"Procesando {min(len(all_authors), limit)} autores seleccionados...")
     results = []
     
-    for author in authors[:limit]:
+    for author in all_authors[:limit]:
         name = author['name']
         norm_name = normalize_text(name)
         

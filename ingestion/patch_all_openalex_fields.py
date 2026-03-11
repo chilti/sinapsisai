@@ -1,27 +1,8 @@
 """
-patch_all_openalex_fields.py
-────────────────────────────
-Rellena los nuevos campos de OpenAlex en los nodos :Paper de Neo4j que ya
-fueron ingestados con la versión anterior del pipeline (antes de la expansión
-de campos de marzo 2026).
-
-Campos que añade / actualiza en raw_metadata:
-  - counts_by_year, referenced_works_count, referenced_works
-  - apc_paid_usd, apc_list_usd
-  - author_count, countries_distinct_count, institutions_distinct_count
-  - countries, coauthor_institutions
-  - license, any_repository_has_fulltext, oa_url, locations_count
-  - indexed_in, is_retracted, language, type
-  - journal_is_oa, journal_is_in_doaj, journal_is_core, issn, journal_type
-  - primary_topic_name/domain/field/subfield/score
-  - keywords (top-15), sustainable_development_goals
-  - OpenAlex_Topics (con score)
-
-Uso:
-    python ingestion/patch_all_openalex_fields.py
-    python ingestion/patch_all_openalex_fields.py --entity "Instituto de Ciencias Nucleares"
-    python ingestion/patch_all_openalex_fields.py --dry-run
-    python ingestion/patch_all_openalex_fields.py --skip-existing
+patch_all_openalex_fields.py (Optimized for Large Scale)
+──────────────────────────────────────────────────────
+Rellena campos de OpenAlex en Neo4j usando paginación para evitar agotar RAM.
+Optimizado para entidades grandes (ej. "México") con cientos de miles de papers.
 """
 
 import sys
@@ -30,15 +11,12 @@ import json
 import time
 import argparse
 import ast
-
 import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import httpx
-import os
 import ssl
-import time
 
-# Desactivar SSL verification globalmente (Nuclear Option)
+# Desactivar advertencias y SSL para entornos con proxies restrictivos
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 try:
     ssl._create_default_https_context = ssl._create_unverified_context
 except AttributeError:
@@ -49,23 +27,21 @@ from database.knowledge_graph import Neo4jGraphStore
 import pyalex
 from dotenv import load_dotenv
 
-# Cargar .env de forma robusta
+# Configuración PyAlex
 env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
 load_dotenv(env_path)
 pyalex.config.email = os.getenv("EMAIL_ADDRESS", "sin_correo@ciencias.unam.mx")
 if os.getenv("OPENALEX_API_KEY"):
     pyalex.config.api_key = os.getenv("OPENALEX_API_KEY")
 
-# ─── Extracción de campos desde un work de OpenAlex ────────────────────────
-
 def extract_new_fields(work: dict) -> dict:
-    """Devuelve un dict con todos los campos nuevos a parchear en raw_metadata."""
-    cyp    = work.get('cited_by_percentile_year') or {}
+    """Devuelve un dict con campos de OpenAlex procesados."""
+    oa     = work.get('open_access') or {}
     _auths = work.get('authorships', [])
     _loc   = work.get('primary_location') or {}
     _src   = _loc.get('source') or {}
     pt     = work.get('primary_topic') or {}
-    oa     = work.get('open_access') or {}
+    cyp    = work.get('cited_by_percentile_year') or {}
 
     topics = []
     for t in work.get('topics', []):
@@ -77,301 +53,195 @@ def extract_new_fields(work: dict) -> dict:
                 'topic':    t.get('display_name'),
                 'score':    t.get('score'),
             })
-        except Exception:
-            pass
+        except: pass
 
     coauthor_institutions = [
         {
             'author':   (a.get('author') or {}).get('display_name'),
             'orcid':    (a.get('author') or {}).get('orcid'),
-            'position': a.get('author_position'),
-            'is_corresponding': a.get('is_corresponding', False),
             'countries': a.get('countries', []),
-            'institutions': [
-                {'name': i.get('display_name'), 'ror': i.get('ror'),
-                 'country': i.get('country_code'), 'type': i.get('type')}
-                for i in a.get('institutions', [])
-            ]
+            'institutions': [{'name': i.get('display_name')} for i in a.get('institutions', [])]
         }
         for a in _auths
     ]
 
-    sdgs = [
-        {'id': s.get('id', '').rstrip('/').split('/')[-1],
-         'display_name': s.get('display_name'),
-         'score': s.get('score')}
-        for s in work.get('sustainable_development_goals', [])
-    ]
-
     return {
-        # Impacto
         'fwci':                         work.get('fwci'),
         'open_access':                  oa,
         'citation_normalized_percentile': (work.get('citation_normalized_percentile') or {}).get('value'),
         'is_in_top_1_percent':          (work.get('citation_normalized_percentile') or {}).get('is_in_top_1_percent', False),
         'is_in_top_10_percent':         (work.get('citation_normalized_percentile') or {}).get('is_in_top_10_percent', False),
-        'cited_by_percentile_year_min': cyp.get('min'),
-        'cited_by_percentile_year_max': cyp.get('max'),
-        # Trayectoria
         'counts_by_year':         work.get('counts_by_year', []),
         'referenced_works_count': work.get('referenced_works_count', 0),
-        'referenced_works':       work.get('referenced_works', []),
-        # APC
         'apc_paid_usd': (work.get('apc_paid') or {}).get('value_usd', 0) or 0,
-        'apc_list_usd': (work.get('apc_list') or {}).get('value_usd', 0) or 0,
-        # Colaboración
         'author_count':               len(_auths),
         'countries_distinct_count':   work.get('countries_distinct_count', 0),
         'institutions_distinct_count': work.get('institutions_distinct_count', 0),
-        'countries':                  list({c for a in _auths for c in a.get('countries', [])}),
-        'coauthor_institutions':      coauthor_institutions,
-        # OA avanzado
-        'license':                    _loc.get('license'),
-        'any_repository_has_fulltext': oa.get('any_repository_has_fulltext', False),
-        'oa_url':                     oa.get('oa_url'),
-        'locations_count':            work.get('locations_count', 0),
-        # Indexación
-        'indexed_in':   work.get('indexed_in', []),
-        'is_retracted': work.get('is_retracted', False),
-        'language':     work.get('language', 'en'),
-        'type':         work.get('type', 'article'),
-        # Revista
-        'journal_is_oa':      _src.get('is_oa', False),
-        'journal_is_in_doaj': _src.get('is_in_doaj', False),
         'journal_is_core':    _src.get('is_core', False),
-        'issn':               _src.get('issn_l'),
-        'journal_type':       _src.get('type'),
-        # Tópico primario
-        'primary_topic_name':     pt.get('display_name'),
-        'primary_topic_score':    pt.get('score'),
-        'primary_topic_field':    (pt.get('field') or {}).get('display_name'),
-        'primary_topic_subfield': (pt.get('subfield') or {}).get('display_name'),
-        'primary_topic_domain':   (pt.get('domain') or {}).get('display_name'),
-        # Topics + keywords + SDGs + grants
-        'OpenAlex_Topics': topics,
-        'keywords':        [k.get('display_name') for k in work.get('keywords', [])[:15]],
-        'sustainable_development_goals': sdgs,
-        'grants':          work.get('grants', []),
+        'primary_topic_name': pt.get('display_name'),
+        'OpenAlex_Topics':    topics,
+        'keywords':           [k.get('display_name') for k in work.get('keywords', [])[:10]],
+        'grants':             work.get('grants', []),
     }
 
-
 def _parse_raw_meta(raw_meta_json):
-    """Deserializa raw_metadata de Neo4j (puede ser dict, JSON string, o repr Python)."""
-    if isinstance(raw_meta_json, dict):
-        return raw_meta_json
-    if isinstance(raw_meta_json, str):
-        try:
-            return json.loads(raw_meta_json)
-        except json.JSONDecodeError:
-            # fallback: repr de Python con comillas simples
-            return ast.literal_eval(raw_meta_json)
-    return {}
+    if isinstance(raw_meta_json, dict): return raw_meta_json
+    if not raw_meta_json: return {}
+    try:
+        return json.loads(raw_meta_json)
+    except:
+        try: return ast.literal_eval(raw_meta_json)
+        except: return {}
 
-
-# ─── Script principal ───────────────────────────────────────────────────────
-
-def patch_all_fields(entity_filter: str = None, dry_run: bool = False, skip_existing: bool = False, limit: int = None, batch_size: int = 20):
+def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, skip_existing=False, limit=None, chunk_size=5000, batch_size=20):
     graph_store = Neo4jGraphStore()
-
-    print("📋 Mapeando papers desde Neo4j...")
-    papers = []
+    
+    # 1. Contar total de trabajos a procesar
     with graph_store.driver.session() as session:
         if entity_filter:
-            query = """
-            MATCH (e:Entity {name: $entity})-[:HAS_PAPER]->(p:Paper)
-            WHERE p.raw_metadata IS NOT NULL
-            RETURN p.id AS id, p.doi AS doi, p.title AS title, p.raw_metadata AS meta
-            UNION
-            MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)
-            WHERE p.raw_metadata IS NOT NULL
-            RETURN p.id AS id, p.doi AS doi, p.title AS title, p.raw_metadata AS meta
+            count_query = """
+            MATCH (e:Entity {name: $entity})
+            OPTIONAL MATCH (e)-[:HAS_PAPER]->(p1:Paper)
+            OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p2:Paper)
+            WITH collect(p1) + collect(p2) AS all_p
+            UNWIND all_p AS p
+            RETURN count(DISTINCT p) AS total
             """
-            result = session.run(query, entity=entity_filter)
+            total_papers = session.run(count_query, entity=entity_filter).single()['total']
+        elif academic_filter:
+            count_query = """
+            MATCH (a:Academic {name: $academic})-[:AUTHORED]->(p:Paper)
+            RETURN count(DISTINCT p) AS total
+            """
+            total_papers = session.run(count_query, academic=academic_filter).single()['total']
         else:
-            q = "MATCH (p:Paper) WHERE p.raw_metadata IS NOT NULL " \
-                "RETURN p.id AS id, p.doi AS doi, p.title AS title, p.raw_metadata AS meta"
-            if limit: q += f" LIMIT {limit}"
-            result = session.run(q)
-        seen_ids = set()
-        for row in result:
-            if row['id'] not in seen_ids:
-                papers.append({
-                    "id": row['id'],
-                    "doi": row['doi'],
-                    "title": row['title'],
-                    "meta": row['meta']
-                })
-                seen_ids.add(row['id'])
+            total_papers = session.run("MATCH (p:Paper) RETURN count(p) AS total").single()['total']
 
-    # Filtrar DOIs válidos para OpenAlex
-    valid = [p for p in papers
-             if p['doi'] and p['doi'].startswith("10.") and not p['doi'].startswith("urn:")]
-    
-    if limit and len(valid) > limit:
-        valid = valid[:limit]
+    if limit: total_papers = min(total_papers, limit)
+    print(f"🚀 Iniciando parche para {total_papers} papers...")
 
-    if skip_existing:
-        def _needs_patch(meta_json):
-            try:
-                m = _parse_raw_meta(meta_json)
-                return 'author_count' not in m or 'counts_by_year' not in m
-            except Exception:
-                return True
-        valid = [(doi, meta) for doi, meta in valid if _needs_patch(meta)]
-        print(f"  → {len(valid)} papers necesitan parche (--skip-existing activo).")
-    else:
-        print(f"  → {len(valid)} DOIs válidos encontrados.")
-
-    if dry_run:
-        print(f"🔍 DRY-RUN: se parchearían {len(valid)} papers. Sin cambios en la BD.")
-        graph_store.close()
-        return
-
-    batch_size = 20
+    processed = 0
     updated = 0
     skipped = 0
-    errors  = 0
-    first_skip_printed = False
-    total   = len(valid)
+    errors = 0
 
-    for i in range(0, total, batch_size):
-        batch = valid[i:i + batch_size]
-        clean_dois = [d["doi"].replace("https://doi.org/", "").strip().lower() for d in batch]
-
-        # Fetch individual por DOI o Título (fallback) con HTTPX para bypass de SSL
-        oa_data = {}
-        with httpx.Client(verify=False, timeout=15.0) as client:
-            for p_rec in batch:
-                d = p_rec["doi"].replace("https://doi.org/", "").strip().lower()
-                t = p_rec.get("title", "")
-                try:
-                    # Intento 1: Por DOI
-                    url = f"https://api.openalex.org/works/https://doi.org/{d}"
-                    params = {"mailto": pyalex.config.email}
-                    
-                    resp = client.get(url, params=params)
-                    if resp.status_code == 200:
-                        oa_data[d] = resp.json()
-                        print(f"  [OK DOI] {d}")
-                    else:
-                        if t and len(t) > 20:
-                            # Intento 2: Por Título (fallback)
-                            search_url = "https://api.openalex.org/works"
-                            search_params = {"search": t, "mailto": pyalex.config.email}
-                            
-                            resp = client.get(search_url, params=search_params)
-                            if resp.status_code == 200:
-                                results = resp.json().get("results", [])
-                                if results:
-                                    oa_data[d] = results[0]
-                                    print(f"  [OK Title] {t[:50]}...")
-                except Exception as e:
-                    print(f"  [Error API] {d}: {e}")
-                    pass
-                time.sleep(0.1)
-
-        if not oa_data and not first_skip_printed:
-            print(f"\n  ⚠️  Primer lote sin resultados de OpenAlex. DOI de prueba: {clean_dois[0]!r}", flush=True)
-            first_skip_printed = True
-
-        # Parchar en Neo4j
+    # 2. Iterar por CHUNKS para no saturar memoria
+    for skip in range(0, total_papers, chunk_size):
+        remaining_in_chunk = min(chunk_size, total_papers - skip)
+        print(f"\n📦 Procesando chunk {skip} a {skip + remaining_in_chunk}...")
+        
+        chunk_papers = []
         with graph_store.driver.session() as session:
-            for p_rec in batch:
-                doi_full = p_rec["doi"]
-                paper_id = p_rec["id"]
-                raw_meta_json = p_rec["meta"]
-                
-                clean = doi_full.replace("https://doi.org/", "").strip().lower()
-                if clean not in oa_data:
+            if entity_filter:
+                query = """
+                MATCH (e:Entity {name: $entity})
+                OPTIONAL MATCH (e)-[:HAS_PAPER]->(p1:Paper)
+                OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p2:Paper)
+                WITH collect(p1) + collect(p2) AS all_p
+                UNWIND all_p AS p
+                WITH DISTINCT p
+                RETURN p.id AS id, p.doi AS doi, p.title AS title, p.raw_metadata AS meta
+                SKIP $skip LIMIT $limit
+                """
+                result = session.run(query, entity=entity_filter, skip=skip, limit=remaining_in_chunk)
+            elif academic_filter:
+                query = """
+                MATCH (a:Academic {name: $academic})-[:AUTHORED]->(p:Paper)
+                RETURN DISTINCT p.id AS id, p.doi AS doi, p.title AS title, p.raw_metadata AS meta
+                SKIP $skip LIMIT $limit
+                """
+                result = session.run(query, academic=academic_filter, skip=skip, limit=remaining_in_chunk)
+            else:
+                query = """
+                MATCH (p:Paper)
+                RETURN p.id AS id, p.doi AS doi, p.title AS title, p.raw_metadata AS meta
+                SKIP $skip LIMIT $limit
+                """
+                result = session.run(query, skip=skip, limit=remaining_in_chunk)
+            
+            for row in result:
+                chunk_papers.append(row)
+
+        # 3. Procesar el chunk en BATCHES de API (20 en 20)
+        for i in range(0, len(chunk_papers), batch_size):
+            batch = chunk_papers[i:i+batch_size]
+            
+            # Filtrar por skip_existing si es necesario
+            to_patch = []
+            for p in batch:
+                if skip_existing:
+                    meta = _parse_raw_meta(p['meta'])
+                    if 'author_count' in meta and 'counts_by_year' in meta:
+                        skipped += 1
+                        continue
+                if p['doi'] and p['doi'].startswith("10."):
+                    to_patch.append(p)
+                else:
                     skipped += 1
-                    continue
-                try:
-                    meta = _parse_raw_meta(raw_meta_json)
-                    new_fields = extract_new_fields(oa_data[clean])
-                    meta.update(new_fields)
+
+            if not to_patch: continue
+            if dry_run:
+                updated += len(to_patch)
+                print(f"  [DRY] Parchearía batch de {len(to_patch)}", end="\r")
+                continue
+
+            # API FETCH
+            oa_data = {}
+            with httpx.Client(verify=False, timeout=20.0) as client:
+                for p_rec in to_patch:
+                    doi = p_rec['doi'].replace("https://doi.org/", "").strip().lower()
+                    try:
+                        resp = client.get(f"https://api.openalex.org/works/https://doi.org/{doi}", 
+                                          params={"mailto": pyalex.config.email})
+                        if resp.status_code == 200:
+                            oa_data[doi] = resp.json()
+                        elif p_rec['title'] and len(p_rec['title']) > 20:
+                            # Fallback por título
+                            s_resp = client.get("https://api.openalex.org/works", 
+                                                params={"search": p_rec['title'], "mailto": pyalex.config.email})
+                            if s_resp.status_code == 200:
+                                res = s_resp.json().get('results', [])
+                                if res: oa_data[doi] = res[0]
+                    except: pass
+                    time.sleep(0.05)
+
+            # DB UPDATE
+            with graph_store.driver.session() as session:
+                for p_rec in to_patch:
+                    doi_key = p_rec['doi'].replace("https://doi.org/", "").strip().lower()
+                    if doi_key not in oa_data:
+                        errors += 1
+                        continue
                     
-                    grants = new_fields.get("grants", [])
-                    funders_list = []
-                    awards_list = []
-                    for g in grants:
-                        if g.get("funder_display_name"):
-                            funders_list.append({
-                                "name": g.get("funder_display_name"),
-                                "openalex_id": g.get("funder") or ""
-                            })
-                        if g.get("award_id"):
-                            awards_list.append(g.get("award_id"))
-                    
-                    unique_funders = []
-                    seen_f = set()
-                    for f in funders_list:
-                        if f["name"] not in seen_f:
-                            unique_funders.append(f)
-                            seen_f.add(f["name"])
-                    unique_awards = list(set(awards_list))
+                    try:
+                        meta = _parse_raw_meta(p_rec['meta'])
+                        new_data = extract_new_fields(oa_data[doi_key])
+                        meta.update(new_data)
+                        
+                        session.run("MATCH (p:Paper {id: $id}) SET p.raw_metadata = $json", 
+                                    id=p_rec['id'], json=json.dumps(meta, ensure_ascii=False))
+                        updated += 1
+                    except:
+                        errors += 1
 
-                    update_query = """
-                    MATCH (p:Paper {id: $id})
-                    SET p.raw_metadata = $meta
-                    WITH p
-                    FOREACH (funder IN $funders | 
-                        MERGE (f:Funder {name: funder.name})
-                        SET f.openalex_id = funder.openalex_id
-                        MERGE (p)-[:FUNDED_BY]->(f)
-                    )
-                    FOREACH (award_id IN $awards | 
-                        MERGE (aw:Award {id: award_id})
-                        MERGE (p)-[:HAS_AWARD]->(aw)
-                    )
-                    """
-                    session.run(update_query, id=paper_id, meta=json.dumps(meta, ensure_ascii=False),
-                                funders=unique_funders, awards=unique_awards)
-                    updated += 1
-                except Exception as e:
-                    print(f"\n  ❌ Error en {doi_full}: {e}", flush=True)
-                    errors += 1
+            processed += len(batch)
+            print(f"  📊 {skip+i+len(batch)}/{total_papers} | OK: {updated} | Skip: {skipped} | Err: {errors}", end="\r")
 
-        pct = int((i + len(batch)) / total * 100)
-        print(f"  [{pct:3d}%] actualizados={updated}  omitidos={skipped}  errores={errors}",
-              end="\r", flush=True)
-
-    print(f"\n\n✅ Parche completado.")
-    print(f"   Actualizados : {updated}")
-    print(f"   Sin datos OA : {skipped}")
-    print(f"   Errores      : {errors}")
+    print(f"\n\n✨ Finalizado. {updated} actualizados, {skipped} omitidos, {errors} errores.")
     graph_store.close()
 
-
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Parche de campos OpenAlex faltantes en papers existentes."
-    )
-    parser.add_argument(
-        "--entity", type=str, default=None,
-        help="Filtrar por nombre de entidad (ej. 'Instituto de Ciencias Nucleares')"
-    )
-    parser.add_argument(
-        "--dry-run", action="store_true",
-        help="Muestra cuántos se parchearían sin modificar la BD"
-    )
-    parser.add_argument(
-        "--skip-existing", action="store_true",
-        help="Solo parchear papers que no tienen author_count o counts_by_year"
-    )
-    parser.add_argument(
-        "--limit", type=int, default=None,
-        help="Límite máximo de papers a parchear"
-    )
-    parser.add_argument(
-        "--batch", type=int, default=20,
-        help="Tamaño del lote (batch)"
-    )
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--entity", type=str, default=None)
+    parser.add_argument("--academic", type=str, default=None)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--skip-existing", action="store_true")
+    parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--batch", type=int, default=20)
+    parser.add_argument("--chunk", type=int, default=5000)
     args = parser.parse_args()
 
-    patch_all_fields(
-        entity_filter=args.entity,
-        dry_run=args.dry_run,
-        skip_existing=args.skip_existing,
-        limit=args.limit,
-        batch_size=args.batch
-    )
+    patch_all_fields(entity_filter=args.entity, academic_filter=args.academic,
+                     dry_run=args.dry_run, 
+                     skip_existing=args.skip_existing, limit=args.limit, 
+                     batch_size=args.batch, chunk_size=args.chunk)

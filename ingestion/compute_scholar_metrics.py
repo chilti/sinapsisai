@@ -255,57 +255,54 @@ def extract_academic_papers():
                 'DOI':    doi_link,
                 'Link':   doi_link,
                 'openalex_url': raw_meta.get('openalex_url'),
-                # ── Impacto ────────────────────────────────────────────────────
                 'fwci':                         fwci,
                 'is_oa':                        int(is_oa),
                 'oa_status':                    oa_status,
                 'is_in_top_10_percent':         is_in_top_10_percent,
                 'is_in_top_1_percent':          is_in_top_1_percent,
                 'citation_normalized_percentile': citation_normalized_percentile,
-                # ── Trayectoria de citas ────────────────────────────────────────
                 'counts_by_year':        raw_meta.get('counts_by_year') or [],
                 'referenced_works_count': int(raw_meta.get('referenced_works_count', 0) or 0),
                 'referenced_works':      raw_meta.get('referenced_works') or [],
-                # ── APC ─────────────────────────────────────────────────────────
                 'apc_paid_usd': float(raw_meta.get('apc_paid_usd', 0) or 0),
                 'apc_list_usd': float(raw_meta.get('apc_list_usd', 0) or 0),
-                # ── Colaboración ────────────────────────────────────────────────
                 'author_count':             int(raw_meta.get('author_count', 0) or 0),
                 'countries_distinct_count': int(raw_meta.get('countries_distinct_count', 0) or 0),
                 'institutions_distinct_count': int(raw_meta.get('institutions_distinct_count', 0) or 0),
                 'countries':            raw_meta.get('countries') or [],
                 'coauthor_institutions': raw_meta.get('coauthor_institutions') or [],
-                # ── OA avanzado ─────────────────────────────────────────────────
                 'license':                   raw_meta.get('license'),
                 'any_repository_has_fulltext': bool(raw_meta.get('any_repository_has_fulltext', False)),
                 'locations_count':           int(raw_meta.get('locations_count', 0) or 0),
                 'oa_url':                    raw_meta.get('oa_url'),
-                # ── Indexación ─────────────────────────────────────────────────
                 'indexed_in':        raw_meta.get('indexed_in') or [],
                 'is_retracted':      bool(raw_meta.get('is_retracted', False)),
                 'language':          raw_meta.get('language', 'en') or 'en',
                 'type':              raw_meta.get('type', 'article'),
-                # ── Revista ────────────────────────────────────────────────────
                 'journal_is_oa':      bool(raw_meta.get('journal_is_oa', False)),
                 'journal_is_in_doaj': bool(raw_meta.get('journal_is_in_doaj', False)),
                 'journal_is_core':    bool(raw_meta.get('journal_is_core', False)),
                 'issn':               raw_meta.get('issn'),
-                # ── Tópico primario ─────────────────────────────────────────────
                 'primary_topic_name':     raw_meta.get('primary_topic_name'),
                 'primary_topic_domain':   raw_meta.get('primary_topic_domain'),
                 'primary_topic_field':    raw_meta.get('primary_topic_field'),
                 'primary_topic_subfield': raw_meta.get('primary_topic_subfield'),
                 'primary_topic_score':    raw_meta.get('primary_topic_score'),
                 'keywords':              raw_meta.get('keywords') or [],
-                # ── Tópicos y ODS ──────────────────────────────────────────────
                 'topics': topics,
-                'ODS_ID':           sdg_id,
-                'ODS_Nombre':       sdg_name,
-                'ODS_Confianza':    sdg_conf,
+                'ODS_ID': sdg_id,
+                'ODS_Nombre': sdg_name,
+                'ODS_Confianza': sdg_conf,
                 'ODS_Justificacion': sdg_reas
             })
             
-    return pd.DataFrame(records)
+            # Flush batch to avoid loading everything in memory if later used in a loop
+            if len(records) >= 5000:
+                yield pd.DataFrame(records)
+                records = []
+                
+    if records:
+        yield pd.DataFrame(records)
 
 def extract_entity_papers():
     """Descarga los papers asociados históricamente a una Institución/Entidad."""
@@ -653,19 +650,30 @@ def aggregate_metrics(df_papers, group_cols):
     return df_agg
 
 def process_and_save():
-    print("Iniciando Pre-cálculo de Métricas desde Neo4j...")
+    print("Iniciando Pre-cálculo de Métricas desde Neo4j (Modo eficiente)...")
     
-    # 1. Extracción y Enriquecimiento
-    df_raw = extract_academic_papers()
-    if df_raw.empty:
-        print("❌ No se encontraron datos de publicaciones en Neo4j. Ingeste datos primero.")
+    # 1. Extracción y Enriquecimiento por lotes
+    df_raw_list = []
+    for chunk_df in extract_academic_papers():
+        print(f"  → Procesando bloque de {len(chunk_df)} papers...")
+        chunk_df['year'] = pd.to_numeric(chunk_df['year'], errors='coerce')
+        chunk_df = chunk_df.dropna(subset=['year'])
+        chunk_df = chunk_df[chunk_df['year'] >= 1900]
+        
+        # Saneo rápido
+        list_cols = ['keywords', 'topics', 'indexed_in']
+        for c in list_cols:
+            if c in chunk_df.columns:
+                chunk_df[c] = chunk_df[c].apply(lambda x: list(x) if isinstance(x, (list, tuple)) else [])
+        
+        df_raw_list.append(chunk_df)
+
+    if not df_raw_list:
+        print("❌ No se encontraron datos.")
         return
         
-    print(f"✅ {len(df_raw)} publicaciones extraídas.")
-    df_raw['year'] = pd.to_numeric(df_raw['year'], errors='coerce')
-    df_raw = df_raw.dropna(subset=['year'])
-    # Filtrar años inválidos (0 o muy antiguos) para evitar errores en gráficas temporales
-    df_raw = df_raw[df_raw['year'] >= 1900] 
+    df_raw = pd.concat(df_raw_list, ignore_index=True)
+    print(f"✅ Total {len(df_raw)} publicaciones cargadas.")
     
     # Sanear columnas tipo lista para PyArrow
     list_cols = ['keywords', 'topics', 'countries', 'coauthor_institutions', 'referenced_works', 'counts_by_year', 'indexed_in']
