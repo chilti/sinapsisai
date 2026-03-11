@@ -793,41 +793,58 @@ def aggregate_metrics(df_papers, group_cols):
     df_agg = df_agg.merge(h_series, on=group_cols, how='left')
     return df_agg
 
-def save_or_update_parquet(df, path, academic_filter=None, entity_filter=None, key_col=None):
+def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, include_academics_list=False):
     """
-    Guarda el dataframe en formato parquet. 
-    Si existe un filtro, solo elimina y actualiza las filas correspondientes a ese filtro,
-    manteniendo el resto de los datos intactos.
+    Guarda el dataframe en carpetas separadas:
+    data/dash_cache/<Entidad>/<Academico>/archivo.parquet
+    o data/dash_cache/<Entidad>/archivo.parquet
     """
-    if not os.path.exists(path):
-        df.to_parquet(path, index=False)
-        return
-        
-    if not academic_filter and not entity_filter:
-        # Modo completo, sobreescribir normal
-        df.to_parquet(path, index=False)
-        return
-
-    try:
-        existing_df = pd.read_parquet(path)
-        
-        # Eliminar registros previos del académico o entidad filtrada
-        if academic_filter and key_col in existing_df.columns:
-            existing_df = existing_df[existing_df[key_col] != academic_filter]
-        elif entity_filter and key_col in existing_df.columns:
-            existing_df = existing_df[existing_df[key_col] != entity_filter]
+    if df.empty: return
+    
+    if group_level == 'academic':
+        for ac_name, grp in df.groupby('academic_name'):
+            entities = []
+            if academics_map and ac_name in academics_map:
+                entities = academics_map[ac_name]
+            elif 'entities' in grp.columns:
+                entities_val = grp['entities'].iloc[0]
+                if isinstance(entities_val, list):
+                    entities = entities_val
+                elif isinstance(entities_val, str):
+                    entities = [e.strip() for e in entities_val.split(';') if e.strip()]
             
-        # Combinar datos filtrados existentes con nuevos
-        if not df.empty:
-            combined_df = pd.concat([existing_df, df], ignore_index=True)
-        else:
-            combined_df = existing_df
+            if not entities:
+                entities = ['Sin Entidad']
+                
+            for ent in entities:
+                safe_ent = str(ent).replace('/', '_').replace('\\', '_')
+                safe_ac = str(ac_name).replace('/', '_').replace('\\', '_')
+                
+                target_dir = CACHE_DIR / safe_ent / safe_ac
+                target_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Desagregado puro (escritura directa sobrescribiendo lo anterior del propio profesor)
+                grp.to_parquet(target_dir / base_name, index=False)
+                
+    elif group_level == 'entity':
+        graph_store = Neo4jGraphStore()
+        for ent_name, grp in df.groupby('entity_name'):
+            safe_ent = str(ent_name).replace('/', '_').replace('\\', '_')
+            target_dir = CACHE_DIR / safe_ent
+            target_dir.mkdir(parents=True, exist_ok=True)
             
-        combined_df.to_parquet(path, index=False)
-        print(f"    [Merge] {path.name} actualizado incrementalmente.")
-    except Exception as e:
-        print(f"    [Aviso] Error al actualizar {path.name} incrementalmente: {e}. Se sobreescribirá.")
-        df.to_parquet(path, index=False)
+            grp = grp.copy()
+            if include_academics_list and ent_name not in ["UNAM", "Mexico", "México"]:
+                try:
+                    with graph_store.driver.session() as session:
+                        res = session.run("MATCH (e:Entity {name: $ent})<-[:AFFILIATED_TO]-(a:Academic) RETURN a.name AS name", ent=ent_name)
+                        academics = [r['name'] for r in res]
+                    grp['academics_list'] = json.dumps(academics, ensure_ascii=False)
+                except Exception as e:
+                    print(f"Error fetching academics for {ent_name}: {e}")
+                    grp['academics_list'] = "[]"
+            
+            grp.to_parquet(target_dir / base_name, index=False)
 
 def process_and_save(entity_filter=None, academic_filter=None):
     print("Iniciando Pre-cálculo de Métricas desde Neo4j (Modo eficiente)...")
@@ -855,6 +872,17 @@ def process_and_save(entity_filter=None, academic_filter=None):
     df_raw = pd.concat(df_raw_list, ignore_index=True)
     print(f"✅ Total {len(df_raw)} publicaciones cargadas.")
     
+    # Construir mapa de academicos a entidades
+    academics_map = {}
+    for _, row in df_raw.iterrows():
+        ac_name = row['academic_name']
+        if ac_name not in academics_map:
+            entities_val = row['entities']
+            if isinstance(entities_val, list):
+                academics_map[ac_name] = entities_val
+            elif isinstance(entities_val, str):
+                academics_map[ac_name] = [e.strip() for e in entities_val.split(';') if e.strip()]
+    
     # Sanear columnas tipo lista para PyArrow
     list_cols = ['keywords', 'topics', 'countries', 'coauthor_institutions', 'referenced_works', 'counts_by_year', 'indexed_in']
     for c in list_cols:
@@ -862,7 +890,7 @@ def process_and_save(entity_filter=None, academic_filter=None):
             df_raw[c] = df_raw[c].apply(lambda x: list(x) if isinstance(x, (list, tuple, np.ndarray)) else [])
 
     # Exportar listado general de papers de Académicos
-    save_or_update_parquet(df_raw, CACHE_DIR / 'papers_profesor.parquet', academic_filter, entity_filter, 'academic_name')
+    save_disaggregated_parquets(df_raw, 'papers_profesor.parquet', 'academic', academics_map)
     
     # TOPICOS SUNBURST
     print("⏳ Precalculando agrupaciones de Tópicos (Sunburst)...")
@@ -887,17 +915,17 @@ def process_and_save(entity_filter=None, academic_filter=None):
         df_topics['count'] = 1
         # Evolución (con año)
         df_topics_evol = df_topics.groupby(['academic_name', 'year', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
-        save_or_update_parquet(df_topics_evol, CACHE_DIR / 'thematic_evolution_investigador.parquet', academic_filter, entity_filter, 'academic_name')
+        save_disaggregated_parquets(df_topics_evol, 'thematic_evolution_investigador.parquet', 'academic', academics_map)
         
         # Totales (para Sunburst, agrupado sin año)
         df_topics_agg = df_topics.groupby(['academic_name', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
-        save_or_update_parquet(df_topics_agg, CACHE_DIR / 'topics_investigador.parquet', academic_filter, entity_filter, 'academic_name')
+        save_disaggregated_parquets(df_topics_agg, 'topics_investigador.parquet', 'academic', academics_map)
     else:
         # Escribir parquet vacío para que el dashboard muestre mensaje en vez de None
         print("⚠️  No se encontraron tópicos en raw_metadata ni en nodos :Topic del grafo.")
         df_topics_agg = pd.DataFrame(columns=['academic_name', 'domain', 'field', 'subfield', 'topic', 'value'])
-        save_or_update_parquet(df_topics_agg, CACHE_DIR / 'topics_investigador.parquet', academic_filter, entity_filter, 'academic_name')
-        save_or_update_parquet(pd.DataFrame(columns=['academic_name', 'year', 'domain', 'field', 'subfield', 'topic', 'value']), CACHE_DIR / 'thematic_evolution_investigador.parquet', academic_filter, entity_filter, 'academic_name')
+        save_disaggregated_parquets(df_topics_agg, 'topics_investigador.parquet', 'academic', academics_map)
+        save_disaggregated_parquets(pd.DataFrame(columns=['academic_name', 'year', 'domain', 'field', 'subfield', 'topic', 'value']), 'thematic_evolution_investigador.parquet', 'academic', academics_map)
     # Limpiar archivos de versiones anteriores si existen
     if os.path.exists(CACHE_DIR / 'concepts_investigador.parquet'):
         os.remove(CACHE_DIR / 'concepts_investigador.parquet')
@@ -908,7 +936,7 @@ def process_and_save(entity_filter=None, academic_filter=None):
     print("⏳ Agregando métricas a nivel Investigador...")
     # Agregamos 'entities' para conservar las afiliaciones en el agrupamiento
     df_inv_annual = aggregate_metrics(df_raw, ['academic_name', 'entities', 'year'])
-    save_or_update_parquet(df_inv_annual, CACHE_DIR / 'investigador_annual.parquet', academic_filter, entity_filter, 'academic_name')
+    save_disaggregated_parquets(df_inv_annual, 'investigador_annual.parquet', 'academic', academics_map)
     
     df_inv_tot = aggregate_metrics(df_raw, ['academic_name', 'entities'])
 
@@ -924,7 +952,7 @@ def process_and_save(entity_filter=None, academic_filter=None):
             df_inter = pd.DataFrame(inter_rows)
             df_inv_tot = df_inv_tot.merge(df_inter, on='academic_name', how='left')
 
-    save_or_update_parquet(df_inv_tot, CACHE_DIR / 'investigador_total.parquet', academic_filter, entity_filter, 'academic_name')
+    save_disaggregated_parquets(df_inv_tot, 'investigador_total.parquet', 'academic', academics_map)
     
     # ── Keywords por investigador ──────────────────────────────────────────────
     print("⏳ Calculando keywords por investigador...")
@@ -939,12 +967,12 @@ def process_and_save(entity_filter=None, academic_filter=None):
             for kw, freq in cnt.most_common(1000):
                 kw_rows.append({'academic_name': ac_name, 'keyword': kw, 'freq': freq})
         if kw_rows:
-            save_or_update_parquet(pd.DataFrame(kw_rows), CACHE_DIR / 'keywords_investigador.parquet', academic_filter, entity_filter, 'academic_name')
+            save_disaggregated_parquets(pd.DataFrame(kw_rows), 'keywords_investigador.parquet', 'academic', academics_map)
             print(f"  → keywords_investigador.parquet: {len(kw_rows)} filas incremental o total")
 
     df_raw_recent = df_raw[(df_raw['year'] >= 2021) & (df_raw['year'] <= 2025)]
     df_inv_recent = aggregate_metrics(df_raw_recent, ['academic_name', 'entities'])
-    save_or_update_parquet(df_inv_recent, CACHE_DIR / 'investigador_recent.parquet', academic_filter, entity_filter, 'academic_name')
+    save_disaggregated_parquets(df_inv_recent, 'investigador_recent.parquet', 'academic', academics_map)
     
     # 3. AGREGADOS A NIVEL INSTITUCIÓN (Macro)
     df_inst_raw = pd.DataFrame()
@@ -964,7 +992,7 @@ def process_and_save(entity_filter=None, academic_filter=None):
                 df_inst_raw[c] = df_inst_raw[c].apply(lambda x: list(x) if isinstance(x, (list, tuple, np.ndarray)) else [])
 
         # Exportar listado general de papers de Institucion
-        save_or_update_parquet(df_inst_raw, CACHE_DIR / 'papers_institucion.parquet', academic_filter, entity_filter, 'entity_name')
+        save_disaggregated_parquets(df_inst_raw, 'papers_institucion.parquet', 'entity')
         
         df_inst_tot = aggregate_metrics(df_inst_raw, ['entity_name'])
 
@@ -979,7 +1007,7 @@ def process_and_save(entity_filter=None, academic_filter=None):
                 df_inter_inst = pd.DataFrame(inter_rows_inst)
                 df_inst_tot = df_inst_tot.merge(df_inter_inst, on='entity_name', how='left')
 
-        save_or_update_parquet(df_inst_tot, CACHE_DIR / 'institucion_total.parquet', academic_filter, entity_filter, 'entity_name')
+        save_disaggregated_parquets(df_inst_tot, 'institucion_total.parquet', 'entity', include_academics_list=True)
 
         # ── Keywords por entidad ───────────────────────────────────────────────
         if 'keywords' in df_inst_raw.columns:
@@ -993,12 +1021,12 @@ def process_and_save(entity_filter=None, academic_filter=None):
                 for kw, freq in cnt.most_common(1000):
                     kw_inst_rows.append({'entity_name': e_name, 'keyword': kw, 'freq': freq})
             if kw_inst_rows:
-                save_or_update_parquet(pd.DataFrame(kw_inst_rows), CACHE_DIR / 'keywords_institucion.parquet', academic_filter, entity_filter, 'entity_name')
+                save_disaggregated_parquets(pd.DataFrame(kw_inst_rows), 'keywords_institucion.parquet', 'entity')
                 print(f"  → keywords_institucion.parquet: {len(kw_inst_rows)} filas incremental o total")
 
     
         df_inst_ann = aggregate_metrics(df_inst_raw, ['entity_name', 'year'])
-        save_or_update_parquet(df_inst_ann, CACHE_DIR / 'institucion_annual.parquet', academic_filter, entity_filter, 'entity_name')
+        save_disaggregated_parquets(df_inst_ann, 'institucion_annual.parquet', 'entity')
         
         # Tópicos Entidad Real
         inst_topics_list = []
@@ -1022,10 +1050,10 @@ def process_and_save(entity_filter=None, academic_filter=None):
             # Aseguramos que 'year' existe en inst_topics_list
             # Evolución (con año)
             df_inst_evol = df_inst_t_raw.groupby(['entity_name', 'year', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
-            save_or_update_parquet(df_inst_evol, CACHE_DIR / 'thematic_evolution_institucion.parquet', academic_filter, entity_filter, 'entity_name')
+            save_disaggregated_parquets(df_inst_evol, 'thematic_evolution_institucion.parquet', 'entity')
             
             df_inst_t = df_inst_t_raw.groupby(['entity_name', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
-            save_or_update_parquet(df_inst_t, CACHE_DIR / 'topics_institucion.parquet', academic_filter, entity_filter, 'entity_name')
+            save_disaggregated_parquets(df_inst_t, 'topics_institucion.parquet', 'entity')
 
     else:
         if academic_filter and not entity_filter:

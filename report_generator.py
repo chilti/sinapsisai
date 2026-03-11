@@ -71,7 +71,7 @@ def fig_to_html(fig):
     # Injecting the plotly lib via CDN unconditionally since this HTML isn't tied to a JS framework header
     return "<div class='chart'>" + pio.to_html(fig, full_html=False, include_plotlyjs='cdn') + "</div>"
 
-def generate_html_report(entity_type: str, entity_name: str) -> str:
+def generate_html_report(entity_type: str, entity_name: str, entity_context: str = None) -> str:
     """Generates a comprehensive HTML report for an institution or researcher."""
     file_path, safe_name = get_report_path(entity_type, entity_name)
     print(f"Iniciando generación de reporte para {entity_name}...")
@@ -79,22 +79,22 @@ def generate_html_report(entity_type: str, entity_name: str) -> str:
     # 1. Fetch ALL relevant data
     col_name = 'entity_name' if entity_type == "inst" else 'academic_name'
     
-    df_tot = da.get_cached_data("institucion_total.parquet" if entity_type == "inst" else "investigador_total.parquet")
-    df_ann = da.get_cached_data("institucion_annual.parquet" if entity_type == "inst" else "investigador_annual.parquet")
-    df_pap = da.get_cached_data("papers_institucion.parquet" if entity_type == "inst" else "papers_profesor.parquet")
-    df_top = da.get_cached_data("topics_institucion.parquet" if entity_type == "inst" else "topics_investigador.parquet")
-    df_kw = da.get_cached_data("keywords_institucion.parquet" if entity_type == "inst" else "keywords_investigador.parquet")
+    # Resolver los parámetros para el cache jerárquico
+    ent_param = entity_name if entity_type == "inst" else entity_context
+    ac_param  = None if entity_type == "inst" else entity_name
+
+    df_tot = da.get_cached_data("institucion_total.parquet" if entity_type == "inst" else "investigador_total.parquet", entity_name=ent_param, academic_name=ac_param)
+    df_ann = da.get_cached_data("institucion_annual.parquet" if entity_type == "inst" else "investigador_annual.parquet", entity_name=ent_param, academic_name=ac_param)
+    df_pap = da.get_cached_data("papers_institucion.parquet" if entity_type == "inst" else "papers_profesor.parquet", entity_name=ent_param, academic_name=ac_param)
+    df_top = da.get_cached_data("topics_institucion.parquet" if entity_type == "inst" else "topics_investigador.parquet", entity_name=ent_param, academic_name=ac_param)
+    df_kw = da.get_cached_data("keywords_institucion.parquet" if entity_type == "inst" else "keywords_investigador.parquet", entity_name=ent_param, academic_name=ac_param)
     
     if df_tot is None or df_tot.empty:
-        raise ValueError("Datos totales no disponibles en caché.")
+        raise ValueError("Datos totales no disponibles en caché para esta entidad/académico.")
         
-    df_tot_ent = df_tot[df_tot[col_name] == entity_name]
-    if df_tot_ent.empty:
-        raise ValueError(f"No se encontró información para {entity_name}.")
-        
-    data = df_tot_ent.iloc[0].to_dict()
-    df_ann_ent = df_ann[df_ann[col_name] == entity_name].sort_values('year') if df_ann is not None else pd.DataFrame()
-    df_pap_ent = df_pap[df_pap[col_name] == entity_name] if df_pap is not None else pd.DataFrame()
+    data = df_tot.iloc[0].to_dict()
+    df_ann_ent = df_ann.sort_values('year') if df_ann is not None else pd.DataFrame()
+    df_pap_ent = df_pap if df_pap is not None else pd.DataFrame()
 
     sections_html = ""
 
@@ -304,7 +304,7 @@ def generate_html_report(entity_type: str, entity_name: str) -> str:
     
     html_top_figs = ""
     if df_top is not None and not df_top.empty:
-        df_top_ent = df_top[df_top[col_name] == entity_name]
+        df_top_ent = df_top
         if not df_top_ent.empty:
             top_topics = df_top_ent.sort_values('value', ascending=False).head(100)
             fig_sun = px.sunburst(top_topics, path=['domain', 'field', 'subfield', 'topic'], values='value', color='value', color_continuous_scale='Blues', title="Concentración Taxonómica")
@@ -458,9 +458,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--type", choices=['inst', 'inv'], required=True)
     parser.add_argument("--name", required=True)
+    parser.add_argument("--entity", required=False, help="Contexto institucional para cargar la caché del investigador.")
     args = parser.parse_args()
     try:
-        path = generate_html_report(args.type, args.name)
+        path = generate_html_report(args.type, args.name, args.entity)
         print(f"Ruta: {path}")
     except Exception as e:
         print(f"Error fatal generando reporte: {e}")
