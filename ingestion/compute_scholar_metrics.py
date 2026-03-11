@@ -858,11 +858,10 @@ def process_and_save(entity_filter=None, academic_filter=None):
     df_inv_recent = aggregate_metrics(df_raw_recent, ['academic_name', 'entities'])
     df_inv_recent.to_parquet(CACHE_DIR / 'investigador_recent.parquet', index=False)
     
-    # 3. AGREGARES A NIVEL INSTITUCIÓN (Macro) - Ahora usa la información general de la Entidad
-    print("⏳ Extrayendo y agregando métricas de DOIs de Entidades...")
-    # Si se filtró por académico, quizás no queremos procesar TODA la entidad, 
-    # pero si se filtró por entidad, sí. Si no hay filtro, todo.
-    df_inst_raw = extract_entity_papers(entity_filter=entity_filter)
+    # 3. AGREGADOS A NIVEL INSTITUCIÓN (Macro)
+    if entity_filter or not academic_filter:
+        print("⏳ Extrayendo y agregando métricas de DOIs de Entidades...")
+        df_inst_raw = extract_entity_papers(entity_filter=entity_filter)
     if not df_inst_raw.empty:
         df_inst_raw['year'] = pd.to_numeric(df_inst_raw['year'], errors='coerce')
         df_inst_raw = df_inst_raw.dropna(subset=['year'])
@@ -936,11 +935,13 @@ def process_and_save(entity_filter=None, academic_filter=None):
             df_inst_evol = df_inst_t_raw.groupby(['entity_name', 'year', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
             df_inst_evol.to_parquet(CACHE_DIR / 'thematic_evolution_institucion.parquet', index=False)
             
-            # Totales (sin año)
             df_inst_t = df_inst_t_raw.groupby(['entity_name', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
             df_inst_t.to_parquet(CACHE_DIR / 'topics_institucion.parquet', index=False)
     else:
-        print("⚠ No hay artículos cargados por Entidad. Institucion View estará vacía.")
+        if academic_filter and not entity_filter:
+            print("⏩ Saltando métricas institucionales (Modo Académico detectado para velocidad).")
+        else:
+            print("⚠ No hay artículos cargados por Entidad. Institucion View estará vacía.")
     
     # 4. PRECALCULO DE UMAP (Trayectorias)
     print("⏳ Proyectando UMAP de Trayectorias (Desempeño Académico)...")
