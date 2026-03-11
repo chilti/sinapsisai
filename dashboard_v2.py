@@ -201,6 +201,7 @@ with st.sidebar:
 
 # ---- Interfaz Principal ----
 st.title("Sinapsis AI: Hub de Ciencia Abierta")
+st.info("🚀 **Nota:** El sistema se encuentra actualmente en fase de desarrollo. Los datos se están cargando y procesando en tiempo real.")
 st.markdown("Inteligencia Bibliométrica Híbrida")
 
 tab_inst, tab_inv, tab_chat, tab_about = st.tabs([

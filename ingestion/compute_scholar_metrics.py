@@ -156,6 +156,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                a.siia_url AS siia_url,
                collect(DISTINCT e.name) AS entities,
                p.id AS paper_id,
+               p.doi AS paper_doi,
                p.year AS year,
                p.citations AS citations,
                p.raw_metadata AS raw_metadata,
@@ -175,6 +176,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                a.siia_url AS siia_url,
                collect(DISTINCT e.name) AS entities,
                p.id AS paper_id,
+               p.doi AS paper_doi,
                p.year AS year,
                p.citations AS citations,
                p.raw_metadata AS raw_metadata,
@@ -194,6 +196,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                a.siia_url AS siia_url,
                collect(DISTINCT e.name) AS entities,
                p.id AS paper_id,
+               p.doi AS paper_doi,
                p.year AS year,
                p.citations AS citations,
                p.raw_metadata AS raw_metadata,
@@ -218,7 +221,14 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
             
             title = raw_meta.get('Title') or raw_meta.get('title') or raw_meta.get('TI') or 'No Title'
             source = raw_meta.get('Source') or raw_meta.get('source_title') or raw_meta.get('journal_iso_source_abbreviation') or raw_meta.get('publication_name') or raw_meta.get('SO') or 'Unknown'
-            doi_link = "https://doi.org/" + row['paper_id'] if row['paper_id'] and not "urn:" in row['paper_id'] else None
+            
+            # Lógica de enlace: Priorizar DOI recuperado, evitar placeholders de orcid
+            doi_val = row.get('paper_doi') or row['paper_id']
+            doi_link = None
+            if doi_val and str(doi_val).startswith("10."):
+                doi_link = "https://doi.org/" + str(doi_val).lower()
+            elif doi_val and not any(x in str(doi_val).lower() for x in ["urn:", "orcid-work:"]):
+                doi_link = "https://doi.org/" + str(doi_val)
             
             # Open Access Logic
             is_oa = False
@@ -358,6 +368,7 @@ def extract_entity_papers(entity_filter=None):
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         RETURN e.name AS entity_name,
                p.id AS paper_id,
+               p.doi AS paper_doi,
                p.year AS year,
                p.citations AS citations,
                p.raw_metadata AS raw_metadata,
@@ -370,6 +381,7 @@ def extract_entity_papers(entity_filter=None):
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         RETURN e.name AS entity_name,
                p.id AS paper_id,
+               p.doi AS paper_doi,
                p.year AS year,
                p.citations AS citations,
                p.raw_metadata AS raw_metadata,
@@ -393,7 +405,13 @@ def extract_entity_papers(entity_filter=None):
             
             title = raw_meta.get('Title') or raw_meta.get('title') or raw_meta.get('TI') or 'No Title'
             source = raw_meta.get('Source') or raw_meta.get('source_title') or raw_meta.get('journal_iso_source_abbreviation') or raw_meta.get('publication_name') or raw_meta.get('SO') or 'Unknown'
-            doi_link = "https://doi.org/" + row['paper_id'] if row['paper_id'] and not "urn:" in row['paper_id'] else None
+            # Lógica de enlace: Priorizar DOI recuperado, evitar placeholders de orcid
+            doi_val = row.get('paper_doi') or row['paper_id']
+            doi_link = None
+            if doi_val and str(doi_val).startswith("10."):
+                doi_link = "https://doi.org/" + str(doi_val).lower()
+            elif doi_val and not any(x in str(doi_val).lower() for x in ["urn:", "orcid-work:"]):
+                doi_link = "https://doi.org/" + str(doi_val)
             
             # Open Access Logic
             is_oa = False
