@@ -116,14 +116,22 @@ class InCitesIngestor:
         print(f"📦 Procesando lote {start_idx // self.batch_size + 1} ({start_idx}/{total})...", end="\r")
         
         filtered_batch = []
+        skipped_records = []
         if skip_existing:
             for record in batch:
                 id_to_check = record.get('doi') or record.get('paper_id')
                 if self.graph_store.check_paper_exists(id_to_check):
+                    skipped_records.append(record)
                     continue
                 filtered_batch.append(record)
         else:
             filtered_batch = batch
+
+        # Vincular los pre-existentes de todas formas si se indicó entidad
+        if skip_existing and entity_name and skipped_records:
+            for record in skipped_records:
+                if record.get("doi"):
+                    self.graph_store.add_entity_paper_link(entity_name, record["doi"])
 
         if not filtered_batch:
             return

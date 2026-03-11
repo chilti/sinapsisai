@@ -673,7 +673,7 @@ def render_investigador_view(entity_name):
         return
 
     # Selector
-    st.markdown("Aquí aparecen los investigadores registrados en el SNII. Los indicadores se calcularon a partir de la producción académica que se pudo recoger de Scopus y ORCID, lo cual implica que puede haber trabajos faltantes y trabajos con afiliaciones distintas a la actual.")
+    st.markdown("Los indicadores se calcularon a partir de la producción académica que se pudo recoger de Scopus y ORCID, lo cual implica que puede haber trabajos faltantes y trabajos con afiliaciones distintas a la actual.")
     selected_inv = st.selectbox("Seleccione un Académico:", investigadores)
     
     # Ya teniendo el investigador y entidad, cargamos sus archivos únicos ultra-ligeros

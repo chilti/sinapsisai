@@ -35,7 +35,7 @@ Sistema de Inteligencia Bibliométrica Híbrida y Orquestador RAG para entidades
    *(Nota de solución de problemas: Si en Streamlit sale el error `ModuleNotFoundError: No module named 'numpy.rec'`, ajusta la versión de numpy con `pip install "numpy<2" pandas` dado que ciertas librerías aún no están migradas completamente a Numpy v2).*
 
 4. **Levantar las Bases de Datos (Docker)**
-   El sistema requiere Neo4j (Grafo de Conocimiento) y Qdrant (Base de datos vectorial).
+   El sistema está diseñado para integrarse con **Neo4j** (Grafo de Conocimiento), **Qdrant** (Base de datos vectorial) y opcionalmente **ClickHouse** (Para analítica global).
    ```bash
    docker compose up -d
    ```
@@ -115,9 +115,23 @@ Para cargar información de una nueva institución (por ejemplo, **"Facultad de 
     python ingestion/patch_qdrant_payload.py --both
     ```
 11. **Computar las Métricas Analíticas y Tableros (Caché Parquet)**
-    Precalcula métricas de excelencia (Top 10%, Gini, Velocidad), Sunburst temático, KPIs por investigador/institución y proyeción UMAP. Esto genera los `.parquet` leídos por el dashboard hiper-rápido.
+    Precalcula métricas de excelencia (Top 10%, Gini, Velocidad), Sunburst temático, KPIs por investigador/institución y proyeción UMAP. El sistema ahora utiliza una arquitectura de **Caché Desagregada**, agrupando los `.parquet` en directorios jerárquicos veloces por entidad (`data/cache/<Entidad>/...`). Requerido para cada institución de manera individual.
     ```bash
-    python ingestion/compute_scholar_metrics.py
+    python ingestion/compute_scholar_metrics.py --entity "Facultad de Ciencias"
+    ```
+
+### 6. Analítica Global y Reportes (Opcional)
+12. **Carga y Cálculo en ClickHouse (Rendimiento Masivo)**
+    Si requieres analizar datasets masivos a nivel país o región (millones de registros), la ingesta puede derivarse a ClickHouse.
+    ```bash
+    python clickhouse/load_openalex_clickhouse.py
+    python clickhouse/compute_metrics_clickhouse.py
+    ```
+
+13. **Generación de Reportes Automatizados con IA**
+    El sistema puede redactar e interpretar reportes en HTML tipo "Journal" alimentándose de los parquets locales. El dashboard invoca automáticamente este script, o se puede usar de forma stand-alone:
+    ```bash
+    python report_generator.py --type inst --name "Facultad de Ciencias"
     ```
 
 ## 📊 Interfaz Dashboard
