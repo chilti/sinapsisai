@@ -364,9 +364,11 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                                 if _clean(title_query) == _clean(cand_title):
                                     work = candidate
                                     print(f"      ✅ Recuperado vía fallback de Título Exacto: {work.get('id')}")
+                        elif s_resp.status_code == 429 or s_resp.status_code == 403:
+                            print(f"      [!] API BLOQUEADA (Fallback) {s_resp.status_code}: Rate limit excedido. Omitiendo OpenAlex para este paper...")
                 
                 if not work:
-                    raise ValueError("No encontrado en OpenAlex (ni por DOI ni por Título Exacto)")
+                    raise ValueError("No encontrado o API bloqueada (ni por DOI ni por Título Exacto)")
 
                 authorships = work.get('authorships', [])
                 record['Authors'] = "; ".join([au['author']['display_name'] for au in authorships])
