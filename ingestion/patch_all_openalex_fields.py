@@ -233,8 +233,7 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
                                             oa_data[orig_raw] = work
                                             break
                         elif resp.status_code == 429 or resp.status_code == 403:
-                            print(f"      [!] API BLOQUEADA (Batch DOI) {resp.status_code}: Rate limit excedido. Esperando 5s...")
-                            time.sleep(5)
+                            print(f"      [!] API BLOQUEADA (Batch DOI) {resp.status_code}: Rate limit excedido. Omitiendo batch...")
                     except Exception as e:
                         print(f"      [!] Error API en Batch DOI: {e.__class__.__name__} - {e}")
                     
@@ -262,8 +261,7 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
                                 if _clean(title) == _clean(cand_title):
                                     oa_data[raw_doi] = candidate
                         elif s_resp.status_code == 429 or s_resp.status_code == 403:
-                            print(f"      [!] API BLOQUEADA (Título) {s_resp.status_code}: Rate limit excedido. Esperando 5s...")
-                            time.sleep(5)
+                            print(f"      [!] API BLOQUEADA (Título) {s_resp.status_code}: Rate limit excedido. Omitiendo paper...")
                     except: pass
                     time.sleep(0.1)
 
