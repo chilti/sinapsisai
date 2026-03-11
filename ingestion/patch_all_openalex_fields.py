@@ -219,8 +219,12 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
                             if s_resp.status_code == 200:
                                 results = s_resp.json().get('results', [])
                                 if results: 
-                                    # Tomamos el primero si el título coincide razonablemente
-                                    work_found = results[0]
+                                    # Tomamos el primero SOLO si el título coincide al 100%
+                                    candidate = results[0]
+                                    cand_title = candidate.get('title') or ""
+                                    def _clean(t): return "".join(c for c in str(t).lower() if c.isalnum())
+                                    if _clean(title) == _clean(cand_title):
+                                        work_found = candidate
                         
                         if work_found:
                             oa_data[doi_field] = work_found
