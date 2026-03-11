@@ -33,7 +33,7 @@ def extract_and_link_topics(entity_filter=None, academic_filter=None, force=Fals
     elif academic_filter:
         print(f"  -> Filtrando por Académico: {academic_filter}")
         query_fetch = f"""
-        MATCH (a:Academic {name: $academic})-[:AUTHORED]->(p:Paper)
+        MATCH (a:Academic {{name: $academic}})-[:AUTHORED]->(p:Paper)
         {where_clause}
         RETURN DISTINCT p.doi AS doi, p.raw_metadata AS metadata
         """
