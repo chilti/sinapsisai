@@ -13,10 +13,10 @@ neo4j = Neo4jGraphStore()
 def extract_and_link_topics(entity_filter=None, academic_filter=None, force=False):
     print("⏳ Iniciando extracción de Tópicos desde Neo4j...")
     
-    where_clause = "WHERE p.raw_metadata IS NOT NULL AND COALESCE(p.topics_extracted, false) = false"
+    where_clause = "WITH p WHERE p.raw_metadata IS NOT NULL AND COALESCE(p.topics_extracted, false) = false"
     if force:
         print("  -> MODO FORZADO ACTIVADO (Re-procesando extraídos)")
-        where_clause = "WHERE p.raw_metadata IS NOT NULL"
+        where_clause = "WITH p WHERE p.raw_metadata IS NOT NULL"
 
     if entity_filter:
         print(f"  -> Filtrando por Entidad: {entity_filter}")

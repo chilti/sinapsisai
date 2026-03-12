@@ -80,9 +80,9 @@ def clasificar_paper(titulo, abstract):
 
 def fetch_unclassified_papers(entity_filter=None, academic_filter=None, force=False):
     """Obtiene los papers de Neo4j que aún no tienen clasificación SDG."""
-    where_clause = "WHERE COALESCE(p.sdg_processed, false) = false"
+    where_clause = "WITH p WHERE COALESCE(p.sdg_processed, false) = false"
     if force:
-        where_clause = "WHERE p.raw_metadata IS NOT NULL"
+        where_clause = "WITH p WHERE p.raw_metadata IS NOT NULL"
 
     if entity_filter:
         query = f"""
@@ -131,9 +131,9 @@ def fetch_unclassified_papers(entity_filter=None, academic_filter=None, force=Fa
 
 def count_unclassified_papers(entity_filter=None, academic_filter=None, force=False):
     """Obtiene el conteo total de papers pendientes."""
-    where_clause = "WHERE COALESCE(p.sdg_processed, false) = false"
+    where_clause = "WITH p WHERE COALESCE(p.sdg_processed, false) = false"
     if force:
-        where_clause = "WHERE p.raw_metadata IS NOT NULL"
+        where_clause = "WITH p WHERE p.raw_metadata IS NOT NULL"
 
     if entity_filter:
         query = f"""
