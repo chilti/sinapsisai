@@ -102,7 +102,7 @@ def load_snii_authors():
         df = pd.read_excel(SNII_PATH)
         # Ajustar nombres de columnas según inspección
         name_col = 'NOMBRE DEL INVESTIGADOR'
-        inst_col = 'INSTITUCIÓN'
+        inst_col = 'INSTITUCIÓN DE ADSCRIPCIÓN'
         
         authors = []
         for _, row in df.iterrows():
@@ -134,6 +134,7 @@ def run_matching(limit=1000, min_score=0.85):
 
     print(f"Procesando {min(len(all_authors), limit)} autores seleccionados...")
     results = []
+    authors_to_search = []
     
     for author in all_authors[:limit]:
         name = author['name']
@@ -155,52 +156,76 @@ def run_matching(limit=1000, min_score=0.85):
         if author.get('orcid'):
             continue
             
-        # 3. Buscar en ClickHouse
         parts = norm_name.split()
         if not parts: continue
         
-        # Usar los dos últimos apellidos si es posible (nombres mexicanos)
         search_term = parts[-1] 
         if len(parts) > 1:
-            search_term = parts[-2] # Probar con el penúltimo también
+            search_term = parts[-2]
             
+        author['search_term'] = search_term
+        authors_to_search.append(author)
+
+    # 3. Buscar en ClickHouse por Lotes
+    batch_size = 50
+    total = len(authors_to_search)
+    
+    for i in range(0, total, batch_size):
+        batch = authors_to_search[i:i + batch_size]
+        # Extraer términos de búsqueda únicos
+        terms = list(set([a['search_term'] for a in batch]))
+        
+        # Formatear array SQL estricto para ClickHouse (ej. ['perez', 'lopez'])
+        terms_sql = "[" + ",".join([f"'{t.replace(chr(39), chr(39)+chr(39))}'" for t in terms]) + "]"
+        
         query = f"""
         SELECT orcid, given_names, family_name, credit_name, emails, dois,
                last_affiliation, last_affiliation_city, last_affiliation_country
         FROM orcid_records
-        WHERE family_name LIKE '%{search_term}%' 
-           OR credit_name LIKE '%{search_term}%'
-           OR given_names LIKE '%{search_term}%'
-        LIMIT 50
+        WHERE multiSearchAnyCaseInsensitiveUTF8(family_name, {terms_sql}) > 0
+           OR multiSearchAnyCaseInsensitiveUTF8(credit_name, {terms_sql}) > 0
+           OR multiSearchAnyCaseInsensitiveUTF8(given_names, {terms_sql}) > 0
         """
         
         try:
+            print(f"Consultando ClickHouse para {len(terms)} apellidos (lote {i//batch_size + 1} de {total//batch_size + 1}) - Esto leerá disco masivamente una sola vez...")
             candidates = client.query(query).result_rows
-            best_match = None
-            max_s = 0
+            print(f" -> {len(candidates)} candidatos descargados a memoria.")
             
-            for cand in candidates:
-                score = calculate_score(author, cand)
-                if score > max_s:
-                    max_s = score
-                    best_match = cand
-            
-            if best_match and max_s >= min_score:
-                res = {
-                    "seed_name": name,
-                    "seed_aff": author.get('main_affiliation'),
-                    "matched_orcid": best_match[0],
-                    "matched_name": f"{best_match[1]} {best_match[2]}",
-                    "matched_aff": best_match[5],
-                    "score": round(max_s, 3),
-                    "source": "clickhouse_fuzzy"
-                }
-                results.append(res)
-                if len(results) % 10 == 0:
-                    print(f"Match! {name} -> {best_match[0]} (Score: {max_s:.2f})")
+            for author in batch:
+                sterm = author['search_term'].lower()
+                # Filtrar rápido en memoria los candidatos que pertenecen a ESTE autor específico
+                my_cands = []
+                for cand in candidates:
+                    gn = str(cand[1] or '').lower()
+                    fn = str(cand[2] or '').lower()
+                    cn = str(cand[3] or '').lower()
+                    if sterm in gn or sterm in fn or sterm in cn:
+                        my_cands.append(cand)
+                
+                best_match = None
+                max_s = 0
+                for cand in my_cands:
+                    score = calculate_score(author, cand)
+                    if score > max_s:
+                        max_s = score
+                        best_match = cand
+                
+                if best_match and max_s >= min_score:
+                    res = {
+                        "seed_name": author['name'],
+                        "seed_aff": author.get('main_affiliation'),
+                        "matched_orcid": best_match[0],
+                        "matched_name": f"{best_match[1]} {best_match[2]}",
+                        "matched_aff": best_match[6], 
+                        "score": round(max_s, 3),
+                        "source": "clickhouse_fuzzy"
+                    }
+                    results.append(res)
+                    print(f"   ✓ Match! {author['name']} -> {best_match[0]} (Score: {max_s:.2f})")
                 
         except Exception as e:
-            pass
+            print(f"Error en batch_query (Lote {i}): {e}")
 
     # Guardar resultados
     with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
