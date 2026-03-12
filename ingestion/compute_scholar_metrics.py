@@ -799,14 +799,19 @@ def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, 
     data/dash_cache/<Entidad>/<Academico>/archivo.parquet
     o data/dash_cache/<Entidad>/archivo.parquet
     """
-    if df.empty: return
+    # Remove if df.empty: return to allow overwriting with empty dataframes for cleanup
     
     if group_level == 'academic':
-        for ac_name, grp in df.groupby('academic_name'):
+        # Aseguramos que todos los académicos en el mapa sean procesados para evitar archivos huérfanos/viejos
+        academics_to_process = list(academics_map.keys()) if academics_map else (df['academic_name'].unique() if not df.empty else [])
+        
+        for ac_name in academics_to_process:
+            grp = df[df['academic_name'] == ac_name] if not df.empty else pd.DataFrame(columns=df.columns)
+            
             entities = []
             if academics_map and ac_name in academics_map:
                 entities = academics_map[ac_name]
-            elif 'entities' in grp.columns:
+            elif not grp.empty:
                 entities_val = grp['entities'].iloc[0]
                 if isinstance(entities_val, list):
                     entities = entities_val
@@ -823,12 +828,19 @@ def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, 
                 target_dir = CACHE_DIR / safe_ent / safe_ac
                 target_dir.mkdir(parents=True, exist_ok=True)
                 
-                # Desagregado puro (escritura directa sobrescribiendo lo anterior del propio profesor)
+                # Guardar el parquet (aunque esté vacío, para sobrescribir caché viejo)
                 grp.to_parquet(target_dir / base_name, index=False)
                 
     elif group_level == 'entity':
+        # Para entidades, si el df está vacío pero hay un entity_filter, aseguramos que se limpie/actualice
+        entities_to_process = df['entity_name'].unique() if not df.empty else []
+        
+        # Si no hay nada en el DF pero sabemos que estamos procesando algo (ej. por filtro), 
+        # aquí podríamos forzar la creación de archivos vacíos si tuviéramos la lista de entidades.
+        
         graph_store = Neo4jGraphStore()
-        for ent_name, grp in df.groupby('entity_name'):
+        for ent_name in entities_to_process:
+            grp = df[df['entity_name'] == ent_name]
             safe_ent = str(ent_name).replace('/', '_').replace('\\', '_')
             target_dir = CACHE_DIR / safe_ent
             target_dir.mkdir(parents=True, exist_ok=True)
@@ -898,13 +910,28 @@ def process_and_save(entity_filter=None, academic_filter=None):
     for _, row in df_raw.iterrows():
         ac_name = row['academic_name']
         year = row['year']
-        topics = row.get('topics', [])
-        if isinstance(topics, list):
-            for t in topics:
+        
+        # PRIORIDAD 1: Usar Primary Topic de OpenAlex (Asegura 1:1 para que coincidan conteos)
+        p_topic = row.get('primary_topic_name')
+        if p_topic and p_topic != 'Unknown':
+            topics_list.append({
+                'academic_name': ac_name,
+                'year': int(year),
+                'domain': row.get('primary_topic_domain', 'Unknown'),
+                'field': row.get('primary_topic_field', 'Unknown'),
+                'subfield': row.get('primary_topic_subfield', 'Unknown'),
+                'topic': p_topic
+            })
+        else:
+            # PRIORIDAD 2: Si no hay primario, intentar el primer tópico de la lista (del grafo)
+            topics = row.get('topics', [])
+            if isinstance(topics, list) and topics:
+                # Tomamos solo el primero para mantener coherencia en las cuentas totales
+                t = topics[0]
                 if isinstance(t, dict) and t.get('topic'):
                     topics_list.append({
                         'academic_name': ac_name,
-                        'year': year,
+                        'year': int(year),
                         'domain': t.get('domain', 'Unknown'),
                         'field': t.get('field', 'Unknown'),
                         'subfield': t.get('subfield', 'Unknown'),
@@ -1033,13 +1060,27 @@ def process_and_save(entity_filter=None, academic_filter=None):
         for _, row in df_inst_raw.iterrows():
             e_name = row['entity_name']
             year = row['year']
-            topics = row.get('topics', [])
-            if isinstance(topics, list):
-                for t in topics:
+            
+            # PRIORIDAD 1: Primary Topic (OpenAlex) para evitar explosión de registros
+            p_topic = row.get('primary_topic_name')
+            if p_topic and p_topic != 'Unknown':
+                inst_topics_list.append({
+                    'entity_name': e_name,
+                    'year': int(year),
+                    'domain': row.get('primary_topic_domain', 'Unknown'),
+                    'field': row.get('primary_topic_field', 'Unknown'),
+                    'subfield': row.get('primary_topic_subfield', 'Unknown'),
+                    'topic': p_topic
+                })
+            else:
+                # PRIORIDAD 2: Primer tópico de la lista (Grafo)
+                topics = row.get('topics', [])
+                if isinstance(topics, list) and topics:
+                    t = topics[0]
                     if isinstance(t, dict) and t.get('topic'):
                         inst_topics_list.append({
                             'entity_name': e_name,
-                            'year': year,
+                            'year': int(year),
                             'domain': t.get('domain', 'Unknown'),
                             'field': t.get('field', 'Unknown'),
                             'subfield': t.get('subfield', 'Unknown'),
