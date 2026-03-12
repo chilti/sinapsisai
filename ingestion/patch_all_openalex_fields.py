@@ -237,7 +237,7 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
                     except Exception as e:
                         print(f"      [!] Error API en Batch DOI: {e.__class__.__name__} - {e}")
                     
-                    time.sleep(0.1) # Breve pausa por amabilidad
+                    time.sleep(0.05) # Pausa mínima para batch
                 
                 # 3. IDENTIFICAR FALLOS Y FETCH INDIVIDUAL POR TÍTULO
                 # Agregamos los que tenían DOI pero fallaron en OpenAlex para intentarlos por título
@@ -260,10 +260,13 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
                                 def _clean(t): return "".join(c for c in str(t).lower() if c.isalnum())
                                 if _clean(title) == _clean(cand_title):
                                     oa_data[raw_doi] = candidate
-                        elif s_resp.status_code == 429 or s_resp.status_code == 403:
-                            print(f"      [!] API BLOQUEADA (Título) {s_resp.status_code}: Rate limit excedido. Omitiendo paper...")
+                        elif s_resp.status_code == 429:
+                            print(f"      [!] API BLOQUEADA (Título) 429: Rate limit excedido. Esperando 5s...")
+                            time.sleep(5)
+                        elif s_resp.status_code == 403:
+                            print(f"      [!] API BLOQUEADA (Título) 403: Acceso denegado. Omitiendo paper...")
                     except: pass
-                    time.sleep(0.1)
+                    time.sleep(0.6) # Pausa mayor para búsquedas por título (más costosas)
 
             # DB UPDATE
             with graph_store.driver.session() as session:
