@@ -803,7 +803,7 @@ def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, 
     
     if group_level == 'academic':
         # Aseguramos que todos los académicos en el mapa sean procesados para evitar archivos huérfanos/viejos
-        academics_to_process = list(academics_map.keys()) if academics_map else (df['academic_name'].unique() if not df.empty else [])
+        academics_to_process = list(academics_map.keys()) if academics_map else (df['academic_name'].unique().tolist() if not df.empty else [])
         
         for ac_name in academics_to_process:
             grp = df[df['academic_name'] == ac_name] if not df.empty else pd.DataFrame(columns=df.columns)
@@ -833,10 +833,10 @@ def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, 
                 
     elif group_level == 'entity':
         # Aseguramos que todas las entidades sean procesadas si el df está incompleto
-        entities_to_process = df['entity_name'].unique() if not df.empty else []
+        entities_to_process = df['entity_name'].unique().tolist() if not df.empty else []
         
         # Intentar recuperar lista de todas las entidades del grafo si estamos en modo global
-        if not entities_to_process:
+        if len(entities_to_process) == 0:
              try:
                  graph_store = Neo4jGraphStore()
                  with graph_store.driver.session() as session:
