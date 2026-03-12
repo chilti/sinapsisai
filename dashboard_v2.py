@@ -709,8 +709,8 @@ with tab_about:
         st.markdown("- M. en C. Lorena Delago Quiroz")
 
     with col_team2:
-        st.markdown("#### Instituto de Ciencias Nucleares")
-        st.markdown("- M.en C. Mayelin Mirabal Sosa")
+        st.markdown("")
+        st.markdown("")
 
         st.markdown("#### Estudiantes de la Facultad de Ciencias")
         st.markdown("- **Ana Valeria Deloya Andrade**: Ingeniería de Prompts para describir y analizar gráficas.")
