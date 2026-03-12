@@ -832,15 +832,22 @@ def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, 
                 grp.to_parquet(target_dir / base_name, index=False)
                 
     elif group_level == 'entity':
-        # Para entidades, si el df está vacío pero hay un entity_filter, aseguramos que se limpie/actualice
+        # Aseguramos que todas las entidades sean procesadas si el df está incompleto
         entities_to_process = df['entity_name'].unique() if not df.empty else []
         
-        # Si no hay nada en el DF pero sabemos que estamos procesando algo (ej. por filtro), 
-        # aquí podríamos forzar la creación de archivos vacíos si tuviéramos la lista de entidades.
-        
+        # Intentar recuperar lista de todas las entidades del grafo si estamos en modo global
+        if not entities_to_process:
+             try:
+                 graph_store = Neo4jGraphStore()
+                 with graph_store.driver.session() as session:
+                     res = session.run("MATCH (e:Entity) RETURN e.name AS name")
+                     entities_to_process = [r['name'] for r in res]
+                 graph_store.close()
+             except: pass
+
         graph_store = Neo4jGraphStore()
         for ent_name in entities_to_process:
-            grp = df[df['entity_name'] == ent_name]
+            grp = df[df['entity_name'] == ent_name] if not df.empty else pd.DataFrame(columns=df.columns)
             safe_ent = str(ent_name).replace('/', '_').replace('\\', '_')
             target_dir = CACHE_DIR / safe_ent
             target_dir.mkdir(parents=True, exist_ok=True)
@@ -853,10 +860,10 @@ def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, 
                         academics = [r['name'] for r in res]
                     grp['academics_list'] = json.dumps(academics, ensure_ascii=False)
                 except Exception as e:
-                    print(f"Error fetching academics for {ent_name}: {e}")
                     grp['academics_list'] = "[]"
             
             grp.to_parquet(target_dir / base_name, index=False)
+        graph_store.close()
 
 def process_and_save(entity_filter=None, academic_filter=None):
     print("Iniciando Pre-cálculo de Métricas desde Neo4j (Modo eficiente)...")
@@ -888,12 +895,20 @@ def process_and_save(entity_filter=None, academic_filter=None):
     academics_map = {}
     for _, row in df_raw.iterrows():
         ac_name = row['academic_name']
+        entities = []
+        entities_val = row['entities']
+        if isinstance(entities_val, list):
+            entities = entities_val
+        elif isinstance(entities_val, str):
+            entities = [e.strip() for e in entities_val.split(';') if e.strip()]
+        
         if ac_name not in academics_map:
-            entities_val = row['entities']
-            if isinstance(entities_val, list):
-                academics_map[ac_name] = entities_val
-            elif isinstance(entities_val, str):
-                academics_map[ac_name] = [e.strip() for e in entities_val.split(';') if e.strip()]
+            academics_map[ac_name] = set(entities)
+        else:
+            academics_map[ac_name].update(entities)
+    
+    # Convertir sets a listas para compatibilidad posterior
+    academics_map = {k: list(v) for k, v in academics_map.items()}
     
     # Sanear columnas tipo lista para PyArrow
     list_cols = ['keywords', 'topics', 'countries', 'coauthor_institutions', 'referenced_works', 'counts_by_year', 'indexed_in']
