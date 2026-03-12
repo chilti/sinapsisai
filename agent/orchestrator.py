@@ -86,7 +86,7 @@ Para cualquier consulta sobre publicaciones, investigadores o temas de investiga
 Si necesitas datos de un paper específico (FWCI, citas, abstract), usa `recoverFromOpenAlex` con el DOI.
 
 **Paso 5 — Análisis y gráficas**
-Usa `Python_CodeExecutor` para cálculos, estadísticas o visualizaciones. Guarda siempre con `plt.savefig('interpreter_output.png')`.
+Usa `Python_CodeExecutor` para cálculos o gráficas. Los datos están en `data/cache/` con estructura jerárquica: `data/cache/<Entidad>/<Academico>/archivo.parquet`. Para mapas globales usa `data/cache/umap_investigadores.parquet`. Guarda siempre gráficas con `plt.savefig('interpreter_output.png')`.
 
 ## FORMATO DE RESPUESTA
 1. Síntesis narrativa (2-3 oraciones): hallazgos principales y su relevancia.

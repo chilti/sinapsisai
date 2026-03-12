@@ -262,22 +262,19 @@ def get_tools_catalog() -> str:
         )
 
         lines.append(
-            "\n## Datos pre-calculados disponibles (Parquet en `data/cache/`)\n\n"
-            "Puedes cargarlos directamente con `pd.read_parquet('data/cache/<archivo>')` en el Python_CodeExecutor.\n\n"
-            "| Archivo | Alcance | Columnas clave |\n"
+            "\n## Datos pre-calculados disponibles (Parquet jerárquicos en `data/cache/`)\n\n"
+            "Puedes cargarlos directamente con `pd.read_parquet('data/cache/<E>/<a>/<archivo>')`.\n\n"
+            "| Archivo | Alcance | Ubicación típica |\n"
             "|---|---|---|\n"
-            "| `papers_profesor.parquet` | **Todos los papers de cada académico**, "
-            "incluyendo los producidos en OTRAS instituciones antes o durante su adscripción actual. "
-            "Útil para perfil completo de carrera. | academic_name, entities, year, citations, Title, Source, DOI, fwci, is_oa, oa_status, is_in_top_10_percent, ODS_ID, ODS_Nombre, topics |\n"
-            "| `investigador_total.parquet` | Igual que anterior pero **agrupado por investigador** (métricas totales). | academic_name, entities, num_documents, citations, h_index, fwci_avg, percentile_avg, pct_top_10, pct_1, pct_open_access |\n"
-            "| `investigador_annual.parquet` | Igual pero **por año**, para trayectorias temporales. | academic_name, entities, year, num_documents, citations, h_index |\n"
-            "| `institucion_total.parquet` | Papers de la institución de `ingest_entity_docs.py` (WoS). "
-            "**Solo incluye papers producidos BAJO la afiliación institucional actual**. "
-            "Más riguroso para reportes oficiales. | entity_name, year, citations, Title, fwci, is_oa, ODS_ID |\n"
-            "| `institucion_annual.parquet` | Igual pero **agrupado por año**. | entity_name, year, num_documents, citations |\n"
-            "| `topics_investigador.parquet` | Jerarquía temática (OpenAlex) por investigador. | academic_name, domain, field, subfield, topic, value |\n\n"
-            "> ⚠️ **Diferencia clave**: `papers_profesor` incluye toda la carrera del investigador (puede haber papers de otras instituciones). "
-            "`institucion_total` solo incluye papers con afiliación explícita a la entidad — es más conservador y apropiado para reportes oficiales de producción institucional."
+            "| `papers_profesor.parquet` | **Producción completa del académico** (toda su carrera). | `data/cache/<Entidad>/<Academico>/` |\n"
+            "| `investigador_total.parquet` | **Métricas totales del investigador** (agregado). | `data/cache/<Entidad>/<Academico>/` |\n"
+            "| `investigador_annual.parquet` | **Trayectoria anual del investigador**. | `data/cache/<Entidad>/<Academico>/` |\n"
+            "| `papers_institucion.parquet` | **Producción institucional** (WoS/OpenAlex) bajo afiliación actual. | `data/cache/<Entidad>/` |\n"
+            "| `institucion_total.parquet` | **Métricas totales de la institución**. | `data/cache/<Entidad>/` |\n"
+            "| `institucion_annual.parquet` | **Evolución anual de la institución**. | `data/cache/<Entidad>/` |\n"
+            "| `topics_investigador.parquet` | Tópicos y expertise por investigador. | `data/cache/<Entidad>/<Academico>/` |\n"
+            "| `umap_investigadores.parquet` | Mapa 2D global de investigadores. | `data/cache/` |\n\n"
+            "> ⚠️ **Nota**: Reemplaza `<Entidad>` y `<Academico>` por los nombres correspondientes (ej. 'Facultad de Ciencias' / 'ALCUBIERRE MOYA, MIGUEL')."
         )
 
         lines.append(
@@ -363,13 +360,23 @@ def get_parquet_catalog() -> str:
         "> No se invocan herramientas externas (Neo4j, Qdrant, OpenAlex, Scopus, etc.)\n",
     ]
 
-    # Intentar leer columnas reales de los parquets disponibles
+    # Intentar leer columnas reales de los parquets disponibles de forma jerárquica
     if os.path.isdir(cache_dir):
-        available = [f for f in os.listdir(cache_dir) if f.endswith(".parquet")]
-        for fname in sorted(available):
+        from pathlib import Path
+        available_files = list(Path(cache_dir).rglob("*.parquet"))
+        
+        # Agrupar por nombre de archivo para mostrar una descripción única
+        file_samples = {}
+        for p in available_files:
+            if p.name not in file_samples:
+                file_samples[p.name] = p
+        
+        for fname in sorted(file_samples.keys()):
             desc = KNOWN_PARQUETS.get(fname, "(archivo pre-calculado)")
-            fpath = os.path.join(cache_dir, fname)
+            fpath = file_samples[fname]
             try:
+                # Intentar inferir ubicación basándose en la estructura nueva
+                rel_path = str(fpath.relative_to(Path(cache_dir).parent)).replace('\\', '/')
                 df = pd.read_parquet(fpath, engine="pyarrow")
                 cols = ", ".join(f"`{c}`" for c in df.columns[:12])
                 extra = " …" if len(df.columns) > 12 else ""
@@ -377,8 +384,8 @@ def get_parquet_catalog() -> str:
                 lines.append(
                     f"### `{fname}`\n"
                     f"- **Descripción**: {desc}\n"
-                    f"- **Filas**: {nrows}\n"
-                    f"- **Columnas**: {cols}{extra}\n"
+                    f"- **Ubicación ejemplo**: `{rel_path}`\n"
+                    f"- **Columnas base**: {cols}{extra}\n"
                 )
             except Exception as ex:
                 lines.append(
@@ -398,10 +405,13 @@ def get_parquet_catalog() -> str:
         "Ejemplo mínimo:\n"
         "```python\n"
         "import pandas as pd\n"
-        "df = pd.read_parquet('data/cache/investigador_total.parquet')\n"
-        "# Filtrar por entidad\n"
-        "df_ent = df[df['entities'].str.contains('<ENTIDAD>', case=False, na=False)]\n"
-        "print(df_ent[['academic_name','h_index','fwci_avg','pct_open_access']].head(20))\n"
+        "import os\n"
+        "# Ejemplo: Cargar datos institucionales de una entidad\n"
+        "entidad = 'Facultad de Ciencias'\n"
+        "path = f'data/cache/{entidad}/institucion_total.parquet'\n"
+        "if os.path.exists(path):\n"
+        "    df = pd.read_parquet(path)\n"
+        "    print(df[['entity_name','num_documents','citations']].head())\n"
         "```\n\n"
         "> ⚠️ **RESTRICCIÓN ABSOLUTA**: El Consejo Estratégico NO tiene acceso a Neo4j, "
         "Qdrant, OpenAlex, Scopus, Web of Science ni ninguna API externa. "
