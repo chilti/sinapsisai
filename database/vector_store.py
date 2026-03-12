@@ -33,15 +33,22 @@ class QdrantStore:
                 vectors_config=VectorParams(size=self.vector_size, distance=Distance.COSINE),
             )
         
-        # Asegurar índice en el campo 'entity' para filtrado eficiente nativo
-        try:
-            self.client.create_payload_index(
-                collection_name=self.collection_name,
-                field_name="entity",
-                field_schema=PayloadSchemaType.KEYWORD
-            )
-        except Exception:
-            pass  # El índice ya existe o no se puede crear — ignorar
+        # Asegurar índices en campos clave para filtrado eficiente
+        fields_to_index = {
+            "entity": PayloadSchemaType.KEYWORD,
+            "doi": PayloadSchemaType.KEYWORD,
+            "year": PayloadSchemaType.INTEGER
+        }
+        
+        for field, schema in fields_to_index.items():
+            try:
+                self.client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name=field,
+                    field_schema=schema
+                )
+            except Exception:
+                pass 
 
     def add_documents(self, documents: List[Dict[str, Any]], embeddings: List[List[float]]):
         """
