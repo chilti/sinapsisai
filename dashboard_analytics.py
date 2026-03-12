@@ -842,7 +842,7 @@ def render_investigador_view(entity_name):
             st.plotly_chart(fig_sun_inv, width="stretch")
 
             # --- Evolución Histórica Investigador ---
-            df_evol_inv = get_cached_data("thematic_evolution_investigador.parquet")
+            df_evol_inv = get_cached_data("thematic_evolution_investigador.parquet", entity_name=entity_name, academic_name=selected_inv)
             _render_thematic_evolution(df_evol_inv, 'academic_name', selected_inv, key_suffix=f"inv_{selected_inv}")
 
     # ── WordCloud de Keywords ─────────────────────────────────────────────────────
