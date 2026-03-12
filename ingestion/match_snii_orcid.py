@@ -101,8 +101,8 @@ def load_snii_authors():
     try:
         df = pd.read_excel(SNII_PATH)
         # Ajustar nombres de columnas según inspección
-        name_col = 'NOMBRE DEL INVESTIGADOR'
-        inst_col = 'INSTITUCIÓN DE ADSCRIPCIÓN'
+        name_col = 'NOMBRE DEL INVESTIGADOR '
+        inst_col = 'INSTITUCION DE ACREDITACION'
         
         authors = []
         for _, row in df.iterrows():
