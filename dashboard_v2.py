@@ -143,14 +143,14 @@ with st.sidebar:
         background-color: rgba(28, 131, 225, 0.1) !important;
     }
     [data-testid="stSidebar"] div[data-baseweb="select"] * {
-        color: black !important;
+        color: white !important;
     }
     [data-testid="stSidebar"] [data-testid="stSelectbox"] div[role="button"] {
-        background-color: rgba(28, 131, 225, 0.1) !important;
-        color: black !important;
+        background-color: rgba(28, 131, 225, 0.2) !important;
+        color: white !important;
     }
     [data-testid="stSidebar"] [data-testid="stSelectbox"] div[role="button"] * {
-        color: black !important;
+        color: white !important;
     }
     </style>
     """, unsafe_allow_html=True)
