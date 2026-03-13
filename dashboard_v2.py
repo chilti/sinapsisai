@@ -956,47 +956,47 @@ with tab_about:
     st.markdown("Este diagrama profundiza en la lógica de recolección desde identificadores de autoría hasta la consolidación en el caché analítico.")
     
     mermaid_detailed = """
-    graph TD
-        subgraph "Fase 1: Identificación y Perfilado (SIIA Scraper)"
-            A[Excel: Lista de Investigadores] --> B["siia_scraper.py"]
-            B --> C{¿Existe en Neo4j?}
-            C -- Sí --> D[Saltar Scraper / Usar Cache]
-            C -- No --> E[Búsqueda Interna SIIA UNAM]
-            E --> F[Navegación Selenium Headless]
-            F --> G[Cerrar Modales / Validar Nombre]
-            G --> H[Extraer IDs: Scopus, ORCID, Áreas]
-            H --> I["profesores_Entidad.json"]
-        end
+    graph LR
+    subgraph "Fase 1: Identificación y Perfilado (SIIA Scraper)"
+        A[Excel: Lista de Investigadores] --> B["siia_scraper.py"]
+        B --> C{¿Existe en Neo4j?}
+        C -- Sí --> D[Saltar Scraper / Usar Cache]
+        C -- No --> E[Búsqueda Interna SIIA UNAM]
+        E --> F[Navegación Selenium Headless]
+        F --> G[Cerrar Modales / Validar Nombre]
+        G --> H[Extraer IDs: Scopus, ORCID, Áreas]
+        H --> I["profesores_Entidad.json"]
+    end
 
-        subgraph "Fase 2: Extracción de Producción Científica (APIs)"
-            I --> J["ingest_apis.py"]
-            J --> K["Scopus API (pybliometrics)"]
-            J --> L["ORCID API (Public V3)"]
-            K -- Documentos --> M[Unificación por DOI]
-            L -- Trabajos --> M
-            M --> N["OpenAlex Enrichment (pyalex)"]
-            N --> O["Fallback por Título Exacto (si no hay DOI)"]
-            O --> P[Metadatos Completos: Citas, FWCI, ODS, APC]
-        end
+    subgraph "Fase 2: Extracción de Producción Científica (APIs)"
+        I --> J["ingest_apis.py"]
+        J --> K["Scopus API (pybliometrics)"]
+        J --> L["ORCID API (Public V3)"]
+        K -- Documentos --> M[Unificación por DOI]
+        L -- Trabajos --> M
+        M --> N["OpenAlex Enrichment (pyalex)"]
+        N --> O["Fallback por Título Exacto (si no hay DOI)"]
+        O --> P[Metadatos Completos: Citas, FWCI, ODS, APC]
+    end
 
-        subgraph "Fase 3: Materialización y Almacenamiento"
-            P --> Q["Embeddings (Nomic / LM Studio)"]
-            Q --> R[(Qdrant: api_papers)]
-            P --> S[(Neo4j: APIPaper)]
-            S --> T[Relación :AUTHORED con :Academic]
-            T --> U[Relación :AFFILIATED_TO con :Entity]
-        end
+    subgraph "Fase 3: Materialización y Almacenamiento"
+        P --> Q["Embeddings (Nomic / LM Studio)"]
+        Q --> R[(Qdrant: api_papers)]
+        P --> S[(Neo4j: APIPaper)]
+        S --> T[Relación :AUTHORED con :Academic]
+        T --> U[Relación :AFFILIATED_TO con :Entity]
+    end
 
-        subgraph "Fase 4: Consolidación Analítica"
-            U --> V["compute_scholar_metrics.py"]
-            V --> W["Caché Jerárquica: Parquets"]
-            W --> X[Dashboard Analytics / Agentes AI]
-        end
+    subgraph "Fase 4: Consolidación Analítica"
+        U --> V["compute_scholar_metrics.py"]
+        V --> W["Caché Jerárquica: Parquets"]
+        W --> X[Dashboard Analytics / Agentes AI]
+    end
 
-        style I fill:#f96,stroke:#333,stroke-width:2px
-        style R fill:#3b82f6,stroke:#fff,stroke-width:1px,color:#fff
-        style S fill:#10b981,stroke:#fff,stroke-width:1px
-        style W fill:#d946ef,stroke:#333,stroke-dasharray: 5 5
+    style I fill:#f96,stroke:#333,stroke-width:2px
+    style R fill:#0000FF,stroke:#fff,stroke-width:1px,color:#fff
+    style S fill:#00d9ff,stroke:#fff,stroke-width:1px
+    style W fill:#f9f,stroke:#333,stroke-dasharray: 5 5
     """
 
     html_mermaid_detailed = f"""
