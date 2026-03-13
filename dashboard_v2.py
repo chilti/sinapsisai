@@ -200,7 +200,7 @@ with st.sidebar:
         if partial_matches:
             default_index = partial_matches[0]
 
-    default_index = entidades_disponibles.index("Facultad de Ciencias")
+    
 
     selected_entity = st.selectbox(
         "Entidad UNAM", 
