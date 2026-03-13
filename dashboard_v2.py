@@ -868,15 +868,12 @@ with tab_about:
     st.markdown("Este diagrama describe el flujo de datos global de **Sinapsis AI**, desde la recolección de metadatos hasta la Inteligencia Híbrida del Agente RAG.")
     
     mermaid_code = """
-    graph TD       
-        
-        D --> G[Neo4j: Knowledge Graph]
-        E --> G
-        F --> G
+    graph TD
+        G[Neo4j: Knowledge Graph]-->I[Archivos Parquet]
         
         G -.-> H[Qdrant: Vector DB]
         
-        G --> I[Archivos Parquet]
+        
         I --> J[Local Cache]
         
         J --> K[Dashboard de Analitica]
