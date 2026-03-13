@@ -185,7 +185,12 @@ with st.sidebar:
         else:
             entidades_disponibles = ["Facultad de Ciencias", "Centro de Ciencias de la Complejidad", "UNAM Global"]
             
-    selected_entity = st.selectbox("Entidad UNAM", entidades_disponibles)
+    # Buscar índice por defecto para "Facultad de Ciencias"
+    default_index = 0
+    if "Facultad de Ciencias" in entidades_disponibles:
+        default_index = entidades_disponibles.index("Facultad de Ciencias")
+
+    selected_entity = st.selectbox("Entidad UNAM", entidades_disponibles, index=default_index)
     
     st.selectbox("Modelo", ["openai/gpt-oss-20b"], index=0)
 
