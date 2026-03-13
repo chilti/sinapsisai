@@ -185,12 +185,27 @@ with st.sidebar:
         else:
             entidades_disponibles = ["Facultad de Ciencias", "Centro de Ciencias de la Complejidad", "UNAM Global"]
             
-    # Buscar índice por defecto para "Facultad de Ciencias"
+    # Buscar índice por defecto para "Facultad de Ciencias" de forma robusta
+    target_default = "Facultad de Ciencias"
     default_index = 0
-    if "Facultad de Ciencias" in entidades_disponibles:
-        default_index = entidades_disponibles.index("Facultad de Ciencias")
+    
+    # Intentar match exacto (ignorando espacios extra)
+    matches = [i for i, x in enumerate(entidades_disponibles) if x.strip().lower() == target_default.lower()]
+    
+    if matches:
+        default_index = matches[0]
+    else:
+        # Intentar match parcial si el exacto falla
+        partial_matches = [i for i, x in enumerate(entidades_disponibles) if target_default.lower() in x.lower()]
+        if partial_matches:
+            default_index = partial_matches[0]
 
-    selected_entity = st.selectbox("Entidad UNAM", entidades_disponibles, index=default_index)
+    selected_entity = st.selectbox(
+        "Entidad UNAM", 
+        entidades_disponibles, 
+        index=default_index,
+        key="selected_entity_sidebar"
+    )
     
     st.selectbox("Modelo", ["openai/gpt-oss-20b"], index=0)
 
