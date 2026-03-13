@@ -203,7 +203,7 @@ with st.sidebar:
     selected_entity = st.selectbox(
         "Entidad UNAM", 
         entidades_disponibles, 
-        index=default_index,
+        index=1,
         key="selected_entity_sidebar"
     )
     
