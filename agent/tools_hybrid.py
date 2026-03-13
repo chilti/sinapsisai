@@ -341,6 +341,95 @@ def recoverAuthorWorksFromOpenAlex(author_id: str, n: int = 10) -> str:
     except Exception as e:
         return f"Error recuperando trabajos: {str(e)}"
 
+def getAuthorTopWorksFromOpenAlex(author_id: str, n: int = 5, years: int = 5) -> str:
+    """Recupera los 'n' trabajos más citados de un autor en OpenAlex en los últimos 'years' años."""
+    try:
+        from datetime import datetime
+        norm_id = author_id.split("/")[-1]
+        start_year = datetime.now().year - years
+        top_works = (
+            pyalex.Works()
+            .filter(author={"id": f"https://openalex.org/{norm_id}"}, publication_year=f">{start_year}")
+            .sort(cited_by_count="desc")
+            .get(per_page=n)
+        )
+        return json.dumps([
+            {
+                "titulo": work.get("title"), "año": work.get("publication_year"),
+                "citas": work.get("cited_by_count"),
+                "revista": work.get("primary_location", {}).get("source", {}).get("display_name"),
+                "DOI": work.get("doi")
+            } for work in top_works
+        ], ensure_ascii=False)
+    except Exception as e:
+        return f"Error obteniendo trabajos top: {e}"
+
+def searchInstitutionInOpenAlex(name: str) -> str:
+    """Busca perfiles de instituciones por nombre en OpenAlex. Devuelve hasta 3 perfiles."""
+    try:
+        institutions = pyalex.Institutions().search(name).get()
+        results = [
+            {
+                "id": inst["id"],
+                "display_name": inst.get("display_name"),
+                "ror": inst.get("ror"),
+                "country_code": inst.get("country_code"),
+                "works_count": inst.get("works_count"),
+                "cited_by_count": inst.get("cited_by_count")
+            }
+            for inst in institutions[:3]
+        ]
+        return json.dumps(results, ensure_ascii=False)
+    except Exception as e:
+        return f"Error buscando institución: {e}"
+
+def getInstitutionWorksByYear(institution_id: str) -> str:
+    """Agrupa los trabajos de una institución por año de publicación en OpenAlex."""
+    try:
+        norm_id = institution_id.split("/")[-1]
+        grouped_by_year = pyalex.Works().filter(
+            authorships={"institutions": {"id": norm_id}}
+        ).group_by("publication_year").get()
+        
+        results = [{"year": group["key"], "works_count": group["count"]} for group in grouped_by_year]
+        return json.dumps(sorted(results, key=lambda x: x['year'], reverse=True), ensure_ascii=False)
+    except Exception as e:
+        return f"Error en la agregación: {e}"
+
+def getAuthorWorksByYear(author_id: str) -> str:
+    """Agrupa los trabajos de un autor por año de publicación en OpenAlex."""
+    try:
+        norm_id = author_id.split("/")[-1]
+        grouped_by_year = pyalex.Works().filter(
+            author={"id": norm_id}
+        ).group_by("publication_year").get()
+        
+        results = [{"year": group["key"], "works_count": group["count"]} for group in grouped_by_year if group.get("key") is not None]
+        return json.dumps(sorted(results, key=lambda x: x['year'], reverse=True), ensure_ascii=False)
+    except Exception as e:
+        return f"Error en la agregación de trabajos del autor: {e}"
+
+def downloadPaperByDOI(doi: str) -> str:
+    """Descarga un PDF de Sci-Hub dado su DOI y lo guarda en la carpeta 'pdf/'. Útil para acceder al texto completo."""
+    try:
+        from scidownl import scihub_download
+        # Limpiar el DOI para usarlo como nombre de archivo
+        safe_doi = doi.replace("/", "_").replace(":", "_")
+        dest_path = f"pdf/{safe_doi}.pdf"
+        
+        # Asegurar que el directorio existe
+        os.makedirs("pdf", exist_ok=True)
+        
+        print(f"📥 Descargando paper: {doi} -> {dest_path}")
+        scihub_download(doi, paper_type='doi', out=dest_path)
+        
+        if os.path.exists(dest_path):
+            return f"Éxito: El paper con DOI {doi} ha sido descargado en {dest_path}"
+        else:
+            return f"Error: No se pudo descargar el paper {doi}."
+    except Exception as e:
+        return f"Error durante la descarga de Sci-Hub: {e}"
+
 
 # --- Herramientas de Propósito General (Fase 2) ---
 
@@ -911,6 +1000,11 @@ wikipedia_search = CallableTool(tool(wikipedia_search), wikipedia_search)
 recoverFromOpenAlex = CallableTool(tool(recoverFromOpenAlex), recoverFromOpenAlex)
 searchAuthorInOpenAlex = CallableTool(tool(searchAuthorInOpenAlex), searchAuthorInOpenAlex)
 recoverAuthorWorksFromOpenAlex = CallableTool(tool(recoverAuthorWorksFromOpenAlex), recoverAuthorWorksFromOpenAlex)
+getAuthorTopWorksFromOpenAlex = CallableTool(tool(getAuthorTopWorksFromOpenAlex), getAuthorTopWorksFromOpenAlex)
+searchInstitutionInOpenAlex = CallableTool(tool(searchInstitutionInOpenAlex), searchInstitutionInOpenAlex)
+getInstitutionWorksByYear = CallableTool(tool(getInstitutionWorksByYear), getInstitutionWorksByYear)
+getAuthorWorksByYear = CallableTool(tool(getAuthorWorksByYear), getAuthorWorksByYear)
+downloadPaperByDOI = CallableTool(tool(downloadPaperByDOI), downloadPaperByDOI)
 
 # Alias para compatibilidad con el prompt del agente
 search_scientific_papers = search_scientific_papers_semantic
@@ -931,5 +1025,25 @@ hybrid_tools = [
     wikipedia_search.tool,
     recoverFromOpenAlex.tool,
     searchAuthorInOpenAlex.tool,
-    recoverAuthorWorksFromOpenAlex.tool
+    recoverAuthorWorksFromOpenAlex.tool,
+    getAuthorTopWorksFromOpenAlex.tool,
+    searchInstitutionInOpenAlex.tool,
+    getInstitutionWorksByYear.tool,
+    getAuthorWorksByYear.tool,
+    downloadPaperByDOI.tool
+]
+
+# Herramientas estrictamente MCP (solo Web/Wikipedia/OpenAlex/SciHub)
+# Estas se usarán para el Agente Reactivo
+mcp_tools = [
+    web_search.tool,
+    wikipedia_search.tool,
+    recoverFromOpenAlex.tool,
+    searchAuthorInOpenAlex.tool,
+    recoverAuthorWorksFromOpenAlex.tool,
+    getAuthorTopWorksFromOpenAlex.tool,
+    searchInstitutionInOpenAlex.tool,
+    getInstitutionWorksByYear.tool,
+    getAuthorWorksByYear.tool,
+    downloadPaperByDOI.tool
 ]
