@@ -201,6 +201,43 @@ def load_snii_authors():
         print(f"Error cargando SNII: {e}")
         return []
 
+def discover_orcid_openalex(name, affiliation, country="Mexico"):
+    """
+    Realiza una búsqueda activa en la API de OpenAlex para encontrar el ORCID
+    utilizando el nombre completo y la institución como contexto.
+    """
+    try:
+        # Limpiar nombre para la búsqueda
+        search_query = f"{name} {affiliation}"
+        print(f"      [OpenAlex] Buscando: {search_query}...")
+        
+        # Buscar autores que coincidan con el nombre y la afiliación
+        authors = pyalex.Authors().search(search_query).get()
+        
+        for author in authors:
+            orcid_url = author.get('orcid')
+            if not orcid_url: continue
+            
+            orcid = orcid_url.split('/')[-1]
+            
+            # Verificar si el autor tiene alguna vinculación con México
+            is_mexican = False
+            last_inst = author.get('last_known_institutions', [])
+            for inst in last_inst:
+                if inst.get('country_code') == 'MX':
+                    is_mexican = True
+                    break
+            
+            # Si es mexicano o la búsqueda fue muy específica, lo consideramos candidato
+            if is_mexican or country.lower() in str(author).lower():
+                return orcid, {
+                    'name': author.get('display_name'),
+                    'institution': last_inst[0].get('display_name') if last_inst else ""
+                }
+    except Exception as e:
+        print(f"      [OpenAlex] Error: {e}")
+    return None, None
+
 def run_matching(limit=500, min_score=0.95):
     client = get_client()
     existing_mappings = load_existing_mappings()
@@ -362,7 +399,7 @@ def run_matching(limit=500, min_score=0.95):
 
                 if best_match and max_s >= min_score:
                     orcid = best_match[0]
-                    aff = best_match[5] # Ajustado índice por eliminación de 'dois'
+                    aff = best_match[5] 
                     res = {
                         "source_name": author['name'],
                         "source_origin": author.get('source_origin'),
@@ -372,13 +409,35 @@ def run_matching(limit=500, min_score=0.95):
                         "matched_institution": aff,
                         "matched_city": best_match[6],
                         "matched_country": best_match[7],
-                        "sub_affiliation": extract_sub_affiliation(aff),
-                        "score": round(max_s, 3),
+                        "sub_affiliation": extract_sub_affiliation(author.get('sub_affiliation') or ""),
+                        "score": round(max_s, 4),
                         "match_type": "clickhouse_fuzzy",
                         "dois_last_3yr": fetch_recent_dois(orcid)
                     }
                     results.append(res)
-                    print(f"   ✓ Match! {author['name']} (Score: {max_s:.2f})")
+                else:
+                    # FALLBACK: DESCUBRIMIENTO ACTIVO VIA OPENALEX
+                    # Si ClickHouse no encontró nada bueno, pedimos ayuda a la API de OpenAlex
+                    # usando el nombre completo + institución (como en el script del SIIA)
+                    found_orcid, info = discover_orcid_openalex(author['name'], author.get('main_affiliation', ''))
+                    if found_orcid:
+                        print(f"   [Éxito] Descubierto vía OpenAlex: {author['name']} -> {found_orcid}")
+                        res = {
+                            "source_name": author['name'],
+                            "source_origin": author.get('source_origin'),
+                            "source_aff": author.get('main_affiliation'),
+                            "matched_orcid": found_orcid,
+                            "matched_name": info['name'],
+                            "matched_institution": info['institution'],
+                            "matched_city": "",
+                            "matched_country": "MX",
+                            "sub_affiliation": extract_sub_affiliation(author.get('sub_affiliation') or ""),
+                            "score": 0.98, # Alta confianza por contexto de institución
+                            "match_type": "openalex_discovery",
+                            "dois_last_3yr": fetch_recent_dois(found_orcid)
+                        }
+                        results.append(res)
+                print(f"   ✓ Match! {author['name']} (Score: {max_s:.2f})")
                 
         except Exception as e:
             print(f"Error en batch_query: {e}")
