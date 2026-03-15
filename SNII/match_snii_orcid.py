@@ -237,14 +237,21 @@ def discover_orcid_locally(graph_store, name, affiliation, mex_keywords):
         """
         
         with graph_store.driver.session() as session:
-            rows = session.run(query, surname=surname, inst_hint=inst_hint)
+            rows = list(session.run(query, surname=surname, inst_hint=inst_hint))
+            print(f"      [Neo4j] {len(rows)} artículos encontrados con términos base.")
             
             stop_tokens = {'de', 'la', 'del', 'los', 'las', 'y', 'e', 'san', 'santa'}
 
-            for record in rows:
+            for idx, record in enumerate(rows):
                 raw_json = record["raw_json"]
                 data = json.loads(raw_json)
+                title = data.get('title', 'Sin Título')[:50]
                 authorships = data.get('authorships', [])
+                
+                # Para depuración, mostrar qué estamos revisando
+                if idx < 3: # Solo los primeros 3 para no saturar
+                    print(f"      - Revisando artículo: {title}...")
+
                 for auth in authorships:
                     author_info = auth.get('author', {})
                     display_name = author_info.get('display_name', '')
