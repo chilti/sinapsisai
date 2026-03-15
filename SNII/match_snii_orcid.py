@@ -9,6 +9,10 @@ import pyalex
 from Levenshtein import jaro_winkler
 from datetime import datetime
 
+# Añadir path para importar desde la carpeta raíz
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from database.knowledge_graph import Neo4jGraphStore
+
 # Configurar Pyalex
 pyalex.config.email = "sin_correo@ciencias.unam.mx"
 
@@ -18,6 +22,11 @@ CH_PORT = 8123
 CH_USER = "admin"
 CH_PASS = "admin"
 CH_DB   = "openalex"
+
+# Configuración Neo4j (Bolt)
+NEO4J_URI = "bolt://127.0.0.1:7687"
+NEO4J_USER = "neo4j"
+NEO4J_PASS = "password123"
 
 # Definir rutas absolutas basadas en la ubicación del script
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -201,10 +210,10 @@ def load_snii_authors():
         print(f"Error cargando SNII: {e}")
         return []
 
-def discover_orcid_locally(client, name, affiliation, mex_keywords):
+def discover_orcid_locally(graph_store, name, affiliation, mex_keywords):
     """
-    Busca el ORCID de forma 'activa' en la tabla de artículos locales (openalex_works)
-    usando el nombre completo y la institución como contexto.
+    Busca el ORCID de forma 'activa' en Neo4j usando los metadatos de los artículos
+    ingeridos (Papers) como contexto.
     """
     try:
         # Extraer apellido para la búsqueda base
@@ -214,53 +223,56 @@ def discover_orcid_locally(client, name, affiliation, mex_keywords):
         if len(parts) > 1 and parts[0] in ['juan', 'jose', 'maria', 'ana']:
             surname = parts[-1]
 
-        # Consulta potente: busca el apellido y alguna pista de la institución EXCEL o México
-        # Reducimos longitud de institución para ser más tolerantes a variaciones de nombre
+        # Reducimos longitud de institución para ser más tolerantes
         inst_hint = affiliation[:12].replace("'", "")
-        query = f"""
-        SELECT raw_data 
-        FROM {CH_DB}.openalex_works 
-        WHERE (raw_data LIKE '%{surname}%')
-          AND (raw_data LIKE '%{inst_hint}%' OR raw_data LIKE '%MX%')
+        
+        # Consulta Cypher para Neo4j (buscamos en raw_metadata que es JSON string)
+        query = """
+        MATCH (p:Paper)
+        WHERE p.raw_metadata CONTAINS $surname
+          AND (p.raw_metadata CONTAINS $inst_hint OR p.raw_metadata CONTAINS '"MX"')
+        RETURN p.raw_metadata AS raw_json
         LIMIT 30
         """
-        rows = client.query(query).result_rows
         
-        stop_tokens = {'de', 'la', 'del', 'los', 'las', 'y', 'e', 'san', 'santa'}
+        with graph_store.driver.session() as session:
+            rows = session.run(query, surname=surname, inst_hint=inst_hint)
+            
+            stop_tokens = {'de', 'la', 'del', 'los', 'las', 'y', 'e', 'san', 'santa'}
 
-        for (raw_json,) in rows:
-            data = json.loads(raw_json)
-            authorships = data.get('authorships', [])
-            for auth in authorships:
-                author_info = auth.get('author', {})
-                display_name = author_info.get('display_name', '')
-                orcid_url = author_info.get('orcid')
-                
-                if not orcid_url: continue
-                
-                # Validar nombre con tokens ordenados y sin stop words
-                def get_clean_tokens(s): 
-                    tks = normalize_text(s).replace(',', ' ').split()
-                    return set([t for t in tks if t not in stop_tokens and len(t) > 2])
-                
-                s_tokens = get_clean_tokens(name)
-                d_tokens = get_clean_tokens(display_name)
-                
-                # Exigimos al menos 2 tokens significativos coincidentes (ej: Nombre + Apellido)
-                intersection = s_tokens.intersection(d_tokens)
-                if len(intersection) >= 2:
-                    orcid = orcid_url.split('/')[-1]
+            for record in rows:
+                raw_json = record["raw_json"]
+                data = json.loads(raw_json)
+                authorships = data.get('authorships', [])
+                for auth in authorships:
+                    author_info = auth.get('author', {})
+                    display_name = author_info.get('display_name', '')
+                    orcid_url = author_info.get('orcid')
                     
-                    # Extraer institución de este bloque authorship
-                    insts = auth.get('institutions', [])
-                    inst_name = insts[0].get('display_name', '') if insts else ""
+                    if not orcid_url: continue
                     
-                    return orcid, {
-                        'name': display_name,
-                        'institution': inst_name
-                    }
+                    # Validar nombre con tokens significativos
+                    def get_clean_tokens(s): 
+                        tks = normalize_text(s).replace(',', ' ').split()
+                        return set([t for t in tks if t not in stop_tokens and len(t) > 2])
+                    
+                    s_tokens = get_clean_tokens(name)
+                    d_tokens = get_clean_tokens(display_name)
+                    
+                    # Al menos 2 tokens coincidentes
+                    intersection = s_tokens.intersection(d_tokens)
+                    if len(intersection) >= 2:
+                        orcid = orcid_url.split('/')[-1]
+                        
+                        insts = auth.get('institutions', [])
+                        inst_name = insts[0].get('display_name', '') if insts else ""
+                        
+                        return orcid, {
+                            'name': display_name,
+                            'institution': inst_name
+                        }
     except Exception as e:
-        print(f"      [Local Discovery] Error: {e}")
+        print(f"      [Neo4j Discovery] Error: {e}")
     return None, None
 
 def get_orcid_emails(client, orcid):
@@ -276,6 +288,7 @@ def get_orcid_emails(client, orcid):
 
 def run_matching(limit=500, min_score=0.95):
     client = get_client()
+    graph_store = Neo4jGraphStore(uri=NEO4J_URI, user=NEO4J_USER, password=NEO4J_PASS)
     existing_mappings = load_existing_mappings()
     print(f"Mapeos locales cargados: {len(existing_mappings)}")
 
@@ -453,11 +466,10 @@ def run_matching(limit=500, min_score=0.95):
                     }
                     results.append(res)
                 else:
-                    # FALLBACK: DESCUBRIMIENTO ACTIVO LOCAL
-                    # Si la base de ORCIDs no lo tiene, buscamos en los artículos (como SIIA)
-                    found_orcid, info = discover_orcid_locally(client, author['name'], author.get('main_affiliation', ''), mex_keywords)
+                    # FALLBACK: DESCUBRIMIENTO ACTIVO LOCAL (En Neo4j)
+                    found_orcid, info = discover_orcid_locally(graph_store, author['name'], author.get('main_affiliation', ''), mex_keywords)
                     if found_orcid:
-                        print(f"   [Éxito] Descubierto localmente: {author['name']} -> {found_orcid}")
+                        print(f"   [Éxito] Descubierto localmente (Neo4j): {author['name']} -> {found_orcid}")
                         # Obtener correos para este ORCID descubierto
                         emails = get_orcid_emails(client, found_orcid)
                         res = {
