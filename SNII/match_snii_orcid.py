@@ -19,14 +19,16 @@ CH_USER = "admin"
 CH_PASS = "admin"
 CH_DB   = "openalex"
 
-# Paths
-SEED_PATH = "../data/authors_mexico_seed.json"
-SNII_PATH = "Investigadores_vigentes_2025.xlsx"
+# Definir rutas absolutas basadas en la ubicación del script
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+SEED_PATH = os.path.join(SCRIPT_DIR, "..", "data", "authors_mexico_seed.json")
+SNII_PATH = os.path.join(SCRIPT_DIR, "Investigadores_vigentes_2025.xlsx")
 EXCEL_FILES = [
-    "../data/C3-autores.xlsx",
-    "../data/ListadoICN-ORCID.xlsx"
+    os.path.join(SCRIPT_DIR, "..", "data", "C3-autores.xlsx"),
+    os.path.join(SCRIPT_DIR, "..", "data", "ListadoICN-ORCID.xlsx")
 ]
-OUTPUT_PATH = "../data/authors_matched_orcid.json"
+OUTPUT_PATH = os.path.join(SCRIPT_DIR, "..", "data", "authors_matched_orcid.json")
 
 def normalize_text(text):
     if not text: return ""
