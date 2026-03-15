@@ -192,7 +192,7 @@ def load_snii_authors():
         # Ajustar nombres de columnas según inspección del archivo real 2025
         name_col = 'NOMBRE DEL INVESTIGADOR'
         inst_col = 'INSTITUCIÓN DE ACREDITACIÓN'
-        sub_inst_col = 'DEPENDENCIA DE ACREDITACIÓN'
+        sub_inst_col = 'SUBDEPENDENCIA DE ACREDITACIÓN'
         
         authors = []
         for _, row in df.iterrows():
