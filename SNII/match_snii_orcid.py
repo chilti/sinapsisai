@@ -501,4 +501,4 @@ def run_matching(limit=500, min_score=0.5):
     print(f"Proceso completado. Matches encontrados: {len(results)}")
 
 if __name__ == "__main__":
-    run_matching(limit=50) # Límite razonable para pruebas en este entorno
+    run_matching(limit=10) # Límite razonable para pruebas en este entorno
