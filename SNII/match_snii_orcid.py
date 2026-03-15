@@ -337,6 +337,8 @@ def run_matching(limit=500, min_score=0.5):
         # A. ¿Ya tenemos el ORCID en archivos de mapeo manual (Excel)?
         if norm_name in existing_mappings:
             orcid = existing_mappings[norm_name]
+            print(f"> Investigador: {name}")
+            print(f"  [Excel] Match encontrado directamente en archivos de mapeo: {orcid}")
             results.append({
                 "source_name": name,
                 "source_origin": "SNII_Excel",
@@ -354,6 +356,8 @@ def run_matching(limit=500, min_score=0.5):
             n4j_author = neo4j_data[norm_name]
             if n4j_author.get('orcid'):
                 orcid = n4j_author['orcid']
+                print(f"> Investigador: {name}")
+                print(f"  [Neo4j Seed] Match encontrado en base de conocimiento: {orcid}")
                 results.append({
                     "source_name": name,
                     "source_origin": "SNII_Excel",
@@ -423,6 +427,8 @@ def run_matching(limit=500, min_score=0.5):
             
             for author in batch:
                 sterm = author['search_term'].lower()
+                print(f"  [ClickHouse] Buscando candidatos para: '{author['name']}' (Término: {sterm})")
+                
                 # Filtrar candidatos: que coincida el apellido Y que sea de México (MX) o tenga institución mexicana
                 my_cands = []
                 for c in candidates:
@@ -435,6 +441,8 @@ def run_matching(limit=500, min_score=0.5):
                         # Prioridad absoluta a México
                         if country == 'MX' or any(k in aff_text for k in mex_keywords):
                             my_cands.append(c)
+                
+                print(f"    -> {len(my_cands)} candidatos potenciales después de filtrar por País/Inst.")
                 
                 best_match = None
                 max_s = 0
@@ -450,6 +458,7 @@ def run_matching(limit=500, min_score=0.5):
                 if best_match and max_s >= min_score:
                     orcid = best_match[0]
                     aff = best_match[5] 
+                    print(f"    ✅ Match exitoso en ClickHouse! Score: {max_s:.2f} | ORCID: {orcid}")
                     res = {
                         "source_name": author['name'],
                         "source_origin": author.get('source_origin'),
@@ -467,10 +476,11 @@ def run_matching(limit=500, min_score=0.5):
                     }
                     results.append(res)
                 else:
+                    print(f"    [Info] Sin match suficiente en ClickHouse (Max Score: {max_s:.2f}). Intentando Descubrimiento Local...")
                     # FALLBACK: DESCUBRIMIENTO ACTIVO LOCAL (En Neo4j)
                     found_orcid, info = discover_orcid_locally(graph_store, author['name'], author.get('main_affiliation', ''), mex_keywords)
                     if found_orcid:
-                        print(f"   [Éxito] Descubierto localmente (Neo4j): {author['name']} -> {found_orcid}")
+                        print(f"    ✅ [Descubrimiento] Match encontrado en Neo4j! ORCID: {found_orcid} | Contexto: {info['institution']}")
                         # Obtener correos para este ORCID descubierto
                         emails = get_orcid_emails(client, found_orcid)
                         res = {
@@ -489,7 +499,9 @@ def run_matching(limit=500, min_score=0.5):
                             "dois_last_3yr": fetch_recent_dois(found_orcid)
                         }
                         results.append(res)
-                print(f"   ✓ Match! {author['name']} (Score: {max_s:.2f})")
+                    else:
+                        print(f"    ❌ No se encontró nada para '{author['name']}' en ninguna base.")
+                print("-" * 30)
                 
         except Exception as e:
             print(f"Error en batch_query: {e}")
