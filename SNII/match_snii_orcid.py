@@ -99,14 +99,22 @@ def calculate_score(seed_author, ch_record):
     if seed_emails.intersection(ch_emails_set) and len(seed_emails.intersection(ch_emails_set)) > 0:
         return 1.0
 
-    # 1. Nombre Completo
-    full_name_seed = normalize_text(seed_author['name'])
-    full_name_ch = normalize_text(f"{gn} {fn}")
-    name_score = jaro_winkler(full_name_seed, full_name_ch)
+    # 1. Nombre Completo (Fuzzy Matching con Tokens Ordenados)
+    # Esto hace que "Lopez, Juan" y "Juan Lopez" sean idénticos al compararlos
+    def get_token_sorted_name(name_str):
+        clean = normalize_text(name_str).replace(',', ' ')
+        tokens = sorted([t for t in clean.split() if len(t) > 1])
+        return " ".join(tokens)
+
+    sorted_seed = get_token_sorted_name(seed_author['name'])
+    sorted_ch = get_token_sorted_name(f"{gn} {fn}")
     
+    name_score = jaro_winkler(sorted_seed, sorted_ch)
+    
+    # También probar contra el nombre de crédito si existe
     if cn:
-        cn_score = jaro_winkler(full_name_seed, normalize_text(cn))
-        name_score = max(name_score, cn_score)
+        sorted_cn = get_token_sorted_name(cn)
+        name_score = max(name_score, jaro_winkler(sorted_seed, sorted_cn))
     
     # 2. Afiliación
     aff_score = 0
@@ -297,16 +305,20 @@ def run_matching(limit=500, min_score=0.95):
     
     for i in range(0, total, batch_size):
         batch = authors_to_search[i:i + batch_size]
-        terms = list(set([a['search_term'] for a in batch]))
-        terms_sql = "[" + ",".join([f"'{t.replace(chr(39), chr(39)+chr(39))}'" for t in terms]) + "]"
+        # Filtrar stop words de los términos de búsqueda
+        stop_words = {'de', 'del', 'la', 'los', 'las', 'san', 'santa'}
+        terms = list(set([a['search_term'] for a in batch if a['search_term'] not in stop_words]))
+        if not terms: continue
         
         # Opción universalmente compatible: LOWER(...) LIKE ...
         filters = []
         for t in terms:
             t_esc = t.lower().replace("'", "''")
+            if len(t_esc) < 3: continue # Ignorar términos muy cortos
             filters.append(f"lower(family_name) LIKE '%{t_esc}%'")
             filters.append(f"lower(credit_name) LIKE '%{t_esc}%'")
         
+        if not filters: continue
         where_clause = " OR ".join(filters)
         
         query = f"""
@@ -314,7 +326,7 @@ def run_matching(limit=500, min_score=0.95):
                last_affiliation, last_affiliation_city, last_affiliation_country
         FROM orcid_records
         WHERE {where_clause}
-        LIMIT 1000
+        LIMIT 5000
         """
         
         try:
@@ -345,6 +357,9 @@ def run_matching(limit=500, min_score=0.95):
                         max_s = score
                         best_match = cand
                 
+                if best_match and max_s >= 0.8: # Log para depuración si es cercano
+                    print(f"   [Debug] Mejor match para '{author['name']}': ORCID={best_match[0]}, Score={max_s:.4f}")
+
                 if best_match and max_s >= min_score:
                     orcid = best_match[0]
                     aff = best_match[5] # Ajustado índice por eliminación de 'dois'
