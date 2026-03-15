@@ -195,13 +195,7 @@ def run_matching(limit=500, min_score=0.95):
     client = get_client()
     existing_mappings = load_existing_mappings()
     print(f"Mapeos locales cargados: {len(existing_mappings)}")
-    
-    # 1. Cargar SNII 2025 como base principal
-    snii_authors = load_snii_authors()
-    print(f"Autores SNII cargados: {len(snii_authors)}")
 
-    # 2. Cargar Seed de Neo4j para cruce de datos
-    neo4j_data = {}
     mex_keywords = [
         "mexico", "mexic", "unam", "ipn", "cinvestav", "tecnologico", "autonoma", "itamb", "colmex", 
         "buap", "uaslp", "udem", "itesm", "uam", "politecnico",
@@ -209,15 +203,28 @@ def run_matching(limit=500, min_score=0.95):
         "jalisco", "michoacan", "hidalgo", "zacatecas", "tabasco", "sinaloa", "sonora"
     ]
     
+    # 1. Cargar SNII 2025 como base principal
+    snii_authors = load_snii_authors()
+    print(f"Autores SNII cargados: {len(snii_authors)}")
+
+    # 2. Cargar Seed de Neo4j para cruce de datos
+    neo4j_data = {}
     if os.path.exists(SEED_PATH):
-        with open(SEED_PATH, 'r', encoding='utf-8') as f:
-            seed_data = json.load(f)
-            for a in seed_data:
-                # Normalizamos nombre para el índice de búsqueda
-                norm_n = normalize_text(a.get('name'))
-                if norm_n:
-                    neo4j_data[norm_n] = a
-        print(f"Base de conocimiento Neo4j cargada: {len(neo4j_data)} autores.")
+        try:
+            with open(SEED_PATH, 'r', encoding='utf-8') as f:
+                seed_data = json.load(f)
+                for a in seed_data:
+                    norm_n = normalize_text(a.get('name'))
+                    if norm_n:
+                        neo4j_data[norm_n] = a
+            print(f"Base de conocimiento Neo4j cargada: {len(neo4j_data)} autores.")
+        except Exception as e:
+            print(f"Aviso: No se pudo cargar el archivo seed {SEED_PATH}: {e}")
+    else:
+        print(f"Aviso: El archivo seed {SEED_PATH} no existe. Se omitirá el cruce con Neo4j.")
+
+    # Asegurar que el directorio de salida existe
+    os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
 
     print(f"Procesando hasta {limit} investigadores del SNII...")
     results = []
