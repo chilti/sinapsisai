@@ -219,7 +219,7 @@ def discover_orcid_locally(client, name, affiliation, mex_keywords):
         inst_hint = affiliation[:12].replace("'", "")
         query = f"""
         SELECT raw_data 
-        FROM openalex_works 
+        FROM {CH_DB}.openalex_works 
         WHERE (raw_data LIKE '%{surname}%')
           AND (raw_data LIKE '%{inst_hint}%' OR raw_data LIKE '%MX%')
         LIMIT 30
@@ -266,7 +266,7 @@ def discover_orcid_locally(client, name, affiliation, mex_keywords):
 def get_orcid_emails(client, orcid):
     """Extrae los correos electrónicos del ORCID desde la tabla local orcid_records."""
     try:
-        query = f"SELECT emails FROM orcid_records WHERE orcid = '{orcid}'"
+        query = f"SELECT emails FROM {CH_DB}.orcid_records WHERE orcid = '{orcid}'"
         res = client.query(query).result_rows
         if res and res[0][0]:
             return res[0][0]
@@ -397,7 +397,7 @@ def run_matching(limit=500, min_score=0.95):
         query = f"""
         SELECT orcid, given_names, family_name, credit_name, emails,
                last_affiliation, last_affiliation_city, last_affiliation_country
-        FROM orcid_records
+        FROM {CH_DB}.orcid_records
         WHERE {where_clause}
         LIMIT 5000
         """
