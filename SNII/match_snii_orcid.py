@@ -443,6 +443,10 @@ def run_matching(limit=500, min_score=0.5):
                             my_cands.append(c)
                 
                 print(f"    -> {len(my_cands)} candidatos potenciales después de filtrar por País/Inst.")
+                if my_cands:
+                    # Mostrar solo los primeros 2 candidatos para no saturar
+                    for idx, c in enumerate(my_cands[:2]):
+                        print(f"       ({idx+1}) Nombre: {c[1]} {c[2]} | ORCID: {c[0]} | Inst: {c[5]}")
                 
                 best_match = None
                 max_s = 0
