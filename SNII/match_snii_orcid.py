@@ -2,6 +2,7 @@
 import json
 import clickhouse_connect
 import os
+import sys
 import pandas as pd
 import unicodedata
 import re
