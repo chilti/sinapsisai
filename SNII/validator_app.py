@@ -80,7 +80,8 @@ else:
         color = "green" if item['score'] >= 0.95 else "orange"
         st.markdown(f"**Nombre:** {item['matched_name']}")
         st.markdown(f"**ORCID:** [{item['matched_orcid']}](https://orcid.org/{item['matched_orcid']})")
-        st.markdown(f"**Score:** :{color}[{item['score']}]")
+        st.markdown(f"**Score:** :{color}[{item['score']}] (`{item.get('match_type', 'N/A')}`)")
+        st.write(f"**Email:** `{item.get('matched_emails', 'No encontrado')}`")
         st.write(f"**Institución:** {item.get('matched_institution', 'N/A')}")
         st.write(f"**Sub-afiliación:** `{item.get('sub_affiliation', 'No detectada')}`")
         st.write(f"**País:** {item.get('matched_country', 'N/A')} ({item.get('matched_city', '')})")

@@ -201,42 +201,78 @@ def load_snii_authors():
         print(f"Error cargando SNII: {e}")
         return []
 
-def discover_orcid_openalex(name, affiliation, country="Mexico"):
+def discover_orcid_locally(client, name, affiliation, mex_keywords):
     """
-    Realiza una búsqueda activa en la API de OpenAlex para encontrar el ORCID
-    utilizando el nombre completo y la institución como contexto.
+    Busca el ORCID de forma 'activa' en la tabla de artículos locales (openalex_works)
+    usando el nombre completo y la institución como contexto.
     """
     try:
-        # Limpiar nombre para la búsqueda
-        search_query = f"{name} {affiliation}"
-        print(f"      [OpenAlex] Buscando: {search_query}...")
+        # Extraer apellido para la búsqueda base
+        parts = normalize_text(name).replace(',', ' ').split()
+        if not parts: return None, None
+        surname = parts[0]
+        if len(parts) > 1 and parts[0] in ['juan', 'jose', 'maria', 'ana']:
+            surname = parts[-1]
+
+        # Consulta potente: busca el apellido y alguna pista de la institución EXCEL o México
+        # Reducimos longitud de institución para ser más tolerantes a variaciones de nombre
+        inst_hint = affiliation[:12].replace("'", "")
+        query = f"""
+        SELECT raw_data 
+        FROM openalex_works 
+        WHERE (raw_data LIKE '%{surname}%')
+          AND (raw_data LIKE '%{inst_hint}%' OR raw_data LIKE '%MX%')
+        LIMIT 30
+        """
+        rows = client.query(query).result_rows
         
-        # Buscar autores que coincidan con el nombre y la afiliación
-        authors = pyalex.Authors().search(search_query).get()
-        
-        for author in authors:
-            orcid_url = author.get('orcid')
-            if not orcid_url: continue
-            
-            orcid = orcid_url.split('/')[-1]
-            
-            # Verificar si el autor tiene alguna vinculación con México
-            is_mexican = False
-            last_inst = author.get('last_known_institutions', [])
-            for inst in last_inst:
-                if inst.get('country_code') == 'MX':
-                    is_mexican = True
-                    break
-            
-            # Si es mexicano o la búsqueda fue muy específica, lo consideramos candidato
-            if is_mexican or country.lower() in str(author).lower():
-                return orcid, {
-                    'name': author.get('display_name'),
-                    'institution': last_inst[0].get('display_name') if last_inst else ""
-                }
+        stop_tokens = {'de', 'la', 'del', 'los', 'las', 'y', 'e', 'san', 'santa'}
+
+        for (raw_json,) in rows:
+            data = json.loads(raw_json)
+            authorships = data.get('authorships', [])
+            for auth in authorships:
+                author_info = auth.get('author', {})
+                display_name = author_info.get('display_name', '')
+                orcid_url = author_info.get('orcid')
+                
+                if not orcid_url: continue
+                
+                # Validar nombre con tokens ordenados y sin stop words
+                def get_clean_tokens(s): 
+                    tks = normalize_text(s).replace(',', ' ').split()
+                    return set([t for t in tks if t not in stop_tokens and len(t) > 2])
+                
+                s_tokens = get_clean_tokens(name)
+                d_tokens = get_clean_tokens(display_name)
+                
+                # Exigimos al menos 2 tokens significativos coincidentes (ej: Nombre + Apellido)
+                intersection = s_tokens.intersection(d_tokens)
+                if len(intersection) >= 2:
+                    orcid = orcid_url.split('/')[-1]
+                    
+                    # Extraer institución de este bloque authorship
+                    insts = auth.get('institutions', [])
+                    inst_name = insts[0].get('display_name', '') if insts else ""
+                    
+                    return orcid, {
+                        'name': display_name,
+                        'institution': inst_name
+                    }
     except Exception as e:
-        print(f"      [OpenAlex] Error: {e}")
+        print(f"      [Local Discovery] Error: {e}")
     return None, None
+
+def get_orcid_emails(client, orcid):
+    """Extrae los correos electrónicos del ORCID desde la tabla local orcid_records."""
+    try:
+        query = f"SELECT emails FROM orcid_records WHERE orcid = '{orcid}'"
+        res = client.query(query).result_rows
+        if res and res[0][0]:
+            return res[0][0]
+    except:
+        pass
+    return ""
 
 def run_matching(limit=500, min_score=0.95):
     client = get_client()
@@ -409,6 +445,7 @@ def run_matching(limit=500, min_score=0.95):
                         "matched_institution": aff,
                         "matched_city": best_match[6],
                         "matched_country": best_match[7],
+                        "matched_emails": best_match[4] or get_orcid_emails(client, orcid),
                         "sub_affiliation": extract_sub_affiliation(author.get('sub_affiliation') or ""),
                         "score": round(max_s, 4),
                         "match_type": "clickhouse_fuzzy",
@@ -416,12 +453,13 @@ def run_matching(limit=500, min_score=0.95):
                     }
                     results.append(res)
                 else:
-                    # FALLBACK: DESCUBRIMIENTO ACTIVO VIA OPENALEX
-                    # Si ClickHouse no encontró nada bueno, pedimos ayuda a la API de OpenAlex
-                    # usando el nombre completo + institución (como en el script del SIIA)
-                    found_orcid, info = discover_orcid_openalex(author['name'], author.get('main_affiliation', ''))
+                    # FALLBACK: DESCUBRIMIENTO ACTIVO LOCAL
+                    # Si la base de ORCIDs no lo tiene, buscamos en los artículos (como SIIA)
+                    found_orcid, info = discover_orcid_locally(client, author['name'], author.get('main_affiliation', ''), mex_keywords)
                     if found_orcid:
-                        print(f"   [Éxito] Descubierto vía OpenAlex: {author['name']} -> {found_orcid}")
+                        print(f"   [Éxito] Descubierto localmente: {author['name']} -> {found_orcid}")
+                        # Obtener correos para este ORCID descubierto
+                        emails = get_orcid_emails(client, found_orcid)
                         res = {
                             "source_name": author['name'],
                             "source_origin": author.get('source_origin'),
@@ -429,11 +467,12 @@ def run_matching(limit=500, min_score=0.95):
                             "matched_orcid": found_orcid,
                             "matched_name": info['name'],
                             "matched_institution": info['institution'],
+                            "matched_emails": emails,
                             "matched_city": "",
                             "matched_country": "MX",
                             "sub_affiliation": extract_sub_affiliation(author.get('sub_affiliation') or ""),
-                            "score": 0.98, # Alta confianza por contexto de institución
-                            "match_type": "openalex_discovery",
+                            "score": 0.98, # Contexto local confiable
+                            "match_type": "local_discovery",
                             "dois_last_3yr": fetch_recent_dois(found_orcid)
                         }
                         results.append(res)
