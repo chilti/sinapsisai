@@ -211,7 +211,7 @@ def run_matching(limit=500, min_score=0.95):
 
     # 2. Cargar Seed de Neo4j para cruce de datos
     neo4j_data = {}
-    if os.path.exists(SEED_PATH):
+    if os.path.exists(SEED_PATH) and os.path.getsize(SEED_PATH) > 0:
         try:
             with open(SEED_PATH, 'r', encoding='utf-8') as f:
                 seed_data = json.load(f)
@@ -223,7 +223,7 @@ def run_matching(limit=500, min_score=0.95):
         except Exception as e:
             print(f"Aviso: No se pudo cargar el archivo seed {SEED_PATH}: {e}")
     else:
-        print(f"Aviso: El archivo seed {SEED_PATH} no existe. Se omitirá el cruce con Neo4j.")
+        print(f"Aviso: El archivo seed {SEED_PATH} no existe o está vacío. Se omitirá el cruce con Neo4j.")
 
     # Asegurar que el directorio de salida existe
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
@@ -272,15 +272,23 @@ def run_matching(limit=500, min_score=0.95):
                 continue
             
         # C. De lo contrario, buscar en ClickHouse (ORCID)
-        parts = norm_name.split()
+        # Limpiar puntuación para la búsqueda
+        clean_name = norm_name.replace(',', ' ').strip()
+        parts = clean_name.split()
         if not parts: continue
         
-        # Estrategia de búsqueda: Apellido paterno
-        search_term = parts[-1] 
-        if len(parts) > 2:
-            search_term = parts[-2]
+        # Estrategia de búsqueda mejorada para SNII (Apellido Paterno)
+        # Si el nombre original tenía coma "APELLIDOS, NOMBRES", tomamos el primer apellido
+        if ',' in author['name']:
+            search_term = normalize_text(author['name'].split(',')[0].split()[0])
+        else:
+            # Si no hay coma, intentamos evitar nombres comunes como primer término de búsqueda
+            common_names = ['juan', 'jose', 'maria', 'ana', 'luis', 'carlos', 'martha', 'rosa', 'pedro', 'jesus']
+            search_term = parts[0]
+            if search_term in common_names and len(parts) > 1:
+                search_term = parts[-1] # Probar con el último si el primero es muy común
             
-        author['search_term'] = search_term
+        author['search_term'] = search_term.strip().replace("'", "")
         authors_to_search.append(author)
 
     # 3. Buscar en ClickHouse por Lotes
