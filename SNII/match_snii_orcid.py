@@ -287,7 +287,7 @@ def get_orcid_emails(client, orcid):
         pass
     return ""
 
-def run_matching(limit=500, min_score=0.95):
+def run_matching(limit=500, min_score=0.75):
     client = get_client()
     graph_store = Neo4jGraphStore(uri=NEO4J_URI, user=NEO4J_USER, password=NEO4J_PASS)
     existing_mappings = load_existing_mappings()
