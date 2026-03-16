@@ -84,7 +84,8 @@ def vectorize_local_authors():
     
     docs_map = {} # orcid -> data
     with graph.driver.session() as session:
-        result = session.run(query)
+        result = list(session.run(query))
+        print(f"   Papers recuperados de Neo4j {len(result)}...")
         for r in result:
             data = json.loads(r["raw_json"])
             authorships = data.get('authorships', [])
@@ -104,7 +105,7 @@ def vectorize_local_authors():
                     i_name = inst.get('display_name', '')
                     i_country = inst.get('country_code', '')
                     
-                    if i_country == 'MX' or any(k in i_name.lower() for k in MEX_KEYWORDS):
+                    if i_country == 'MX' or any(k in (i_name.lower() if i_name else "") for k in MEX_KEYWORDS):
                         is_mexican = True
                     
                     if i_name:
@@ -137,6 +138,8 @@ def vectorize_local_authors():
             "affiliation": main_aff
         })
     
+    print(f"   Autores únicos con ORCID y afiliación MX identificados: {len(docs)}")
+
     if docs:
         print(f"   Generando embeddings para {len(docs)} autores locales...")
         texts = [d["text"] for d in docs]
