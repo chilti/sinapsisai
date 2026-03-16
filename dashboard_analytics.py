@@ -21,8 +21,29 @@ BASE_PATH = os.path.dirname(os.path.abspath(__file__))
 CACHE_DIR = os.path.join(BASE_PATH, 'data', 'cache')
 
 @st.cache_data
-def load_cached_data(filename, entity_name=None, academic_name=None, _mtime=None):
-    """Carga un parquet del cache jerárquico. _mtime se usa como cache buster."""
+def load_cached_data(filename, entity_name=None, academic_name=None, institution_name=None, _mtime=None):
+    """Carga un parquet del cache jerárquico. Soporta estructura:
+    data/cache/[Institution]/[Entity]/[Academic]/filename
+    con fallback a la estructura plana original:
+    data/cache/[Entity]/[Academic]/filename
+    """
+    path = None
+    
+    # 1. Intentar estructura jerárquica (Nacional)
+    if institution_name:
+        safe_inst = str(institution_name).replace('/', '_').replace('\\', '_')
+        if entity_name and academic_name:
+            safe_ent = str(entity_name).replace('/', '_').replace('\\', '_')
+            safe_ac = str(academic_name).replace('/', '_').replace('\\', '_')
+            path = os.path.join(CACHE_DIR, safe_inst, safe_ent, safe_ac, filename)
+        elif entity_name:
+            safe_ent = str(entity_name).replace('/', '_').replace('\\', '_')
+            path = os.path.join(CACHE_DIR, safe_inst, safe_ent, filename)
+            
+        if path and os.path.exists(path):
+            return pd.read_parquet(path)
+
+    # 2. Fallback a estructura original (Legacy)
     if entity_name and academic_name:
         safe_ent = str(entity_name).replace('/', '_').replace('\\', '_')
         safe_ac = str(academic_name).replace('/', '_').replace('\\', '_')
@@ -33,24 +54,38 @@ def load_cached_data(filename, entity_name=None, academic_name=None, _mtime=None
     else:
         path = os.path.join(CACHE_DIR, filename)
         
-    if os.path.exists(path):
+    if path and os.path.exists(path):
         return pd.read_parquet(path)
     return None
 
-def get_cached_data(filename, entity_name=None, academic_name=None):
+def get_cached_data(filename, entity_name=None, academic_name=None, institution_name=None):
     """Wrapper que pasa el mtime del archivo para invalidar el cache de Streamlit automáticamente."""
-    if entity_name and academic_name:
-        safe_ent = str(entity_name).replace('/', '_').replace('\\', '_')
-        safe_ac = str(academic_name).replace('/', '_').replace('\\', '_')
-        path = os.path.join(CACHE_DIR, safe_ent, safe_ac, filename)
-    elif entity_name:
-        safe_ent = str(entity_name).replace('/', '_').replace('\\', '_')
-        path = os.path.join(CACHE_DIR, safe_ent, filename)
-    else:
-        path = os.path.join(CACHE_DIR, filename)
-        
-    mtime = os.path.getmtime(path) if os.path.exists(path) else None
-    return load_cached_data(filename, entity_name, academic_name, _mtime=mtime)
+    path = None
+    
+    # Lógica de detección de path para mtime (debe coincidir con la de load_cached_data)
+    if institution_name:
+        safe_inst = str(institution_name).replace('/', '_').replace('\\', '_')
+        if entity_name and academic_name:
+            safe_ent = str(entity_name).replace('/', '_').replace('\\', '_')
+            safe_ac = str(academic_name).replace('/', '_').replace('\\', '_')
+            path = os.path.join(CACHE_DIR, safe_inst, safe_ent, safe_ac, filename)
+        elif entity_name:
+            safe_ent = str(entity_name).replace('/', '_').replace('\\', '_')
+            path = os.path.join(CACHE_DIR, safe_inst, safe_ent, filename)
+            
+    if not path or not os.path.exists(path):
+        if entity_name and academic_name:
+            safe_ent = str(entity_name).replace('/', '_').replace('\\', '_')
+            safe_ac = str(academic_name).replace('/', '_').replace('\\', '_')
+            path = os.path.join(CACHE_DIR, safe_ent, safe_ac, filename)
+        elif entity_name:
+            safe_ent = str(entity_name).replace('/', '_').replace('\\', '_')
+            path = os.path.join(CACHE_DIR, safe_ent, filename)
+        else:
+            path = os.path.join(CACHE_DIR, filename)
+            
+    mtime = os.path.getmtime(path) if path and os.path.exists(path) else None
+    return load_cached_data(filename, entity_name, academic_name, institution_name, _mtime=mtime)
 
 def cargar_lista_academicos(ruta_json="ingestion/profesores_Instituto_de_Ciencias_Nucleares.json"):
     path = os.path.join(BASE_PATH, ruta_json)
@@ -59,6 +94,64 @@ def cargar_lista_academicos(ruta_json="ingestion/profesores_Instituto_de_Ciencia
             return json.load(f)
     except Exception:
         return {}
+
+def get_institution_hierarchy():
+    """Obtiene la jerarquía Institución -> Subdependencias desde Neo4j."""
+    from database.knowledge_graph import Neo4jGraphStore
+    store = Neo4jGraphStore()
+    hierarchy = {}
+    
+    try:
+        with store.driver.session() as session:
+            # 1. Intentar obtener relaciones explícitas (Academic -> Entity & Academic -> Institution)
+            query = """
+            MATCH (e:Entity)<-[:AFFILIATED_TO]-(a:Academic)-[:AFFILIATED_WITH]->(i:Institution)
+            RETURN DISTINCT i.name as institution, e.name as entity
+            """
+            res = session.run(query)
+            for r in res:
+                inst = r['institution']
+                ent = r['entity']
+                if inst not in hierarchy: hierarchy[inst] = set()
+                hierarchy[inst].add(ent)
+            
+            # 2. Complemento: Nodos que son Entity e Institution simultáneamente o huérfanos
+            res = session.run("MATCH (e:Entity) RETURN e.name as name")
+            all_entities = [r['name'] for r in res]
+            
+            # UNAM es el default para los datos actuales si no hay jerarquía
+            unam_name = "Universidad Nacional Autónoma de México (UNAM)"
+            if not hierarchy:
+                hierarchy[unam_name] = set(all_entities)
+            else:
+                # Asegurar que todas las entidades estén en alguna institución
+                assigned_entities = {ent for ents in hierarchy.values() for ent in ents}
+                for ent in all_entities:
+                    if ent not in assigned_entities:
+                        # Heurística simple para asignación por defecto
+                        if any(x in str(ent).lower() for x in ['ciencias', 'nucleares', 'unam']):
+                            target_inst = unam_name
+                        elif ent == "Mexico":
+                            target_inst = "Nacional (México)"
+                        else:
+                            target_inst = "Otras Instituciones"
+                            
+                        if target_inst not in hierarchy: hierarchy[target_inst] = set()
+                        hierarchy[target_inst].add(ent)
+
+    except Exception as e:
+        print(f"Error cargando jerarquía: {e}")
+        hierarchy = {
+            "Universidad Nacional Autónoma de México (UNAM)": {
+                "Facultad de Ciencias", 
+                "Instituto de Ciencias Nucleares"
+            },
+            "Nacional (México)": {"Mexico"}
+        }
+    finally:
+        store.close()
+    
+    return {k: sorted(list(v)) for k in sorted(hierarchy.keys())}
 
 def mostrar_banners_destacados(df):
     st.subheader("Publicaciones Destacadas")
@@ -299,7 +392,7 @@ def _render_thematic_evolution(df_evol, name_col, name_val, key_suffix=""):
     st.dataframe(df_pivot, use_container_width=True)
 
 
-def render_institucion_view(entity_name):
+def render_institucion_view(entity_name, institution_name=None):
     # Inyectar CSS global para estilizar st.metric como las tarjetas doradas del reporte
     st.markdown("""
         <style>
@@ -336,9 +429,9 @@ def render_institucion_view(entity_name):
     st.header(f"🏢 Vista de la Institución: {entity_name}")
     st.markdown(f"Panorama Analítico de la Producción de **{entity_name}**. La producción fué descargada desde Web of Science. Los indicaddores fueron extraidos de la base de datos abierta OpenAlex.")
 
-    df_annual = load_cached_data("institucion_annual.parquet", entity_name=entity_name)
-    df_total = load_cached_data("institucion_total.parquet", entity_name=entity_name)
-    df_topics = load_cached_data("topics_institucion.parquet", entity_name=entity_name)
+    df_annual = load_cached_data("institucion_annual.parquet", entity_name=entity_name, institution_name=institution_name)
+    df_total = load_cached_data("institucion_total.parquet", entity_name=entity_name, institution_name=institution_name)
+    df_topics = load_cached_data("topics_institucion.parquet", entity_name=entity_name, institution_name=institution_name)
 
     if df_total is not None and not df_total.empty:
         if df_total.empty:
@@ -452,11 +545,11 @@ def render_institucion_view(entity_name):
             st.plotly_chart(fig_sun, width="stretch")
 
             # --- Evolución Histórica Institucional ---
-            df_evol_inst = get_cached_data("thematic_evolution_institucion.parquet", entity_name=entity_name)
+            df_evol_inst = get_cached_data("thematic_evolution_institucion.parquet", entity_name=entity_name, institution_name=institution_name)
             _render_thematic_evolution(df_evol_inst, 'entity_name', entity_name, key_suffix=f"inst_{entity_name}")
 
     # ── Vocabulario Científico (WordCloud) ────────────────────────────────────────
-    df_kw_inst = get_cached_data("keywords_institucion.parquet", entity_name=entity_name)
+    df_kw_inst = get_cached_data("keywords_institucion.parquet", entity_name=entity_name, institution_name=institution_name)
     if df_kw_inst is not None and not df_kw_inst.empty:
         st.markdown("---")
         st.subheader("🔑 Vocabulario Científico Institucional")
@@ -464,13 +557,13 @@ def render_institucion_view(entity_name):
                                  title="", key_suffix=f"inst_{entity_name}")
 
     # ── Colaboración Internacional (Choropleth) ───────────────────────────────────
-    df_inst_papers = get_cached_data("papers_institucion.parquet", entity_name=entity_name)
+    df_inst_papers = get_cached_data("papers_institucion.parquet", entity_name=entity_name, institution_name=institution_name)
     if df_inst_papers is not None and not df_inst_papers.empty:
         df_ip = df_inst_papers
         if not df_ip.empty and "countries" in df_ip.columns:
             st.markdown("---")
             st.subheader("🌍 Colaboración Internacional")
-            df_annual_inst = get_cached_data("institucion_annual.parquet", entity_name=entity_name)
+            df_annual_inst = get_cached_data("institucion_annual.parquet", entity_name=entity_name, institution_name=institution_name)
             if df_annual_inst is not None and not df_annual_inst.empty:
                 df_ia = df_annual_inst.sort_values('year')
                 if 'pct_international' in df_ia.columns and not df_ia.empty:
@@ -496,7 +589,7 @@ def render_institucion_view(entity_name):
                                       key_suffix=f"inst_{entity_name}")
 
     # ── Stacked Bar OA anual ──────────────────────────────────────────────
-    df_annual_oa = get_cached_data("institucion_annual.parquet", entity_name=entity_name)
+    df_annual_oa = get_cached_data("institucion_annual.parquet", entity_name=entity_name, institution_name=institution_name)
     if df_annual_oa is not None and not df_annual_oa.empty:
         df_oa_ann = df_annual_oa.sort_values('year')
         oa_cols = [c for c in ['pct_oa_gold','pct_oa_green','pct_oa_hybrid','pct_oa_bronze','pct_oa_closed']
@@ -546,7 +639,7 @@ def render_institucion_view(entity_name):
 | Papers retractados | `{total_row.get('pct_retracted',0):.2f}%` |
                         """.strip())
 
-    df_institucion_papers = load_cached_data("papers_institucion.parquet", entity_name=entity_name)
+    df_institucion_papers = load_cached_data("papers_institucion.parquet", entity_name=entity_name, institution_name=institution_name)
     if df_institucion_papers is not None and not df_institucion_papers.empty:
         df_inst_p = df_institucion_papers
         
@@ -621,7 +714,7 @@ def render_institucion_view(entity_name):
                     subprocess.run([sys.executable, "report_generator.py", "--type", "inst", "--name", entity_name])
                 st.rerun()
 
-def render_investigador_view(entity_name):
+def render_investigador_view(entity_name, institution_name=None):
     # Inyectar CSS global para estilizar st.metric como las tarjetas doradas del reporte
     st.markdown("""
         <style>
@@ -655,7 +748,7 @@ def render_investigador_view(entity_name):
     """, unsafe_allow_html=True)
     st.header(f"👤 Vista por Investigador ({entity_name})")
 
-    df_inst_tot = get_cached_data("institucion_total.parquet", entity_name=entity_name)
+    df_inst_tot = get_cached_data("institucion_total.parquet", entity_name=entity_name, institution_name=institution_name)
 
     if df_inst_tot is None or df_inst_tot.empty:
         st.warning(f"Aún no hay métricas institucionales base calculadas para {entity_name}.")
@@ -677,10 +770,10 @@ def render_investigador_view(entity_name):
     selected_inv = st.selectbox("Seleccione un Académico:", investigadores)
     
     # Ya teniendo el investigador y entidad, cargamos sus archivos únicos ultra-ligeros
-    df_inv_tot = get_cached_data("investigador_total.parquet", entity_name=entity_name, academic_name=selected_inv)
-    df_inv_ann = get_cached_data("investigador_annual.parquet", entity_name=entity_name, academic_name=selected_inv)
-    df_topics  = get_cached_data("topics_investigador.parquet", entity_name=entity_name, academic_name=selected_inv)
-    df_umap    = get_cached_data("umap_investigadores.parquet") # UMAP si se mantiene global
+    df_inv_tot = get_cached_data("investigador_total.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
+    df_inv_ann = get_cached_data("investigador_annual.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
+    df_topics  = get_cached_data("topics_investigador.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
+    df_umap    = get_cached_data("umap_investigadores.parquet", institution_name=institution_name) # UMAP si se mantiene global o por inst
 
     # 4. Enlaces de Perfil Externo
     if df_inv_tot is None or df_inv_tot.empty:
@@ -858,11 +951,11 @@ def render_investigador_view(entity_name):
             st.plotly_chart(fig_sun_inv, width="stretch")
 
             # --- Evolución Histórica Investigador ---
-            df_evol_inv = get_cached_data("thematic_evolution_investigador.parquet", entity_name=entity_name, academic_name=selected_inv)
+            df_evol_inv = get_cached_data("thematic_evolution_investigador.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
             _render_thematic_evolution(df_evol_inv, 'academic_name', selected_inv, key_suffix=f"inv_{selected_inv}")
 
     # ── WordCloud de Keywords ─────────────────────────────────────────────────────
-    df_kw_inv = get_cached_data("keywords_investigador.parquet", entity_name=entity_name, academic_name=selected_inv)
+    df_kw_inv = get_cached_data("keywords_investigador.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
     if df_kw_inv is not None and not df_kw_inv.empty:
         st.markdown("---")
         st.subheader("🔑 Vocabulario Científico")
@@ -870,7 +963,7 @@ def render_investigador_view(entity_name):
                                  title="", key_suffix=f"inv_{selected_inv}")
 
     # ── Colaboración Internacional (Choropleth) ───────────────────────────────────
-    df_profesores_papers = load_cached_data("papers_profesor.parquet", entity_name=entity_name, academic_name=selected_inv)
+    df_profesores_papers = load_cached_data("papers_profesor.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
     if df_profesores_papers is not None and not df_profesores_papers.empty:
         df_prof = df_profesores_papers
 

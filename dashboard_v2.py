@@ -164,48 +164,38 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("Configuración")
     
-    # Extraer entidades direcamente desde Neo4j (grafo local)
-    try:
-        from database.knowledge_graph import Neo4jGraphStore
-        store = Neo4jGraphStore()
-        with store.driver.session() as session:
-            result = session.run("MATCH (e:Entity) RETURN DISTINCT e.name AS name")
-            entidades_neo4j = [record["name"] for record in result]
-        store.close()
-    except Exception as e:
-        entidades_neo4j = []
-
-    if entidades_neo4j:
-        entidades_disponibles = sorted(entidades_neo4j)
-    else:
-        # Fallback a data cache o de prueba
-        df_institucion = load_cached_data("institucion_total.parquet")
-        if df_institucion is not None and not df_institucion.empty:
-            entidades_disponibles = sorted(df_institucion['entity_name'].unique())
-        else:
-            entidades_disponibles = ["Facultad de Ciencias", "Centro de Ciencias de la Complejidad", "UNAM Global"]
-            
-    # Buscar índice por defecto para "Facultad de Ciencias" de forma robusta
+    # --- Jerarquía de Navegación Nacional ---
+    st.markdown("### 🗺️ Jerarquía de Navegación")
+    hierarchy = get_institution_hierarchy()
+    instituciones = sorted(list(hierarchy.keys()))
+    
+    # Default a UNAM si existe
+    default_inst_idx = 0
+    unam_name = "Universidad Nacional Autónoma de México (UNAM)"
+    if unam_name in instituciones:
+        default_inst_idx = instituciones.index(unam_name)
+    elif instituciones:
+        default_inst_idx = 0
+        
+    selected_institution = st.selectbox(
+        "Institución de Acreditación",
+        instituciones,
+        index=default_inst_idx,
+        key="selected_institution_sidebar"
+    )
+    
+    entidades_filtradas = hierarchy[selected_institution]
+    
+    # Default a Facultad de Ciencias si está en la lista filtrada
+    default_ent_idx = 0
     target_default = "Facultad de Ciencias"
-    default_index = 0
-    
-    # Intentar match exacto (ignorando espacios extra)
-    matches = [i for i, x in enumerate(entidades_disponibles) if x.strip().lower() == target_default.lower()]
-    
-    if matches:
-        default_index = matches[0]
-    else:
-        # Intentar match parcial si el exacto falla
-        partial_matches = [i for i, x in enumerate(entidades_disponibles) if target_default.lower() in x.lower()]
-        if partial_matches:
-            default_index = partial_matches[0]
-
-    
-
+    if target_default in entidades_filtradas:
+        default_ent_idx = entidades_filtradas.index(target_default)
+        
     selected_entity = st.selectbox(
-        "Entidad UNAM", 
-        entidades_disponibles, 
-        index=default_index,
+        "Subdependencia de Acreditación",
+        entidades_filtradas,
+        index=default_ent_idx,
         key="selected_entity_sidebar"
     )
     
@@ -703,13 +693,13 @@ with tab_chat:
 # TAB 2: Vista de la Institución
 # =======================================================
 with tab_inst:
-    render_institucion_view(selected_entity)
+    render_institucion_view(selected_entity, institution_name=selected_institution)
 
 # =======================================================
 # TAB 3: Vista por Investigador
 # =======================================================
 with tab_inv:
-    render_investigador_view(selected_entity)
+    render_investigador_view(selected_entity, institution_name=selected_institution)
 
 # =======================================================
 # TAB 4: Acerca de / Estado DB
