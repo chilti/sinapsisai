@@ -20,19 +20,40 @@ from langchain_core.messages import HumanMessage
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.vector_store import QdrantStore
 from database.knowledge_graph import Neo4jGraphStore
-from match_snii_orcid import normalize_text, get_client as get_ch_client
+from match_snii_orcid import normalize_text, get_client as get_ch_client, SNII_PATH
 
 # Cargar .env
 env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
 load_dotenv(env_path)
 
-# --- Config Embeddings (Copia de ingest_apis.py para consistencia) ---
+# --- Config Embeddings (Dinamización de MEX_KEYWORDS) ---
+# Empezamos con una base sólida
 MEX_KEYWORDS = [
     "mexico", "mexic", "unam", "ipn", "cinvestav", "tecnologico", "autonoma", "itamb", "colmex", 
-    "buap", "uaslp", "udem", "itesm", "uam", "politecnico",
-    "guadalajara", "monterrey", "puebla", "queretaro", "yucatan", "chiapas", "veracruz", 
-    "jalisco", "michoacan", "hidalgo", "zacatecas", "tabasco", "sinaloa", "sonora"
+    "buap", "uaslp", "udem", "itesm", "uam", "politecnico"
 ]
+
+# Expandir red de seguridad con instituciones del SNII
+if os.path.exists(SNII_PATH):
+    try:
+        print(f"📡 Cargando instituciones desde SNII para expandir red de seguridad...")
+        df_snii = pd.read_excel(SNII_PATH)
+        instituciones = df_snii['INSTITUCIÓN DE ACREDITACIÓN'].dropna().unique().tolist()
+        subdependencias = df_snii['SUBDEPENDENCIA DE ACREDITACIÓN'].dropna().unique().tolist()
+        
+        # Combinar, limpiar (quitar comillas para SQL) y añadir palabras de más de 3 letras
+        for ext_name in instituciones + subdependencias:
+            # Limpieza básica para SQL
+            clean_name = str(ext_name).lower().replace("'", "").strip()
+            # Si tiene más de una palabra, tomamos la primera significativa o el nombre corto
+            if len(clean_name) > 4:
+                MEX_KEYWORDS.append(clean_name)
+        
+        # Eliminar duplicados y ordenar
+        MEX_KEYWORDS = list(set(MEX_KEYWORDS))
+        print(f"✅ Red de seguridad expandida a {len(MEX_KEYWORDS)} términos clave.")
+    except Exception as e:
+        print(f"⚠️ No se pudo expandir MEX_KEYWORDS desde Excel: {e}")
 
 user = os.getenv("LLM_USER")
 password = os.getenv("LLM_PASSWORD")
@@ -289,10 +310,24 @@ def vectorize_snii_with_llm(limit_test=None):
     inst_col = 'INSTITUCIÓN DE ACREDITACIÓN'
     sub_inst_col = 'SUBDEPENDENCIA DE ACREDITACIÓN'
     
+    output_path = os.path.join("data", "snii_llm_verified_matches.json")
     verified_results = []
+    processed_names = set()
     
+    if os.path.exists(output_path):
+        try:
+            with open(output_path, "r", encoding="utf-8") as f:
+                verified_results = json.load(f)
+                processed_names = {r["snii_author"] for r in verified_results}
+            print(f"   Continuando proceso: {len(processed_names)} investigadores ya validados.")
+        except Exception as e:
+            print(f"   ⚠️ No se pudo cargar progreso previo: {e}")
+
     for idx, row in df.iterrows():
         snii_name = str(row[name_col])
+        if snii_name in processed_names:
+            continue
+            
         sub_inst = str(row[sub_inst_col]) if pd.notna(row[sub_inst_col]) else ""
         snii_info = f"Nombre: {snii_name} | Institución: {row[inst_col]} | Subdependencia: {sub_inst}"
         
