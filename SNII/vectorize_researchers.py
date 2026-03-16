@@ -20,7 +20,7 @@ from langchain_core.messages import HumanMessage
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.vector_store import QdrantStore
 from database.knowledge_graph import Neo4jGraphStore
-from SNII.match_snii_orcid import normalize_text, get_client as get_ch_client
+from match_snii_orcid import normalize_text, get_client as get_ch_client
 
 # Cargar .env
 env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
@@ -164,7 +164,7 @@ def vectorize_snii_authors():
        Mencionado: Busca coincidencias en tiempo real contra local_authors y orcid_authors_vec.
     """
     print("\n🚀 Paso 2: Vectorizando autores SNII 2025 y buscando coincidencias semánticas...")
-    from SNII.match_snii_orcid import SNII_PATH
+    from match_snii_orcid import SNII_PATH
     
     df = pd.read_excel(SNII_PATH)
     q_store = QdrantStore(collection_name="snii_authors_vec")
@@ -275,7 +275,7 @@ def vectorize_orcid_authors():
 def vectorize_snii_with_llm(limit_test=None):
     """Paso 4: SNII -> Qdrant (Top 5 Local + Top 5 ORCID) -> LLM Verification"""
     print("\n🚀 Paso 4: Validando investigadores SNII con LLM (Reranking)...")
-    from SNII.match_snii_orcid import SNII_PATH
+    from match_snii_orcid import SNII_PATH
     
     df = pd.read_excel(SNII_PATH)
     if limit_test:
@@ -353,19 +353,39 @@ Respuesta:"""
             
             res_json = json.loads(res_text)
             
+            result_entry = {
+                "snii_author": snii_name,
+                "snii_institution": row[inst_col],
+                "snii_subdependency": sub_inst,
+                "match": False,
+                "matched_author": None,
+                "matched_orcid": None,
+                "reason": res_json.get("reason", "No match"),
+                "source": None
+            }
+
             if res_json.get("match"):
                 m_idx = res_json.get("candidate_index")
                 if m_idx and 1 <= m_idx <= len(all_candidates):
                     final_match = all_candidates[m_idx-1]
                     print(f"      ✅ MATCH CONFIRMADO por LLM: [SNII] {snii_name} ≈ [Match] {final_match['name']} ({final_match['orcid']})")
-                    verified_results.append({
-                        "snii_author": snii_name,
-                        "snii_institution": row[inst_col],
+                    result_entry.update({
+                        "match": True,
                         "matched_author": final_match['name'],
                         "matched_orcid": final_match['orcid'],
-                        "reason": res_json.get("reason"),
                         "source": final_match['source']
                     })
+            else:
+                print(f"      ❌ NINGUNO: No se encontró match para {snii_name}")
+            
+            verified_results.append(result_entry)
+
+            # Guardado incremental cada 10 registros
+            if (idx + 1) % 10 == 0:
+                output_path = os.path.join("data", "snii_llm_verified_matches.json")
+                with open(output_path, "w", encoding="utf-8") as f:
+                    json.dump(verified_results, f, ensure_ascii=False, indent=2)
+
         except Exception as e:
             print(f"      ⚠️ Error consultando LLM para {snii_name}: {e}")
 
