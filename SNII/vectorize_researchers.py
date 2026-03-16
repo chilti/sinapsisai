@@ -3,8 +3,9 @@ vectorize_researchers.py
 ────────────────────────
 Implementa la estrategia de triple vectorización semántica en Qdrant:
 1. Autores locales (Neo4j Mexico) -> coleccion 'local_authors'
-2. Autores SNII 2025 (Excel) -> coleccion 'snii_authors_vec'
-3. Autores ORCID (ClickHouse) -> coleccion 'orcid_authors_vec'
+2. Autores ORCID (Clickhouse) -> coleccion 'orcid_authors_vec'
+3. Autores SNII 2025 (Excel) -> coleccion 'snii_authors_vec'
+4. Validacion LLM (Reranking) -> json de resultados
 """
 
 import os
@@ -180,11 +181,57 @@ def vectorize_local_authors():
     
     graph.close()
 
+def vectorize_orcid_authors():
+    """Paso 2: ORCID ClickHouse -> Qdrant 'orcid_authors_vec'"""
+    print("\n🚀 Paso 2: Vectorizando autores ORCID (ClickHouse)...")
+    ch_client = get_ch_client()
+    q_store = QdrantStore(collection_name="orcid_authors_vec")
+    
+    # Construir condiciones dinámicas basadas en MEX_KEYWORDS para ClickHouse
+    kw_conditions = " OR ".join([f"last_affiliation ILIKE '%{kw}%'" for kw in MEX_KEYWORDS])
+    
+    query = f"""
+    SELECT orcid, given_names, family_name, credit_name, last_affiliation, last_affiliation_country
+    FROM openalex.orcid_records
+    WHERE (last_affiliation_country = 'MX') 
+       OR ({kw_conditions})
+    """
+    
+    print("   Consultando ClickHouse...")
+    rows = ch_client.query(query).result_rows
+    print(f"   {len(rows)} registros encontrados.")
+    
+    docs = []
+    for r in rows:
+        orcid, gn, fn, cn, aff, country = r
+        full_name = cn if cn else f"{gn} {fn}".strip()
+        
+        text = f"{full_name} ({aff})" if aff else full_name
+        docs.append({
+            "text": text,
+            "title": f"orcid_{orcid}", # ID determinista basado en ORCID
+            "orcid": orcid,
+            "name": full_name,
+            "affiliation": aff,
+            "country": country
+        })
+    
+    if docs:
+        print(f"   Generando embeddings para {len(docs)} autores ORCID...")
+        batch_size = 100
+        for i in range(0, len(docs), batch_size):
+            batch_docs = docs[i:i+batch_size]
+            texts = [d["text"] for d in batch_docs]
+            embs = get_embeddings(texts)
+            q_store.add_documents(batch_docs, embs)
+            if (i + batch_size) % 500 == 0:
+                print(f"      - {i+len(batch_docs)}/{len(docs)} procesados.")
+
 def vectorize_snii_authors():
-    """Paso 2: SNII Excel -> Qdrant 'snii_authors_vec' 
+    """Paso 3: SNII Excel -> Qdrant 'snii_authors_vec' 
        Mencionado: Busca coincidencias en tiempo real contra local_authors y orcid_authors_vec.
     """
-    print("\n🚀 Paso 2: Vectorizando autores SNII 2025 y buscando coincidencias semánticas...")
+    print("\n🚀 Paso 3: Vectorizando autores SNII 2025 y buscando coincidencias semánticas...")
     from match_snii_orcid import SNII_PATH
     
     df = pd.read_excel(SNII_PATH)
@@ -246,52 +293,6 @@ def vectorize_snii_authors():
 
             q_store.add_documents(batch_docs, embs)
             print(f"      - {i+len(batch_docs)}/{len(docs)} procesados.")
-
-def vectorize_orcid_authors():
-    """Paso 3: ORCID ClickHouse -> Qdrant 'orcid_authors_vec'"""
-    print("\n🚀 Paso 3: Vectorizando autores ORCID (ClickHouse)...")
-    ch_client = get_ch_client()
-    q_store = QdrantStore(collection_name="orcid_authors_vec")
-    
-    # Construir condiciones dinámicas basadas en MEX_KEYWORDS para ClickHouse
-    kw_conditions = " OR ".join([f"last_affiliation ILIKE '%{kw}%'" for kw in MEX_KEYWORDS])
-    
-    query = f"""
-    SELECT orcid, given_names, family_name, credit_name, last_affiliation, last_affiliation_country
-    FROM openalex.orcid_records
-    WHERE (last_affiliation_country = 'MX') 
-       OR ({kw_conditions})
-    """
-    
-    print("   Consultando ClickHouse...")
-    rows = ch_client.query(query).result_rows
-    print(f"   {len(rows)} registros encontrados.")
-    
-    docs = []
-    for r in rows:
-        orcid, gn, fn, cn, aff, country = r
-        full_name = cn if cn else f"{gn} {fn}".strip()
-        
-        text = f"{full_name} ({aff})" if aff else full_name
-        docs.append({
-            "text": text,
-            "title": f"orcid_{orcid}", # ID determinista basado en ORCID
-            "orcid": orcid,
-            "name": full_name,
-            "affiliation": aff,
-            "country": country
-        })
-    
-    if docs:
-        print(f"   Generando embeddings para {len(docs)} autores ORCID...")
-        batch_size = 100
-        for i in range(0, len(docs), batch_size):
-            batch_docs = docs[i:i+batch_size]
-            texts = [d["text"] for d in batch_docs]
-            embs = get_embeddings(texts)
-            q_store.add_documents(batch_docs, embs)
-            if (i + batch_size) % 500 == 0:
-                print(f"      - {i+len(batch_docs)}/{len(docs)} procesados.")
 
 def vectorize_snii_with_llm(limit_test=None):
     """Paso 4: SNII -> Qdrant (Top 5 Local + Top 5 ORCID) -> LLM Verification"""
@@ -440,8 +441,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     if not args.step or args.step == 1: vectorize_local_authors()
-    if not args.step or args.step == 2: vectorize_snii_authors()
-    if not args.step or args.step == 3: vectorize_orcid_authors()
+    if not args.step or args.step == 2: vectorize_orcid_authors()
+    if not args.step or args.step == 3: vectorize_snii_authors()
     if args.step == 4: vectorize_snii_with_llm(limit_test=args.limit)
     
     print("\n✨ Triple vectorización completada.")
