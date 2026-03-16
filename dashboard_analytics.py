@@ -697,26 +697,42 @@ def render_investigador_view(entity_name):
     inv_siia = inv_data.get('siia_url') or academico_info.get("siia")
 
     st.markdown("---")
-    st.subheader("🔗 Enlaces de Perfil Académico")
-    col_links1, col_links2 = st.columns([3, 1])
-    with col_links1:
-        if inv_siia and "http" in str(inv_siia) and "No encont" not in str(inv_siia):
-            st.markdown(f"- **SIIA-UNAM:** [Ver Perfil de {selected_inv}]({inv_siia})")
-        
-        if inv_orcid:
-            orcid_link = inv_orcid if "http" in inv_orcid else f"https://orcid.org/{inv_orcid}"
-            st.markdown(f"- **ORCID:** [Ver Perfil]({orcid_link})")
-        
-        if inv_scopus:
-            # Extraer todos los IDs numéricos de forma robusta
-            import re
-            all_ids = re.findall(r'\d+', str(inv_scopus))
-            if all_ids:
-                for sid in all_ids:
-                    scopus_link = f"https://www.scopus.com/authid/detail.uri?authorId={sid}"
-                    st.markdown(f"- **Scopus ({sid}):** [Ver Perfil]({scopus_link})")
-            elif "http" in str(inv_scopus):
-                st.markdown(f"- **Scopus:** [Ver Perfil]({inv_scopus})")
+    with st.expander("🔗 Ver Perfiles Académicos", expanded=False):
+        # Mostrar Auditoría si existe
+        audit_verdict = inv_data.get('audit_verdict')
+        if audit_verdict:
+            conf = int(inv_data.get('audit_confidence', 0))
+            reason = inv_data.get('audit_reason', 'Sin detalle.')
+            ts = inv_data.get('audit_timestamp', '')
+            
+            if audit_verdict == "CONFIRMED":
+                st.success(f"✅ **ORCID Confirmado** ({conf}% confianza)\n\n{reason}")
+            elif audit_verdict == "DOUBTFUL":
+                st.warning(f"⚠️ **ORCID Dudoso** ({conf}% confianza)\n\n{reason}")
+            elif audit_verdict == "FALSE_POSITIVE":
+                st.error(f"❌ **Falso Positivo Identificado** ({conf}% confianza)\n\n{reason}")
+            
+            st.caption(f"Auditado el: {ts}")
+            st.markdown("---")
+
+        col_links1, col_links2 = st.columns([3, 1])
+        with col_links1:
+            if inv_siia and "http" in str(inv_siia) and "No encont" not in str(inv_siia):
+                st.markdown(f"- **SIIA-UNAM:** [Ver Perfil de {selected_inv}]({inv_siia})")
+            
+            if inv_orcid:
+                orcid_link = inv_orcid if "http" in inv_orcid else f"https://orcid.org/{inv_orcid}"
+                st.markdown(f"- **ORCID:** [Ver Perfil]({orcid_link})")
+            
+            if inv_scopus:
+                import re
+                all_ids = re.findall(r'\d+', str(inv_scopus))
+                if all_ids:
+                    for sid in all_ids:
+                        scopus_link = f"https://www.scopus.com/authid/detail.uri?authorId={sid}"
+                        st.markdown(f"- **Scopus ({sid}):** [Ver Perfil]({scopus_link})")
+                elif "http" in str(inv_scopus):
+                    st.markdown(f"- **Scopus:** [Ver Perfil]({inv_scopus})")
             
     
 

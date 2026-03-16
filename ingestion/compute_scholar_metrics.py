@@ -154,6 +154,10 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                a.orcid AS orcid,
                a.scopus_id AS scopus_id,
                a.siia_url AS siia_url,
+               a.audit_verdict AS audit_verdict,
+               a.audit_reason AS audit_reason,
+               a.audit_confidence AS audit_confidence,
+               a.audit_timestamp AS audit_timestamp,
                collect(DISTINCT e.name) AS entities,
                p.id AS paper_id,
                p.doi AS paper_doi,
@@ -174,6 +178,10 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                a.orcid AS orcid,
                a.scopus_id AS scopus_id,
                a.siia_url AS siia_url,
+               a.audit_verdict AS audit_verdict,
+               a.audit_reason AS audit_reason,
+               a.audit_confidence AS audit_confidence,
+               a.audit_timestamp AS audit_timestamp,
                collect(DISTINCT e.name) AS entities,
                p.id AS paper_id,
                p.doi AS paper_doi,
@@ -194,6 +202,10 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                a.orcid AS orcid,
                a.scopus_id AS scopus_id,
                a.siia_url AS siia_url,
+               a.audit_verdict AS audit_verdict,
+               a.audit_reason AS audit_reason,
+               a.audit_confidence AS audit_confidence,
+               a.audit_timestamp AS audit_timestamp,
                collect(DISTINCT e.name) AS entities,
                p.id AS paper_id,
                p.doi AS paper_doi,
@@ -727,8 +739,12 @@ def aggregate_metrics(df_papers, group_cols):
         'is_retracted':          'mean',
         'any_repository_has_fulltext': 'mean',
         # Idioma y licencia
-        'is_english': 'mean',
-        'is_cc_by':   'mean',
+        'is_english': 'sum',
+        'is_cc_by': 'sum',
+        'audit_verdict': 'first',
+        'audit_reason': 'first',
+        'audit_confidence': 'first',
+        'audit_timestamp': 'first'
     }
     
     # Agregar columnas informativas si existen y no están en group_cols
