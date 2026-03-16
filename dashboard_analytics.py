@@ -151,7 +151,7 @@ def get_institution_hierarchy():
     finally:
         store.close()
     
-    return {k: sorted(list(v)) for k in sorted(hierarchy.keys())}
+    return {k: sorted(list(v)) for k, v in hierarchy.items()}
 
 def mostrar_banners_destacados(df):
     st.subheader("Publicaciones Destacadas")
