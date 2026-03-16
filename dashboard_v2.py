@@ -19,7 +19,7 @@ from database.knowledge_graph import Neo4jGraphStore
 from database.vector_store import QdrantStore
 from agent.orchestrator import RAGOrchestrator
 from agent.interpreter_agent import InterpreterOrchestrator
-from dashboard_analytics import render_institucion_view, render_investigador_view, load_cached_data
+from dashboard_analytics import render_institucion_view, render_investigador_view, load_cached_data, get_institution_hierarchy
 
 load_dotenv()
 
