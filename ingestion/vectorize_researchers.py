@@ -26,6 +26,13 @@ env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env')
 load_dotenv(env_path)
 
 # --- Config Embeddings (Copia de ingest_apis.py para consistencia) ---
+MEX_KEYWORDS = [
+    "mexico", "mexic", "unam", "ipn", "cinvestav", "tecnologico", "autonoma", "itamb", "colmex", 
+    "buap", "uaslp", "udem", "itesm", "uam", "politecnico",
+    "guadalajara", "monterrey", "puebla", "queretaro", "yucatan", "chiapas", "veracruz", 
+    "jalisco", "michoacan", "hidalgo", "zacatecas", "tabasco", "sinaloa", "sonora"
+]
+
 user = os.getenv("LLM_USER")
 password = os.getenv("LLM_PASSWORD")
 base_url = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1/")
@@ -70,38 +77,65 @@ def vectorize_local_authors():
     q_store = QdrantStore(collection_name="local_authors")
     
     query = """
-    MATCH (e:Entity {name: 'Mexico'})-[:HAS_PAPER]->(p:Paper)<-[:AUTHORED]-(a:Author)
-    WHERE a.orcid IS NOT NULL
-    RETURN DISTINCT a.name AS name, a.orcid AS orcid, collect(DISTINCT p.raw_metadata) AS metas
+    MATCH (e:Entity {name: 'Mexico'})-[:HAS_PAPER]->(p:Paper)
+    WHERE p.raw_metadata IS NOT NULL
+    RETURN p.raw_metadata AS raw_json
     """
     
-    docs = []
+    docs_map = {} # orcid -> data
     with graph.driver.session() as session:
         result = session.run(query)
         for r in result:
-            name = r["name"]
-            orcid = r["orcid"]
-            # Extraer afiliación más frecuente de los metadatos de sus papers
-            affiliations = {}
-            for meta_raw in r["metas"]:
-                meta = _parse_meta(meta_raw)
-                auths = meta.get("authorships", [])
-                for auth in auths:
-                    if auth.get("author", {}).get("display_name") == name:
-                        for inst in auth.get("institutions", []):
-                            i_name = inst.get("display_name")
-                            if i_name: affiliations[i_name] = affiliations.get(i_name, 0) + 1
-            
-            main_aff = max(affiliations, key=affiliations.get) if affiliations else "Sin Afiliación"
-            
-            text = f"{name} ({main_aff})"
-            docs.append({
-                "text": text,
-                "title": name, # Para ID determinista en QdrantStore
-                "name": name,
-                "orcid": orcid,
-                "affiliation": main_aff
-            })
+            data = json.loads(r["raw_json"])
+            authorships = data.get('authorships', [])
+            for auth in authorships:
+                author_info = auth.get('author', {})
+                name = author_info.get('display_name')
+                orcid_url = author_info.get('orcid')
+                
+                if not orcid_url or not name: continue
+                
+                # --- Filtro de Afiliación Mexicana ---
+                insts = auth.get('institutions', [])
+                is_mexican = False
+                author_affs = []
+                
+                for inst in insts:
+                    i_name = inst.get('display_name', '')
+                    i_country = inst.get('country_code', '')
+                    
+                    if i_country == 'MX' or any(k in i_name.lower() for k in MEX_KEYWORDS):
+                        is_mexican = True
+                    
+                    if i_name:
+                        author_affs.append(i_name)
+                
+                if not is_mexican: 
+                    continue
+                
+                orcid = orcid_url.split('/')[-1]
+                main_aff = author_affs[0] if author_affs else "Sin Afiliación"
+                
+                if orcid not in docs_map:
+                    docs_map[orcid] = {
+                        "name": name,
+                        "orcid": orcid,
+                        "affiliations": {}
+                    }
+                
+                docs_map[orcid]["affiliations"][main_aff] = docs_map[orcid]["affiliations"].get(main_aff, 0) + 1
+
+    docs = []
+    for orcid, d in docs_map.items():
+        main_aff = max(d["affiliations"], key=d["affiliations"].get)
+        text = f"{d['name']} ({main_aff})"
+        docs.append({
+            "text": text,
+            "title": f"local_{orcid}",
+            "name": d["name"],
+            "orcid": orcid,
+            "affiliation": main_aff
+        })
     
     if docs:
         print(f"   Generando embeddings para {len(docs)} autores locales...")
