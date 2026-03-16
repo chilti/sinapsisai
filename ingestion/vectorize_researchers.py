@@ -221,16 +221,14 @@ def vectorize_orcid_authors():
     ch_client = get_ch_client()
     q_store = QdrantStore(collection_name="orcid_authors_vec")
     
-    # Solo mexicanos o con afiliación mexicana conocida para no saturar Qdrant
-    query = """
+    # Construir condiciones dinámicas basadas en MEX_KEYWORDS para ClickHouse
+    kw_conditions = " OR ".join([f"last_affiliation ILIKE '%{kw}%'" for kw in MEX_KEYWORDS])
+    
+    query = f"""
     SELECT orcid, given_names, family_name, credit_name, last_affiliation, last_affiliation_country
     FROM openalex.orcid_records
     WHERE (last_affiliation_country = 'MX') 
-       OR (last_affiliation LIKE '%Mexico%')
-       OR (last_affiliation LIKE '%UNAM%')
-       OR (last_affiliation LIKE '%IPN%')
-       OR (last_affiliation LIKE '%Cinvestav%')
-       OR (last_affiliation LIKE '%Tecnologico de Monterrey%')
+       OR ({kw_conditions})
     """
     
     print("   Consultando ClickHouse...")
