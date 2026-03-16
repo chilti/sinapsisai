@@ -357,7 +357,7 @@ Respuesta:"""
                 m_idx = res_json.get("candidate_index")
                 if m_idx and 1 <= m_idx <= len(all_candidates):
                     final_match = all_candidates[m_idx-1]
-                    print(f"      ✅ MATCH CONFIRMADO por LLM: {final_match['name']} ({final_match['orcid']})")
+                    print(f"      ✅ MATCH CONFIRMADO por LLM: [SNII] {snii_name} ≈ [Match] {final_match['name']} ({final_match['orcid']})")
                     verified_results.append({
                         "snii_author": snii_name,
                         "snii_institution": row[inst_col],
