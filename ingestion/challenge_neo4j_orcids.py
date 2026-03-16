@@ -15,7 +15,10 @@ import json
 import time
 import httpx
 import pandas as pd
-from duckduckgo_search import DDGS
+try:
+    from ddgs import DDGS
+except ImportError:
+    from duckduckgo_search import DDGS
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
@@ -58,7 +61,7 @@ def get_orcid_details(orcid):
     """Obtiene detalles del ORCID desde ClickHouse."""
     client = get_ch_client()
     query = f"""
-    SELECT given_names, family_name, credit_name, last_affiliation, last_affiliation_country, other_names, biography
+    SELECT given_names, family_name, credit_name, last_affiliation, last_affiliation_country, emails
     FROM openalex.orcid_records
     WHERE orcid = '{orcid}'
     """
@@ -71,8 +74,7 @@ def get_orcid_details(orcid):
                 "credit_name": r[2],
                 "affiliation": r[3],
                 "country": r[4],
-                "other_names": r[5],
-                "biography": r[6]
+                "emails": r[5]
             }
     except Exception as e:
         print(f"      ⚠️ Error en ClickHouse para {orcid}: {e}")
