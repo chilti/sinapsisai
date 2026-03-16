@@ -148,6 +148,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
         query = """
         MATCH (a:Academic {name: $academic})-[:AUTHORED]->(p)
         OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
+        OPTIONAL MATCH (a)-[:AFFILIATED_WITH]->(i:Institution)
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
         RETURN a.name AS academic_name,
@@ -159,6 +160,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                a.audit_confidence AS audit_confidence,
                a.audit_timestamp AS audit_timestamp,
                collect(DISTINCT e.name) AS entities,
+               collect(DISTINCT i.name) AS institutions,
                p.id AS paper_id,
                p.doi AS paper_doi,
                p.year AS year,
@@ -172,6 +174,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
         print(f"  -> Filtrando por Entidad (Investigadores): {entity_filter}")
         query = """
         MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p)
+        OPTIONAL MATCH (a)-[:AFFILIATED_WITH]->(i:Institution)
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
         RETURN a.name AS academic_name,
@@ -183,6 +186,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                a.audit_confidence AS audit_confidence,
                a.audit_timestamp AS audit_timestamp,
                collect(DISTINCT e.name) AS entities,
+               collect(DISTINCT i.name) AS institutions,
                p.id AS paper_id,
                p.doi AS paper_doi,
                p.year AS year,
@@ -196,6 +200,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
         query = """
         MATCH (a:Academic)-[:AUTHORED]->(p)
         OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
+        OPTIONAL MATCH (a)-[:AFFILIATED_WITH]->(i:Institution)
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
         RETURN a.name AS academic_name,
@@ -207,6 +212,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                a.audit_confidence AS audit_confidence,
                a.audit_timestamp AS audit_timestamp,
                collect(DISTINCT e.name) AS entities,
+               collect(DISTINCT i.name) AS institutions,
                p.id AS paper_id,
                p.doi AS paper_doi,
                p.year AS year,
@@ -320,7 +326,12 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                 'orcid':     row['orcid'],
                 'scopus_id': row['scopus_id'],
                 'siia_url':  row['siia_url'],
-                'entities':  ";".join(row['entities']) if row['entities'] else "",
+                'audit_verdict': row.get('audit_verdict'),
+                'audit_reason': row.get('audit_reason'),
+                'audit_confidence': row.get('audit_confidence'),
+                'audit_timestamp': row.get('audit_timestamp'),
+                'entities':  ";".join(row['entities']) if row['entities'] else "Sin Entidad",
+                'institutions': ";".join(row['institutions']) if row.get('institutions') else "Sin Institución",
                 'paper_id':  row['paper_id'],
                 'year':      row['year'],
                 'citations': citations,
@@ -402,9 +413,11 @@ def extract_entity_papers(entity_filter=None):
         print(f"  -> Filtrando por Entidad (Papers): {entity_filter}")
         query = """
         MATCH (e:Entity {name: $entity})
+        OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AFFILIATED_WITH]->(i:Institution)
         OPTIONAL MATCH (e)-[:HAS_PAPER]->(p:Paper)
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         RETURN e.name AS entity_name,
+               collect(DISTINCT i.name) AS institutions,
                p.id AS paper_id,
                p.doi AS paper_doi,
                p.year AS year,
@@ -416,8 +429,10 @@ def extract_entity_papers(entity_filter=None):
     else:
         query = """
         MATCH (e:Entity)-[:HAS_PAPER]->(p:Paper)
+        OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AFFILIATED_WITH]->(i:Institution)
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         RETURN e.name AS entity_name,
+               collect(DISTINCT i.name) AS institutions,
                p.id AS paper_id,
                p.doi AS paper_doi,
                p.year AS year,
@@ -540,6 +555,7 @@ def extract_entity_papers(entity_filter=None):
 
             records.append({
                 'entity_name': row['entity_name'],
+                'institutions': ";".join(row['institutions']) if row.get('institutions') else "Sin Institución",
                 'paper_id': row['paper_id'],
                 'year': row['year'],
                 'citations': citations,
@@ -740,17 +756,22 @@ def aggregate_metrics(df_papers, group_cols):
         'any_repository_has_fulltext': 'mean',
         # Idioma y licencia
         'is_english': 'sum',
-        'is_cc_by': 'sum',
-        'audit_verdict': 'first',
-        'audit_reason': 'first',
-        'audit_confidence': 'first',
-        'audit_timestamp': 'first'
+        'is_cc_by': 'sum'
     }
     
+    # Validaciones para columnas audit (sólo si existen)
+    audit_cols = ['audit_verdict', 'audit_reason', 'audit_confidence', 'audit_timestamp']
+    for acol in audit_cols:
+        if acol in df_papers.columns:
+            agg_funcs[acol] = 'first'
+    
     # Agregar columnas informativas si existen y no están en group_cols
-    for col in ['orcid', 'scopus_id', 'entities', 'siia_url']:
+    for col in ['orcid', 'scopus_id', 'entities', 'institutions', 'siia_url']:
         if col in df_papers.columns and col not in group_cols:
             agg_funcs[col] = 'first'
+    
+    # Filtrar agg_funcs: sólo columnas que realmente existan en el df actual
+    agg_funcs = {k: v for k, v in agg_funcs.items() if k in df_papers.columns}
     
     df_agg = df_papers.groupby(group_cols).agg(agg_funcs).reset_index()
     df_agg.rename(columns={
@@ -837,21 +858,38 @@ def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, 
             if not entities:
                 entities = ['Sin Entidad']
                 
+            # Buscar Institución (preferencia por la jerarquía)
+            institutions = []
+            if 'institutions' in grp.columns and not grp.empty:
+                inst_val = grp['institutions'].iloc[0]
+                if isinstance(inst_val, list):
+                    institutions = inst_val
+                elif isinstance(inst_val, str):
+                    institutions = [i.strip() for i in inst_val.split(';') if i.strip()]
+            
+            if not institutions or institutions == ["Sin Institución"]:
+                institutions = ["Universidad Nacional Autónoma de México (UNAM)"] # Default Legacy
+
             for ent in entities:
-                safe_ent = str(ent).replace('/', '_').replace('\\', '_')
-                safe_ac = str(ac_name).replace('/', '_').replace('\\', '_')
-                
-                target_dir = CACHE_DIR / safe_ent / safe_ac
-                target_dir.mkdir(parents=True, exist_ok=True)
-                
-                # Guardar el parquet (aunque esté vacío, para sobrescribir caché viejo)
-                grp.to_parquet(target_dir / base_name, index=False)
+                for inst in institutions:
+                    safe_inst = str(inst).replace('/', '_').replace('\\', '_')
+                    safe_ent = str(ent).replace('/', '_').replace('\\', '_')
+                    safe_ac = str(ac_name).replace('/', '_').replace('\\', '_')
+                    
+                    # 1. Ruta Jerárquica (Nacional)
+                    target_dir = CACHE_DIR / safe_inst / safe_ent / safe_ac
+                    target_dir.mkdir(parents=True, exist_ok=True)
+                    grp.to_parquet(target_dir / base_name, index=False)
+                    
+                    # 2. Ruta Plana (Legacy / Fallback)
+                    legacy_dir = CACHE_DIR / safe_ent / safe_ac
+                    legacy_dir.mkdir(parents=True, exist_ok=True)
+                    grp.to_parquet(legacy_dir / base_name, index=False)
                 
     elif group_level == 'entity':
         # Aseguramos que todas las entidades sean procesadas si el df está incompleto
         entities_to_process = df['entity_name'].unique().tolist() if not df.empty else []
         
-        # Intentar recuperar lista de todas las entidades del grafo si estamos en modo global
         if len(entities_to_process) == 0:
              try:
                  graph_store = Neo4jGraphStore()
@@ -860,25 +898,50 @@ def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, 
                      entities_to_process = [r['name'] for r in res]
                  graph_store.close()
              except: pass
-
+        
         graph_store = Neo4jGraphStore()
         for ent_name in entities_to_process:
             grp = df[df['entity_name'] == ent_name] if not df.empty else pd.DataFrame(columns=df.columns)
+            
+            # Buscar Institución
+            institutions = []
+            if 'institutions' in grp.columns and not grp.empty:
+                inst_val = grp['institutions'].iloc[0]
+                if isinstance(inst_val, list):
+                    institutions = inst_val
+                elif isinstance(inst_val, str):
+                    institutions = [i.strip() for i in inst_val.split(';') if i.strip()]
+            
+            if not institutions or institutions == ["Sin Institución"]:
+                institutions = ["Universidad Nacional Autónoma de México (UNAM)"]
+
             safe_ent = str(ent_name).replace('/', '_').replace('\\', '_')
-            target_dir = CACHE_DIR / safe_ent
-            target_dir.mkdir(parents=True, exist_ok=True)
             
-            grp = grp.copy()
-            if include_academics_list and ent_name not in ["UNAM", "Mexico", "México"]:
-                try:
-                    with graph_store.driver.session() as session:
-                        res = session.run("MATCH (e:Entity {name: $ent})<-[:AFFILIATED_TO]-(a:Academic) RETURN a.name AS name", ent=ent_name)
-                        academics = [r['name'] for r in res]
-                    grp['academics_list'] = json.dumps(academics, ensure_ascii=False)
-                except Exception as e:
-                    grp['academics_list'] = "[]"
-            
-            grp.to_parquet(target_dir / base_name, index=False)
+            for inst in institutions:
+                safe_inst = str(inst).replace('/', '_').replace('\\', '_')
+                
+                # 1. Ruta Jerárquica
+                target_dir = CACHE_DIR / safe_inst / safe_ent
+                target_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Enriquecimiento de académicos_list (mantenlo para la carpeta final)
+                grp_final = grp.copy()
+                if include_academics_list and ent_name not in ["UNAM", "Mexico", "México"]:
+                    try:
+                        with graph_store.driver.session() as session:
+                            res = session.run("MATCH (e:Entity {name: $ent})<-[:AFFILIATED_TO]-(a:Academic) RETURN a.name AS name", ent=ent_name)
+                            academics = [r['name'] for r in res]
+                        grp_final['academics_list'] = json.dumps(academics, ensure_ascii=False)
+                    except:
+                        grp_final['academics_list'] = "[]"
+                
+                grp_final.to_parquet(target_dir / base_name, index=False)
+                
+                # 2. Ruta Plana (Legacy)
+                legacy_dir = CACHE_DIR / safe_ent
+                legacy_dir.mkdir(parents=True, exist_ok=True)
+                grp_final.to_parquet(legacy_dir / base_name, index=False)
+                
         graph_store.close()
 
 def process_and_save(entity_filter=None, academic_filter=None):
