@@ -13,7 +13,8 @@ import json
 import pandas as pd
 import httpx
 from dotenv import load_dotenv
-from langchain_openai import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_core.messages import HumanMessage
 
 # Añadir path raíz
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -65,6 +66,16 @@ def get_embeddings(texts: list, batch_size: int = 10) -> list:
         embs = embeddings_model.embed_documents(batch)
         all_embeddings.extend(embs)
     return all_embeddings
+
+# --- Config LLM ---
+llm_model_name = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
+llm = ChatOpenAI(
+    model=llm_model_name,
+    base_url=auth_url,
+    api_key="lm-studio",
+    http_client=http_client,
+    temperature=0
+)
 
 # --- Pasos de Vectorización ---
 
@@ -261,14 +272,121 @@ def vectorize_orcid_authors():
             if (i + batch_size) % 500 == 0:
                 print(f"      - {i+len(batch_docs)}/{len(docs)} procesados.")
 
+def vectorize_snii_with_llm(limit_test=None):
+    """Paso 4: SNII -> Qdrant (Top 5 Local + Top 5 ORCID) -> LLM Verification"""
+    print("\n🚀 Paso 4: Validando investigadores SNII con LLM (Reranking)...")
+    from SNII.match_snii_orcid import SNII_PATH
+    
+    df = pd.read_excel(SNII_PATH)
+    if limit_test:
+        df = df.head(limit_test)
+        print(f"   Modo prueba: procesando solo {limit_test} registros.")
+    
+    local_store = QdrantStore(collection_name="local_authors")
+    orcid_store = QdrantStore(collection_name="orcid_authors_vec")
+    
+    name_col = 'NOMBRE DEL INVESTIGADOR'
+    inst_col = 'INSTITUCIÓN DE ACREDITACIÓN'
+    sub_inst_col = 'SUBDEPENDENCIA DE ACREDITACIÓN'
+    
+    verified_results = []
+    
+    for idx, row in df.iterrows():
+        snii_name = str(row[name_col])
+        sub_inst = str(row[sub_inst_col]) if pd.notna(row[sub_inst_col]) else ""
+        snii_info = f"Nombre: {snii_name} | Institución: {row[inst_col]} | Subdependencia: {sub_inst}"
+        
+        print(f"   [{idx+1}/{len(df)}] Verificando: {snii_name}...")
+        
+        # Obtener embedding del autor SNII
+        emb = get_embeddings([snii_info])[0]
+        
+        # Recuperar candidatos
+        local_candidates = local_store.search(emb, limit=5)
+        orcid_candidates = orcid_store.search(emb, limit=5)
+        
+        all_candidates = []
+        for c in local_candidates:
+            all_candidates.append({
+                "source": "Local (Neo4j)",
+                "name": c.get("name"),
+                "orcid": c.get("orcid"),
+                "affiliation": c.get("affiliation"),
+                "score_vec": c.get("score")
+            })
+        for c in orcid_candidates:
+            all_candidates.append({
+                "source": "ORCID Dump",
+                "name": c.get("name"),
+                "orcid": c.get("orcid"),
+                "affiliation": c.get("affiliation"),
+                "score_vec": c.get("score")
+            })
+            
+        # Preparar Prompt para el LLM
+        candidates_str = ""
+        for i, cand in enumerate(all_candidates):
+            candidates_str += f"{i+1}. [{cand['source']}] Nombre: {cand['name']} | ORCID: {cand['orcid']} | Afiliación: {cand['affiliation']}\n"
+            
+        prompt = f"""Eres un experto investigador bibliográfico. Tu tarea es identificar si alguno de los candidatos recuperados por una búsqueda semántica coincide exactamente con el investigador del SNII.
+
+Investigador SNII buscado:
+{snii_info}
+
+Candidatos potenciales:
+{candidates_str}
+
+Instrucciones:
+1. Compara cuidadosamente el nombre (considera variaciones como 'Juan Perez' vs 'Perez, Juan') y la institución.
+2. Si crees que hay una coincidencia clara, responde con el número del candidato y el ORCID.
+3. Si ninguno coincide con seguridad, responde 'NINGUNO'.
+4. Formato de respuesta: JSON plano con las llaves: "match" (bool), "candidate_index" (int o null), "orcid" (str o null), "reason" (str breve).
+
+Respuesta:"""
+
+        try:
+            response = llm.invoke([HumanMessage(content=prompt)])
+            res_text = response.content.strip()
+            # Limpiar posibles bloques de código
+            if "```json" in res_text:
+                res_text = res_text.split("```json")[1].split("```")[0].strip()
+            
+            res_json = json.loads(res_text)
+            
+            if res_json.get("match"):
+                m_idx = res_json.get("candidate_index")
+                if m_idx and 1 <= m_idx <= len(all_candidates):
+                    final_match = all_candidates[m_idx-1]
+                    print(f"      ✅ MATCH CONFIRMADO por LLM: {final_match['name']} ({final_match['orcid']})")
+                    verified_results.append({
+                        "snii_author": snii_name,
+                        "snii_institution": row[inst_col],
+                        "matched_author": final_match['name'],
+                        "matched_orcid": final_match['orcid'],
+                        "reason": res_json.get("reason"),
+                        "source": final_match['source']
+                    })
+        except Exception as e:
+            print(f"      ⚠️ Error consultando LLM para {snii_name}: {e}")
+
+    # Guardar resultados específicos
+    output_path = os.path.join("data", "snii_llm_verified_matches.json")
+    os.makedirs("data", exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(verified_results, f, ensure_ascii=False, indent=2)
+    
+    print(f"\n✨ Validación LLM completada. {len(verified_results)} matches guardados en {output_path}")
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--step", type=int, choices=[1, 2, 3], help="Ejecutar solo un paso específico")
+    parser.add_argument("--step", type=int, choices=[1, 2, 3, 4], help="Ejecutar solo un paso específico")
+    parser.add_argument("--limit", type=int, help="Límite de registros para paso 4 (testing)")
     args = parser.parse_args()
     
     if not args.step or args.step == 1: vectorize_local_authors()
     if not args.step or args.step == 2: vectorize_snii_authors()
     if not args.step or args.step == 3: vectorize_orcid_authors()
+    if args.step == 4: vectorize_snii_with_llm(limit_test=args.limit)
     
     print("\n✨ Triple vectorización completada.")
