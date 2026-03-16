@@ -196,7 +196,7 @@ def vectorize_snii_authors():
                 
                 # 1. Buscar en Local
                 local_hits = local_store.search(emb, limit=1)
-                if local_hits and local_hits[0]['score'] > 0.92:
+                if local_hits and local_hits[0]['score'] > 0.75:
                     hit = local_hits[0]
                     print(f"      [Match Local] {snii_name} ≈ {hit['name']} (ORCID: {hit.get('orcid')}) | Score: {hit['score']:.4f}")
                     batch_docs[idx]["match_local_orcid"] = hit.get('orcid')
@@ -204,7 +204,7 @@ def vectorize_snii_authors():
                 
                 # 2. Buscar en ORCID
                 orcid_hits = orcid_store.search(emb, limit=1)
-                if orcid_hits and orcid_hits[0]['score'] > 0.92:
+                if orcid_hits and orcid_hits[0]['score'] > 0.75:
                     hit = orcid_hits[0]
                     # Solo imprimir si no hubo match local o si este es muy fuerte
                     if not batch_docs[idx].get("match_local_orcid"):
