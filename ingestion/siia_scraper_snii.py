@@ -44,45 +44,76 @@ def limpiar_nombre(nombre):
     nombre_normalizado = unicodedata.normalize('NFD', nombre_sin_prefijo)
     return ''.join(c for c in nombre_normalizado if unicodedata.category(c) != 'Mn').upper()
 
-def buscar_en_siia_interno(original_name, cleaned_name):
-    try:
-        if ',' in original_name:
-            surnames, names = original_name.split(',', 1)
+def buscar_en_siia_con_reintentos(original_name, cleaned_name):
+    """
+    Intenta buscar progresivamente eliminando el apellido materno si fracasa la búsqueda estricta.
+    Identifica apellidos y nombres a partir de la coma si existe.
+    """
+    ap_pat, ap_mat, nombre_pila = "", "", ""
+    if ',' in original_name:
+        apellidos, nombres = original_name.split(',', 1)
+        aps = apellidos.split()
+        ap_pat = aps[0] if len(aps) >= 1 else ""
+        ap_mat = " ".join(aps[1:]) if len(aps) >= 2 else ""
+        nombre_pila = nombres.strip()
+    else:
+        parts = cleaned_name.split()
+        if len(parts) >= 3:
+            ap_pat, ap_mat = parts[0], parts[1]
+            nombre_pila = " ".join(parts[2:])
+        elif len(parts) == 2:
+            ap_pat, nombre_pila = parts[0], parts[1]
         else:
-            parts = cleaned_name.split()
-            if len(parts) >= 3:
-                surnames = " ".join(parts[:2])
-                names = " ".join(parts[2:])
-            else:
-                surnames = cleaned_name
-                names = ""
-                
-        parts = surnames.split()
-        ap_pat = parts[0] if len(parts) >= 1 else ""
-        ap_mat = " ".join(parts[1:]) if len(parts) >= 2 else ""
-            
-        data = {
-            'apellido_paterno': ap_pat.strip(),
-            'apellido_materno': ap_mat.strip(),
-            'nombre': names.strip()
-        }
-        
-        r = requests.post("https://web.siia.unam.mx/siia-publico/c/personal.php", data=data, timeout=10)
-        links = re.findall(r'busqueda_individual\.php\?id=\d+', r.text)
-        return [{"link": "https://web.siia.unam.mx/siia-publico/c/" + lnk} for lnk in set(links)]
-    except Exception as e:
-        print(f"    ⚠️ Error en búsqueda interna para '{cleaned_name}': {e}")
+            ap_pat = cleaned_name
+
+    ap_pat = re.sub(r'^(DR\.|DRA\.)\s*', '', ap_pat, flags=re.IGNORECASE).strip()
+    
+    url = "https://web.siia.unam.mx/siia-publico/c/personal.php"
+    
+    # Intento 1: Estricto
+    data_strict = {'apellido_paterno': ap_pat, 'apellido_materno': ap_mat, 'nombre': nombre_pila}
+    try:
+        r = requests.post(url, data=data_strict, timeout=10)
+        hits = re.findall(r'busqueda_individual\.php\?id=\d+', r.text)
+        if hits:
+            return [{"link": "https://web.siia.unam.mx/siia-publico/c/" + lnk} for lnk in set(hits)]
+    except: pass
+
+    # Intento 2: Sin materno
+    if ap_mat:
+        print(f"      [!] Reintentando sin materno para: {ap_pat} {nombre_pila}")
+        data_no_mat = {'apellido_paterno': ap_pat, 'apellido_materno': '', 'nombre': nombre_pila}
+        try:
+            r = requests.post(url, data=data_no_mat, timeout=10)
+            hits = re.findall(r'busqueda_individual\.php\?id=\d+', r.text)
+            if hits:
+                return [{"link": "https://web.siia.unam.mx/siia-publico/c/" + lnk} for lnk in set(hits)]
+        except: pass
+
+    # Intento 3: Solo Paterno (Extremo)
+    print(f"      [!] Reintentando ÚNICAMENTE con paterno: {ap_pat}")
+    data_min = {'apellido_paterno': ap_pat, 'apellido_materno': '', 'nombre': ''}
+    try:
+        r = requests.post(url, data=data_min, timeout=10)
+        hits = re.findall(r'busqueda_individual\.php\?id=\d+', r.text)
+        return [{"link": "https://web.siia.unam.mx/siia-publico/c/" + lnk} for lnk in set(hits)]
+    except:
         return []
 
-def verify_and_scrape_siia(driver, name_to_verify, url):
+def verify_and_scrape_siia(driver, name_to_verify, url, is_retry=False):
+    """
+    Navega a una URL del SIIA y extrae datos. 
+    Usa un umbral de fuzzy match más bajo (70%) si viene de un reintento.
+    """
     try:
         try:
             driver.get(url)
-        except (TimeoutException, WebDriverException):
-            print(f"    ⏱️ Timeout o error de carga en {url}. Saltando.")
+        except TimeoutException:
+            return None
+        except WebDriverException:
             return None
 
-        # Cerrar Modal si aparece
+        # Gestión de Modal
         try:
             boton_aceptar = WebDriverWait(driver, 3).until(
                 EC.element_to_be_clickable((By.XPATH, "//div[@class='modal-footer']//button[contains(text(), 'Aceptar')]"))
@@ -92,7 +123,7 @@ def verify_and_scrape_siia(driver, name_to_verify, url):
         except:
             pass
 
-        # Extraer y verificar nombre
+        # Extraer Nombre
         try:
             scraped_name = WebDriverWait(driver, 5).until(
                 EC.visibility_of_element_located((By.XPATH, '/html/body/center/h1'))
@@ -100,19 +131,27 @@ def verify_and_scrape_siia(driver, name_to_verify, url):
         except:
             return None
 
-        if fuzz.token_set_ratio(name_to_verify, scraped_name) < 90:
+        # Verificación Fuzzy (90% normal, 70% reintento)
+        threshold = 70 if is_retry else 90
+        score = fuzz.token_set_ratio(name_to_verify, scraped_name)
+        if score < threshold:
             return None 
 
-        print(f"    ✅ Match: {scraped_name}")
+        print(f"    ✅ Match ({score}%): {scraped_name}")
 
         data = {'name': scraped_name, 'scopus': [], 'orcid': '', 'areas': []}
         
         # Scopus
         try:
-            td_scopus = driver.find_element(By.XPATH, "/html/body/center/div/table[2]/tbody/tr[4]/td")
-            tree = html.fromstring(td_scopus.get_attribute('outerHTML'))
+            td_e = driver.find_element(By.XPATH, "/html/body/center/div/table[2]/tbody/tr[4]/td")
+            tree = html.fromstring(td_e.get_attribute('outerHTML'))
             data['scopus'] = [s.text_content().strip() for s in tree.xpath('.//span')]
         except: pass
+
+        if data['scopus']:
+            data['scopus'] = "; ".join(data['scopus'])
+        else:
+            data['scopus'] = ""
 
         # ORCID
         try:
@@ -121,8 +160,8 @@ def verify_and_scrape_siia(driver, name_to_verify, url):
 
         # Áreas
         try:
-            td_areas = driver.find_element(By.XPATH, "/html/body/center/div/table[3]/tbody/tr[2]/td")
-            tree = html.fromstring(td_areas.get_attribute('outerHTML'))
+            td_a = driver.find_element(By.XPATH, "/html/body/center/div/table[3]/tbody/tr[2]/td")
+            tree = html.fromstring(td_a.get_attribute('outerHTML'))
             data['areas'] = [s.text_content().strip() for s in tree.xpath('./span') if s.text_content().strip()]
         except: pass
 
@@ -172,6 +211,10 @@ def main():
             existing_academics = {limpiar_nombre(r["name"]) for r in res}
     except: pass
     
+    # Asegurar directorio de salida
+    unam_data_dir = os.path.join("data", "UNAM")
+    os.makedirs(unam_data_dir, exist_ok=True)
+    
     entities = df_unam[sub_inst_col].unique()
     
     try:
@@ -179,7 +222,7 @@ def main():
             if pd.isna(entity): continue
             
             safe_entity = entity.replace(' ', '_').replace(',', '').replace('/', '_')
-            out_path = os.path.join("data", f"profesores_SNII_{safe_entity}.json")
+            out_path = os.path.join(unam_data_dir, f"profesores_SNII_{safe_entity}.json")
             
             # Cargar progreso si existe
             profesores_data = {}
@@ -206,16 +249,22 @@ def main():
                     continue
                 
                 print(f"  🔍 Buscando: {p_name}")
-                siia_links = buscar_en_siia_interno(str(original_name), p_name)
+                siia_links = buscar_en_siia_con_reintentos(str(original_name), p_name)
                 
                 found_data = None
-                for res in siia_links:
-                    found_data = verify_and_scrape_siia(driver, p_name, res['link'])
-                    if found_data:
-                        found_data['siia_url'] = res['link']
-                        found_data['original_name'] = str(original_name)
-                        found_data['entity'] = entity
-                        break
+                if siia_links:
+                    # Si recibimos links después de intentos fallidos, es un 'retry'
+                    # El script buscar_en_siia_con_reintentos ya nos da los links de los hits.
+                    for res in siia_links:
+                        # Si hay más de un link, o si la búsqueda fue agresiva, 
+                        # pasamos is_retry=True para ser más permisivos con el fuzzy match
+                        is_retry = len(siia_links) > 1 or "reintentando" in str(sys.stdout) 
+                        found_data = verify_and_scrape_siia(driver, p_name, res['link'], is_retry=is_retry)
+                        if found_data:
+                            found_data['siia_url'] = res['link']
+                            found_data['original_name'] = str(original_name)
+                            found_data['entity'] = entity
+                            break
                 
                 if found_data:
                     profesores_data[p_name] = found_data
