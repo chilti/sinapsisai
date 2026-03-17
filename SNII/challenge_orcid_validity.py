@@ -56,7 +56,7 @@ def get_orcid_details(orcid):
     """Obtiene detalles del ORCID desde ClickHouse."""
     client = get_ch_client()
     query = f"""
-    SELECT given_names, family_name, credit_name, last_affiliation, last_affiliation_country, other_names, biography
+    SELECT given_names, family_name, credit_name, last_affiliation, last_affiliation_country
     FROM openalex.orcid_records
     WHERE orcid = '{orcid}'
     """
@@ -69,8 +69,7 @@ def get_orcid_details(orcid):
                 "credit_name": r[2],
                 "affiliation": r[3],
                 "country": r[4],
-                "other_names": r[5],
-                "biography": r[6]
+                "orcid": orcid
             }
     except Exception as e:
         print(f"      ⚠️ Error en ClickHouse para {orcid}: {e}")
