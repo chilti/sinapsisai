@@ -14,12 +14,17 @@ from thefuzz import fuzz, process
 from dotenv import load_dotenv
 import httpx
 
-load_dotenv()
+# Cargar .env de la raíz
+env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
+load_dotenv(env_path)
+print(f"DEBUG: Cargando .env desde {env_path}")
 
 # Configuración de LLM (usando el patrón del proyecto)
 user = os.getenv("LLM_USER")
 password = os.getenv("LLM_PASSWORD")
 base_url = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1/")
+model_name = os.getenv("LLM_MODEL", "local-model")
+
 if not base_url.endswith("/"): base_url += "/"
 auth_url = base_url
 if user and password:
@@ -34,12 +39,13 @@ def call_llm(prompt):
             resp = client.post(
                 f"{auth_url}chat/completions",
                 json={
-                    "model": "local-model", # Ajustar si es necesario
+                    "model": model_name,
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.1
                 },
                 headers={"Authorization": "Bearer lm-studio"}
             )
+            resp.raise_for_status()
             return resp.json()['choices'][0]['message']['content']
     except Exception as e:
         print(f"Error LLM: {e}")
@@ -67,8 +73,9 @@ def find_ror_candidates(name, ror_list, limit=10):
     matches = process.extract(name, names, scorer=fuzz.token_sort_ratio, limit=limit)
     
     candidates = []
-    for match_name, score, idx in matches:
+    for match_name, score in matches:
         # Encontrar el record original
+        # Usamos el primer match exacto por nombre
         record = next(r for r in ror_list if r['name'] == match_name)
         candidates.append({
             "name": record['name'],
