@@ -139,14 +139,20 @@ def compute_interdisciplinarity(topics_series) -> dict:
     }
 
 
-def extract_academic_papers(academic_filter=None, entity_filter=None):
+def extract_academic_papers(academic_filter=None, entity_filter=None, source_filter='all'):
     """Descarga los metadatos completos de todas las publicaciones por Académico."""
     graph_store = Neo4jGraphStore()
     
+    label_filter = ""
+    if source_filter == 'wos':
+        label_filter = ":IndexedWoS"
+    elif source_filter == 'openalex':
+        label_filter = ":IndexedOpenAlex"
+
     if academic_filter:
-        print(f"  -> Filtrando por Académico: {academic_filter}")
-        query = """
-        MATCH (a:Academic {name: $academic})-[:AUTHORED]->(p)
+        print(f"  -> Filtrando por Académico: {academic_filter} (Fuente: {source_filter})")
+        query = f"""
+        MATCH (a:Academic {{name: $academic}})-[:AUTHORED]->(p{label_filter})
         OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
         OPTIONAL MATCH (a)-[:AFFILIATED_WITH]->(i:Institution)
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
@@ -159,6 +165,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                a.audit_reason AS audit_reason,
                a.audit_confidence AS audit_confidence,
                a.audit_timestamp AS audit_timestamp,
+               a.is_snii AS is_snii,
                collect(DISTINCT e.name) AS entities,
                collect(DISTINCT i.name) AS institutions,
                p.id AS paper_id,
@@ -166,14 +173,14 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                p.year AS year,
                p.citations AS citations,
                p.raw_metadata AS raw_metadata,
-               collect(DISTINCT {id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs,
-               collect(DISTINCT {topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}) AS graph_topics
+               collect(DISTINCT {{id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}}) AS sdgs,
+               collect(DISTINCT {{topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}}) AS graph_topics
         """
         params = {"academic": academic_filter}
     elif entity_filter:
-        print(f"  -> Filtrando por Entidad (Investigadores): {entity_filter}")
-        query = """
-        MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p)
+        print(f"  -> Filtrando por Entidad (Investigadores): {entity_filter} (Fuente: {source_filter})")
+        query = f"""
+        MATCH (e:Entity {{name: $entity}})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p{label_filter})
         OPTIONAL MATCH (a)-[:AFFILIATED_WITH]->(i:Institution)
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
@@ -185,6 +192,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                a.audit_reason AS audit_reason,
                a.audit_confidence AS audit_confidence,
                a.audit_timestamp AS audit_timestamp,
+               a.is_snii AS is_snii,
                collect(DISTINCT e.name) AS entities,
                collect(DISTINCT i.name) AS institutions,
                p.id AS paper_id,
@@ -192,13 +200,14 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                p.year AS year,
                p.citations AS citations,
                p.raw_metadata AS raw_metadata,
-               collect(DISTINCT {id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs,
-               collect(DISTINCT {topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}) AS graph_topics
+               collect(DISTINCT {{id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}}) AS sdgs,
+               collect(DISTINCT {{topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}}) AS graph_topics
         """
         params = {"entity": entity_filter}
     else:
-        query = """
-        MATCH (a:Academic)-[:AUTHORED]->(p)
+        print(f"  -> Procesando todos los académicos (Fuente: {source_filter})")
+        query = f"""
+        MATCH (a:Academic)-[:AUTHORED]->(p{label_filter})
         OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
         OPTIONAL MATCH (a)-[:AFFILIATED_WITH]->(i:Institution)
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
@@ -211,6 +220,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                a.audit_reason AS audit_reason,
                a.audit_confidence AS audit_confidence,
                a.audit_timestamp AS audit_timestamp,
+               a.is_snii AS is_snii,
                collect(DISTINCT e.name) AS entities,
                collect(DISTINCT i.name) AS institutions,
                p.id AS paper_id,
@@ -218,8 +228,8 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                p.year AS year,
                p.citations AS citations,
                p.raw_metadata AS raw_metadata,
-               collect(DISTINCT {id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs,
-               collect(DISTINCT {topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}) AS graph_topics
+               collect(DISTINCT {{id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}}) AS sdgs,
+               collect(DISTINCT {{topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}}) AS graph_topics
         """
         params = {}
     
@@ -330,6 +340,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
                 'audit_reason': row.get('audit_reason'),
                 'audit_confidence': row.get('audit_confidence'),
                 'audit_timestamp': row.get('audit_timestamp'),
+                'is_snii':   bool(row.get('is_snii', False)),
                 'entities':  ";".join(row['entities']) if row['entities'] else "Sin Entidad",
                 'institutions': ";".join(row['institutions']) if row.get('institutions') else "Sin Institución",
                 'paper_id':  row['paper_id'],
@@ -405,16 +416,22 @@ def extract_academic_papers(academic_filter=None, entity_filter=None):
     if records:
         yield pd.DataFrame(records)
 
-def extract_entity_papers(entity_filter=None):
+def extract_entity_papers(entity_filter=None, source_filter='all'):
     """Descarga los papers asociados históricamente a una Institución/Entidad."""
     graph_store = Neo4jGraphStore()
     
+    label_filter = ""
+    if source_filter == 'wos':
+        label_filter = ":IndexedWoS"
+    elif source_filter == 'openalex':
+        label_filter = ":IndexedOpenAlex"
+
     if entity_filter:
-        print(f"  -> Filtrando por Entidad (Papers): {entity_filter}")
-        query = """
-        MATCH (e:Entity {name: $entity})
+        print(f"  -> Filtrando por Entidad (Papers): {entity_filter} (Fuente: {source_filter})")
+        query = f"""
+        MATCH (e:Entity {{name: $entity}})
         OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AFFILIATED_WITH]->(i:Institution)
-        OPTIONAL MATCH (e)-[:HAS_PAPER]->(p:Paper)
+        OPTIONAL MATCH (e)-[:HAS_PAPER]->(p:Paper{label_filter})
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         RETURN e.name AS entity_name,
                collect(DISTINCT i.name) AS institutions,
@@ -423,12 +440,13 @@ def extract_entity_papers(entity_filter=None):
                p.year AS year,
                p.citations AS citations,
                p.raw_metadata AS raw_metadata,
-               collect({id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs
+               collect({{id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}}) AS sdgs
         """
         params = {"entity": entity_filter}
     else:
-        query = """
-        MATCH (e:Entity)-[:HAS_PAPER]->(p:Paper)
+        print(f"  -> Procesando todas las entidades (Fuente: {source_filter})")
+        query = f"""
+        MATCH (e:Entity)-[:HAS_PAPER]->(p:Paper{label_filter})
         OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AFFILIATED_WITH]->(i:Institution)
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         RETURN e.name AS entity_name,
@@ -438,7 +456,7 @@ def extract_entity_papers(entity_filter=None):
                p.year AS year,
                p.citations AS citations,
                p.raw_metadata AS raw_metadata,
-               collect({id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs
+               collect({{id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}}) AS sdgs
         """
         params = {}
         
@@ -759,11 +777,14 @@ def aggregate_metrics(df_papers, group_cols):
         'is_cc_by': 'sum'
     }
     
-    # Validaciones para columnas audit (sólo si existen)
-    audit_cols = ['audit_verdict', 'audit_reason', 'audit_confidence', 'audit_timestamp']
+    # Validaciones para columnas audit e is_snii (sólo si existen)
+    audit_cols = ['audit_verdict', 'audit_reason', 'audit_confidence', 'audit_timestamp', 'is_snii']
     for acol in audit_cols:
         if acol in df_papers.columns:
-            agg_funcs[acol] = 'first'
+            if acol == 'is_snii':
+                agg_funcs[acol] = 'max' # Si algun registro dice True, es SNII
+            else:
+                agg_funcs[acol] = 'first'
     
     # Agregar columnas informativas si existen y no están en group_cols
     for col in ['orcid', 'scopus_id', 'entities', 'institutions', 'siia_url']:
@@ -944,12 +965,12 @@ def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, 
                 
         graph_store.close()
 
-def process_and_save(entity_filter=None, academic_filter=None):
-    print("Iniciando Pre-cálculo de Métricas desde Neo4j (Modo eficiente)...")
+def process_and_save(entity_filter=None, academic_filter=None, source_filter='all'):
+    print(f"Iniciando Pre-cálculo de Métricas (Fuente: {source_filter})...")
     
     # 1. Extracción y Enriquecimiento por lotes
     df_raw_list = []
-    for chunk_df in extract_academic_papers(academic_filter=academic_filter, entity_filter=entity_filter):
+    for chunk_df in extract_academic_papers(academic_filter=academic_filter, entity_filter=entity_filter, source_filter=source_filter):
         print(f"  → Procesando bloque de {len(chunk_df)} papers...")
         chunk_df['year'] = pd.to_numeric(chunk_df['year'], errors='coerce')
         chunk_df = chunk_df.dropna(subset=['year'])
@@ -1098,8 +1119,8 @@ def process_and_save(entity_filter=None, academic_filter=None):
     # 3. AGREGADOS A NIVEL INSTITUCIÓN (Macro)
     df_inst_raw = pd.DataFrame()
     if entity_filter or not academic_filter:
-        print("⏳ Extrayendo y agregando métricas de DOIs de Entidades...")
-        df_inst_raw = extract_entity_papers(entity_filter=entity_filter)
+        print(f"⏳ Extrayendo y agregando métricas de DOIs de Entidades (Fuente: {source_filter})...")
+        df_inst_raw = extract_entity_papers(entity_filter=entity_filter, source_filter=source_filter)
     if not df_inst_raw.empty:
         df_inst_raw['year'] = pd.to_numeric(df_inst_raw['year'], errors='coerce')
         df_inst_raw = df_inst_raw.dropna(subset=['year'])
@@ -1237,6 +1258,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Calcula y guarda métricas académicas en parquets.")
     parser.add_argument("--entity", type=str, help="Nombre de la entidad para filtrar")
     parser.add_argument("--academic", type=str, help="Nombre del académico para filtrar")
+    parser.add_argument("--source", type=str, choices=['wos', 'openalex', 'all'], default='all', 
+                        help="Fuente de indización (wos, openalex, all)")
     args = parser.parse_args()
     
-    process_and_save(entity_filter=args.entity, academic_filter=args.academic)
+    process_and_save(entity_filter=args.entity, academic_filter=args.academic, source_filter=args.source)
