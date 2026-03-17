@@ -118,12 +118,26 @@ def main():
     print("🚀 Cargando datos...")
     snii_data, ror_data = load_data()
     unique_entities = get_unique_snii_entities(snii_data)
-    print(f"Entities to map: {len(unique_entities)}")
+    print(f"Entities found: {len(unique_entities)}")
 
+    mapping_file = 'ROR/snii_ror_mapping.json'
     mapping = {}
-    # Para la demo, procesaremos solo una muestra o permitiremos reanudación
-    for inst, sub in unique_entities[:20]: # Ejemplo limitado
-        print(f"🔍 Mapeando: {inst} | {sub}")
+    if os.path.exists(mapping_file):
+        try:
+            with open(mapping_file, 'r', encoding='utf-8') as f:
+                mapping = json.load(f)
+            print(f"✅ Cargados {len(mapping)} mapeos previos.")
+        except:
+            print("⚠️ No se pudo cargar el mapeo previo, iniciando desde cero.")
+
+    # Procesar todas las entidades
+    for inst, sub in unique_entities:
+        key = f"{inst} || {sub}"
+        if key in mapping and mapping[key].get('best_match_ror') is not None:
+             # Omitimos print para no saturar si ya existen
+             continue
+
+        print(f"🔍 Mapeando ({len(mapping)+1}/{len(unique_entities)}): {inst} | {sub}")
         
         # 1. Candidatos para la subdependencia (si existe)
         target = f"{sub} {inst}" if sub and sub != "SIN INFORMACIÓN" else inst
@@ -132,13 +146,19 @@ def main():
         # 2. Validación LLM
         result = validate_with_llm(inst, sub, candidates)
         
-        mapping[f"{inst} || {sub}"] = result
+        mapping[key] = result
         print(f"   -> Result: {result.get('best_match_ror')} ({result.get('confidence')}%)")
+        
+        # Guardar progreso incrementalmente cada 5 registros para no perder trabajo
+        if len(mapping) % 5 == 0:
+            with open(mapping_file, 'w', encoding='utf-8') as f:
+                json.dump(mapping, f, ensure_ascii=False, indent=2)
+        
         time.sleep(1)
 
-    with open('ROR/snii_ror_mapping.json', 'w', encoding='utf-8') as f:
+    with open(mapping_file, 'w', encoding='utf-8') as f:
         json.dump(mapping, f, ensure_ascii=False, indent=2)
-    print("✅ Mapeo guardado en ROR/snii_ror_mapping.json")
+    print(f"✅ Proceso completo. Mapeo guardado en {mapping_file}")
 
 if __name__ == "__main__":
     main()
