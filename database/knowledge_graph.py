@@ -311,6 +311,31 @@ class Neo4jGraphStore:
             except Exception as e:
                 pass
 
+    def add_academic_full_affiliation(self, academic_name: str, inst_name: str, sub_name: str = None):
+        """
+        Vincula un Academic con su Institución y Subdependencia (jerárquico).
+        """
+        # Si no hay subdependencia, usamos solo la institución
+        if not sub_name or sub_name == "SIN INFORMACIÓN":
+            self.add_academic_affiliation(academic_name, inst_name)
+            return
+
+        query = """
+        MERGE (i:Entity:Institution {name: $inst_name})
+        MERGE (s:Entity {name: $sub_name})
+        SET s:Subdependency
+        MERGE (s)-[:PART_OF]->(i)
+        WITH s, i
+        MATCH (a:Academic {name: $academic_name})
+        MERGE (a)-[:AFFILIATED_TO]->(s)
+        MERGE (a)-[:AFFILIATED_TO]->(i)
+        """
+        with self.driver.session() as session:
+            try:
+                session.run(query, academic_name=academic_name, inst_name=inst_name, sub_name=sub_name)
+            except Exception as e:
+                print(f"Error en full affiliation para {academic_name}: {e}")
+
     def check_academic_exists(self, academic_name: str) -> bool:
         """
         Verifica si un académico ya fue ingestados con sus documentos en Neo4j.

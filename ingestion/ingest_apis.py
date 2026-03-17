@@ -287,13 +287,13 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
         if data.get('already_in_db', False) and not force:
             mapped_name = data.get('mapped_name', academic_name)
             print(f"\n[{academic_name}] Ya existe como '{mapped_name}' (cached en excel). Saltar recoleccion.")
-            graph_store.add_academic_affiliation(mapped_name, entity_name)
+            graph_store.add_academic_full_affiliation(mapped_name, "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", entity_name)
             continue
             
         # 2. Checar base de datos directo (por si se interrumpió y se vuelve a correr)
         if hasattr(graph_store, 'check_academic_exists') and graph_store.check_academic_exists(academic_name) and not force:
             print(f"\n[{academic_name}] Ya existe en Neo4j. Saltando recopilación API y agregando afiliación a '{entity_name}'.")
-            graph_store.add_academic_affiliation(academic_name, entity_name)
+            graph_store.add_academic_full_affiliation(academic_name, "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", entity_name)
             if is_snii:
                 graph_store.set_academic_snii(academic_name, True)
             continue
@@ -539,8 +539,8 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
             graph_store.add_api_paper(neo4j_data, academic_name=academic_name, orcid=orcid, scopus_id=scopus_str, siia_url=siia_url)
             time.sleep(0.05)
             
-        # Afiliación del académico a su Entidad
-        graph_store.add_academic_affiliation(academic_name, entity_name)
+        # Afiliación del académico a su Entidad e Institución
+        graph_store.add_academic_full_affiliation(academic_name, "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", entity_name)
             
         # Ingesta en Qdrant por lotes de este académico para no saturar al LLM
         print(f"  -> Vectorizando {len(batch_texts)} textos de artículos e insertando en 'api_papers'...")

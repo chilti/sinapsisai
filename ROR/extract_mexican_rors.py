@@ -63,7 +63,9 @@ def extract_mexican_rors():
         JSONExtractString(raw_data, 'display_name') as name,
         JSONExtractString(raw_data, 'ror') as ror,
         JSONExtractString(raw_data, 'country_code') as country_code,
-        JSONExtractString(raw_data, 'type') as type
+        JSONExtractString(raw_data, 'type') as type,
+        JSONExtractString(raw_data, 'associated_institutions') as associated_institutions,
+        JSONExtract(raw_data, 'lineage', 'Array(String)') as lineage
     FROM {table_name}
     WHERE JSONExtractString(raw_data, 'country_code') = 'MX'
       AND JSONExtractString(raw_data, 'ror') != ''
@@ -80,7 +82,9 @@ def extract_mexican_rors():
                 "name": row[1],
                 "ror": row[2],
                 "country_code": row[3],
-                "type": row[4]
+                "type": row[4],
+                "associated_institutions": json.loads(row[5] or "[]"),
+                "lineage": row[6]
             })
 
         output_file = Path(__file__).parent / "mexican_institutions_rors.json"
