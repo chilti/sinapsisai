@@ -256,6 +256,59 @@ class Neo4jGraphStore:
             except Exception as e:
                 print(f"Error Neo4j en add_api_paper {params['doi']}: {e}")
 
+    def mark_paper_as_indexed(self, doi: str, source: str):
+        """
+        Agrega una etiqueta de indización (ej: IndexedOpenAlex) y una propiedad booleana al artículo.
+        Fuentes soportadas: 'openalex', 'wos', 'scopus'.
+        """
+        if not doi: return
+        
+        label = ""
+        prop = ""
+        if source.lower() == 'openalex':
+            label = "IndexedOpenAlex"
+            prop = "indexed_oa"
+        elif source.lower() == 'wos':
+            label = "IndexedWoS"
+            prop = "indexed_wos"
+        elif source.lower() == 'scopus':
+            label = "IndexedScopus"
+            prop = "indexed_scopus"
+        else:
+            return
+
+        query = f"""
+        MATCH (p:Paper {{id: $doi}})
+        SET p.{prop} = true
+        SET p:{label}
+        """
+        # Intentar también por propiedad .doi si el id no coincide
+        query_alt = f"""
+        MATCH (p:Paper) WHERE p.id = $id_raw OR p.doi = $doi_clean
+        SET p.{prop} = true
+        SET p:{label}
+        """
+        doi_clean = doi.replace("https://doi.org/", "").strip().lower()
+        
+        with self.driver.session() as session:
+            try:
+                session.run(query_alt, id_raw=doi, doi_clean=doi_clean)
+            except Exception as e:
+                print(f"Error marcando indización {source} para {doi}: {e}")
+
+    def set_paper_openalex_id(self, doi: str, openalex_url: str):
+        """Asocia un OpenAlex ID (URL) a un artículo existente."""
+        if not doi or not openalex_url: return
+        doi_clean = doi.replace("https://doi.org/", "").strip().lower()
+        query = """
+        MATCH (p:Paper) WHERE p.id = $id_raw OR p.doi = $doi_clean
+        SET p.openalex_id = $oa_id
+        """
+        with self.driver.session() as session:
+            try:
+                session.run(query, id_raw=doi, doi_clean=doi_clean, oa_id=openalex_url)
+            except Exception: pass
+
     def add_entity_paper_link(self, entity_name: str, doi: str):
         """
         Vincula un Entity institucional con un Paper utilizando su DOI.

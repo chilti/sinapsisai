@@ -1,102 +1,177 @@
 {
   "ARCHIVO GENERAL DE LA NACION || SIN INFORMACIÓN": {
     "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "confidence": 10,
+    "reason": "No hay ningún ROR en la lista que corresponda al Archivo General de la Nación."
   },
   "BANCO DE MEXICO || SIN INFORMACIÓN": {
-    "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "best_match_ror": "https://ror.org/02xp9d883",
+    "confidence": 95,
+    "reason": "El nombre \"BANCO DE MEXICO\" coincide con la entidad \"Bank of Mexico\", que aparece en los candidatos. No hay subdependencia específica, por lo tanto se selecciona el ROR de la institución principal."
   },
   "BENEMERITA ESCUELA NACIONAL DE MAESTROS || SIN INFORMACIÓN": {
     "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "confidence": 15,
+    "reason": "Ninguna de las opciones coincide con el nombre exacto \"Benemérita Escuela Nacional de Maestros\"; los candidatos disponibles son instituciones distintas."
   },
   "BENEMERITA ESCUELA NORMAL VERACRUZANA ENRIQUE C. REBSAMEN || SIN INFORMACIÓN": {
-    "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "best_match_ror": "https://ror.org/03s5v5320",
+    "confidence": 95,
+    "reason": "El nombre coincide exactamente con la primera opción de la lista y no hay otra entidad más específica en el SNII."
   },
   "BENEMERITA ESCUELA NORMAL VERACRUZANA ENRIQUE C. REBSAMEN || UNIDAD DE ESTUDIOS DE POSGRADO": {
-    "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "best_match_ror": "https://ror.org/03s5v5320",
+    "confidence": 95,
+    "reason": "El nombre de la institución coincide exactamente con el candidato ROR proporcionado, por lo que se selecciona ese registro."
   },
   "BENEMERITA UNIVERSIDAD AUTONOMA DE PUEBLA (BUAP) || SIN INFORMACIÓN": {
-    "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "best_match_ror": "https://ror.org/03p2z7827",
+    "confidence": 95,
+    "reason": "El nombre coincide exactamente con la Benemérita Universidad Autónoma de Puebla, que es la institución principal y no hay subdependencia específica con su propio ROR."
   },
   "CENTRO DE ACTUALIZACION DEL MAGISTERIO EN EL D.F. || SIN INFORMACIÓN": {
     "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "confidence": 10,
+    "reason": "Ninguna de las RORs proporcionadas corresponde al nombre \"CENTRO DE ACTUALIZACION DEL MAGISTERIO EN EL D.F.\"; por lo tanto no se puede identificar un registro adecuado."
   },
   "CENTRO DE DISEÑO Y COMUNICACION, S.C. || SIN INFORMACIÓN": {
     "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "confidence": 10,
+    "reason": "No hay registro ROR que coincida con el nombre exacto del centro; los candidatos disponibles son instituciones distintas."
   },
   "CENTRO DE ENSEÑANZA TECNICA INDUSTRIAL || SIN INFORMACIÓN": {
     "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "confidence": 10,
+    "reason": "No hay ninguna entrada en la lista de candidatos que coincida con el nombre \"CENTRO DE ENSEÑANZA TECNICA INDUSTRIAL\" ni con una subdependencia específica. Por lo tanto, no se puede asignar un ROR válido."
   },
   "CENTRO DE INGENIERIA Y DESARROLLO INDUSTRIAL (CIDESI) || SIN INFORMACIÓN": {
     "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "confidence": 10,
+    "reason": "Ninguno de los ROR proporcionados corresponde al nombre \"CENTRO DE INGENIERIA Y DESARROLLO INDUSTRIAL (CIDESI)\" ni a una variante cercana. Por lo tanto, no se puede identificar un registro adecuado con la información disponible."
   },
   "CENTRO DE INNOVACION APLICADA EN TECNOLOGIAS COMPETITIVAS A.C. (CIATEC) || SIN INFORMACIÓN": {
-    "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "best_match_ror": "https://ror.org/039zdhk64",
+    "confidence": 95,
+    "reason": "El nombre coincide exactamente con el de la entidad SNII y no hay variantes ni subdependencias distintas."
   },
   "CENTRO DE INNOVACION APLICADA EN TECNOLOGIAS COMPETITIVAS A.C. (CIATEC) || UNIDAD DE INVESTIGACION Y DESARROLLO": {
     "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "confidence": 10,
+    "reason": "No hay ningún ROR en la lista que corresponda al Centro de Innovación Aplicada en Tecnologías Competitivas (CIATEC) ni a su subdependencia. Por lo tanto, no se puede asignar un registro válido."
   },
   "CENTRO DE INVESTIGACION CIENTIFICA DE YUCATAN, A.C. || SIN INFORMACIÓN": {
-    "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "best_match_ror": "https://ror.org/03znw6w55",
+    "confidence": 95,
+    "reason": "El nombre de la institución coincide exactamente con los candidatos listados; no hay subdependencia con ROR propio."
   },
   "CENTRO DE INVESTIGACION CIENTIFICA Y DE EDUCACION SUPERIOR DE ENSENADA, BAJA CALIFORNIA. || DEPARTAMENTO DE ACUICULTURA": {
-    "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "best_match_ror": "https://ror.org/04znhwb73",
+    "confidence": 95,
+    "reason": "La subdependencia (Departamento de Acuicultura) no tiene un ROR propio; el ROR del centro padre coincide con el nombre y la ubicación."
   },
   "CENTRO DE INVESTIGACION CIENTIFICA Y DE EDUCACION SUPERIOR DE ENSENADA, BAJA CALIFORNIA. || DEPARTAMENTO DE BIOLOGIA DE LA CONSERVACION": {
-    "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "best_match_ror": "https://ror.org/04znhwb73",
+    "confidence": 95,
+    "reason": "La subdependencia (Departamento de Biología de la Conservación) no tiene un ROR propio; el registro más cercano y correcto es el de su institución matriz, el Centro de Investigación Científica y de Educación Superior de Ensenada."
   },
   "CENTRO DE INVESTIGACION CIENTIFICA Y DE EDUCACION SUPERIOR DE ENSENADA, BAJA CALIFORNIA. || DEPARTAMENTO DE BIOTECNOLOGIA": {
-    "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "best_match_ror": "https://ror.org/04znhwb73",
+    "confidence": 90,
+    "reason": "El departamento de Biotecnología no tiene un ROR propio; se utiliza el del centro de investigación."
   },
   "CENTRO DE INVESTIGACION CIENTIFICA Y DE EDUCACION SUPERIOR DE ENSENADA, BAJA CALIFORNIA. || DEPARTAMENTO DE CIENCIAS DE LA COMPUTACION": {
-    "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "best_match_ror": "https://ror.org/04znhwb73",
+    "confidence": 95,
+    "reason": "El único ROR disponible corresponde a la institución principal, y no hay registro de un ROR distinto para el departamento."
   },
   "CENTRO DE INVESTIGACION CIENTIFICA Y DE EDUCACION SUPERIOR DE ENSENADA, BAJA CALIFORNIA. || DEPARTAMENTO DE ECOLOGIA MARINA": {
-    "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "best_match_ror": "https://ror.org/04znhwb73",
+    "confidence": 95,
+    "reason": "El nombre de la institución coincide exactamente con el candidato y no hay registro distinto para la subdependencia."
   },
   "CENTRO DE INVESTIGACION CIENTIFICA Y DE EDUCACION SUPERIOR DE ENSENADA, BAJA CALIFORNIA. || DEPARTAMENTO DE ELECTRONICA Y TELECOMUNICACIONES": {
-    "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "best_match_ror": "https://ror.org/04znhwb73",
+    "confidence": 95,
+    "reason": "El nombre de la institución coincide exactamente con el candidato \"Centro de Investigación Científica y de Educación Superior de Ensenada\". No hay registro ROR distinto para la subdependencia, por lo que se utiliza el ROR de la entidad padre."
   },
   "CENTRO DE INVESTIGACION CIENTIFICA Y DE EDUCACION SUPERIOR DE ENSENADA, BAJA CALIFORNIA. || DEPARTAMENTO DE GEOFISICA APLICADA": {
+    "best_match_ror": "https://ror.org/04znhwb73",
+    "confidence": 95,
+    "reason": "El nombre de la institución coincide exactamente con el candidato listado; no hay ROR distinto para la subdependencia."
+  },
+  "CENTRO DE INVESTIGACION CIENTIFICA Y DE EDUCACION SUPERIOR DE ENSENADA, BAJA CALIFORNIA. || DEPARTAMENTO DE GEOLOGIA": {
+    "best_match_ror": "https://ror.org/04znhwb73",
+    "confidence": 95,
+    "reason": "El nombre de la institución coincide exactamente con el candidato listado; no hay registro distinto para la subdependencia."
+  },
+  "CENTRO DE INVESTIGACION CIENTIFICA Y DE EDUCACION SUPERIOR DE ENSENADA, BAJA CALIFORNIA. || DEPARTAMENTO DE MICROBIOLOGIA EXPERIMENTAL": {
+    "best_match_ror": "https://ror.org/04znhwb73",
+    "confidence": 95,
+    "reason": "El nombre de la institución coincide exactamente con el candidato \"Centro de Investigación Científica y de Educación Superior de Ensenada\". No hay registro ROR distinto para el departamento, por lo que se utiliza el ROR de la entidad padre."
+  },
+  "CENTRO DE INVESTIGACION CIENTIFICA Y DE EDUCACION SUPERIOR DE ENSENADA, BAJA CALIFORNIA. || DEPARTAMENTO DE OCEANOGRAFIA BIOLOGICA": {
+    "best_match_ror": "https://ror.org/04znhwb73",
+    "confidence": 95,
+    "reason": "El nombre de la institución coincide exactamente con el candidato listado; no hay registro distinto para la subdependencia."
+  },
+  "CENTRO DE INVESTIGACION CIENTIFICA Y DE EDUCACION SUPERIOR DE ENSENADA, BAJA CALIFORNIA. || DEPARTAMENTO DE OCEANOGRAFIA FISICA": {
+    "best_match_ror": "https://ror.org/04znhwb73",
+    "confidence": 95,
+    "reason": "El nombre coincide exactamente con el de la institución principal y no hay registro ROR distinto para la subdependencia."
+  },
+  "CENTRO DE INVESTIGACION CIENTIFICA Y DE EDUCACION SUPERIOR DE ENSENADA, BAJA CALIFORNIA. || DEPARTAMENTO DE OPTICA": {
+    "best_match_ror": "https://ror.org/04znhwb73",
+    "confidence": 95,
+    "reason": "El nombre de la institución coincide exactamente con el candidato \"Centro de Investigación Científica y de Educación Superior de Ensenada\". No hay registro separado para el departamento de Óptica, por lo que se utiliza el ROR del centro."
+  },
+  "CENTRO DE INVESTIGACION CIENTIFICA Y DE EDUCACION SUPERIOR DE ENSENADA, BAJA CALIFORNIA. || DEPARTAMENTO DE SISMOLOGIA": {
+    "best_match_ror": "https://ror.org/04znhwb73",
+    "confidence": 95,
+    "reason": "El nombre de la institución coincide exactamente con el candidato \"Centro de Investigación Científica y de Educación Superior de Ensenada\". No existe un ROR distinto para la subdependencia, por lo que se utiliza el del padre."
+  },
+  "CENTRO DE INVESTIGACION CIENTIFICA Y DE EDUCACION SUPERIOR DE ENSENADA, BAJA CALIFORNIA. || SIN INFORMACIÓN": {
+    "best_match_ror": "https://ror.org/04znhwb73",
+    "confidence": 95,
+    "reason": "El nombre de la institución coincide exactamente con el candidato \"Centro de Investigación Científica y de Educación Superior de Ensenada\". No hay subdependencia con su propio ROR, por lo que se selecciona el ROR del padre."
+  },
+  "CENTRO DE INVESTIGACION E INNOVACION EN TECNOLOGIAS DE LA INFORMACION Y COMUNICACION (INFOTEC) || SIN INFORMACIÓN": {
     "best_match_ror": null,
-    "confidence": 0,
-    "reason": "Error parsing LLM response"
+    "confidence": 10,
+    "reason": "No hay ninguna entidad en la lista que corresponda al Centro de Investigación e Innovación en Tecnologías de la Información y Comunicación (INFOTEC). Por lo tanto, no se puede asignar un ROR con confianza."
+  },
+  "CENTRO DE INVESTIGACION EN ALIMENTACION Y DESARROLLO A.C. (CIAD) || SIN INFORMACIÓN": {
+    "best_match_ror": "https://ror.org/015v43a21",
+    "confidence": 95,
+    "reason": "El nombre de la entidad coincide exactamente con el candidato \"Centro de Investigación en Alimentación y Desarrollo\"."
+  },
+  "CENTRO DE INVESTIGACION EN CIENCIAS DE INFORMACION GEOESPACIAL, A.C. || SIN INFORMACIÓN": {
+    "best_match_ror": "https://ror.org/017rjh121",
+    "confidence": 95,
+    "reason": "El nombre de la institución coincide exactamente con el candidato \"Centro de Investigación en Ciencias de Información Geoespacial\" y su URL es idéntica. No hay otra entidad con un nombre similar ni una subdependencia distinta, por lo que se selecciona este ROR."
+  },
+  "CENTRO DE INVESTIGACION EN MATEMATICAS, A.C. (CIMAT) || CIENCIAS DE LA COMPUTACION": {
+    "best_match_ror": null,
+    "confidence": 10,
+    "reason": "No hay registro ROR correspondiente al Centro de Investigación en Matemáticas (CIMAT) ni a su subdependencia 'Ciudades de la Computación' en la lista proporcionada."
+  },
+  "CENTRO DE INVESTIGACION EN MATEMATICAS, A.C. (CIMAT) || COORDINACION DE SERVICIOS TECNOLOGICOS": {
+    "best_match_ror": null,
+    "confidence": 10,
+    "reason": "No hay ninguna entidad del SNII que coincida con el Centro de Investigación en Matemáticas (CIMAT) ni con su subdependencia; por lo tanto, no se puede asignar un ROR válido."
+  },
+  "CENTRO DE INVESTIGACION EN MATEMATICAS, A.C. (CIMAT) || DEPARTAMENTO DE CIENCIAS DE LA COMPUTACION": {
+    "best_match_ror": null,
+    "confidence": 20,
+    "reason": "No hay coincidencia directa con el nombre del Centro de Investigación en Matemáticas (CIMAT) ni con su departamento de Ciencias de la Computación entre los ROR proporcionados."
+  },
+  "CENTRO DE INVESTIGACION EN MATEMATICAS, A.C. (CIMAT) || MATEMATICAS APLICADAS": {
+    "best_match_ror": null,
+    "confidence": 10,
+    "reason": "No hay coincidencia directa con el nombre del Centro de Investigación en Matemáticas (CIMAT) ni con su subdependencia. Los candidatos listados corresponden a otras instituciones."
+  },
+  "CENTRO DE INVESTIGACION EN MATEMATICAS, A.C. (CIMAT) || MATEMATICAS BASICAS": {
+    "best_match_ror": null,
+    "confidence": 10,
+    "reason": "La lista de candidatos no contiene ninguna entidad con el nombre o variante del Centro de Investigación en Matemáticas (CIMAT). Por lo tanto, no se puede asignar un ROR válido."
   }
 }
