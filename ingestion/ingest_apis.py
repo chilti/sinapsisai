@@ -262,7 +262,7 @@ def obtener_metadatos_de_orcid(orcid_url):
 
 # --- Lógica principal de ingesta ---
 
-def process_and_ingest_academics(json_path, force=False, force_local=False, target_name=None):
+def process_and_ingest_academics(json_path, force=False, force_local=False, target_name=None, is_snii=False, limit_acads=None):
     if not os.path.exists(json_path):
         print(f"No se encontró el archivo: {json_path}")
         return
@@ -270,10 +270,16 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
     with open(json_path, 'r', encoding='utf-8') as f:
         academicos = json.load(f)
 
+    count = 0
     for academic_name, data in academicos.items():
+        if limit_acads and count >= limit_acads:
+            print(f"🛑 Límite de {limit_acads} académicos alcanzado para este archivo.")
+            break
+            
         if target_name and target_name.lower() not in academic_name.lower():
             continue
             
+        count += 1
         original_name = data.get('original_name', academic_name)
         entity_name = data.get('entity', 'UNAM')
         
@@ -288,7 +294,13 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
         if hasattr(graph_store, 'check_academic_exists') and graph_store.check_academic_exists(academic_name) and not force:
             print(f"\n[{academic_name}] Ya existe en Neo4j. Saltando recopilación API y agregando afiliación a '{entity_name}'.")
             graph_store.add_academic_affiliation(academic_name, entity_name)
+            if is_snii:
+                graph_store.set_academic_snii(academic_name, True)
             continue
+
+        if is_snii:
+            print(f"🧬 [{academic_name}] Marcando como SNII...")
+            graph_store.set_academic_snii(academic_name, True)
 
         scopus_id = data.get('scopus', [])
         orcid = data.get('orcid', '')
@@ -544,41 +556,68 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
         except Exception as e:
             print(f"  ❌ Error generando vectores para {academic_name}: {e}")
 
+
 if __name__ == "__main__":
-    base_json = os.path.join(os.path.dirname(__file__), "profesores_Instituto_de_Ciencias_Nucleares.json")
-    force_run = False
-    force_local = False
-    target_name = None
+    import argparse
     
-    # Parseo manual para soportar --name "Nombre"
-    args = []
-    i = 1
-    while i < len(sys.argv):
-        arg = sys.argv[i]
-        if arg == "--name" and i + 1 < len(sys.argv):
-            target_name = sys.argv[i+1]
-            i += 2
-        elif arg.startswith("--"):
-            i += 1
-        else:
-            args.append(arg)
-            i += 1
+    parser = argparse.ArgumentParser(description="Ingesta de metadatos desde APIs para académicos UNAM-SNII")
+    parser.add_argument("input", nargs="?", help="Archivo JSON o DIRECTORIO a procesar")
+    parser.add_argument("--subdependency", type=str, help="Filtrar archivos por nombre de subdependencia")
+    parser.add_argument("--limit_acads", type=int, help="Límite de académicos por entidad (pruebas)")
+    parser.add_argument("--name", type=str, help="Filtrar por un académico específico")
+    parser.add_argument("--force", action="store_true", help="Re-ingestar académicos existentes")
+    parser.add_argument("--local", action="store_true", help="Usar SDK nativa de lmstudio para embeddings")
+    
+    args = parser.parse_args()
+    
+    # Directorio base por defecto
+    unam_data_dir = os.path.join("data", "UNAM")
+    
+    input_paths = []
+    
+    if args.input:
+        if os.path.isfile(args.input):
+            input_paths = [args.input]
+        elif os.path.isdir(args.input):
+            # Escanear directorio proporcionado
+            input_paths = [os.path.join(args.input, f) for f in os.listdir(args.input) if f.startswith("profesores_SNII_") and f.endswith(".json")]
+    else:
+        # Escaneo automático del directorio estándar
+        if os.path.exists(unam_data_dir):
+            input_paths = [os.path.join(unam_data_dir, f) for f in os.listdir(unam_data_dir) if f.startswith("profesores_SNII_") and f.endswith(".json")]
+    
+    # Filtrar por subdependencia si se solicita
+    if args.subdependency:
+        input_paths = [p for p in input_paths if args.subdependency.lower() in p.lower()]
+        print(f"🔎 Filtrando archivos por '{args.subdependency}': {len(input_paths)} encontrados.")
+    
+    if not input_paths:
+        print("❌ No se encontraron archivos para procesar. Verifica el directorio 'data/UNAM/'.")
+        sys.exit(1)
+        
+    print(f"🚀 Iniciando procesamiento de {len(input_paths)} archivos de entidad...")
+    
+    try:
+        for json_file in input_paths:
+            print(f"\n📂 ************************************************************")
+            print(f"📂 PROCESANDO ENTIDAD: {os.path.basename(json_file)}")
+            print(f"📂 ************************************************************")
             
-    flags = [a for a in sys.argv[1:] if a.startswith("--") and not a == "--name"]
-    
-    if len(args) > 0:
-        base_json = args[0]
-        
-    if "--force" in flags:
-        force_run = True
-        print("⚠️ Flag --force detectada: Se reescribirá la información de académicos existentes.")
-        
-    if "--local" in flags:
-        force_local = True
-        print("⚠️ Flag --local detectada: Usando SDK nativa de lmstudio para embeddings.")
-        
-    if target_name:
-        print(f"🔎 Filtrando ejecución solo para el académico que coincida con: '{target_name}'")
-        
-    process_and_ingest_academics(base_json, force=force_run, force_local=force_local, target_name=target_name)
-    print("\n🎉 Proceso global de ingesta de APIs completado.")
+            # Detectar si es SNII por el nombre del archivo
+            is_snii_file = "SNII" in os.path.basename(json_file)
+            
+            # Reutilizamos la lógica existente pero con el límite si existe
+            process_and_ingest_academics(
+                json_file, 
+                force=args.force, 
+                force_local=args.local, 
+                target_name=args.name,
+                is_snii=is_snii_file,
+                limit_acads=args.limit_acads
+            )
+            
+    except KeyboardInterrupt:
+        print("\n🛑 Proceso interrumpido por el usuario.")
+    finally:
+        print("\n🎉 Proceso global de ingesta de APIs completado.")
+        graph_store.close()

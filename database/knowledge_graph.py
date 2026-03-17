@@ -324,6 +324,18 @@ class Neo4jGraphStore:
             except Exception as e:
                 return False
 
+    def set_academic_snii(self, academic_name: str, is_snii: bool = True):
+        """
+        Establece o remueve la etiqueta SNII a un académico.
+        """
+        label_action = "SET a:SNII, a.is_snii = true" if is_snii else "REMOVE a:SNII SET a.is_snii = false"
+        query = f"MERGE (a:Academic {{id: $name}}) SET a.name = $name {label_action}"
+        with self.driver.session() as session:
+            try:
+                session.run(query, name=academic_name)
+            except Exception as e:
+                print(f"Error marcando SNII para {academic_name}: {e}")
+
     def get_database_statistics(self) -> dict:
         """Obtiene un resumen de la cantidad de nodos por etiqueta y relaciones en el grafo."""
         stats = {"nodes": {}, "relationships": 0}
