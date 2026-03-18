@@ -123,7 +123,7 @@ class Neo4jGraphStore:
         WITH p, author, a
         UNWIND (CASE WHEN author.institutions IS NOT NULL THEN author.institutions ELSE [] END) AS inst
         MERGE (i:Institution {id: inst.id})
-        SET i.name = inst.name
+        SET i.name = inst.name, i:Entity
         MERGE (a)-[:AFFILIATED_WITH]->(i)
         
         WITH p
@@ -216,8 +216,8 @@ class Neo4jGraphStore:
             params["doi"] = str(uuid.uuid4())
 
         query = """
-        MERGE (a:Academic:Author {id: $academic_name})
-        SET a.name = $academic_name
+        MERGE (a:Author {id: $academic_name})
+        SET a:Academic, a.name = $academic_name
         WITH a
         CALL (a) {
             WITH a WHERE $orcid IS NOT NULL
@@ -317,7 +317,8 @@ class Neo4jGraphStore:
             return
 
         query = """
-        MERGE (e:Entity:Institution {name: $entity_name})
+        MERGE (e:Entity {name: $entity_name})
+        SET e:Institution
         WITH e
         MATCH (p:Paper {doi: $doi})
         MERGE (e)-[:HAS_PAPER]->(p)
@@ -353,9 +354,10 @@ class Neo4jGraphStore:
         Vincula un Academic con un Entity institucional.
         """
         query = """
-        MERGE (e:Entity:Institution {name: $entity_name})
+        MERGE (e:Entity {name: $entity_name})
+        SET e:Institution
         WITH e
-        MATCH (a:Academic:Author {name: $academic_name})
+        MATCH (a:Author {id: $academic_name})
         MERGE (a)-[:AFFILIATED_TO]->(e)
         """
         with self.driver.session() as session:
@@ -374,12 +376,13 @@ class Neo4jGraphStore:
             return
 
         query = """
-        MERGE (i:Entity:Institution {name: $inst_name})
+        MERGE (i:Entity {name: $inst_name})
+        SET i:Institution
         MERGE (s:Entity {name: $sub_name})
         SET s:Subdependency
         MERGE (s)-[:PART_OF]->(i)
         WITH s, i
-        MATCH (a:Academic {name: $academic_name})
+        MATCH (a:Author {id: $academic_name})
         MERGE (a)-[:AFFILIATED_TO]->(s)
         MERGE (a)-[:AFFILIATED_TO]->(i)
         """
@@ -407,7 +410,7 @@ class Neo4jGraphStore:
         Establece o remueve la etiqueta SNII a un académico.
         """
         label_action = "SET a:SNII, a.is_snii = true" if is_snii else "REMOVE a:SNII SET a.is_snii = false"
-        query = f"MERGE (a:Academic {{id: $name}}) SET a.name = $name {label_action}"
+        query = f"MERGE (a:Author {{id: $name}}) SET a:Academic, a.name = $name {label_action}"
         with self.driver.session() as session:
             try:
                 session.run(query, name=academic_name)
