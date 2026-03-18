@@ -22,6 +22,8 @@ milvus_data/
 
 data/
 ingestion/*.json
+ROR/*.json
+SNII/*.json
 old_code/
 reports/
 *.log
