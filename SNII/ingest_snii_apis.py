@@ -22,6 +22,7 @@ except AttributeError:
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.vector_store import QdrantStore
 from database.knowledge_graph import Neo4jGraphStore
+from ingestion import openalex_utils
 
 # Es preferible que inicialice si están las librerías
 try:
@@ -254,22 +255,10 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
         for doi, record in meta_unificada.items():
             text_for_embedding = f"Title: {record.get('Title')}\n"
             
-            # OpenAlex enrichment
+            # OpenAlex enrichment (con fallback local)
             try:
-                work = None
                 _doi_clean = doi if not doi.startswith('orcid-work:') else None
-                if _doi_clean:
-                    time.sleep(0.05)
-                    try:
-                        work = pyalex.Works()["https://doi.org/" + _doi_clean]
-                    except: pass
-                
-                if not work and len(record.get('Title', '')) > 20:
-                    s_resp = http_client.get("https://api.openalex.org/works", params={"search": record['Title'], "mailto": pyalex.config.email})
-                    if s_resp.status_code == 200:
-                        results = s_resp.json().get('results', [])
-                        if results and _clean_t(record['Title']) == _clean_t(results[0].get('title')):
-                            work = results[0]
+                work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'))
 
                 if work:
                     authorships = work.get('authorships', [])

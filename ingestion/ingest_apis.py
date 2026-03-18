@@ -23,6 +23,7 @@ except AttributeError:
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.vector_store import QdrantStore
 from database.knowledge_graph import Neo4jGraphStore
+from ingestion import openalex_utils
 
 # Es preferible que inicialice si están las librerías
 try:
@@ -349,41 +350,17 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
             record = base_metadata.copy()
             text_for_embedding = f"Title: {record.get('Title')}\n"
             
-            # Enriquecemos con OpenAlex (normaliza DOI, guarda orcid-work: papers sin lookup)
+            # Enriquecemos con OpenAlex (normaliza DOI, guarda orcid-work: papers sin lookup) usando fallback local
             try:
                 _doi_clean = (doi.replace('https://doi.org/', '')
                                  .replace('http://doi.org/',   '')
                                  .replace('https://dx.doi.org/', '')
                                  .strip('/') if doi and not doi.startswith('orcid-work:') else None)
                 
-                work = None
-                if _doi_clean:
-                    time.sleep(0.1)
-                    print(f"    Consultando OpenAlex para {_doi_clean}...")
-                    try:
-                        work = pyalex.Works()["https://doi.org/" + _doi_clean]
-                    except Exception as e:
-                        pass # Fallarán a intento por título abajo
-                
-                # ==== FALLBACK POR TÍTULO (Aplica si falló DOI o si no tenía DOI) ====
-                if not work:
-                    title_query = record.get('Title')
-                    if title_query and len(title_query) > 20:
-                        s_resp = http_client.get("https://api.openalex.org/works", params={"search": title_query, "mailto": pyalex.config.email})
-                        if s_resp.status_code == 200:
-                            results = s_resp.json().get('results', [])
-                            if results:
-                                candidate = results[0]
-                                cand_title = candidate.get('title') or ""
-                                def _clean(t): return "".join(c for c in str(t).lower() if c.isalnum())
-                                if _clean(title_query) == _clean(cand_title):
-                                    work = candidate
-                                    print(f"      ✅ Recuperado vía fallback de Título Exacto: {work.get('id')}")
-                        elif s_resp.status_code == 429 or s_resp.status_code == 403:
-                            print(f"      [!] API BLOQUEADA (Fallback) {s_resp.status_code}: Rate limit excedido. Omitiendo OpenAlex para este paper...")
+                work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'))
                 
                 if not work:
-                    raise ValueError("No encontrado o API bloqueada (ni por DOI ni por Título Exacto)")
+                    raise ValueError("No encontrado ni en API Oficial ni en API Local")
 
                 authorships = work.get('authorships', [])
                 record['Authors'] = "; ".join([au['author']['display_name'] for au in authorships])

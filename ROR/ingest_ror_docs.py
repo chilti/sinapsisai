@@ -12,6 +12,7 @@ import time
 import httpx
 import pyalex
 from dotenv import load_dotenv
+from ingestion import openalex_utils
 
 # Configuración utf-8
 try:
@@ -86,14 +87,32 @@ class RORIngestor:
         try:
             works_query = pyalex.Works().filter(institutions={"ror": ror_id})
             total_works = works_query.count()
-            print(f"   -> Encontrados {total_works} trabajos en OpenAlex.")
-            
+            print(f"   -> Encontrados {total_works} trabajos en OpenAlex (API Oficial).")
+        except Exception as e:
+            print(f"   ⚠️ API Oficial falló o bloqueada ({e}). Intentando API Local (127.0.0.1:5009)...")
+            # Guardar original
+            original_url = pyalex.config.api_url
+            try:
+                pyalex.config.api_url = "http://127.0.0.1:5009"
+                works_query = pyalex.Works().filter(institutions={"ror": ror_id})
+                total_works = works_query.count()
+                print(f"   -> Encontrados {total_works} trabajos en OpenAlex (API Local).")
+            except Exception as e2:
+                print(f"   ❌ Error final consultando OpenAlex (Local): {e2}")
+                # Restaurar y salir
+                pyalex.config.api_url = original_url
+                return
+            # Se queda con el api_url local para la paginación de abajo
+
+        try:
             # Procesar por lotes (ej. 100)
             for page in works_query.paginate(per_page=100):
                 self._process_works_batch(page, institution_name, subdependency_name)
-                
         except Exception as e:
-            print(f"   ❌ Error consultando OpenAlex para {ror_id}: {e}")
+            print(f"   ❌ Error durante la paginación de OpenAlex: {e}")
+        finally:
+            # Restaurar URL original tras procesar
+            pyalex.config.api_url = "https://api.openalex.org"
 
     def _process_works_batch(self, works, inst_name, sub_name):
         batch_payloads = []

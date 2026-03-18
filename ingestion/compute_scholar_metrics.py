@@ -151,8 +151,8 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
 
     if academic_filter:
         print(f"  -> Filtrando por Académico: {academic_filter} (Fuente: {source_filter})")
-        query = f"""
-        MATCH (a:Academic {{name: $academic}})-[:AUTHORED]->(p{label_filter})
+        query = """
+        MATCH (a:Academic {name: $academic})-[:AUTHORED]->(p{label_filter})
         OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
         OPTIONAL MATCH (a)-[:AFFILIATED_WITH]->(i:Institution)
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
@@ -173,14 +173,14 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                p.year AS year,
                p.citations AS citations,
                p.raw_metadata AS raw_metadata,
-               collect(DISTINCT {{id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}}) AS sdgs,
-               collect(DISTINCT {{topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}}) AS graph_topics
-        """
+               collect(DISTINCT {id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs,
+               collect(DISTINCT {topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}) AS graph_topics
+        """.replace("{label_filter}", label_filter)
         params = {"academic": academic_filter}
     elif entity_filter:
         print(f"  -> Filtrando por Entidad (Investigadores): {entity_filter} (Fuente: {source_filter})")
-        query = f"""
-        MATCH (e:Entity {{name: $entity}})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p{label_filter})
+        query = """
+        MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p{label_filter})
         OPTIONAL MATCH (a)-[:AFFILIATED_WITH]->(i:Institution)
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
@@ -200,13 +200,13 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                p.year AS year,
                p.citations AS citations,
                p.raw_metadata AS raw_metadata,
-               collect(DISTINCT {{id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}}) AS sdgs,
-               collect(DISTINCT {{topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}}) AS graph_topics
-        """
+               collect(DISTINCT {id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs,
+               collect(DISTINCT {topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}) AS graph_topics
+        """.replace("{label_filter}", label_filter)
         params = {"entity": entity_filter}
     else:
         print(f"  -> Procesando todos los académicos (Fuente: {source_filter})")
-        query = f"""
+        query = """
         MATCH (a:Academic)-[:AUTHORED]->(p{label_filter})
         OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
         OPTIONAL MATCH (a)-[:AFFILIATED_WITH]->(i:Institution)
@@ -228,9 +228,9 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                p.year AS year,
                p.citations AS citations,
                p.raw_metadata AS raw_metadata,
-               collect(DISTINCT {{id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}}) AS sdgs,
-               collect(DISTINCT {{topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}}) AS graph_topics
-        """
+               collect(DISTINCT {id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs,
+               collect(DISTINCT {topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}) AS graph_topics
+        """.replace("{label_filter}", label_filter)
         params = {}
     
     records = []
@@ -428,8 +428,8 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
 
     if entity_filter:
         print(f"  -> Filtrando por Entidad (Papers): {entity_filter} (Fuente: {source_filter})")
-        query = f"""
-        MATCH (e:Entity {{name: $entity}})
+        query = """
+        MATCH (e:Entity {name: $entity})
         OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AFFILIATED_WITH]->(i:Institution)
         OPTIONAL MATCH (e)-[:HAS_PAPER]->(p:Paper{label_filter})
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
@@ -440,12 +440,12 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
                p.year AS year,
                p.citations AS citations,
                p.raw_metadata AS raw_metadata,
-               collect({{id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}}) AS sdgs
-        """
+               collect({id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs
+        """.replace("{label_filter}", label_filter)
         params = {"entity": entity_filter}
     else:
         print(f"  -> Procesando todas las entidades (Fuente: {source_filter})")
-        query = f"""
+        query = """
         MATCH (e:Entity)-[:HAS_PAPER]->(p:Paper{label_filter})
         OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AFFILIATED_WITH]->(i:Institution)
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
@@ -456,8 +456,8 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
                p.year AS year,
                p.citations AS citations,
                p.raw_metadata AS raw_metadata,
-               collect({{id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}}) AS sdgs
-        """
+               collect({id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs
+        """.replace("{label_filter}", label_filter)
         params = {}
         
     records = []

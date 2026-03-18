@@ -19,6 +19,7 @@ from database.vector_store import QdrantStore
 from database.knowledge_graph import Neo4jGraphStore
 from langchain_openai import OpenAIEmbeddings
 import pyalex
+from ingestion import openalex_utils
 
 pyalex.config.email = "test@example.com"
 
@@ -115,18 +116,9 @@ class EntityDocsIngestor:
         texts_to_embed = []
         payloads = []
         
-        # 1. Traer datos de OpenAlex en lote
+        # 1. Traer datos de OpenAlex en lote (con fallback local)
         dois_in_batch = [rec.get('doi') for rec in filtered_batch if rec.get('doi')]
-        openalex_data = {}
-        if dois_in_batch:
-            try:
-                doi_query = "|".join([f"https://doi.org/{d}" for d in dois_in_batch])
-                works = pyalex.Works().filter(doi=doi_query).get()
-                for w in works:
-                    if w.get('doi'):
-                        openalex_data[w['doi'].replace("https://doi.org/", "").lower()] = w
-            except Exception as e:
-                pass
+        openalex_data = openalex_utils.get_works_batch(dois_in_batch)
                 
         for record in filtered_batch:
             doi = record.get('doi', '').lower()
