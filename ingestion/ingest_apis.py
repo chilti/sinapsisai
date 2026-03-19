@@ -515,18 +515,21 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
         graph_store.add_academic_full_affiliation(academic_name, "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", entity_name)
             
         # Ingesta en Qdrant por lotes de este académico para no saturar al LLM
-        print(f"  -> Vectorizando {len(batch_texts)} textos de artículos e insertando en 'api_papers'...")
-        try:
-            # Por limitaciones de tamaño del LLM embebedor, vamos de 32 en 32
-            embeddings = []
-            for i in range(0, len(batch_texts), 32):
-                batch_subset = batch_texts[i:i+32]
-                embeddings.extend(get_embeddings(batch_subset, force_local=force_local))
-                
-            vector_store.add_documents(batch_payloads, embeddings)
-            print(f"  ✅ Guardado en Qdrant y Neo4j exitosamente para {academic_name}.")
-        except Exception as e:
-            print(f"  ❌ Error generando vectores para {academic_name}: {e}")
+        if batch_texts:
+            print(f"  -> Vectorizando {len(batch_texts)} textos de artículos e insertando en 'api_papers'...")
+            try:
+                # Por limitaciones de tamaño del LLM embebedor, vamos de 32 en 32
+                embeddings = []
+                for i in range(0, len(batch_texts), 32):
+                    batch_subset = batch_texts[i:i+32]
+                    embeddings.extend(get_embeddings(batch_subset, force_local=force_local))
+                    
+                vector_store.add_documents(batch_payloads, embeddings)
+                print(f"  ✅ Guardado en Qdrant y Neo4j exitosamente para {academic_name}.")
+            except Exception as e:
+                print(f"  ❌ Error generando vectores para {academic_name}: {e}")
+        else:
+            print(f"  📍 Vectorización omitida (0 artículos nuevos). Guardado en Neo4j OK para {academic_name}.")
 
 
 if __name__ == "__main__":
