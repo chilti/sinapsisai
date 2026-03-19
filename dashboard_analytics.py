@@ -103,9 +103,13 @@ def get_institution_hierarchy():
     
     try:
         with store.driver.session() as session:
-            # 1. Intentar obtener relaciones explícitas (Academic -> Entity & Academic -> Institution)
+            # 1. Intentar obtener relaciones jerárquicas directas (Subdependency -> Institution)
             query = """
-            MATCH (e:Entity)<-[:AFFILIATED_TO]-(a:Academic)-[:AFFILIATED_WITH]->(i:Institution)
+            MATCH (e:Entity)-[:PART_OF]->(i:Institution)
+            RETURN DISTINCT i.name as institution, e.name as entity
+            UNION
+            MATCH (e:Entity)<-[:AFFILIATED_TO]-(a:Academic)-[:AFFILIATED_TO]->(i:Institution)
+            WHERE e.name <> i.name AND NOT e:Institution
             RETURN DISTINCT i.name as institution, e.name as entity
             """
             res = session.run(query)
