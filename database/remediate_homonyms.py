@@ -4,10 +4,16 @@ import json
 
 # Añadir el directorio raíz al path para importar los módulos
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except AttributeError:
+    pass
+
 from database.knowledge_graph import Neo4jGraphStore
 
 def run_migration():
-    print("🚀 Iniciando remediación de homónimos y migración de IDs robustos...")
+    print("Iniciando remediación de homónimos y migración de IDs robustos...")
     graph = Neo4jGraphStore()
     
     with graph.driver.session() as session:
@@ -40,35 +46,42 @@ def run_migration():
             
             print(f"  -> Migrando: '{name}' ({old_id}) => {new_id}")
             
-            # Migración manual de relaciones para evitar dependencia de APOC
+            # 1. Obtener todas las propiedades actuales
+            props_res = session.run("MATCH (a:Author {id: $old_id}) RETURN properties(a) as props", old_id=old_id)
+            p_rec = props_res.single()
+            if not p_rec: continue
+            props = dict(p_rec['props'])
+            if 'id' in props: del props['id']
+            
+            # 2. Migración manual de relaciones para evitar dependencia de APOC
             rels = ["AUTHORED", "AFFILIATED_WITH", "AFFILIATED_TO"]
             for rel in rels:
                 # Relaciones salientes
                 session.run(f"""
                     MATCH (old:Author {{id: $old_id}})-[r:{rel}]->(target)
                     MERGE (new:Author {{id: $new_id}})
-                    SET new.name = $name
-                    MERGE (new)-[:{rel}]->(target)
+                    MERGE (new)-[nr:{rel}]->(target)
+                    SET nr = r
                     DELETE r
-                """, old_id=old_id, new_id=new_id, name=name)
+                """, old_id=old_id, new_id=new_id)
                 
                 # Relaciones entrantes
                 session.run(f"""
                     MATCH (source)-[r:{rel}]->(old:Author {{id: $old_id}})
                     MERGE (new:Author {{id: $new_id}})
-                    SET new.name = $name
-                    MERGE (source)-[:{rel}]->(new)
+                    MERGE (source)-[nr:{rel}]->(new)
+                    SET nr = r
                     DELETE r
-                """, old_id=old_id, new_id=new_id, name=name)
+                """, old_id=old_id, new_id=new_id)
             
-            # Copiar todas las propiedades restantes y borrar el viejo
+            # 3. Aplicar propiedades al nuevo y borrar viejo
             session.run("""
                 MATCH (old:Author {id: $old_id})
                 MERGE (new:Author {id: $new_id})
-                SET new += old
-                SET new.id = $new_id
+                SET new += $props
+                SET new:Academic
                 DETACH DELETE old
-            """, old_id=old_id, new_id=new_id)
+            """, old_id=old_id, new_id=new_id, props=props)
 
         # --- PASO 2: Identificar y marcar potenciales homónimos (Nombre@Entidad) ---
         print("\nStep 2: Buscando autores que deberían diferenciarse por Entidad (homónimos potenciales)...")
@@ -90,24 +103,39 @@ def run_migration():
             new_id = f"{name}@{ent}"
             print(f"  -> Refinando ID: '{name}' => {new_id}")
             
-            # Similar a antes, movemos relaciones
+            # 1. Obtener propiedades
+            props_res = session.run("MATCH (a:Author {id: $old_id}) RETURN properties(a) as props", old_id=name)
+            p_rec = props_res.single()
+            if not p_rec: continue
+            props = dict(p_rec['props'])
+            if 'id' in props: del props['id']
+            
+            # 2. Mover relaciones
             rels = ["AUTHORED", "AFFILIATED_WITH", "AFFILIATED_TO"]
             for rel in rels:
                 session.run(f"""
                     MATCH (old:Author {{id: $old_id}})-[r:{rel}]->(target)
                     MERGE (new:Author {{id: $new_id}})
-                    SET new.name = $name
-                    MERGE (new)-[:{rel}]->(target)
+                    MERGE (new)-[nr:{rel}]->(target)
+                    SET nr = r
                     DELETE r
-                """, old_id=name, new_id=new_id, name=name)
+                """, old_id=name, new_id=new_id)
+                session.run(f"""
+                    MATCH (source)-[r:{rel}]->(old:Author {{id: $old_id}})
+                    MERGE (new:Author {{id: $new_id}})
+                    MERGE (source)-[nr:{rel}]->(new)
+                    SET nr = r
+                    DELETE r
+                """, old_id=name, new_id=new_id)
             
+            # 3. Finalizar nodo
             session.run("""
                 MATCH (old:Author {id: $old_id})
                 MERGE (new:Author {id: $new_id})
-                SET new += old
-                SET new.id = $new_id
+                SET new += $props
+                SET new:Academic
                 DETACH DELETE old
-            """, old_id=name, new_id=new_id)
+            """, old_id=name, new_id=new_id, props=props)
 
     print("\n✅ Migración completada. La base de datos ahora usa IDs robustos.")
     graph.close()
