@@ -270,7 +270,13 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
             # OpenAlex enrichment (con fallback local)
             try:
                 _doi_clean = doi if not doi.startswith('orcid-work:') else None
-                work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'))
+                
+                # OPT: Si el paper ya existe en Neo4j, saltamos el enriquecimiento API costoso.
+                if _doi_clean and graph_store.check_paper_exists(_doi_clean):
+                    print(f"      📍 Paper {_doi_clean} ya existe en el grafo. Saltando OpenAlex...")
+                    work = None
+                else:
+                    work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'))
 
                 if work:
                     authorships = work.get('authorships', [])

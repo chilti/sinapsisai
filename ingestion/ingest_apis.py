@@ -357,127 +357,119 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                                  .replace('https://dx.doi.org/', '')
                                  .strip('/') if doi and not doi.startswith('orcid-work:') else None)
                 
-                work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'))
-                
-                if not work:
+                # OPT: Si el paper ya existe en Neo4j, saltamos el enriquecimiento API costoso. 
+                # Solo queremos asegurar la relación con el nuevo académico.
+                if _doi_clean and graph_store.check_paper_exists(_doi_clean):
+                    print(f"      📍 Paper {_doi_clean} ya existe en el grafo. Saltando OpenAlex...")
+                    work = None
+                else:
+                    work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'))
+                    
+                if not work and not (_doi_clean and graph_store.check_paper_exists(_doi_clean)):
                     raise ValueError("No encontrado ni en API Oficial ni en API Local")
 
-                authorships = work.get('authorships', [])
-                record['Authors'] = "; ".join([au['author']['display_name'] for au in authorships])
-                record['Keywords_oa'] = "; ".join([kw['display_name'] for kw in work.get('keywords', [])])
-                record['Abstract_oa'] = deconstruct_abstract(work.get('abstract_inverted_index'))
-                record['openalex_url'] = work.get('id')  # ej: https://openalex.org/W2741809807
-                record['Title'] = work.get('title')
-                #print(record.get("Title"))
-                
-                if record['Abstract_oa']:
-                    record['Abstract'] = record['Abstract_oa']
+                if work:
+                    authorships = work.get('authorships', [])
+                    record['Authors'] = "; ".join([au['author']['display_name'] for au in authorships])
+                    record['Keywords_oa'] = "; ".join([kw['display_name'] for kw in work.get('keywords', [])])
+                    record['Abstract_oa'] = deconstruct_abstract(work.get('abstract_inverted_index'))
+                    record['openalex_url'] = work.get('id')
+                    record['Title'] = work.get('title')
                     
-                record['Cited_by'] = work.get('cited_by_count', record.get('Cited_by', 0))
-                #print(record.get("Cited_by"))
-                # ── KPIs de impacto ────────────────────────────────────────────
-                record['fwci'] = work.get('fwci', None)
-                record['open_access'] = work.get('open_access', {})
-                if work.get('citation_normalized_percentile'):
-                    perc_data = work['citation_normalized_percentile']
-                    record['citation_normalized_percentile'] = perc_data.get('value', 0.0)
-                    record['is_in_top_1_percent']  = perc_data.get('is_in_top_1_percent', False)
-                    record['is_in_top_10_percent'] = perc_data.get('is_in_top_10_percent', False)
-                cyp = work.get('cited_by_percentile_year') or {}
-                record['cited_by_percentile_year_min'] = cyp.get('min')
-                record['cited_by_percentile_year_max'] = cyp.get('max')
+                    if record['Abstract_oa']:
+                        record['Abstract'] = record['Abstract_oa']
+                        
+                    record['Cited_by'] = work.get('cited_by_count', record.get('Cited_by', 0))
+                    
+                    record['fwci'] = work.get('fwci', None)
+                    record['open_access'] = work.get('open_access', {})
+                    if work.get('citation_normalized_percentile'):
+                        perc_data = work['citation_normalized_percentile']
+                        record['citation_normalized_percentile'] = perc_data.get('value', 0.0)
+                        record['is_in_top_1_percent']  = perc_data.get('is_in_top_1_percent', False)
+                        record['is_in_top_10_percent'] = perc_data.get('is_in_top_10_percent', False)
+                    cyp = work.get('cited_by_percentile_year') or {}
+                    record['cited_by_percentile_year_min'] = cyp.get('min')
+                    record['cited_by_percentile_year_max'] = cyp.get('max')
 
-                # ── Trayectoria de citas (para velocidad, vida media) ──────────
-                record['counts_by_year']       = work.get('counts_by_year', [])
-                record['referenced_works_count'] = work.get('referenced_works_count', 0)
-                record['referenced_works']     = work.get('referenced_works', [])  # para :CITES
+                    record['counts_by_year']       = work.get('counts_by_year', [])
+                    record['referenced_works_count'] = work.get('referenced_works_count', 0)
+                    record['referenced_works']     = work.get('referenced_works', [])
 
-                # ── Costes APC ─────────────────────────────────────────────────
-                record['apc_paid_usd'] = (work.get('apc_paid') or {}).get('value_usd', 0) or 0
-                record['apc_list_usd'] = (work.get('apc_list') or {}).get('value_usd', 0) or 0
+                    record['apc_paid_usd'] = (work.get('apc_paid') or {}).get('value_usd', 0) or 0
+                    record['apc_list_usd'] = (work.get('apc_list') or {}).get('value_usd', 0) or 0
 
-                # ── Colaboración e autoría ──────────────────────────────────────
-                _auths = work.get('authorships', [])
-                record['author_count']            = len(_auths)
-                record['countries_distinct_count'] = work.get('countries_distinct_count', 0)
-                record['institutions_distinct_count'] = work.get('institutions_distinct_count', 0)
-                record['countries'] = list({c for a in _auths for c in a.get('countries', [])})
-                # Detalle de coautores externos (país + institución) para §9
-                record['coauthor_institutions'] = [
-                    {
-                        'author': (a.get('author') or {}).get('display_name'),
-                        'orcid':  (a.get('author') or {}).get('orcid'),
-                        'position': a.get('author_position'),
-                        'is_corresponding': a.get('is_corresponding', False),
-                        'countries': a.get('countries', []),
-                        'institutions': [
-                            {'name': i.get('display_name'), 'ror': i.get('ror'),
-                             'country': i.get('country_code'), 'type': i.get('type')}
-                            for i in a.get('institutions', [])
-                        ]
-                    }
-                    for a in _auths
-                ]
+                    _auths = work.get('authorships', [])
+                    record['author_count']            = len(_auths)
+                    record['countries_distinct_count'] = work.get('countries_distinct_count', 0)
+                    record['institutions_distinct_count'] = work.get('institutions_distinct_count', 0)
+                    record['countries'] = list({c for a in _auths for c in a.get('countries', [])})
+                    record['coauthor_institutions'] = [
+                        {
+                            'author': (a.get('author') or {}).get('display_name'),
+                            'orcid':  (a.get('author') or {}).get('orcid'),
+                            'position': a.get('author_position'),
+                            'is_corresponding': a.get('is_corresponding', False),
+                            'countries': a.get('countries', []),
+                            'institutions': [
+                                {'name': i.get('display_name'), 'ror': i.get('ror'),
+                                 'country': i.get('country_code'), 'type': i.get('type')}
+                                for i in a.get('institutions', [])
+                            ]
+                        }
+                        for a in _auths
+                    ]
 
-                # ── Acceso abierto avanzado ────────────────────────────────────
-                _loc = work.get('primary_location') or {}
-                record['license']                  = _loc.get('license')
-                record['any_repository_has_fulltext'] = (work.get('open_access') or {}).get('any_repository_has_fulltext', False)
-                record['oa_url']                   = (work.get('open_access') or {}).get('oa_url')
-                record['locations_count']          = work.get('locations_count', 0)
+                    _loc = work.get('primary_location') or {}
+                    record['license']                  = _loc.get('license')
+                    record['any_repository_has_fulltext'] = (work.get('open_access') or {}).get('any_repository_has_fulltext', False)
+                    record['oa_url']                   = (work.get('open_access') or {}).get('oa_url')
+                    record['locations_count']          = work.get('locations_count', 0)
 
-                # ── Indexación y visibilidad ───────────────────────────────────
-                record['indexed_in']   = work.get('indexed_in', [])
-                record['is_retracted'] = work.get('is_retracted', False)
-                record['language']     = work.get('language', 'en')
-                record['type']         = work.get('type', 'article')
+                    record['indexed_in']   = work.get('indexed_in', [])
+                    record['is_retracted'] = work.get('is_retracted', False)
+                    record['language']     = work.get('language', 'en')
+                    record['type']         = work.get('type', 'article')
 
-                # ── Revista / fuente ───────────────────────────────────────────
-                _src = _loc.get('source') or {}
-                record['journal_is_oa']      = _src.get('is_oa', False)
-                record['journal_is_in_doaj'] = _src.get('is_in_doaj', False)
-                record['journal_is_core']    = _src.get('is_core', False)
-                record['issn']               = _src.get('issn_l')
-                record['journal_type']       = _src.get('type')  # 'journal', 'repository', etc.
+                    _src = _loc.get('source') or {}
+                    record['journal_is_oa']      = _src.get('is_oa', False)
+                    record['journal_is_in_doaj'] = _src.get('is_in_doaj', False)
+                    record['journal_is_core']    = _src.get('is_core', False)
+                    record['issn']               = _src.get('issn_l')
+                    record['journal_type']       = _src.get('type')
 
-                # ── Tópico primario (jerarquía completa) ───────────────────────
-                pt = work.get('primary_topic') or {}
-                record['primary_topic_name']     = pt.get('display_name')
-                record['primary_topic_score']    = pt.get('score')
-                record['primary_topic_field']    = (pt.get('field') or {}).get('display_name')
-                record['primary_topic_subfield'] = (pt.get('subfield') or {}).get('display_name')
-                record['primary_topic_domain']   = (pt.get('domain') or {}).get('display_name')
+                    pt = work.get('primary_topic') or {}
+                    record['primary_topic_name']     = pt.get('display_name')
+                    record['primary_topic_score']    = pt.get('score')
+                    record['primary_topic_field']    = (pt.get('field') or {}).get('display_name')
+                    record['primary_topic_subfield'] = (pt.get('subfield') or {}).get('display_name')
+                    record['primary_topic_domain']   = (pt.get('domain') or {}).get('display_name')
 
-                # ── Topics (hasta 3, con jerarquía) ───────────────────────────
-                topics = []
-                for t in work.get('topics', []):
-                    try:
-                        topics.append({
-                            'domain':   (t.get('domain') or {}).get('display_name'),
-                            'field':    (t.get('field') or {}).get('display_name'),
-                            'subfield': (t.get('subfield') or {}).get('display_name'),
-                            'topic':    t.get('display_name'),
-                            'score':    t.get('score'),
-                        })
-                    except Exception:
-                        pass
-                record['OpenAlex_Topics'] = topics
+                    topics = []
+                    for t in work.get('topics', []):
+                        try:
+                            topics.append({
+                                'domain':   (t.get('domain') or {}).get('display_name'),
+                                'field':    (t.get('field') or {}).get('display_name'),
+                                'subfield': (t.get('subfield') or {}).get('display_name'),
+                                'topic':    t.get('display_name'),
+                                'score':    t.get('score'),
+                            })
+                        except Exception:
+                            pass
+                    record['OpenAlex_Topics'] = topics
 
-                # ── Keywords (hasta 15) ────────────────────────────────────────
-                record['keywords'] = [k.get('display_name') for k in work.get('keywords', [])[:15]]
-
-                # ── ODS desde OpenAlex (puede estar vacío) ─────────────────────
-                record['sustainable_development_goals'] = [
-                    {'id': s.get('id', '').rstrip('/').split('/')[-1],
-                     'display_name': s.get('display_name'),
-                     'score': s.get('score')}
-                    for s in work.get('sustainable_development_goals', [])
-                ]
-
-                record['Source'] += ' + OpenAlex'
+                    record['keywords'] = [k.get('display_name') for k in work.get('keywords', [])[:15]]
+                    record['sustainable_development_goals'] = [
+                        {'id': s.get('id', '').rstrip('/').split('/')[-1],
+                         'display_name': s.get('display_name'),
+                         'score': s.get('score')}
+                        for s in work.get('sustainable_development_goals', [])
+                    ]
+                    record['Source'] += ' + OpenAlex'
             except Exception as e:
                 print(f"    Advertencia en OpenAlex para {doi}: {e}")
-                pass # Si OpenAlex falla, seguimos con los datos base
+                pass
             
             # Qdrant solo necesita un texto para el embedding y un payload
             if record.get('Abstract'):
