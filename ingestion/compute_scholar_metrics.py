@@ -154,7 +154,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
         query = """
         MATCH (a:Academic {name: $academic})-[:AUTHORED]->(p{label_filter})
         OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
-        OPTIONAL MATCH (a)-[:AFFILIATED_TO|AFFILIATED_WITH]->(i:Institution)
+        OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(i:Institution)
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
         RETURN a.name AS academic_name,
@@ -182,7 +182,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
         print(f"  -> Filtrando por Entidad (Investigadores): {entity_filter} (Fuente: {source_filter})")
         query = """
         MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p{label_filter})
-        OPTIONAL MATCH (a)-[:AFFILIATED_TO|AFFILIATED_WITH]->(i:Institution)
+        OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(i:Institution)
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
         RETURN a.name AS academic_name,
@@ -211,7 +211,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
         query = """
         MATCH (a:Academic)-[:AUTHORED]->(p{label_filter})
         OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
-        OPTIONAL MATCH (a)-[:AFFILIATED_TO|AFFILIATED_WITH]->(i:Institution)
+        OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(i:Institution)
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
         RETURN a.name AS academic_name,
@@ -433,7 +433,7 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
         print(f"  -> Filtrando por Entidad (Papers): {entity_filter} (Fuente: {source_filter})")
         query = """
         MATCH (e:Entity {name: $entity})
-        OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AFFILIATED_TO|AFFILIATED_WITH]->(i:Institution)
+        OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AFFILIATED_TO]->(i:Institution)
         OPTIONAL MATCH (e)-[:HAS_PAPER]->(p:Paper{label_filter})
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         RETURN e.name AS entity_name,
@@ -450,7 +450,7 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
         print(f"  -> Procesando todas las entidades (Fuente: {source_filter})")
         query = """
         MATCH (e:Entity)-[:HAS_PAPER]->(p:Paper{label_filter})
-        OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AFFILIATED_TO|AFFILIATED_WITH]->(i:Institution)
+        OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AFFILIATED_TO]->(i:Institution)
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         RETURN e.name AS entity_name,
                collect(DISTINCT i.name) AS institutions,

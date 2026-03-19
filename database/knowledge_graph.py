@@ -125,7 +125,7 @@ class Neo4jGraphStore:
         UNWIND (CASE WHEN author.institutions IS NOT NULL THEN author.institutions ELSE [] END) AS inst
         MERGE (i:Institution {id: inst.id})
         SET i.name = inst.name, i:Entity
-        MERGE (a)-[:AFFILIATED_WITH]->(i)
+        MERGE (a)-[:AFFILIATED_TO]->(i)
         
         WITH p
         UNWIND $concepts AS concept
