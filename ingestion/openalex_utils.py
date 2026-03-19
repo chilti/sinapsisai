@@ -12,17 +12,20 @@ OFFICIAL_OPENALEX_URL = "https://api.openalex.org/works"
 # Cargar variables de entorno si no están cargadas
 load_dotenv()
 
+OFFICIAL_API_BLOCKED = False
+
 def _clean_title(t):
     """Limpia el título para comparación exacta."""
     if not t: return ""
     return "".join(c for c in str(t).lower() if c.isalnum())
 
-def get_work(doi=None, title=None, email=None, api_key=None):
+def get_work(doi=None, title=None, email=None, api_key=None, local_only=False):
     """
     Busca un trabajo en OpenAlex. 
     1. Intenta la API oficial por DOI o búsqueda por título.
     2. Si falla (403, 429, timeout) o no encuentra, intenta la API local.
     """
+    global OFFICIAL_API_BLOCKED
     email = email or os.getenv("EMAIL_ADDRESS", "sin_correo@ciencias.unam.mx")
     api_key = api_key or os.getenv("OPENALEX_API_KEY")
     
@@ -31,40 +34,43 @@ def get_work(doi=None, title=None, email=None, api_key=None):
         headers["api_key"] = api_key
 
     # 1. Intentar API Oficial (DOI)
-    if doi:
-        try:
-            clean_doi = doi.replace("https://doi.org/", "").strip()
-            url = f"{OFFICIAL_OPENALEX_URL}/https://doi.org/{clean_doi}"
-            resp = httpx.get(url, headers=headers, timeout=10, follow_redirects=True)
-            if resp.status_code == 200:
-                print(f"      ✅ [API Oficial] Encontrado por DOI: {doi}")
-                return resp.json()
-            elif resp.status_code in [403, 429]:
-                print(f"      ⚠️  [API Oficial] Bloqueo {resp.status_code}. Pasando a API local...")
-                # No retornamos, para intentar la local si hace falta, pero primero intentamos título oficial
-            else:
-                print(f"      ❌ [API Oficial] DOI no encontrado ({resp.status_code}).")
-        except Exception as e:
-            print(f"      ⚠️  Error en API Oficial (DOI): {e}")
+    if not local_only and not OFFICIAL_API_BLOCKED:
+        if doi:
+            try:
+                clean_doi = doi.replace("https://doi.org/", "").strip()
+                url = f"{OFFICIAL_OPENALEX_URL}/https://doi.org/{clean_doi}"
+                resp = httpx.get(url, headers=headers, timeout=10, follow_redirects=True)
+                if resp.status_code == 200:
+                    print(f"      ✅ [API Oficial] Encontrado por DOI: {doi}")
+                    return resp.json()
+                elif resp.status_code in [403, 429]:
+                    print(f"      ⚠️  [API Oficial] Bloqueo {resp.status_code}. Pasando a API local de forma permanente...")
+                    OFFICIAL_API_BLOCKED = True
+                else:
+                    print(f"      ❌ [API Oficial] DOI no encontrado ({resp.status_code}).")
+            except Exception as e:
+                print(f"      ⚠️  Error en API Oficial (DOI): {e}")
 
     # 1b. Intentar API Oficial (Título)
-    if title and len(title) > 10:
-        try:
-            params = {"search": title, "mailto": email}
-            resp = httpx.get(OFFICIAL_OPENALEX_URL, params=params, headers=headers, timeout=10)
-            if resp.status_code == 200:
-                results = resp.json().get('results', [])
-                if results:
-                    candidate = results[0]
-                    # Validación estricta (> 95% para evitar falsos positivos)
-                    ratio = difflib.SequenceMatcher(None, _clean_title(title), _clean_title(candidate.get('title'))).ratio()
-                    if ratio > 0.95:
-                        print(f"      ✅ [API Oficial] Encontrado por Título (Similitud: {ratio:.2f}).")
-                        return candidate
-            elif resp.status_code in [403, 429]:
-                 print(f"      ⚠️  [API Oficial] Bloqueo de Título {resp.status_code}.")
-        except Exception as e:
-            print(f"      ⚠️  Error en API Oficial (Título): {e}")
+    if not local_only and not OFFICIAL_API_BLOCKED:
+        if title and len(title) > 10:
+            try:
+                params = {"search": title, "mailto": email}
+                resp = httpx.get(OFFICIAL_OPENALEX_URL, params=params, headers=headers, timeout=10)
+                if resp.status_code == 200:
+                    results = resp.json().get('results', [])
+                    if results:
+                        candidate = results[0]
+                        # Validación estricta (> 95% para evitar falsos positivos)
+                        ratio = difflib.SequenceMatcher(None, _clean_title(title), _clean_title(candidate.get('title'))).ratio()
+                        if ratio > 0.95:
+                            print(f"      ✅ [API Oficial] Encontrado por Título (Similitud: {ratio:.2f}).")
+                            return candidate
+                elif resp.status_code in [403, 429]:
+                     print(f"      ⚠️  [API Oficial] Bloqueo de Título {resp.status_code}. Pasando a API local de forma permanente...")
+                     OFFICIAL_API_BLOCKED = True
+            except Exception as e:
+                print(f"      ⚠️  Error en API Oficial (Título): {e}")
 
     # 2. Intentar API Local (Fallback)
     try:
@@ -106,11 +112,12 @@ def get_work(doi=None, title=None, email=None, api_key=None):
 
     return None
 
-def get_works_batch(dois, email=None):
+def get_works_batch(dois, email=None, local_only=False):
     """
     Busca múltiples DOIs. 
     Ideal para ingest_entity_docs que procesa lotes.
     """
+    global OFFICIAL_API_BLOCKED
     if not dois: return {}
     
     email = email or os.getenv("EMAIL_ADDRESS", "sin_correo@ciencias.unam.mx")
@@ -119,20 +126,24 @@ def get_works_batch(dois, email=None):
     results_dict = {}
     
     # Intentar oficial primero (usando filtro OR que es eficiente)
-    try:
-        doi_query = "|".join([f"https://doi.org/{d}" for d in dois])
-        resp = httpx.get(OFFICIAL_OPENALEX_URL, params={"filter": f"doi:{doi_query}"}, headers=headers, timeout=15)
-        if resp.status_code == 200:
-            works = resp.json().get('results', [])
-            for w in works:
-                d_key = w.get('doi', '').replace("https://doi.org/", "").lower()
-                if d_key: results_dict[d_key] = w
-            
-            # Si ya tenemos todos, retornar
-            if len(results_dict) >= len(dois):
-                return results_dict
-    except Exception as e:
-        print(f"      ⚠️ Error batch oficial: {e}")
+    if not local_only and not OFFICIAL_API_BLOCKED:
+        try:
+            doi_query = "|".join([f"https://doi.org/{d}" for d in dois])
+            resp = httpx.get(OFFICIAL_OPENALEX_URL, params={"filter": f"doi:{doi_query}"}, headers=headers, timeout=15)
+            if resp.status_code == 200:
+                works = resp.json().get('results', [])
+                for w in works:
+                    d_key = w.get('doi', '').replace("https://doi.org/", "").lower()
+                    if d_key: results_dict[d_key] = w
+                
+                # Si ya tenemos todos, retornar
+                if len(results_dict) >= len(dois):
+                    return results_dict
+            elif resp.status_code in [403, 429]:
+                print(f"      ⚠️  [API Oficial] Bloqueo Batch {resp.status_code}. Pasando a API local de forma permanente...")
+                OFFICIAL_API_BLOCKED = True
+        except Exception as e:
+            print(f"      ⚠️ Error batch oficial: {e}")
 
     # Fallback local para los que falten
     missing = [d for d in dois if d.lower() not in results_dict]

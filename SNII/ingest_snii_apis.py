@@ -264,6 +264,7 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
 
         batch_payloads = []
         batch_texts = []
+        openalex_blocked = getattr(openalex_utils, 'OFFICIAL_API_BLOCKED', False)
         for doi, record in meta_unificada.items():
             text_for_embedding = f"Title: {record.get('Title')}\n"
             paper_exists = False
@@ -278,7 +279,9 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
                     paper_exists = True
                     work = None
                 else:
-                    work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'))
+                    work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'), local_only=openalex_blocked)
+                    if not openalex_blocked and getattr(openalex_utils, 'OFFICIAL_API_BLOCKED', False):
+                        openalex_blocked = True
 
                 if work:
                     authorships = work.get('authorships', [])

@@ -344,6 +344,7 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
 
         batch_payloads = []
         batch_texts = []
+        openalex_blocked = getattr(openalex_utils, 'OFFICIAL_API_BLOCKED', False)
         #print('api_key: '+str(pyalex.config.api_key))
         #print('api:     '+str(os.getenv("OPENALEX_API_KEY")))
         for doi, base_metadata in meta_unificada.items():
@@ -365,7 +366,9 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                     paper_exists = True
                     work = None
                 else:
-                    work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'))
+                    work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'), local_only=openalex_blocked)
+                    if not openalex_blocked and getattr(openalex_utils, 'OFFICIAL_API_BLOCKED', False):
+                        openalex_blocked = True
                     
                 if not work and not (_doi_clean and graph_store.check_paper_exists(_doi_clean)):
                     raise ValueError("No encontrado ni en API Oficial ni en API Local")
