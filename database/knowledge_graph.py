@@ -116,7 +116,8 @@ class Neo4jGraphStore:
         
         WITH p
         UNWIND $authors AS author
-        MERGE (a:Author {id: author.name})
+        // Nueva lógica de ID: ORCID > ScopusID > Name
+        MERGE (a:Author {id: coalesce(author.orcid, author.scopus_id, author.name)})
         SET a.name = author.name
         MERGE (a)-[:AUTHORED]->(p)
         
@@ -159,12 +160,30 @@ class Neo4jGraphStore:
             result = session.run(query, name=author_name)
             return [record["coauthor"] for record in result]
 
-    def add_api_paper(self, paper_data: Dict[str, Any], academic_name: str, orcid: str = None, scopus_id: str = None, siia_url: str = None):
+    def add_api_paper(self, paper_data: Dict[str, Any], academic_name: str, orcid: str = None, scopus_id: str = None, 
+                     siia_url: str = None, entity_name: str = None,
+                     audit_verdict: str = None, audit_reason: str = None, audit_confidence: int = None, audit_timestamp: str = None,
+                     match_reason: str = None):
         """
-        Inserta datos de APIs (OpenAlex/Scopus/ORCID) vinculando el nombre completo (Academic) y el artículo por DOI.
-        Conserva todos los campos crudos en raw_metadata_json.
+        Inserta datos de APIs (OpenAlex/Scopus/ORCID) vinculando al investigador por un ID robusto y el artículo por DOI.
+        ID Jerárquico: ORCID > Scopus_id > Name@Entity > Name
         """
         import json
+        
+        # 1. Determinar el ID único del académico (Author/Academic)
+        if orcid:
+            system_id = orcid
+        elif scopus_id:
+            # Los scopus_ids pueden venir como lista o string separado por ;
+            sid = scopus_id.split(';')[0].strip() if ';' in scopus_id else scopus_id
+            system_id = f"scopus:{sid}"
+        elif entity_name:
+            # Si no hay identificador global, usamos Nombre + Entidad para evitar homónimos entre facultades
+            system_id = f"{academic_name}@{entity_name}"
+        else:
+            # Fallback al nombre (único riesgo de colisión)
+            system_id = academic_name
+
         data = paper_data.copy()
         if "raw_metadata" in data and isinstance(data["raw_metadata"], dict):
             data["raw_metadata_json"] = json.dumps(data["raw_metadata"], ensure_ascii=False)
@@ -202,10 +221,16 @@ class Neo4jGraphStore:
             "year": int(data.get("year", 0)) if data.get("year") else 0,
             "citations": int(data.get("citations", 0)) if data.get("citations") else 0,
             "raw_metadata": data["raw_metadata_json"],
+            "system_id": system_id,
             "academic_name": academic_name,
             "orcid": orcid,
             "scopus_id": scopus_id,
             "siia_url": siia_url,
+            "audit_verdict": audit_verdict,
+            "audit_reason": audit_reason,
+            "audit_confidence": audit_confidence,
+            "audit_timestamp": audit_timestamp,
+            "match_reason": match_reason,
             "funders": unique_funders,
             "awards": unique_awards
         }
@@ -216,7 +241,7 @@ class Neo4jGraphStore:
             params["doi"] = str(uuid.uuid4())
 
         query = """
-        MERGE (a:Author {id: $academic_name})
+        MERGE (a:Author {id: $system_id})
         SET a:Academic, a.name = $academic_name
         WITH a
         CALL (a) {
@@ -230,6 +255,17 @@ class Neo4jGraphStore:
         CALL (a) {
             WITH a WHERE $siia_url IS NOT NULL AND $siia_url <> ''
             SET a.siia_url = $siia_url
+        }
+        CALL (a) {
+            WITH a WHERE $audit_verdict IS NOT NULL
+            SET a.audit_verdict = $audit_verdict,
+                a.audit_reason = $audit_reason,
+                a.audit_confidence = $audit_confidence,
+                a.audit_timestamp = $audit_timestamp
+        }
+        CALL (a) {
+            WITH a WHERE $match_reason IS NOT NULL
+            SET a.match_reason = $match_reason
         }
         WITH a
         MERGE (p:Paper {id: $doi})

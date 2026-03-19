@@ -199,7 +199,7 @@ def obtener_metadatos_de_orcid(orcid_url):
 
 # --- Lógica principal de ingesta SNII ---
 
-def process_and_ingest_snii(json_path, force=False, force_local=False, target_name=None, limit_acads=None):
+def process_and_ingest_snii(json_path, force=False, force_local=False, target_name=None, limit_acads=None, confirmed_only=False):
     if not os.path.exists(json_path):
         print(f"No se encontró el archivo: {json_path}")
         return
@@ -211,7 +211,19 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
     
     # Filtrar solo matches validados
     valid_matches = [r for r in registros if r.get('match') is True and r.get('matched_orcid')]
-    print(f"✅ Registros con match validado para procesar: {len(valid_matches)}")
+    
+    if confirmed_only:
+        valid_matches = [r for r in valid_matches if r.get('audit', {}).get('verdict') == "CONFIRMED"]
+        print(f"✅ Filtrando solo confirmados: {len(valid_matches)}")
+    else:
+        # Priorizar CONFIRMED, luego el resto
+        def sort_priority(r):
+            v = r.get('audit', {}).get('verdict')
+            if v == "CONFIRMED": return 2
+            if v == "DOUBTFUL": return 1
+            return 0
+        valid_matches.sort(key=sort_priority, reverse=True)
+        print(f"✅ Registros con match validado para procesar: {len(valid_matches)} (Priorizando confirmados)")
 
     count = 0
     for data in valid_matches:
@@ -290,7 +302,19 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
                 "doi": doi, "title": record.get("Title", "No Title"), "year": record.get("Year", 0),
                 "citations": record.get("Cited_by", 0), "raw_metadata": record
             }
-            graph_store.add_api_paper(neo4j_data, academic_name=academic_name, orcid=orcid)
+            # Pasar auditoría y razonamiento
+            audit = data.get('audit', {})
+            graph_store.add_api_paper(
+                neo4j_data, 
+                academic_name=academic_name, 
+                orcid=orcid,
+                audit_verdict=audit.get('verdict'),
+                audit_reason=audit.get('reason'),
+                audit_confidence=audit.get('confidence'),
+                audit_timestamp=audit.get('timestamp'),
+                match_reason=data.get('reason'),
+                entity_name=sub_name if sub_name != "SIN INFORMACIÓN" else inst_name
+            )
             
         # Afiliación Jerárquica
         graph_store.add_academic_full_affiliation(academic_name, inst_name, sub_name)
@@ -315,10 +339,18 @@ if __name__ == "__main__":
     parser.add_argument("--name", type=str, help="Nombre")
     parser.add_argument("--force", action="store_true", help="Forzar")
     parser.add_argument("--local", action="store_true", help="Local embeddings")
+    parser.add_argument("--confirmed-only", action="store_true", help="Procesar solo los auditados como CONFIRMED")
     args = parser.parse_args()
     
     try:
-        process_and_ingest_snii(args.input, force=args.force, force_local=args.local, target_name=args.name, limit_acads=args.limit)
+        process_and_ingest_snii(
+            args.input, 
+            force=args.force, 
+            force_local=args.local, 
+            target_name=args.name, 
+            limit_acads=args.limit,
+            confirmed_only=args.confirmed_only
+        )
     finally:
         graph_store.close()
         print("\n🎉 Proceso completado.")

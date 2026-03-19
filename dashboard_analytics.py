@@ -791,27 +791,35 @@ def render_investigador_view(entity_name, institution_name=None):
 
     st.markdown("---")
     with st.expander("🔗 Ver Perfiles Académicos", expanded=False):
-        # Mostrar Auditoría si existe
+        # Mostrar Auditoría y Razonamiento IA
         audit_verdict = inv_data.get('audit_verdict')
+        match_reason = inv_data.get('match_reason')
+        is_snii = inv_data.get('is_snii', False)
+        
+        if is_snii and match_reason:
+            st.info(f"🤖 **Buscado usando IA**\n\n**Argumento de la IA:** {match_reason}")
+            
         if audit_verdict:
             conf = int(inv_data.get('audit_confidence', 0))
             reason = inv_data.get('audit_reason', 'Sin detalle.')
             ts = inv_data.get('audit_timestamp', '')
             
             if audit_verdict == "CONFIRMED":
-                st.success(f"✅ **ORCID Confirmado** ({conf}% confianza)\n\n{reason}")
+                st.success(f"✅ **Auditoría: ORCID Confirmado** ({conf}% confianza)\n\n{reason}")
             elif audit_verdict == "DOUBTFUL":
-                st.warning(f"⚠️ **ORCID Dudoso** ({conf}% confianza)\n\n{reason}")
+                st.warning(f"⚠️ **Auditoría: ORCID Dudoso** ({conf}% confianza)\n\n{reason}")
             elif audit_verdict == "FALSE_POSITIVE":
-                st.error(f"❌ **Falso Positivo Identificado** ({conf}% confianza)\n\n{reason}")
+                st.error(f"❌ **Auditoría: Falso Positivo** ({conf}% confianza)\n\n{reason}")
             
-            st.caption(f"Auditado el: {ts}")
+            if ts: st.caption(f"Auditado el: {ts}")
             st.markdown("---")
 
         col_links1, col_links2 = st.columns([3, 1])
         with col_links1:
             if inv_siia and "http" in str(inv_siia) and "No encont" not in str(inv_siia):
                 st.markdown(f"- **SIIA-UNAM:** [Ver Perfil de {selected_inv}]({inv_siia})")
+                if "unam.mx" in str(inv_siia):
+                    st.caption("ℹ️ Extraímos ORCID y Scopus IDs de la página web del SIIA.")
             
             if inv_orcid:
                 orcid_link = inv_orcid if "http" in inv_orcid else f"https://orcid.org/{inv_orcid}"
