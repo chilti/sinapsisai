@@ -5,7 +5,7 @@ import json
 from dotenv import load_dotenv
 
 # Configuración
-LOCAL_OPENALEX_URL = "http://127.0.0.1:5009/works"
+LOCAL_OPENALEX_URL = "http://localhost:5009/works"
 OFFICIAL_OPENALEX_URL = "https://api.openalex.org/works"
 
 # Cargar variables de entorno si no están cargadas
@@ -71,13 +71,13 @@ def get_work(doi=None, title=None, email=None, api_key=None):
             # Asumiendo que la API local soporta /works/https://doi.org/... o similar
             # Si no, intentamos por filtro
             url = f"{LOCAL_OPENALEX_URL}/https://doi.org/{clean_doi}"
-            resp = httpx.get(url, timeout=5)
+            resp = httpx.get(url, timeout=20)
             if resp.status_code == 200:
                 print(f"      ✅ [API Local] Encontrado por DOI: {doi}")
                 return resp.json()
             else:
                 # Intentar por filtro si el ID directo no funciona en la local
-                resp = httpx.get(LOCAL_OPENALEX_URL, params={"filter": f"doi:https://doi.org/{clean_doi}"}, timeout=5)
+                resp = httpx.get(LOCAL_OPENALEX_URL, params={"filter": f"doi:https://doi.org/{clean_doi}"}, timeout=20)
                 if resp.status_code == 200:
                     results = resp.json().get('results', [])
                     if results:
@@ -87,7 +87,7 @@ def get_work(doi=None, title=None, email=None, api_key=None):
         if title:
             # La API local debería soportar search o filter
             params = {"search": title}
-            resp = httpx.get(LOCAL_OPENALEX_URL, params=params, timeout=5)
+            resp = httpx.get(LOCAL_OPENALEX_URL, params=params, timeout=20)
             if resp.status_code == 200:
                 results = resp.json().get('results', [])
                 if results:
