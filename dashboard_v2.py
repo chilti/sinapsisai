@@ -705,6 +705,14 @@ with tab_inv:
 # TAB 4: Acerca de / Estado DB
 # =======================================================
 with tab_about:
+    st.info("""
+        **🛡️ Aviso de Privacidad y Fuentes de Datos**
+        
+        La información bibliométrica y de producción científica contenida en **Sinapsis AI** procede exclusivamente de fuentes de datos públicas y repositorios institucionales de acceso libre, incluyendo: **OpenAlex, Scopus, ORCID, SNII (CONAHCYT), SIIA (UNAM)** y otros catálogos académicos globales.
+        
+        **Privacidad y Datos Personales:** Este sistema no almacena ni procesa datos personales sensibles. La plataforma se limita exclusivamente al análisis de metadatos de carácter público relacionados con la trayectoria científica y académica, con el objetivo de fomentar la Ciencia Abierta y la transparencia en la investigación nacional.
+    """)
+    
     st.header("👥 Equipo de Trabajo")
     
     col_team1, col_team2 = st.columns(2)
