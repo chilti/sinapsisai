@@ -2,6 +2,7 @@ import os
 import httpx
 import time
 import json
+import difflib
 from dotenv import load_dotenv
 
 # Configuración
@@ -55,8 +56,10 @@ def get_work(doi=None, title=None, email=None, api_key=None):
                 results = resp.json().get('results', [])
                 if results:
                     candidate = results[0]
-                    if _clean_title(title) == _clean_title(candidate.get('title')):
-                        print(f"      ✅ [API Oficial] Encontrado por Título Exacto.")
+                    # Validación estricta (> 95% para evitar falsos positivos)
+                    ratio = difflib.SequenceMatcher(None, _clean_title(title), _clean_title(candidate.get('title'))).ratio()
+                    if ratio > 0.95:
+                        print(f"      ✅ [API Oficial] Encontrado por Título (Similitud: {ratio:.2f}).")
                         return candidate
             elif resp.status_code in [403, 429]:
                  print(f"      ⚠️  [API Oficial] Bloqueo de Título {resp.status_code}.")
@@ -92,9 +95,10 @@ def get_work(doi=None, title=None, email=None, api_key=None):
                 results = resp.json().get('results', [])
                 if results:
                     candidate = results[0]
-                    # Validación de título exacto opcional pero recomendada
-                    if _clean_title(title) == _clean_title(candidate.get('title')):
-                        print(f"      ✅ [API Local] Encontrado por Título Exacto.")
+                    # Validación estricta (> 95% para evitar falsos positivos)
+                    ratio = difflib.SequenceMatcher(None, _clean_title(title), _clean_title(candidate.get('title'))).ratio()
+                    if ratio > 0.95:
+                        print(f"      ✅ [API Local] Encontrado por Título (Similitud: {ratio:.2f}).")
                         return candidate
         
     except Exception as e:
