@@ -241,6 +241,7 @@ def main():
             for original_name in lista_nombres:
                 p_name = limpiar_nombre(original_name)
                 if p_name in profesores_data and profesores_data[p_name].get('siia') != 'No encontrado':
+                    print(f"    📂 {p_name} recuperado del caché JSON local. Saltando scraping.")
                     continue
                 
                 # Evitar duplicados de Neo4j (SIIA ya procesados)
