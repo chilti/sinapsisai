@@ -266,6 +266,7 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
         batch_texts = []
         for doi, record in meta_unificada.items():
             text_for_embedding = f"Title: {record.get('Title')}\n"
+            paper_exists = False
             
             # OpenAlex enrichment (con fallback local)
             try:
@@ -273,7 +274,8 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
                 
                 # OPT: Si el paper ya existe en Neo4j, saltamos el enriquecimiento API costoso.
                 if _doi_clean and graph_store.check_paper_exists(_doi_clean):
-                    print(f"      📍 Paper {_doi_clean} ya existe en el grafo. Saltando OpenAlex...")
+                    print(f"      📍 Paper {_doi_clean} ya existe en el grafo. Saltando OpenAlex y Qdrant...")
+                    paper_exists = True
                     work = None
                 else:
                     work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'))
@@ -289,20 +291,21 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
                     record['Source'] += ' + OpenAlex'
             except: pass
             
-            if record.get('Abstract'):
-                text_for_embedding += f"Abstract: {record['Abstract']}"
-                
-            payload_qdrant = {
-                "academic_name": academic_name,
-                "doi":           doi,
-                "title":         record.get("Title"),
-                "year":          record.get("Year"),
-                "source":        record.get("Source"),
-                "entity":        sub_name if sub_name != "SIN INFORMACIÓN" else inst_name,
-                "text":          text_for_embedding
-            }
-            batch_texts.append(text_for_embedding)
-            batch_payloads.append(payload_qdrant)
+            if not paper_exists:
+                if record.get('Abstract'):
+                    text_for_embedding += f"Abstract: {record['Abstract']}"
+                    
+                payload_qdrant = {
+                    "academic_name": academic_name,
+                    "doi":           doi,
+                    "title":         record.get("Title"),
+                    "year":          record.get("Year"),
+                    "source":        record.get("Source"),
+                    "entity":        sub_name if sub_name != "SIN INFORMACIÓN" else inst_name,
+                    "text":          text_for_embedding
+                }
+                batch_texts.append(text_for_embedding)
+                batch_payloads.append(payload_qdrant)
             
             neo4j_data = {
                 "doi": doi, "title": record.get("Title", "No Title"), "year": record.get("Year", 0),

@@ -349,6 +349,7 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
         for doi, base_metadata in meta_unificada.items():
             record = base_metadata.copy()
             text_for_embedding = f"Title: {record.get('Title')}\n"
+            paper_exists = False
             
             # Enriquecemos con OpenAlex (normaliza DOI, guarda orcid-work: papers sin lookup) usando fallback local
             try:
@@ -360,7 +361,8 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                 # OPT: Si el paper ya existe en Neo4j, saltamos el enriquecimiento API costoso. 
                 # Solo queremos asegurar la relación con el nuevo académico.
                 if _doi_clean and graph_store.check_paper_exists(_doi_clean):
-                    print(f"      📍 Paper {_doi_clean} ya existe en el grafo. Saltando OpenAlex...")
+                    print(f"      📍 Paper {_doi_clean} ya existe en el grafo. Saltando OpenAlex y Qdrant...")
+                    paper_exists = True
                     work = None
                 else:
                     work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'))
@@ -472,29 +474,30 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                 pass
             
             # Qdrant solo necesita un texto para el embedding y un payload
-            if record.get('Abstract'):
-                text_for_embedding += f"Abstract: {record['Abstract']}"
+            if not paper_exists:
+                if record.get('Abstract'):
+                    text_for_embedding += f"Abstract: {record['Abstract']}"
+                    
+                payload_qdrant = {
+                    "academic_name": academic_name,
+                    "doi":           doi,
+                    "title":         record.get("Title"),
+                    "year":          record.get("Year"),
+                    "source":        record.get("Source"),
+                    "entity":        entity_name,
+                    "text":          text_for_embedding,
+                    # Nuevos campos filtrables en búsqueda semántica
+                    "is_oa":         (record.get("open_access") or {}).get("is_oa", False),
+                    "oa_status":     (record.get("open_access") or {}).get("oa_status", "closed"),
+                    "language":      record.get("language", "en"),
+                    "fwci":          record.get("fwci"),
+                    "country_codes": record.get("countries", []),
+                    "indexed_in":    record.get("indexed_in", []),
+                    "primary_topic_domain": record.get("primary_topic_domain"),
+                }
+                batch_texts.append(text_for_embedding)
+                batch_payloads.append(payload_qdrant)
                 
-            payload_qdrant = {
-                "academic_name": academic_name,
-                "doi":           doi,
-                "title":         record.get("Title"),
-                "year":          record.get("Year"),
-                "source":        record.get("Source"),
-                "entity":        entity_name,
-                "text":          text_for_embedding,
-                # Nuevos campos filtrables en búsqueda semántica
-                "is_oa":         (record.get("open_access") or {}).get("is_oa", False),
-                "oa_status":     (record.get("open_access") or {}).get("oa_status", "closed"),
-                "language":      record.get("language", "en"),
-                "fwci":          record.get("fwci"),
-                "country_codes": record.get("countries", []),
-                "indexed_in":    record.get("indexed_in", []),
-                "primary_topic_domain": record.get("primary_topic_domain"),
-            }
-            batch_texts.append(text_for_embedding)
-            batch_payloads.append(payload_qdrant)
-            
             # Formatear paramétros para Neo4j (usa raw_metadata para guardar TODOS los campos en json)
             neo4j_data = {
                 "doi": doi,
