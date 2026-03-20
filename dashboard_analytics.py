@@ -147,8 +147,9 @@ def get_institution_hierarchy():
         print(f"Error cargando jerarquía: {e}")
         hierarchy = {
             "Universidad Nacional Autónoma de México (UNAM)": {
-                "Facultad de Ciencias", 
-                "Instituto de Ciencias Nucleares"
+                "FACULTAD DE CIENCIAS", 
+                "INSTITUTO DE CIENCIAS NUCLEARES",
+                "INSTITUTO DE FISICA"
             },
             "Nacional (México)": {"Mexico"}
         }

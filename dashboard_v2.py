@@ -88,9 +88,9 @@ def fetch_database_live_stats(entity_name=None):
         neo = Neo4jGraphStore()
         graph_stats = neo.get_database_statistics()
         
-        if entity_name == "Facultad de Ciencias":
+        if entity_name == "FACULTAD DE CIENCIAS":
             # Caso especial: Colaboración FC - ICN
-            graph_sample = neo.get_collaboration_sample_graph("Facultad de Ciencias", "Instituto de Ciencias Nucleares", limit=150)
+            graph_sample = neo.get_collaboration_sample_graph("FACULTAD DE CIENCIAS", "INSTITUTO DE CIENCIAS NUCLEARES", limit=150)
         elif entity_name:
             graph_sample = neo.get_funder_sample_graph(entity_name, limit=150)
         else:
@@ -171,7 +171,7 @@ with st.sidebar:
     
     # Default a UNAM si existe
     default_inst_idx = 0
-    unam_name = "Universidad Nacional Autónoma de México (UNAM)"
+    unam_name = "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)"
     if unam_name in instituciones:
         default_inst_idx = instituciones.index(unam_name)
     elif instituciones:
@@ -188,7 +188,7 @@ with st.sidebar:
     
     # Default a Facultad de Ciencias si está en la lista filtrada
     default_ent_idx = 0
-    target_default = "Facultad de Ciencias"
+    target_default = "FACULTAD DE CIENCIAS"
     if target_default in entidades_filtradas:
         default_ent_idx = entidades_filtradas.index(target_default)
         
@@ -718,7 +718,7 @@ with tab_about:
     col_team1, col_team2 = st.columns(2)
     
     with col_team1:
-        st.markdown("#### Facultad de Ciencias")
+        st.markdown("#### FACULTAD DE CIENCIAS")
         st.markdown("- Dr. Humberto Andrés Carrillo Calvet")
         st.markdown("- Dr. José Luis Jiménez Andrade")
         st.markdown("- Dra. María Victoria Guzmán Sánchez")
@@ -732,7 +732,7 @@ with tab_about:
         st.markdown("")
         st.markdown("")
 
-        st.markdown("#### Estudiantes de la Facultad de Ciencias")
+        st.markdown("#### Estudiantes de la FACULTAD DE CIENCIAS")
         st.markdown("- **Ana Valeria Deloya Andrade**: Ingeniería de Prompts para describir y analizar gráficas.")
         st.markdown("- **Rodrigo Aldair Ortega Venegas**: Visualización de los Objetivos de Desarrollo Sostenible.")
         st.markdown("- **Leonardo Vázquez Rodríguez**: Visualización de Trayectorias.")

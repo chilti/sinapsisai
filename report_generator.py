@@ -206,8 +206,8 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
         neo = Neo4jGraphStore()
         graph_data = None
         if entity_type == "inst":
-            if entity_name == "Facultad de Ciencias":
-                graph_data = neo.get_collaboration_sample_graph("Facultad de Ciencias", "Instituto de Ciencias Nucleares", limit=100)
+            if entity_name == "FACULTAD DE CIENCIAS":
+                graph_data = neo.get_collaboration_sample_graph("FACULTAD DE CIENCIAS", "INSTITUTO DE CIENCIAS NUCLEARES", limit=100)
             else:
                 graph_data = neo.get_funder_sample_graph(entity_name, limit=100)
         # TODO: Add specific sub-graph query for investigator if needed
