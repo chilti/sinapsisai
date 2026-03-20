@@ -892,7 +892,7 @@ def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, 
                     institutions = [i.strip() for i in inst_val.split(';') if i.strip()]
             
             if not institutions or institutions == ["Sin Institución"]:
-                institutions = ["Universidad Nacional Autónoma de México (UNAM)"] # Default Legacy
+                institutions = ["UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)"] # Default Legacy
 
             for ent in entities:
                 for inst in institutions:
@@ -937,7 +937,7 @@ def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, 
                     institutions = [i.strip() for i in inst_val.split(';') if i.strip()]
             
             if not institutions or institutions == ["Sin Institución"]:
-                institutions = ["Universidad Nacional Autónoma de México (UNAM)"]
+                institutions = ["UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)"]
 
             safe_ent = str(ent_name).replace('/', '_').replace('\\', '_')
             
