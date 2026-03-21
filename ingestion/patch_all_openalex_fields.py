@@ -293,7 +293,8 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
                 for p_rec in to_patch:
                     doi_key = str(p_rec['doi'] or "")
                     if doi_key not in oa_data:
-                        print(f"      ⚠️  No encontrado en OpenAlex: https://doi.org/{doi_key}")
+                        fuente = LOCAL_API_URL if LOCAL_API_AVAILABLE else OFFICIAL_API_URL
+                        print(f"      ⚠️  No encontrado en OpenAlex [{fuente}]: https://doi.org/{doi_key}")
                         errors += 1
                         continue
                     
