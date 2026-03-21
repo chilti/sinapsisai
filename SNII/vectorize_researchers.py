@@ -243,21 +243,33 @@ def vectorize_snii_authors():
     
     name_col = 'NOMBRE DEL INVESTIGADOR'
     inst_col = 'INSTITUCIÓN DE ACREDITACIÓN'
+    dep_inst_col = 'DEPENDENCIA DE ACREDITACIÓN'
     sub_inst_col = 'SUBDEPENDENCIA DE ACREDITACIÓN'
     
     docs = []
     for _, row in df.iterrows():
-        name = str(row[name_col])
-        inst = str(row[inst_col]) if pd.notna(row[inst_col]) else ""
-        sub = str(row[sub_inst_col]) if pd.notna(row[sub_inst_col]) else ""
+        name = str(row[name_col]).strip()
+        raw_inst = str(row[inst_col]).strip() if pd.notna(row[inst_col]) else ""
+        raw_dep = str(row[dep_inst_col]).strip() if pd.notna(row[dep_inst_col]) else ""
+        raw_sub = str(row[sub_inst_col]).strip() if pd.notna(row[sub_inst_col]) else ""
         
-        text = f"{name} {inst} {sub}".strip()
+        if raw_inst.upper() in ["SIN INSTITUCIÓN", "SIN INSTITUCION"]:
+            final_inst = "SIN INSTITUCIÓN"
+            final_sub = "NO APLICA"
+        elif raw_sub.upper() in ["SIN INFORMACION", "SIN INFORMACIÓN", ""]:
+            final_inst = raw_inst
+            final_sub = raw_dep if raw_dep else raw_sub
+        else:
+            final_inst = raw_inst
+            final_sub = raw_sub
+            
+        text = f"{name} {final_inst} {final_sub}".strip()
         docs.append({
             "text": text,
             "title": name,
             "name": name,
-            "institution": inst,
-            "subdependency": sub,
+            "institution": final_inst,
+            "subdependency": final_sub,
             "source": "SNII_2025"
         })
     
@@ -309,6 +321,7 @@ def vectorize_snii_with_llm(limit_test=None):
     
     name_col = 'NOMBRE DEL INVESTIGADOR'
     inst_col = 'INSTITUCIÓN DE ACREDITACIÓN'
+    dep_inst_col = 'DEPENDENCIA DE ACREDITACIÓN'
     sub_inst_col = 'SUBDEPENDENCIA DE ACREDITACIÓN'
     
     output_path = os.path.join("data", "snii_llm_verified_matches.json")
@@ -325,12 +338,25 @@ def vectorize_snii_with_llm(limit_test=None):
             print(f"   ⚠️ No se pudo cargar progreso previo: {e}")
 
     for idx, row in df.iterrows():
-        snii_name = str(row[name_col])
+        snii_name = str(row[name_col]).strip()
         if snii_name in processed_names:
             continue
             
-        sub_inst = str(row[sub_inst_col]) if pd.notna(row[sub_inst_col]) else ""
-        snii_info = f"Nombre: {snii_name} | Institución: {row[inst_col]} | Subdependencia: {sub_inst}"
+        raw_inst = str(row[inst_col]).strip() if pd.notna(row[inst_col]) else ""
+        raw_dep = str(row[dep_inst_col]).strip() if pd.notna(row[dep_inst_col]) else ""
+        raw_sub = str(row[sub_inst_col]).strip() if pd.notna(row[sub_inst_col]) else ""
+        
+        if raw_inst.upper() in ["SIN INSTITUCIÓN", "SIN INSTITUCION"]:
+            final_inst = "SIN INSTITUCIÓN"
+            final_sub = "NO APLICA"
+        elif raw_sub.upper() in ["SIN INFORMACION", "SIN INFORMACIÓN", ""]:
+            final_inst = raw_inst
+            final_sub = raw_dep if raw_dep else raw_sub
+        else:
+            final_inst = raw_inst
+            final_sub = raw_sub
+            
+        snii_info = f"Nombre: {snii_name} | Institución: {final_inst} | Subdependencia: {final_sub}"
         
         print(f"   [{idx+1}/{len(df)}] Verificando: {snii_name}...")
         
@@ -391,8 +417,8 @@ Respuesta:"""
             
             result_entry = {
                 "snii_author": snii_name,
-                "snii_institution": row[inst_col],
-                "snii_subdependency": sub_inst,
+                "snii_institution": final_inst,
+                "snii_subdependency": final_sub,
                 "match": False,
                 "matched_author": None,
                 "matched_orcid": None,

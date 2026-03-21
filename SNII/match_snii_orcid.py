@@ -192,18 +192,32 @@ def load_snii_authors():
         # Ajustar nombres de columnas según inspección del archivo real 2025
         name_col = 'NOMBRE DEL INVESTIGADOR'
         inst_col = 'INSTITUCIÓN DE ACREDITACIÓN'
+        dep_inst_col = 'DEPENDENCIA DE ACREDITACIÓN'
         sub_inst_col = 'SUBDEPENDENCIA DE ACREDITACIÓN'
         
         authors = []
         for _, row in df.iterrows():
             # Extraer afiliación combinando institución y dependencia
-            inst = str(row[inst_col]) if pd.notna(row[inst_col]) else ""
-            dep = str(row[sub_inst_col]) if pd.notna(row[sub_inst_col]) else ""
-            full_aff = f"{dep}, {inst}" if dep else inst
+            raw_inst = str(row[inst_col]) if pd.notna(row[inst_col]) else ""
+            raw_dep = str(row[dep_inst_col]) if pd.notna(row[dep_inst_col]) else ""
+            raw_sub = str(row[sub_inst_col]) if pd.notna(row[sub_inst_col]) else ""
+            
+            if raw_inst.upper() in ["SIN INSTITUCIÓN", "SIN INSTITUCION"]:
+                final_inst = "SIN INSTITUCIÓN"
+                final_sub = "NO APLICA"
+            elif raw_sub.upper() in ["SIN INFORMACION", "SIN INFORMACIÓN", ""]:
+                final_inst = raw_inst
+                final_sub = raw_dep if raw_dep else raw_sub
+            else:
+                final_inst = raw_inst
+                final_sub = raw_sub
+                
+            full_aff = f"{final_sub}, {final_inst}" if final_sub else final_inst
             
             authors.append({
-                "name": str(row[name_col]),
+                "name": str(row[name_col]).strip(),
                 "main_affiliation": full_aff,
+                "sub_affiliation": final_sub,
                 "source": "SNII_2025"
             })
         return authors
