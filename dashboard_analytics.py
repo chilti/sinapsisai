@@ -142,6 +142,12 @@ def get_institution_hierarchy():
                             
                         if target_inst not in hierarchy: hierarchy[target_inst] = set()
                         hierarchy[target_inst].add(ent)
+            
+            # Garantizar que 'Sin Entidad' siempre exista para los SNIIs sin afiliación particular
+            if unam_name in hierarchy:
+                hierarchy[unam_name].add("Sin Entidad")
+            else:
+                hierarchy[unam_name] = {"Sin Entidad"}
 
     except Exception as e:
         print(f"Error cargando jerarquía: {e}")
@@ -756,15 +762,32 @@ def render_investigador_view(entity_name, institution_name=None):
     df_inst_tot = get_cached_data("institucion_total.parquet", entity_name=entity_name, institution_name=institution_name)
 
     if df_inst_tot is None or df_inst_tot.empty:
-        st.warning(f"Aún no hay métricas institucionales base calculadas para {entity_name}.")
-        return
-
-    # Extraer la lista veloz de académicos inyectada en el archivo maestro de Institución
-    try:
-        academics_json = df_inst_tot.iloc[0].get('academics_list', "[]")
-        investigadores = sorted(json.loads(academics_json))
-    except Exception:
+        # Si no hay df_inst_tot, buscaremos los investigadores físicamente en las carpetas (caso "Sin Entidad")
         investigadores = []
+    else:
+        # Extraer la lista veloz de académicos inyectada en el archivo maestro de Institución
+        try:
+            academics_json = df_inst_tot.iloc[0].get('academics_list', "[]")
+            investigadores = sorted(json.loads(academics_json))
+        except Exception:
+            investigadores = []
+            
+    # Fallback físico si la lista está vacía (ideal para los SNIIs en "Sin Entidad")
+    if not investigadores:
+        safe_inst = str(institution_name).replace('/', '_').replace('\\', '_') if institution_name else ""
+        safe_ent = str(entity_name).replace('/', '_').replace('\\', '_')
+        
+        test_paths = []
+        if safe_inst:
+            test_paths.append(os.path.join(CACHE_DIR, safe_inst, safe_ent))
+        test_paths.append(os.path.join(CACHE_DIR, safe_ent))
+        
+        for path in test_paths:
+            if os.path.exists(path):
+                f_inv = [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
+                investigadores.extend(f_inv)
+                break
+        investigadores = sorted(list(set(investigadores)))
         
     if not investigadores:
         st.info(f"La vista individual de investigadores no está disponible o es demasiado extensa para {entity_name}.")
