@@ -34,43 +34,56 @@ pyalex.config.email = os.getenv("EMAIL_ADDRESS", "sin_correo@ciencias.unam.mx")
 if os.getenv("OPENALEX_API_KEY"):
     pyalex.config.api_key = os.getenv("OPENALEX_API_KEY")
 
-LOCAL_API_URL  = "http://127.0.0.1:5009/works"
+LOCAL_API_URL    = "http://127.0.0.1:5009/works"
 OFFICIAL_API_URL = "https://api.openalex.org/works"
 
 # Retraso entre requests (s). Sube a 1.0 si siguen bloqueando.
-REQUEST_DELAY = 0.15  # 150ms → ~6 req/s, por debajo del límite sin API key de OpenAlex (10/s)
+REQUEST_DELAY = 0.15  # 150ms → ~6 req/s, por debajo del límite de OpenAlex sin API key
 
-def _fetch_dois_batch(client: httpx.Client, dois: list[str], use_local: bool = True) -> dict:
+# Se establece al inicio del script
+LOCAL_API_AVAILABLE = False
+
+def check_local_api() -> bool:
+    """Comprueba si la API local de OpenAlex (port 5009) está levantada."""
+    try:
+        resp = httpx.get(LOCAL_API_URL, params={"filter": "doi:10.0000/test", "per-page": 1}, timeout=5)
+        return resp.status_code in (200, 404)  # 404 está bien, es que funciona pero no encontró
+    except Exception:
+        return False
+
+def _try_url(client: httpx.Client, url: str, params: dict, retries: int = 3, backoff: float = 1.0) -> list:
+    """Intenta una URL con reintentos y backoff exponencial en 429/403."""
+    for attempt in range(retries):
+        try:
+            resp = client.get(url, params=params, timeout=30)
+            if resp.status_code == 200:
+                return resp.json().get('results', [])
+            if resp.status_code in (429, 403):
+                wait = backoff * (2 ** attempt)
+                print(f"\n      [!] Rate limit ({resp.status_code}) en {url}. Esperando {wait:.0f}s...")
+                time.sleep(wait)
+            else:
+                return []  # Error no recuperable: 404, 500, etc.
+        except Exception as e:
+            print(f"      [!] Error HTTP ({url}): {e}")
+            time.sleep(backoff)
+    return []
+
+def _fetch_dois_batch(client: httpx.Client, dois: list[str]) -> dict:
     """Obtiene los metadatos de hasta 50 DOIs en un solo request.
-    Intenta la API local primero y cae a la oficial si falla.
+    - Si la API local está disponible: la usa siempre y NO cae a la oficial.
+    - Si la API local está caída: usa la oficial (puede bloquearse).
     Devuelve un dict doi_clean -> work.
     """
     if not dois:
         return {}
-    filter_str = "|".join(dois)
-    params = {"filter": f"doi:{filter_str}", "per-page": len(dois), "mailto": pyalex.config.email}
-    
-    def _try(url, retries=3, backoff=1.0):
-        for attempt in range(retries):
-            try:
-                resp = client.get(url, params=params, timeout=30)
-                if resp.status_code == 200:
-                    return resp.json().get('results', [])
-                if resp.status_code in (429, 403):
-                    wait = backoff * (2 ** attempt)
-                    print(f"\n      [!] Rate limit ({resp.status_code}) en {url}. Esperando {wait}s...")
-                    time.sleep(wait)
-                else:
-                    return []
-            except Exception as e:
-                print(f"      [!] Error HTTP: {e}")
-                time.sleep(backoff)
-        return []
-    
-    results = _try(LOCAL_API_URL) if use_local else []
-    if not results:
-        results = _try(OFFICIAL_API_URL)
-    
+    params = {"filter": f"doi:{'|'.join(dois)}", "per-page": len(dois), "mailto": pyalex.config.email}
+
+    if LOCAL_API_AVAILABLE:
+        results = _try_url(client, LOCAL_API_URL, params)
+    else:
+        results = _try_url(client, OFFICIAL_API_URL, params)
+
     out = {}
     for w in results:
         doi_val = (w.get('doi') or "").replace("https://doi.org/", "").strip().lower()
@@ -141,7 +154,18 @@ def _parse_raw_meta(raw_meta_json):
         try: return ast.literal_eval(raw_meta_json)
         except: return {}
 
-def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, skip_existing=False, limit=None, chunk_size=5000, batch_size=20):
+def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, skip_existing=False, limit=None, chunk_size=5000, batch_size=20, local_only=False):
+    global LOCAL_API_AVAILABLE
+    LOCAL_API_AVAILABLE = check_local_api()
+    if LOCAL_API_AVAILABLE:
+        print(f"✅ API local de OpenAlex detectada en {LOCAL_API_URL} — se usará como fuente principal.")
+    else:
+        print(f"⚠️  API local de OpenAlex NO disponible en {LOCAL_API_URL}.")
+        if local_only:
+            print("❌ Se requiere --local-only pero la API local no está levantada. Abortando.")
+            return
+        print("   Usando API oficial (puede alcanzar rate limit). Considera levantar el servidor local.")
+
     graph_store = Neo4jGraphStore()
     
     # 1. Contar total de trabajos a procesar
@@ -308,12 +332,15 @@ if __name__ == "__main__":
     parser.add_argument("--academic", type=str, default=None)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--skip-existing", action="store_true")
+    parser.add_argument("--local-only", action="store_true",
+                        help="Aborta si la API local de OpenAlex (puerto 5009) no está disponible.")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--batch", type=int, default=20)
     parser.add_argument("--chunk", type=int, default=5000)
     args = parser.parse_args()
 
     patch_all_fields(entity_filter=args.entity, academic_filter=args.academic,
-                     dry_run=args.dry_run, 
-                     skip_existing=args.skip_existing, limit=args.limit, 
-                     batch_size=args.batch, chunk_size=args.chunk)
+                     dry_run=args.dry_run,
+                     skip_existing=args.skip_existing, limit=args.limit,
+                     batch_size=args.batch, chunk_size=args.chunk,
+                     local_only=args.local_only)
