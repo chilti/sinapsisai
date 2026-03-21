@@ -176,6 +176,9 @@ def load_hierarchy():
     
     return {k: sorted(list(v)) for k, v in hierarchy.items()}
 
+# Alias de compatibilidad hacia atrás (dashboard_v2.py lo importa con el nombre anterior)
+get_institution_hierarchy = load_hierarchy
+
 def mostrar_banners_destacados(df):
     st.subheader("Publicaciones Destacadas")
     
