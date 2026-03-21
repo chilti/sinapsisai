@@ -959,8 +959,56 @@ def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, 
                 grp_final.to_parquet(target_dir / base_name, index=False)
         graph_store.close()
 
+import unicodedata
+
+def normalize_name(text):
+    if not isinstance(text, str): return ""
+    return unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('utf-8').upper().strip()
+
+def load_snii_master_map(excel_path):
+    """Carga el padrón oficial del SNII para forzar la jerarquía estricta a 2 niveles."""
+    snii_map = {}
+    if not os.path.exists(excel_path):
+        print(f"⚠️ Aviso: No se encontró el Excel del SNII en {excel_path}. Se usará la jerarquía de Neo4j.")
+        return snii_map
+        
+    try:
+        df = pd.read_excel(excel_path)
+        name_col = 'NOMBRE DEL INVESTIGADOR'
+        inst_col = 'INSTITUCIÓN DE ACREDITACIÓN'
+        dep_inst_col = 'DEPENDENCIA DE ACREDITACIÓN'
+        sub_inst_col = 'SUBDEPENDENCIA DE ACREDITACIÓN'
+        
+        for _, row in df.iterrows():
+            if pd.isna(row.get(name_col)): continue
+            name = normalize_name(str(row[name_col]))
+            
+            raw_inst = str(row[inst_col]).strip() if pd.notna(row.get(inst_col)) else ""
+            raw_dep = str(row[dep_inst_col]).strip() if pd.notna(row.get(dep_inst_col)) else ""
+            raw_sub = str(row[sub_inst_col]).strip() if pd.notna(row.get(sub_inst_col)) else ""
+            
+            if raw_inst.upper() in ["SIN INSTITUCIÓN", "SIN INSTITUCION"]:
+                final_inst = "SIN INSTITUCIÓN"
+                final_sub = "NO APLICA"
+            elif raw_sub.upper() in ["SIN INFORMACION", "SIN INFORMACIÓN", ""]:
+                final_inst = raw_inst
+                final_sub = raw_dep if raw_dep else raw_sub
+            else:
+                final_inst = raw_inst
+                final_sub = raw_sub
+                
+            snii_map[name] = [(final_sub if final_sub else "Sin Entidad", final_inst if final_inst else "SIN INSTITUCIÓN")]
+    except Exception as e:
+        print(f"⚠️ Error leyendo Excel SNII: {e}")
+        
+    return snii_map
+
 def process_and_save(entity_filter=None, academic_filter=None, source_filter='all'):
     print(f"Iniciando Pre-cálculo de Métricas (Fuente: {source_filter})...")
+    
+    # Cargar mapa maestro del SNII
+    snii_excel_path = BASE_PATH / 'SNII' / 'Investigadores_vigentes_2025.xlsx'
+    snii_master_map = load_snii_master_map(snii_excel_path)
     
     # 1. Extracción y Enriquecimiento por lotes
     df_raw_list = []
@@ -989,6 +1037,17 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
     academics_map = {}
     for _, row in df_raw.iterrows():
         ac_name = row['academic_name']
+        norm_name = normalize_name(ac_name)
+        
+        # 1. Prioridad Absoluta: Excel del SNII
+        if norm_name in snii_master_map:
+            if ac_name not in academics_map:
+                academics_map[ac_name] = set(snii_master_map[norm_name])
+            else:
+                academics_map[ac_name].update(snii_master_map[norm_name])
+            continue
+            
+        # 2. Fallback: Jerarquía extraída de Neo4j
         affils = row.get('affiliations', [])
         valid_affils = []
         if isinstance(affils, list):
