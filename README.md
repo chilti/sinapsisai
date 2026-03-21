@@ -161,12 +161,24 @@ graph TD
     python ingestion/patch_qdrant_payload.py --both
     ```
 11. **Computar las Métricas Analíticas y Tableros (Caché Parquet)**
-    Precalcula métricas de excelencia (Top 10%, Gini, Velocidad), Sunburst temático, KPIs por investigador/institución y proyeción UMAP. El sistema ahora utiliza una arquitectura de **Caché Desagregada**, agrupando los `.parquet` en directorios jerárquicos veloces por entidad (`data/cache/<Entidad>/...`). Requerido para cada institución de manera individual.
+    Precalcula métricas de excelencia (Top 10%, Gini, Velocidad), Sunburst temático, KPIs por investigador/institución y proyeción UMAP. 
+    **Nota Arquitectónica:** El sistema utiliza una arquitectura de **Caché Desagregada**, agrupando los `.parquet` en directorios jerárquicos veloces alineados estrictamente al padrón institucional (`data/cache/<Institución>/<Dependencia>/...`). Requerido para cada institución de manera individual.
     ```bash
     python ingestion/compute_scholar_metrics.py --entity "Facultad de Ciencias"
     ```
 
-### 6. Analítica Global y Reportes (Opcional)
+### 6. Pipeline Nacional (SNII Matching y Verificación)
+Para implementaciones a escala país (como la validación de los +40,000 miembros del SNII contra repositorios abiertos), el pipeline incluye un submódulo de vinculación híbrida y vectorial:
+12. **Vectorización y Limpieza de Padrón Local**
+    Crea embeddings de los investigadores priorizando datos de la universidad base contra el resto.
+    ```bash
+    python SNII/vectorize_researchers.py --step 1
+    ```
+13. **Validación Híbrida con LLMs (Orquestación RAG)**
+    Utiliza búsqueda de ClickHouse/Qdrant combinada con un LLM como juez absoluto para desambiguar homónimos y limpiar jerarquías.
+    ```bash
+    python SNII/match_snii_orcid.py
+    ```
 12. **Carga y Cálculo en ClickHouse (Rendimiento Masivo)**
     Si requieres analizar datasets masivos a nivel país o región (millones de registros), la ingesta puede derivarse a ClickHouse.
     ```bash
