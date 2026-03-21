@@ -468,6 +468,7 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
         result = session.run(query, **params)
         for row in result:
             raw_meta = {}
+            
             if row['raw_metadata']:
                 try:
                     raw_meta = json.loads(row['raw_metadata'])
@@ -891,8 +892,8 @@ def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, 
                 elif isinstance(inst_val, str):
                     institutions = [i.strip() for i in inst_val.split(';') if i.strip()]
             
-            if not institutions or institutions == ["Sin Institución"]:
-                institutions = ["UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)"] # Default Legacy
+            if not institutions or institutions == ["Sin Institución"] or institutions == ["SIN INSTITUCIÓN"]:
+                institutions = ["SIN INSTITUCIÓN"]
 
             for ent in entities:
                 for inst in institutions:
@@ -900,15 +901,10 @@ def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, 
                     safe_ent = str(ent).replace('/', '_').replace('\\', '_')
                     safe_ac = str(ac_name).replace('/', '_').replace('\\', '_')
                     
-                    # 1. Ruta Jerárquica (Nacional)
+                    # Ruta Jerárquica Exclusiva (2 Niveles)
                     target_dir = CACHE_DIR / safe_inst / safe_ent / safe_ac
                     target_dir.mkdir(parents=True, exist_ok=True)
                     grp.to_parquet(target_dir / base_name, index=False)
-                    
-                    # 2. Ruta Plana (Legacy / Fallback)
-                    legacy_dir = CACHE_DIR / safe_ent / safe_ac
-                    legacy_dir.mkdir(parents=True, exist_ok=True)
-                    grp.to_parquet(legacy_dir / base_name, index=False)
                 
     elif group_level == 'entity':
         # Aseguramos que todas las entidades sean procesadas si el df está incompleto
@@ -936,15 +932,15 @@ def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, 
                 elif isinstance(inst_val, str):
                     institutions = [i.strip() for i in inst_val.split(';') if i.strip()]
             
-            if not institutions or institutions == ["Sin Institución"]:
-                institutions = ["UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)"]
+            if not institutions or institutions == ["Sin Institución"] or institutions == ["SIN INSTITUCIÓN"]:
+                institutions = ["SIN INSTITUCIÓN"]
 
             safe_ent = str(ent_name).replace('/', '_').replace('\\', '_')
             
             for inst in institutions:
                 safe_inst = str(inst).replace('/', '_').replace('\\', '_')
                 
-                # 1. Ruta Jerárquica
+                # Ruta Jerárquica Exclusiva (2 Niveles)
                 target_dir = CACHE_DIR / safe_inst / safe_ent
                 target_dir.mkdir(parents=True, exist_ok=True)
                 
@@ -960,12 +956,6 @@ def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, 
                         grp_final['academics_list'] = "[]"
                 
                 grp_final.to_parquet(target_dir / base_name, index=False)
-                
-                # 2. Ruta Plana (Legacy)
-                legacy_dir = CACHE_DIR / safe_ent
-                legacy_dir.mkdir(parents=True, exist_ok=True)
-                grp_final.to_parquet(legacy_dir / base_name, index=False)
-                
         graph_store.close()
 
 def process_and_save(entity_filter=None, academic_filter=None, source_filter='all'):
