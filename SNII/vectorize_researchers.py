@@ -312,7 +312,65 @@ def vectorize_snii_authors():
             q_store.add_documents(batch_docs, embs)
             print(f"      - {i+len(batch_docs)}/{len(docs)} procesados.")
 
-def vectorize_snii_with_llm(limit_test=None):
+def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list:
+    """Busca candidatos en la tabla de autores de OpenAlex en ClickHouse local.
+    Retorna hasta `limit` autores con nombre, orcid, last_known_institution y scopus ids.
+    """
+    try:
+        ch = get_ch_client()
+        # Tomamos la primera palabra del apellido (antes de la coma) como llave de búsqueda
+        search_term = normalize_text(name.split(',')[0].split()[0]).replace("'", "").replace("'", "")
+        if len(search_term) < 3:
+            return []
+        
+        query = f"""
+        SELECT
+            id,
+            display_name,
+            orcid,
+            last_known_institution_name,
+            ids
+        FROM openalex.authors
+        WHERE lower(display_name) LIKE '%{search_term.lower()}%'
+        LIMIT {limit * 5}
+        """
+        rows = ch.query(query).result_rows
+        
+        from Levenshtein import jaro_winkler
+        sorted_seed = " ".join(sorted([t for t in normalize_text(name).replace(',', ' ').split() if len(t) > 1]))
+        
+        scored = []
+        for r in rows:
+            openalex_id, disp_name, orcid_val, inst_name, ids_json = r[0], r[1], r[2], r[3], r[4]
+            cand_norm = " ".join(sorted([t for t in normalize_text(str(disp_name)).replace(',', ' ').split() if len(t) > 1]))
+            ns = jaro_winkler(sorted_seed, cand_norm)
+            if ns > 0.75:
+                # Extraer Scopus IDs del campo ids (JSON) si están disponibles
+                scopus_ids = []
+                try:
+                    ids_data = json.loads(ids_json) if isinstance(ids_json, str) else (ids_json or {})
+                    scopus_raw = ids_data.get('scopus') or []
+                    if isinstance(scopus_raw, str):
+                        scopus_ids = [scopus_raw]
+                    elif isinstance(scopus_raw, list):
+                        scopus_ids = scopus_raw
+                except Exception:
+                    pass
+                scored.append({
+                    "openalex_id": openalex_id,
+                    "name": disp_name,
+                    "orcid": orcid_val or None,
+                    "inst": inst_name or "",
+                    "scopus_ids": scopus_ids,
+                    "score": ns
+                })
+        
+        scored.sort(key=lambda x: x['score'], reverse=True)
+        return scored[:limit]
+    except Exception as e:
+        print(f"      ⚠️ Error buscando en OpenAlex authors ClickHouse: {e}")
+        return []
+
     """Paso 4: SNII -> Qdrant (Top 5 Local + Top 5 ORCID) -> LLM Verification"""
     print("\n🚀 Paso 4: Validando investigadores SNII con LLM (Reranking)...")
     from match_snii_orcid import SNII_PATH
@@ -372,7 +430,25 @@ def vectorize_snii_with_llm(limit_test=None):
         all_candidates = []
         is_unam = any(k in final_inst.lower() for k in ['unam', 'nacional autonoma de mexico', 'nacional autónoma de méxico'])
 
-        if is_unam:
+        # ── OpenAlex Authors (Prioridad Alta) ─────────────────────────────
+        openalex_candidates = search_openalex_authors(snii_name, final_inst, limit=5)
+        oa_scopus_map = {}  # openalex_id -> scopus_ids (para usar después si hay match)
+        for c in openalex_candidates:
+            oa_scopus_map[c['openalex_id']] = c.get('scopus_ids', [])
+            all_candidates.append({
+                "source": "OpenAlex DB Local",
+                "openalex_id": c['openalex_id'],
+                "name": c['name'],
+                "orcid": c['orcid'],
+                "affiliation": c['inst'],
+                "scopus_ids": c.get('scopus_ids', []),
+                "score_vec": c['score']
+            })
+
+        # Saltamos Qdrant si ya tenemos suficientes candidatos de calidad de OpenAlex
+        high_quality_oa = [c for c in openalex_candidates if c['score'] >= 0.95]
+
+        if is_unam and not high_quality_oa:
             # UNAM: Priorizar local via Qdrant (ahí está SIIA)
             local_candidates = local_store.search(emb, limit=5)
             orcid_candidates = orcid_store.search(emb, limit=2)
@@ -392,7 +468,8 @@ def vectorize_snii_with_llm(limit_test=None):
                     "affiliation": c.get("affiliation"),
                     "score_vec": c.get("score")
                 })
-        else:
+        elif not high_quality_oa:
+
             # Resto del país: ORCID Qdrant + ClickHouse SQL Directo
             orcid_candidates = orcid_store.search(emb, limit=5)
             for c in orcid_candidates:
@@ -410,7 +487,7 @@ def vectorize_snii_with_llm(limit_test=None):
                 parts = snii_name.replace(',', ' ').strip().split()
                 if ',' in snii_name:
                     search_term = normalize_text(snii_name.split(',')[0].split()[0])
-                else:
+                elif not high_quality_oa:
                     search_term = parts[0]
                     common_names = ['juan', 'jose', 'maria', 'ana', 'luis', 'carlos', 'martha', 'rosa', 'pedro', 'jesus']
                     if search_term in common_names and len(parts) > 1:
@@ -489,11 +566,30 @@ Respuesta:"""
                 m_idx = res_json.get("candidate_index")
                 if m_idx and 1 <= m_idx <= len(all_candidates):
                     final_match = all_candidates[m_idx-1]
-                    print(f"      ✅ MATCH CONFIRMADO por LLM: [SNII] {snii_name} ≈ [Match] {final_match['name']} ({final_match['orcid']})")
+                    confirmed_orcid = res_json.get("orcid") or final_match.get('orcid')
+                    
+                    # Extraer Scopus IDs: primero desde el candidato (de OpenAlex), luego desde ClickHouse ORCID
+                    scopus_ids = final_match.get('scopus_ids') or []
+                    if not scopus_ids and confirmed_orcid:
+                        try:
+                            ch = get_ch_client()
+                            clean_orcid = str(confirmed_orcid).replace('https://orcid.org/', '').strip()
+                            q = f"SELECT external_ids FROM openalex.authors WHERE orcid = '{clean_orcid}' LIMIT 1"
+                            rows = ch.query(q).result_rows
+                            if rows and rows[0][0]:
+                                ext = json.loads(rows[0][0]) if isinstance(rows[0][0], str) else rows[0][0]
+                                raw = ext.get('Scopus') or ext.get('scopus') or []
+                                scopus_ids = [raw] if isinstance(raw, str) else raw
+                        except Exception as se:
+                            print(f"      ⚠️ No se pudieron extraer Scopus IDs: {se}")
+                    
+                    print(f"      ✅ MATCH CONFIRMADO por LLM: [SNII] {snii_name} ≈ [Match] {final_match['name']} ({confirmed_orcid})")
                     result_entry.update({
                         "match": True,
                         "matched_author": final_match['name'],
-                        "matched_orcid": final_match['orcid'],
+                        "matched_orcid": confirmed_orcid,
+                        "matched_openalex_id": final_match.get('openalex_id'),
+                        "scopus_ids": scopus_ids,
                         "source": final_match['source']
                     })
             else:
