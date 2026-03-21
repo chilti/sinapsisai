@@ -103,13 +103,14 @@ def get_institution_hierarchy():
     
     try:
         with store.driver.session() as session:
-            # 1. Intentar obtener relaciones jerárquicas directas (Subdependency -> Institution)
+            # 1. Intentar estructura jerárquica primaria basada en PART_OF
             query = """
             MATCH (e:Entity)-[:PART_OF]->(i:Institution)
+            WHERE e.name <> i.name
             RETURN DISTINCT i.name as institution, e.name as entity
             UNION
             MATCH (e:Entity)<-[:AFFILIATED_TO]-(a:Academic)-[:AFFILIATED_TO]->(i:Institution)
-            WHERE e.name <> i.name AND NOT e:Institution
+            WHERE e.name <> i.name AND NOT e:Institution AND NOT EXISTS((e)-[:PART_OF]->())
             RETURN DISTINCT i.name as institution, e.name as entity
             """
             res = session.run(query)
@@ -123,8 +124,8 @@ def get_institution_hierarchy():
             res = session.run("MATCH (e:Entity) RETURN e.name as name")
             all_entities = [r['name'] for r in res]
             
-            # UNAM es el default para los datos actuales si no hay jerarquía
-            unam_name = "Universidad Nacional Autónoma de México (UNAM)"
+            # UNAM es el default exacto de base de datos
+            unam_name = "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)"
             if not hierarchy:
                 hierarchy[unam_name] = set(all_entities)
             else:
@@ -152,7 +153,7 @@ def get_institution_hierarchy():
     except Exception as e:
         print(f"Error cargando jerarquía: {e}")
         hierarchy = {
-            "Universidad Nacional Autónoma de México (UNAM)": {
+            "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)": {
                 "FACULTAD DE CIENCIAS", 
                 "INSTITUTO DE CIENCIAS NUCLEARES",
                 "INSTITUTO DE FISICA"
@@ -438,7 +439,7 @@ def render_institucion_view(entity_name, institution_name=None):
     """, unsafe_allow_html=True)
 
     st.header(f"🏢 Vista de la Institución: {entity_name}")
-    st.markdown(f"Panorama Analítico de la Producción de **{entity_name}**. La producción fué descargada desde Web of Science. Los indicaddores fueron extraidos de la base de datos abierta OpenAlex.")
+    st.markdown(f"Panorama Analítico de la Producción de **{entity_name}**.")
 
     df_annual = load_cached_data("institucion_annual.parquet", entity_name=entity_name, institution_name=institution_name)
     df_total = load_cached_data("institucion_total.parquet", entity_name=entity_name, institution_name=institution_name)
