@@ -128,28 +128,39 @@ def calculate_score(seed_author, ch_record):
     
     # 2. Afiliación
     aff_score = 0
-    seed_aff = normalize_text(seed_author.get('main_affiliation', ''))
+    main_aff_upper = seed_author.get('main_affiliation', '').upper()
     
-    keywords = ["unam", "ipn", "cinvestav", "tecnologico", "autonoma", "instituto", "universidad", "ciencias", "nucleares"]
-    
-    if seed_aff and last_aff:
-        last_aff_norm = normalize_text(last_aff)
-        match_keywords = [k for k in keywords if k in seed_aff and k in last_aff_norm]
-        
-        jw_aff = jaro_winkler(seed_aff, last_aff_norm)
-        # Boost si hay keywords comunes o alta similitud
-        if jw_aff > 0.85:
-            aff_score = jw_aff
-        elif match_keywords:
-            aff_score = 0.5 + (0.1 * len(match_keywords))
-            aff_score = min(aff_score, 0.9)
-    
-    # Puntuación final ponderada
-    # Si NO hay afiliación registrada en CH, no penalizamos tanto, confiamos más en nombre
-    if not last_aff:
+    # Inmunidad si no tiene institución
+    if "SIN INSTITUCIÓN" in main_aff_upper or "SIN INSTITUCION" in main_aff_upper:
         total_score = name_score
     else:
-        total_score = (name_score * 0.6) + (aff_score * 0.4)
+        seed_aff = normalize_text(seed_author.get('main_affiliation', ''))
+        sub_aff = normalize_text(seed_author.get('sub_affiliation', ''))
+        
+        keywords = ["unam", "ipn", "cinvestav", "tecnologico", "autonoma", "instituto", "universidad", "ciencias", "nucleares"]
+        
+        if seed_aff and last_aff:
+            last_aff_norm = normalize_text(last_aff)
+            match_keywords = [k for k in keywords if k in seed_aff and k in last_aff_norm]
+            
+            jw_aff = jaro_winkler(seed_aff, last_aff_norm)
+            # Boost primario
+            if jw_aff > 0.85:
+                aff_score = jw_aff
+            elif match_keywords:
+                aff_score = 0.5 + (0.1 * len(match_keywords))
+                aff_score = min(aff_score, 0.9)
+                
+            # Bono de subdependencia (nivel inferior)
+            if sub_aff and sub_aff not in ["no aplica", "sin informacion"]:
+                if sub_aff in last_aff_norm or jaro_winkler(sub_aff, last_aff_norm) > 0.85:
+                    aff_score = min(aff_score + 0.15, 1.0)
+        
+        # Puntuación final ponderada
+        if not last_aff:
+            total_score = name_score
+        else:
+            total_score = (name_score * 0.6) + (aff_score * 0.4)
     
     # REGLA ESTRICTA: Si el nombre no es casi idéntico, penalización fuerte
     if name_score < 0.93:

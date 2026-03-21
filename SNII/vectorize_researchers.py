@@ -162,7 +162,7 @@ def vectorize_local_authors():
     docs = []
     for orcid, d in docs_map.items():
         main_aff = max(d["affiliations"], key=d["affiliations"].get)
-        text = f"{d['name']} ({main_aff})"
+        text = f"{d['name']} ({main_aff})" if main_aff != "Sin Afiliación" else f"{d['name']}"
         docs.append({
             "text": text,
             "title": f"local_{orcid}",
@@ -263,7 +263,13 @@ def vectorize_snii_authors():
             final_inst = raw_inst
             final_sub = raw_sub
             
-        text = f"{name} {final_inst} {final_sub}".strip()
+        # Limpieza semántica para Qdrant
+        if final_inst == "SIN INSTITUCIÓN":
+            text = name
+        else:
+            clean_sub = f", {final_sub}" if final_sub and final_sub != "NO APLICA" else ""
+            text = f"{name} ({final_inst}{clean_sub})"
+            
         docs.append({
             "text": text,
             "title": name,
@@ -363,34 +369,85 @@ def vectorize_snii_with_llm(limit_test=None):
         # Obtener embedding del autor SNII
         emb = get_embeddings([snii_info])[0]
         
-        # Recuperar candidatos
-        local_candidates = local_store.search(emb, limit=5)
-        orcid_candidates = orcid_store.search(emb, limit=5)
-        
         all_candidates = []
-        for c in local_candidates:
-            all_candidates.append({
-                "source": "Local (Neo4j)",
-                "name": c.get("name"),
-                "orcid": c.get("orcid"),
-                "affiliation": c.get("affiliation"),
-                "score_vec": c.get("score")
-            })
-        for c in orcid_candidates:
-            all_candidates.append({
-                "source": "ORCID Dump",
-                "name": c.get("name"),
-                "orcid": c.get("orcid"),
-                "affiliation": c.get("affiliation"),
-                "score_vec": c.get("score")
-            })
+        is_unam = any(k in final_inst.lower() for k in ['unam', 'nacional autonoma de mexico', 'nacional autónoma de méxico'])
+
+        if is_unam:
+            # UNAM: Priorizar local via Qdrant (ahí está SIIA)
+            local_candidates = local_store.search(emb, limit=5)
+            orcid_candidates = orcid_store.search(emb, limit=2)
+            for c in local_candidates:
+                all_candidates.append({
+                    "source": "Local (Neo4j/SIIA)",
+                    "name": c.get("name"),
+                    "orcid": c.get("orcid"),
+                    "affiliation": c.get("affiliation"),
+                    "score_vec": c.get("score")
+                })
+            for c in orcid_candidates:
+                all_candidates.append({
+                    "source": "ORCID Dump (Qdrant)",
+                    "name": c.get("name"),
+                    "orcid": c.get("orcid"),
+                    "affiliation": c.get("affiliation"),
+                    "score_vec": c.get("score")
+                })
+        else:
+            # Resto del país: ORCID Qdrant + ClickHouse SQL Directo
+            orcid_candidates = orcid_store.search(emb, limit=5)
+            for c in orcid_candidates:
+                all_candidates.append({
+                    "source": "ORCID Dump (Qdrant)",
+                    "name": c.get("name"),
+                    "orcid": c.get("orcid"),
+                    "affiliation": c.get("affiliation"),
+                    "score_vec": c.get("score")
+                })
+                
+            # ClickHouse SQL Fuzzy Fallback
+            try:
+                ch_client = get_ch_client()
+                parts = snii_name.replace(',', ' ').strip().split()
+                if ',' in snii_name:
+                    search_term = normalize_text(snii_name.split(',')[0].split()[0])
+                else:
+                    search_term = parts[0]
+                    common_names = ['juan', 'jose', 'maria', 'ana', 'luis', 'carlos', 'martha', 'rosa', 'pedro', 'jesus']
+                    if search_term in common_names and len(parts) > 1:
+                        search_term = parts[-1]
+                        
+                t_esc = search_term.strip().replace("'", "").lower().replace("'", "''")
+                
+                if len(t_esc) >= 3:
+                    query = f"SELECT orcid, given_names, family_name, credit_name, last_affiliation FROM openalex.orcid_records WHERE (lower(family_name) LIKE '%{t_esc}%' OR lower(credit_name) LIKE '%{t_esc}%') LIMIT 20"
+                    res = ch_client.query(query).result_rows
+                    
+                    from Levenshtein import jaro_winkler
+                    sorted_seed = " ".join(sorted([t for t in normalize_text(snii_name).replace(',',' ').split() if len(t)>1]))
+                    
+                    scored_cands = []
+                    for r in res:
+                        fn, gn, cn, aff, orc = str(r[2] or ''), str(r[1] or ''), str(r[3] or ''), str(r[4] or ''), r[0]
+                        sorted_ch = " ".join(sorted([t for t in normalize_text(f"{gn} {fn}").replace(',',' ').split() if len(t)>1]))
+                        ns = jaro_winkler(sorted_seed, sorted_ch)
+                        if cn:
+                            ns = max(ns, jaro_winkler(sorted_seed, " ".join(sorted([t for t in normalize_text(cn).replace(',',' ').split() if len(t)>1]))))
+                        if ns > 0.8:
+                            scored_cands.append({"score": ns, "name": f"{gn} {fn}".strip() if not cn else cn, "orcid": orc, "aff": aff})
+                    
+                    scored_cands.sort(key=lambda x: x['score'], reverse=True)
+                    for c in scored_cands[:4]:
+                        if not any(a['orcid'] == c['orcid'] for a in all_candidates):
+                            all_candidates.append({"source": "ClickHouse Text Search", "name": c['name'], "orcid": c['orcid'], "affiliation": c['aff'], "score_vec": c['score']})
+            except Exception as e:
+                print(f"      ⚠️ Error consultando ClickHouse text search: {e}")
             
         # Preparar Prompt para el LLM
         candidates_str = ""
         for i, cand in enumerate(all_candidates):
             candidates_str += f"{i+1}. [{cand['source']}] Nombre: {cand['name']} | ORCID: {cand['orcid']} | Afiliación: {cand['affiliation']}\n"
             
-        prompt = f"""Eres un experto investigador bibliográfico. Tu tarea es identificar si alguno de los candidatos recuperados por una búsqueda semántica coincide exactamente con el investigador del SNII.
+        prompt = f"""Eres un experto investigador bibliográfico. Tu tarea es identificar si alguno de los candidatos recuperados coincide exactamente con el investigador del SNII.
 
 Investigador SNII buscado:
 {snii_info}
@@ -398,11 +455,13 @@ Investigador SNII buscado:
 Candidatos potenciales:
 {candidates_str}
 
-Instrucciones:
-1. Compara cuidadosamente el nombre (considera variaciones como 'Juan Perez' vs 'Perez, Juan') y la institución.
-2. Si crees que hay una coincidencia clara, responde con el número del candidato y el ORCID.
-3. Si ninguno coincide con seguridad, responde 'NINGUNO'.
-4. Formato de respuesta: JSON plano con las llaves: "match" (bool), "candidate_index" (int o null), "orcid" (str o null), "reason" (str breve).
+Instrucciones vitales:
+1. Analiza el nombre (variaciones por apellidos compuestos, omisiones de nombre central, apodos, etc).
+2. Analiza la afiliación desglosada en Nivel 1 (Institución) y Nivel 2 (Subdependencia).
+3. ATENCIÓN: Si el investigador SNII indica 'Institución: SIN INSTITUCIÓN', DEBES IGNORAR por completo las afiliaciones de los candidatos y realizar el match 100% evaluando la compatibilidad de los nombres. ¡No penalices al candidato por tener una institución registrada en ORCID si al SNII le falta el dato!
+4. Si crees que hay coincidencia segura, responde con el número del candidato y su ORCID.
+5. Si ninguno coincide con seguridad, responde 'NINGUNO'.
+6. Requisito de formato de salida estricto: JSON plano {"{"} "match": true/false, "candidate_index": int/null, "orcid": "...", "reason": "breve justificación" {"}"}. No agregues markdown de bloques de código.
 
 Respuesta:"""
 
