@@ -4,6 +4,8 @@
 
 El Sistema Nacional de Investigadores e Investigadoras (SNII) de México publica anualmente un padrón de investigadores activos. Este padrón contiene los nombres completos de los investigadores, su nivel, institución de adscripción y otros atributos administrativos, pero **carece de identificadores persistentes y verificables de autor** como [ORCID](https://orcid.org/).
 
+> 📥 **Archivo de datos:** [Investigadores_vigentes_2025.xlsx](https://secihti.mx/wp-content/uploads/snii/archivo_historico/Investigadores_vigentes_2025.xlsx)
+
 ORCID (_Open Researcher and Contributor ID_) es el estándar internacional para identificar de manera inequívoca a autores científicos, evitando la ambigüedad que generan los homónimos, cambios de nombre, variaciones en la transcripción y trasliteración de apellidos. Contar con el ORCID de cada investigador del SNII es el primer paso para poder vincular su producción científica con bases de datos abiertas como OpenAlex, Crossref o ORCID pública.
 
 ## El Problema
