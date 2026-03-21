@@ -15,19 +15,22 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.knowledge_graph import Neo4jGraphStore
 
 # Configurar Pyalex
-pyalex.config.email = "sin_correo@ciencias.unam.mx"
+from dotenv import load_dotenv
+load_dotenv()
+
+pyalex.config.email = os.getenv("EMAIL_ADDRESS", "sin_correo@ciencias.unam.mx")
 
 # Configuración ClickHouse
-CH_HOST = "127.0.0.1"
-CH_PORT = 8123
-CH_USER = "admin"
-CH_PASS = "admin"
-CH_DB   = "openalex"
+CH_HOST = os.getenv("CH_HOST", "127.0.0.1")
+CH_PORT = int(os.getenv("CH_PORT", 8123))
+CH_USER = os.getenv("CH_USER", "admin")
+CH_PASS = os.getenv("CH_PASSWORD", "admin")
+CH_DB   = os.getenv("CH_DATABASE", "openalex")
 
 # Configuración Neo4j (Bolt)
-NEO4J_URI = "bolt://127.0.0.1:7687"
-NEO4J_USER = "neo4j"
-NEO4J_PASS = "password123"
+NEO4J_URI  = os.getenv("NEO4J_URI", "bolt://127.0.0.1:7687")
+NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+NEO4J_PASS = os.getenv("NEO4J_PASS", "password123")
 
 # Definir rutas absolutas basadas en la ubicación del script
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))

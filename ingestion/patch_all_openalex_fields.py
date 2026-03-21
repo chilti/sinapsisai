@@ -89,11 +89,13 @@ def _fetch_from_clickhouse_bulk(dois: list[str]) -> dict:
     if CH_API_BLOCKED or not get_ch_client or not dois:
         return {}
     try:
+        from SNII.match_snii_orcid import CH_DB
+        ch_table = os.getenv("CH_TABLE", "works")
         ch = get_ch_client()
         doi_list = [f"https://doi.org/{d.lower()}" for d in dois]
         placeholders = ", ".join([f"'{d}'" for d in doi_list])
         
-        query = f"SELECT raw_data FROM openalex.works WHERE doi IN ({placeholders}) LIMIT {len(dois)}"
+        query = f"SELECT raw_data FROM {CH_DB}.{ch_table} WHERE doi IN ({placeholders}) LIMIT {len(dois)}"
         res = ch.query(query).result_rows
         
         found = {}
@@ -205,7 +207,8 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
             return
         print("   Usando API oficial (puede alcanzar rate limit). Considera levantar el servidor local.")
 
-    graph_store = Neo4jGraphStore()
+    from SNII.match_snii_orcid import NEO4J_URI, NEO4J_USER, NEO4J_PASS
+    graph_store = Neo4jGraphStore(uri=NEO4J_URI, user=NEO4J_USER, password=NEO4J_PASS)
     
     # 1. Contar total de trabajos a procesar
     with graph_store.driver.session() as session:
