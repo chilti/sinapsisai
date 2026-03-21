@@ -1305,6 +1305,26 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
     else:
         print("⚠ Datos insuficientes para generar UMAP.")
 
+    print("⏳ Generando hierarchy.json basado en las carpetas de caché creadas...")
+    hierarchy_map = {}
+    if CACHE_DIR.exists():
+        for inst in os.listdir(CACHE_DIR):
+            inst_path = CACHE_DIR / inst
+            if inst_path.is_dir():
+                entities = []
+                for ent in os.listdir(inst_path):
+                    ent_path = inst_path / ent
+                    if ent_path.is_dir():
+                        entities.append(ent)
+                if entities:
+                    hierarchy_map[inst] = sorted(entities)
+                    
+    if hierarchy_map:
+        import json
+        with open(CACHE_DIR / 'hierarchy.json', 'w', encoding='utf-8') as f:
+            json.dump(hierarchy_map, f, ensure_ascii=False, indent=2)
+        print(f"✅ hierarchy.json exportado con éxito ({len(hierarchy_map)} instituciones).")
+
     print("\n🎉 Todas las métricas y Parquets se han generado exitosamente en data/cache/")
 
 if __name__ == "__main__":

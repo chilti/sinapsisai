@@ -95,8 +95,19 @@ def cargar_lista_academicos(ruta_json="ingestion/profesores_Instituto_de_Ciencia
     except Exception:
         return {}
 
-def get_institution_hierarchy():
-    """Obtiene la jerarquía Institución -> Subdependencias desde Neo4j."""
+@st.cache_data(show_spinner=False, ttl=3600)
+def load_hierarchy():
+    """Carga jerarquía instituciones -> entidades desde hierarchy.json o fallback a Grafo"""
+    import json
+    json_path = os.path.join(CACHE_DIR, 'hierarchy.json')
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                hierarchy = json.load(f)
+            return {k: sorted(list(v)) for k, v in hierarchy.items()}
+        except Exception as e:
+            print(f"Error leyendo hierarchy.json: {e}")
+
     from database.knowledge_graph import Neo4jGraphStore
     store = Neo4jGraphStore()
     hierarchy = {}
