@@ -182,7 +182,8 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
         print(f"  -> Filtrando por Entidad (Investigadores): {entity_filter} (Fuente: {source_filter})")
         query = """
         MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p{label_filter})
-        OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(i:Institution)
+        OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
+        WITH e, a, p, CASE WHEN p_inst IS NOT NULL THEN p_inst ELSE (CASE WHEN e:Institution THEN e ELSE null END) END AS i
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
         RETURN a.name AS academic_name,
@@ -195,8 +196,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                a.audit_confidence AS audit_confidence,
                a.audit_timestamp AS audit_timestamp,
                a.is_snii AS is_snii,
-               collect(DISTINCT e.name) AS entities,
-               collect(DISTINCT i.name) AS institutions,
+               collect(DISTINCT {ent: e.name, inst: i.name}) AS affiliations,
                p.id AS paper_id,
                p.doi AS paper_doi,
                p.year AS year,
@@ -211,7 +211,8 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
         query = """
         MATCH (a:Academic)-[:AUTHORED]->(p{label_filter})
         OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
-        OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(i:Institution)
+        OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
+        WITH a, p, e, CASE WHEN p_inst IS NOT NULL THEN p_inst ELSE (CASE WHEN e:Institution THEN e ELSE null END) END AS i
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
         RETURN a.name AS academic_name,
@@ -223,8 +224,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                a.audit_confidence AS audit_confidence,
                a.audit_timestamp AS audit_timestamp,
                a.is_snii AS is_snii,
-               collect(DISTINCT e.name) AS entities,
-               collect(DISTINCT i.name) AS institutions,
+               collect(DISTINCT {ent: e.name, inst: i.name}) AS affiliations,
                p.id AS paper_id,
                p.doi AS paper_doi,
                p.year AS year,
@@ -344,8 +344,9 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                 'audit_timestamp': row.get('audit_timestamp'),
                 'match_reason':    row.get('match_reason'),
                 'is_snii':   bool(row.get('is_snii', False)),
-                'entities':  ";".join(row['entities']) if row['entities'] else "Sin Entidad",
-                'institutions': ";".join(row['institutions']) if row.get('institutions') else "Sin Institución",
+                'affiliations': affiliations,
+                'entities':  list(set(ents_list)),
+                'institutions': list(set(insts_list)),
                 'paper_id':  row['paper_id'],
                 'year':      row['year'],
                 'citations': citations,
@@ -433,7 +434,9 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
         print(f"  -> Filtrando por Entidad (Papers): {entity_filter} (Fuente: {source_filter})")
         query = """
         MATCH (e:Entity {name: $entity})
-        OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AFFILIATED_TO]->(i:Institution)
+        OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
+        WITH e, CASE WHEN p_inst IS NOT NULL THEN p_inst ELSE (CASE WHEN e:Institution THEN e ELSE null END) END AS i
+        OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)
         OPTIONAL MATCH (e)-[:HAS_PAPER]->(p:Paper{label_filter})
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         RETURN e.name AS entity_name,
@@ -450,7 +453,8 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
         print(f"  -> Procesando todas las entidades (Fuente: {source_filter})")
         query = """
         MATCH (e:Entity)-[:HAS_PAPER]->(p:Paper{label_filter})
-        OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AFFILIATED_TO]->(i:Institution)
+        OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
+        WITH e, p, CASE WHEN p_inst IS NOT NULL THEN p_inst ELSE (CASE WHEN e:Institution THEN e ELSE null END) END AS i
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         RETURN e.name AS entity_name,
                collect(DISTINCT i.name) AS institutions,
@@ -870,41 +874,32 @@ def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, 
         for ac_name in academics_to_process:
             grp = df[df['academic_name'] == ac_name] if not df.empty else pd.DataFrame(columns=df.columns)
             
-            entities = []
+            affiliations = []
             if academics_map and ac_name in academics_map:
-                entities = academics_map[ac_name]
-            elif not grp.empty:
-                entities_val = grp['entities'].iloc[0]
-                if isinstance(entities_val, list):
-                    entities = entities_val
-                elif isinstance(entities_val, str):
-                    entities = [e.strip() for e in entities_val.split(';') if e.strip()]
+                affiliations = academics_map[ac_name]
+            elif not grp.empty and 'affiliations' in grp.columns:
+                aff_val = grp['affiliations'].iloc[0]
+                if isinstance(aff_val, list):
+                    for a_dict in aff_val:
+                        if isinstance(a_dict, dict) and a_dict.get('ent'):
+                            affiliations.append((a_dict['ent'], a_dict.get('inst')))
             
-            if not entities:
-                entities = ['Sin Entidad']
+            if not affiliations:
+                affiliations = [('Sin Entidad', 'SIN INSTITUCIÓN')]
                 
-            # Buscar Institución (preferencia por la jerarquía)
-            institutions = []
-            if 'institutions' in grp.columns and not grp.empty:
-                inst_val = grp['institutions'].iloc[0]
-                if isinstance(inst_val, list):
-                    institutions = inst_val
-                elif isinstance(inst_val, str):
-                    institutions = [i.strip() for i in inst_val.split(';') if i.strip()]
-            
-            if not institutions or institutions == ["Sin Institución"] or institutions == ["SIN INSTITUCIÓN"]:
-                institutions = ["SIN INSTITUCIÓN"]
-
-            for ent in entities:
-                for inst in institutions:
-                    safe_inst = str(inst).replace('/', '_').replace('\\', '_')
-                    safe_ent = str(ent).replace('/', '_').replace('\\', '_')
-                    safe_ac = str(ac_name).replace('/', '_').replace('\\', '_')
-                    
-                    # Ruta Jerárquica Exclusiva (2 Niveles)
-                    target_dir = CACHE_DIR / safe_inst / safe_ent / safe_ac
-                    target_dir.mkdir(parents=True, exist_ok=True)
-                    grp.to_parquet(target_dir / base_name, index=False)
+            for ent, inst in affiliations:
+                if not inst or inst == "Sin Institución" or inst == "SIN INSTITUCIÓN" or inst == "None":
+                    inst = "SIN INSTITUCIÓN"
+                if not ent: ent = "Sin Entidad"
+                
+                safe_inst = str(inst).replace('/', '_').replace('\\', '_')
+                safe_ent = str(ent).replace('/', '_').replace('\\', '_')
+                safe_ac = str(ac_name).replace('/', '_').replace('\\', '_')
+                
+                # Ruta Jerárquica Exclusiva Alineada (2 Niveles Limpios)
+                target_dir = CACHE_DIR / safe_inst / safe_ent / safe_ac
+                target_dir.mkdir(parents=True, exist_ok=True)
+                grp.to_parquet(target_dir / base_name, index=False)
                 
     elif group_level == 'entity':
         # Aseguramos que todas las entidades sean procesadas si el df está incompleto
@@ -988,17 +983,17 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
     academics_map = {}
     for _, row in df_raw.iterrows():
         ac_name = row['academic_name']
-        entities = []
-        entities_val = row['entities']
-        if isinstance(entities_val, list):
-            entities = entities_val
-        elif isinstance(entities_val, str):
-            entities = [e.strip() for e in entities_val.split(';') if e.strip()]
+        affils = row.get('affiliations', [])
+        valid_affils = []
+        if isinstance(affils, list):
+            for a in affils:
+                if isinstance(a, dict) and a.get('ent'):
+                    valid_affils.append((a['ent'], a.get('inst')))
         
         if ac_name not in academics_map:
-            academics_map[ac_name] = set(entities)
+            academics_map[ac_name] = set(valid_affils)
         else:
-            academics_map[ac_name].update(entities)
+            academics_map[ac_name].update(valid_affils)
     
     # Convertir sets a listas para compatibilidad posterior
     academics_map = {k: list(v) for k, v in academics_map.items()}
