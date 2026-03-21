@@ -99,30 +99,28 @@ class QdrantStore:
         
         try:
             # En qdrant-client 1.11+, query_points es la API preferida
-            if hasattr(self.client, "query_points"):
+            search_result = self.client.query_points(
+                collection_name=self.collection_name,
+                query=query_vector,
+                query_filter=qdrant_filter,
+                limit=limit,
+                timeout=60  # segundos – defensa ante consultas lentas
+            ).points
+        except Exception as e:
+            # Reintento con timeout extendido (no llamamos a client.search, ya no existe en qdrant-client >= 1.7)
+            print(f"DEBUG: Primer query_points falló ({e}). Reintentando con timeout=120s...")
+            try:
                 search_result = self.client.query_points(
                     collection_name=self.collection_name,
                     query=query_vector,
                     query_filter=qdrant_filter,
-                    limit=limit
+                    limit=limit,
+                    timeout=120
                 ).points
-            else:
-                # Fallback para versiones antiguas
-                search_result = self.client.search(
-                    collection_name=self.collection_name,
-                    query_vector=query_vector,
-                    query_filter=qdrant_filter,
-                    limit=limit
-                )
-        except Exception as e:
-            # Si falla la búsqueda, intentamos el método search tradicional si existe
-            print(f"DEBUG: Fallo query_points, intentando search... ({e})")
-            search_result = self.client.search(
-                collection_name=self.collection_name,
-                query_vector=query_vector,
-                query_filter=qdrant_filter,
-                limit=limit
-            )
+            except Exception as e2:
+                print(f"DEBUG: Segundo intento también falló ({e2}). Retornando lista vacía.")
+                return []
+
         
         results = []
         for hit in search_result:
