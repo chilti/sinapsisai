@@ -333,6 +333,12 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                 if oa_cites is not None and int(oa_cites) > citations:
                     citations = int(oa_cites)
 
+            affiliations = row.get('affiliations', [])
+            ents_list, insts_list = [], []
+            for aff in affiliations:
+                if aff.get('ent'): ents_list.append(aff['ent'])
+                if aff.get('inst'): insts_list.append(aff['inst'])
+                
             records.append({
                 'academic_name': row['academic_name'],
                 'orcid':     row['orcid'],
