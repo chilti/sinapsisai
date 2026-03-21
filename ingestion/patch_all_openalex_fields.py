@@ -14,6 +14,7 @@ import ast
 import urllib3
 import httpx
 import ssl
+from dotenv import load_dotenv
 
 # Desactivar advertencias y SSL para entornos con proxies restrictivos
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -22,14 +23,20 @@ try:
 except AttributeError:
     pass
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from database.knowledge_graph import Neo4jGraphStore
-import pyalex
-from dotenv import load_dotenv
-
-# Configuración PyAlex
+# Configuración
 env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
 load_dotenv(env_path)
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'SNII')))
+from database.knowledge_graph import Neo4jGraphStore
+try:
+    from match_snii_orcid import get_client as get_ch_client
+except ImportError:
+    get_ch_client = None
+import pyalex
+
+# Configuración PyAlex
 pyalex.config.email = os.getenv("EMAIL_ADDRESS", "sin_correo@ciencias.unam.mx")
 if os.getenv("OPENALEX_API_KEY"):
     pyalex.config.api_key = os.getenv("OPENALEX_API_KEY")
@@ -37,63 +44,91 @@ if os.getenv("OPENALEX_API_KEY"):
 LOCAL_API_URL    = "http://127.0.0.1:5009/works"
 OFFICIAL_API_URL = "https://api.openalex.org/works"
 
-# Retraso entre requests (s). Sube a 1.0 si siguen bloqueando.
-REQUEST_DELAY = 0.15  # 150ms → ~6 req/s, por debajo del límite de OpenAlex sin API key
+# Retraso entre requests oficiales (s). 0.2s = 5 req/s.
+REQUEST_DELAY = 0.2
 
-# Se establece al inicio del script
 LOCAL_API_AVAILABLE = False
+OFFICIAL_API_BLOCKED = False
+CH_API_BLOCKED = False
 
 def check_local_api() -> bool:
     """Comprueba si la API local de OpenAlex (port 5009) está levantada."""
     try:
-        resp = httpx.get(LOCAL_API_URL, params={"filter": "doi:10.0000/test", "per-page": 1}, timeout=5)
-        return resp.status_code in (200, 404)  # 404 está bien, es que funciona pero no encontró
+        resp = httpx.get(LOCAL_API_URL, params={"filter": "doi:10.0000/test", "per_page": 1}, timeout=5)
+        return resp.status_code in (200, 404)
     except Exception:
         return False
 
-def _try_url(client: httpx.Client, url: str, params: dict, retries: int = 3, backoff: float = 1.0) -> list:
-    """Intenta una URL con reintentos y backoff exponencial en 429/403."""
-    for attempt in range(retries):
-        try:
-            resp = client.get(url, params=params, timeout=30)
-            if resp.status_code == 200:
-                return resp.json().get('results', [])
-            if resp.status_code in (429, 403):
-                wait = backoff * (2 ** attempt)
-                print(f"\n      [!] Rate limit ({resp.status_code}) en {url}. Esperando {wait:.0f}s...")
-                time.sleep(wait)
-            else:
-                return []  # Error no recuperable: 404, 500, etc.
-        except Exception as e:
-            print(f"      [!] Error HTTP ({url}): {e}")
-            time.sleep(backoff)
-    return []
+def _fetch_from_official_lookup(client: httpx.Client, doi: str) -> dict | None:
+    """Step 1: Consulta oficial 1-a-1 por path de DOI (Lookup)."""
+    global OFFICIAL_API_BLOCKED
+    if OFFICIAL_API_BLOCKED:
+        return None
+    
+    clean_doi = doi.replace("https://doi.org/", "").strip()
+    url = f"https://api.openalex.org/works/doi:{clean_doi}"
+    params = {"mailto": pyalex.config.email}
+    if os.getenv("OPENALEX_API_KEY"):
+        params["api_key"] = os.getenv("OPENALEX_API_KEY")
+    
+    try:
+        resp = client.get(url, params=params, timeout=20, follow_redirects=True)
+        if resp.status_code == 200:
+            return resp.json()
+        if resp.status_code in (429, 403):
+            print(f"\n      [!] API OFICIAL BLOQUEADA ({resp.status_code}). Pasando a Local para el resto de la corrida.")
+            OFFICIAL_API_BLOCKED = True
+        return None
+    except Exception as e:
+        print(f"      [!] Error en lookup oficial para {doi}: {e}")
+        return None
 
-def _fetch_dois_batch(client: httpx.Client, dois: list[str]) -> dict:
-    """Obtiene los metadatos de hasta 50 DOIs en un solo request.
-    - API local (5009): espera DOIs con el prefijo https://doi.org/
-    - API oficial:      espera DOIs sin prefijo (10.xxxx/...)
-    Devuelve un dict doi_clean -> work.
-    """
-    if not dois:
+def _fetch_from_clickhouse_bulk(dois: list[str]) -> dict:
+    """Step 2: Consulta masiva a ClickHouse local."""
+    global CH_API_BLOCKED
+    if CH_API_BLOCKED or not get_ch_client or not dois:
+        return {}
+    try:
+        ch = get_ch_client()
+        doi_list = [f"https://doi.org/{d.lower()}" for d in dois]
+        placeholders = ", ".join([f"'{d}'" for d in doi_list])
+        
+        query = f"SELECT raw_data FROM openalex.works WHERE doi IN ({placeholders}) LIMIT {len(dois)}"
+        res = ch.query(query).result_rows
+        
+        found = {}
+        for r in res:
+            try:
+                data = json.loads(r[0]) if isinstance(r[0], str) else r[0]
+                d_val = (data.get('doi') or "").replace("https://doi.org/", "").strip().lower()
+                if d_val:
+                    found[d_val] = data
+            except: continue
+        return found
+    except Exception as e:
+        print(f"      [!] Step 2 (ClickHouse) no disponible: {e}. Desactivando CH para esta corrida.")
+        CH_API_BLOCKED = True
         return {}
 
-    if LOCAL_API_AVAILABLE:
-        # La API local requiere el DOI completo con prefijo
-        doi_filter = "|".join([f"https://doi.org/{d}" for d in dois])
-        params = {"filter": f"doi:{doi_filter}", "per-page": len(dois), "mailto": pyalex.config.email}
-        results = _try_url(client, LOCAL_API_URL, params)
-    else:
-        # La API oficial usa DOIs limpios
-        params = {"filter": f"doi:{'|'.join(dois)}", "per-page": len(dois), "mailto": pyalex.config.email}
-        results = _try_url(client, OFFICIAL_API_URL, params)
-
-    out = {}
-    for w in results:
-        doi_val = (w.get('doi') or "").replace("https://doi.org/", "").strip().lower()
-        if doi_val:
-            out[doi_val] = w
-    return out
+def _fetch_from_local_api_bulk(client: httpx.Client, dois: list[str]) -> dict:
+    """Step 3: Consulta masiva a API Local port 5009."""
+    if not LOCAL_API_AVAILABLE or not dois:
+        return {}
+    
+    doi_filter = "|".join([f"https://doi.org/{d}" for d in dois])
+    params = {"filter": f"doi:{doi_filter}", "per_page": len(dois)}
+    try:
+        resp = client.get(LOCAL_API_URL, params=params, timeout=30)
+        if resp.status_code == 200:
+            results = resp.json().get('results', [])
+            out = {}
+            for w in results:
+                d_val = (w.get('doi') or "").replace("https://doi.org/", "").strip().lower()
+                if d_val: out[d_val] = w
+            return out
+    except Exception as e:
+        print(f"      [!] Error en Step 3 (API Local): {e}")
+    return {}
 
 def extract_new_fields(work: dict) -> dict:
     """Devuelve un dict con campos de OpenAlex procesados."""
@@ -266,27 +301,44 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
                 print(f"  [DRY] Parchearía batch de {len(to_patch)}", end="\r")
                 continue
 
-            # API FETCH
+            # API FETCH (Hierarchy: Official Lookup -> ClickHouse -> Local API)
             oa_data = {}
             with httpx.Client(verify=False, timeout=60.0) as client:
-                # Separa los que tienen DOI real
-                doi_papers    = []
+                doi_papers = []
                 for p_rec in to_patch:
-                    raw_doi   = str(p_rec['doi'] or "")
+                    raw_doi = str(p_rec['doi'] or "")
                     clean_doi = raw_doi.replace("https://doi.org/", "").strip().lower()
                     if clean_doi.startswith("10."):
                         doi_papers.append((raw_doi, clean_doi))
 
-                # BATCH FETCH DE DOIs en bloques de 50
-                DOI_CHUNK = 50
-                for k in range(0, len(doi_papers), DOI_CHUNK):
-                    chunk       = doi_papers[k:k + DOI_CHUNK]
-                    clean_dois  = [cd for _, cd in chunk]
-                    batch_result = _fetch_dois_batch(client, clean_dois)
-                    for orig_raw, orig_clean in chunk:
-                        if orig_clean in batch_result:
-                            oa_data[orig_raw] = batch_result[orig_clean]
-                    time.sleep(REQUEST_DELAY)
+                # --- STEP 1: Official API (1-by-1 Lookup) ---
+                if not OFFICIAL_API_BLOCKED:
+                    for raw, clean in doi_papers:
+                        work = _fetch_from_official_lookup(client, clean)
+                        if work:
+                            oa_data[raw] = work
+                            print(f"  🌐 [Oficial] Encontrado: {clean}", end="\r")
+                            time.sleep(REQUEST_DELAY) # Rate limiting
+                        if OFFICIAL_API_BLOCKED:
+                            break
+
+                # --- STEP 2: ClickHouse (Bulk Fallback) ---
+                remaining = [p for p in doi_papers if p[0] not in oa_data]
+                if remaining:
+                    ch_results = _fetch_from_clickhouse_bulk([r[1] for r in remaining])
+                    for raw, clean in remaining:
+                        if clean in ch_results:
+                            oa_data[raw] = ch_results[clean]
+                            print(f"  🏠 [CH] Encontrado: {clean}", end="\r")
+
+                # --- STEP 3: Local API 5009 (Final Fallback) ---
+                missing = [p for p in doi_papers if p[0] not in oa_data]
+                if missing and LOCAL_API_AVAILABLE:
+                    api_results = _fetch_from_local_api_bulk(client, [m[1] for m in missing])
+                    for raw, clean in missing:
+                        if clean in api_results:
+                            oa_data[raw] = api_results[clean]
+                            print(f"  🏠 [Local API] Encontrado: {clean}", end="\r")
 
             # DB UPDATE
             with graph_store.driver.session() as session:
