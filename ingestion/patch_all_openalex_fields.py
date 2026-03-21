@@ -71,17 +71,21 @@ def _try_url(client: httpx.Client, url: str, params: dict, retries: int = 3, bac
 
 def _fetch_dois_batch(client: httpx.Client, dois: list[str]) -> dict:
     """Obtiene los metadatos de hasta 50 DOIs en un solo request.
-    - Si la API local está disponible: la usa siempre y NO cae a la oficial.
-    - Si la API local está caída: usa la oficial (puede bloquearse).
+    - API local (5009): espera DOIs con el prefijo https://doi.org/
+    - API oficial:      espera DOIs sin prefijo (10.xxxx/...)
     Devuelve un dict doi_clean -> work.
     """
     if not dois:
         return {}
-    params = {"filter": f"doi:{'|'.join(dois)}", "per-page": len(dois), "mailto": pyalex.config.email}
 
     if LOCAL_API_AVAILABLE:
+        # La API local requiere el DOI completo con prefijo
+        doi_filter = "|".join([f"https://doi.org/{d}" for d in dois])
+        params = {"filter": f"doi:{doi_filter}", "per-page": len(dois), "mailto": pyalex.config.email}
         results = _try_url(client, LOCAL_API_URL, params)
     else:
+        # La API oficial usa DOIs limpios
+        params = {"filter": f"doi:{'|'.join(dois)}", "per-page": len(dois), "mailto": pyalex.config.email}
         results = _try_url(client, OFFICIAL_API_URL, params)
 
     out = {}
