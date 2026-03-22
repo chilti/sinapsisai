@@ -397,9 +397,10 @@ def vectorize_snii_with_llm(limit_test=None):
         try:
             with open(output_path, "r", encoding="utf-8") as f:
                 verified_results = json.load(f)
+                # Solo mantener los ya confirmados (match: true). Los sin match se reintentan.
                 processed_names = {
                     r["snii_author"] for r in verified_results
-                    if r.get("match") or not str(r.get("reason", "")).startswith("Error en LLM")
+                    if r.get("match") is True
                 }
                 # Quitar de verified_results los que se van a reintentar
                 verified_results = [
