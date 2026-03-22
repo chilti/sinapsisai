@@ -82,6 +82,27 @@ class QdrantStore:
         )
         print(f"✅ Se insertaron {len(points)} documentos en Qdrant.")
 
+    def check_document_exists(self, doi: str, title: str = None) -> bool:
+        """Verifica si un documento ya existe en Qdrant usando su ID determinista."""
+        unique_str = doi
+        if not unique_str or str(unique_str).strip().lower() == "none":
+            unique_str = title
+            
+        if not unique_str:
+            return False
+            
+        deterministic_id = str(uuid.uuid5(uuid.NAMESPACE_URL, unique_str))
+        try:
+            res = self.client.retrieve(
+                collection_name=self.collection_name,
+                ids=[deterministic_id],
+                with_payload=False,
+                with_vectors=False
+            )
+            return len(res) > 0
+        except Exception:
+            return False
+
     def search(self, query_vector: List[float], limit: int = 5, entity_filter: Optional[str] = None) -> List[Dict[str, Any]]:
         """Realiza una búsqueda semántica usando un vector de consulta.
         

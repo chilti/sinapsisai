@@ -196,8 +196,11 @@ def _parse_raw_meta(raw_meta_json):
         except: return {}
 
 def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, skip_existing=False, limit=None, chunk_size=5000, batch_size=20, local_only=False):
-    global LOCAL_API_AVAILABLE
+    global LOCAL_API_AVAILABLE, OFFICIAL_API_BLOCKED
     LOCAL_API_AVAILABLE = check_local_api()
+    if local_only:
+        OFFICIAL_API_BLOCKED = True
+        print("🔒 Modo --local-only activado. Se bloqueará la API oficial de OpenAlex.")
     if LOCAL_API_AVAILABLE:
         print(f"✅ API local de OpenAlex detectada en {LOCAL_API_URL} — se usará como fuente principal.")
     else:
@@ -206,6 +209,7 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
             print("❌ Se requiere --local-only pero la API local no está levantada. Abortando.")
             return
         print("   Usando API oficial (puede alcanzar rate limit). Considera levantar el servidor local.")
+
 
     from SNII.match_snii_orcid import NEO4J_URI, NEO4J_USER, NEO4J_PASS
     graph_store = Neo4jGraphStore(uri=NEO4J_URI, user=NEO4J_USER, password=NEO4J_PASS)

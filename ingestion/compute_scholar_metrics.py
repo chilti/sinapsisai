@@ -1180,6 +1180,18 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
 
     df_raw_recent = df_raw[(df_raw['year'] >= 2021) & (df_raw['year'] <= 2025)]
     df_inv_recent = aggregate_metrics(df_raw_recent, ['academic_name', 'entities'])
+    
+    # ── Interdisciplinariedad reciente (para UMAP) ───────────────────────────
+    if 'topics' in df_raw_recent.columns:
+        inter_rows_recent = []
+        for ac_name, grp in df_raw_recent.groupby('academic_name'):
+            idx = compute_interdisciplinarity(grp['topics'])
+            idx['academic_name'] = ac_name
+            inter_rows_recent.append(idx)
+        if inter_rows_recent:
+            df_inter_recent = pd.DataFrame(inter_rows_recent)
+            df_inv_recent = df_inv_recent.merge(df_inter_recent[['academic_name', 'gini_topics']], on='academic_name', how='left')
+
     save_disaggregated_parquets(df_inv_recent, 'investigador_recent.parquet', 'academic', academics_map)
     
     # 3. AGREGADOS A NIVEL INSTITUCIÓN (Macro)
@@ -1293,30 +1305,35 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
             pass
 
     if not umap_df.empty and len(umap_df) >= 3:
-        # Usamos FWCI, Citas Norm (Percentiles), Produccion y H-index para construir el espacio
-        features = ['num_documents', 'pct_top_10', 'pct_1', 'percentile_avg', 'fwci_avg', 'h_index']
-        valid_df = umap_df.dropna(subset=features).copy()
+        # 1. Excluir a los que no tienen documentos (evita ruido en la proyección)
+        umap_df = umap_df[umap_df['num_documents'] > 0]
         
-        if len(valid_df) > 1:
-            scaler = StandardScaler()
-            X_scaled = scaler.fit_transform(valid_df[features])
+        # 2. Usar gini_topics, FWCI, Citas Norm (Percentiles), Produccion y H-index para construir el espacio
+        features = ['gini_topics', 'pct_top_10', 'pct_1', 'percentile_avg', 'fwci_avg']
+        
+        if len(umap_df) >= 3:
+            valid_df = umap_df.dropna(subset=features).copy()
             
-            # n_neighbors ajustable al tamano pequeno de la facultad min(15, count-1)
-            nn = min(15, len(valid_df) - 1)
-            if nn < 2: nn = 2
-            
-            reducer = UMAP(n_neighbors=nn, min_dist=0.1, random_state=42)
-            embedding = reducer.fit_transform(X_scaled)
-            
-            valid_df['umap_x'] = embedding[:, 0]
-            valid_df['umap_y'] = embedding[:, 1]
-            
-            valid_df.to_parquet(CACHE_DIR / 'umap_investigadores.parquet', index=False)
-            print(f"✅ UMAP Generado para {len(valid_df)} investigadores.")
+            if len(valid_df) > 1:
+                scaler = StandardScaler()
+                X_scaled = scaler.fit_transform(valid_df[features])
+                
+                # n_neighbors ajustable al tamano pequeno de la facultad min(15, count-1)
+                nn = min(15, len(valid_df) - 1)
+                if nn < 2: nn = 2
+                
+                reducer = UMAP(n_neighbors=nn, min_dist=0.1, random_state=42)
+                embedding = reducer.fit_transform(X_scaled)
+                
+                valid_df['umap_x'] = embedding[:, 0]
+                valid_df['umap_y'] = embedding[:, 1]
+                
+                valid_df.to_parquet(CACHE_DIR / 'umap_investigadores.parquet', index=False)
+                print(f"✅ UMAP Generado para {len(valid_df)} investigadores.")
+            else:
+                print("⚠ Insuficientes investigadores válidos para UMAP en el periodo reciente.")
         else:
-            print("⚠ Insuficientes investigadores válidos para UMAP en el periodo reciente.")
-    else:
-        print("⚠ Datos insuficientes para generar UMAP.")
+            print("⚠ Datos insuficientes para generar UMAP.")
 
     print("⏳ Generando hierarchy.json basado en las carpetas de caché creadas...")
     hierarchy_map = {}

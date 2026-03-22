@@ -1108,7 +1108,7 @@ def render_investigador_view(entity_name, institution_name=None):
     # 5. Mapa UMAP
     st.markdown("---")
     st.subheader("Mapa de Desempeño Institucional (UMAP)")
-    st.markdown("Cálculo multidimensional comparando Doc, %Top 10, FWCI y Citas normalizadas frente al resto del padrón.")
+    st.markdown("Cálculo multidimensional comparando %Top 10, FWCI y Citas normalizadas frente al resto del padrón.")
 
     if df_umap is not None and not df_umap.empty:
         fig_umap = go.Figure()

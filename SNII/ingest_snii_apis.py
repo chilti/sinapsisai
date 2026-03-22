@@ -78,10 +78,18 @@ def get_embeddings(texts: list, batch_size: int = 5, force_local: bool = False) 
             for text in texts:
                 clean_t = str(text) if text else " "
                 emb = model.embed(clean_t)
-                all_embeddings.append(emb)
+                if hasattr(emb, "embedding"):
+                    val = emb.embedding
+                elif hasattr(emb, "tolist"):
+                    val = emb.tolist()
+                elif isinstance(emb, list):
+                    val = emb
+                else:
+                    val = list(emb)
+                all_embeddings.append(val)
             return all_embeddings
-        except ImportError:
-            print("⚠️ Error: La librería 'lmstudio' no está instalada. Ejecuta 'pip install lmstudio'. Cayendo a LangChain...")
+        except Exception as e:
+            print(f"⚠️ Error con librería 'lmstudio': {e}. Cayendo a LangChain...")
 
     for i in range(0, len(texts), batch_size):
         batch = [str(t) if t else " " for t in texts[i:i+batch_size]]
@@ -302,7 +310,7 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
                 
                 # OPT: Si el paper ya existe en Neo4j, saltamos el enriquecimiento API costoso.
                 if _doi_clean and graph_store.check_paper_exists(_doi_clean):
-                    print(f"      📍 Paper {_doi_clean} ya existe en el grafo. Saltando OpenAlex y Qdrant...")
+                    print(f"      📍 Paper {_doi_clean} ya existe en el grafo. Saltando OpenAlex para ahorrar API, pero se agregará a Qdrant si falta.")
                     paper_exists = True
                     work = None
                 else:
@@ -321,7 +329,14 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
                     record['Source'] += ' + OpenAlex'
             except: pass
             
-            if not paper_exists:
+            # Procesar Qdrant para todos (existan o no en Neo4j, ya que UUID previene duplicados en Qdrant)
+            qdrant_exists = False
+            if hasattr(vector_store, 'check_document_exists'):
+                qdrant_exists = vector_store.check_document_exists(doi=doi, title=record.get("Title"))
+                
+            if qdrant_exists:
+                pass # Ya está en Qdrant de una corrida anterior
+            else:
                 if record.get('Abstract'):
                     text_for_embedding += f"Abstract: {record['Abstract']}"
                     
