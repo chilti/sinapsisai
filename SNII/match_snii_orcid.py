@@ -173,7 +173,7 @@ def calculate_score(seed_author, ch_record):
     return min(total_score, 1.0)
 
 def get_client():
-    return clickhouse_connect.get_client(host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASS, database=CH_DB)
+    return clickhouse_connect.get_client(host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD, database=CH_DB)
 
 def load_existing_mappings():
     """Carga mapeos desde archivos Excel si existen para pre-llenar ORCIDs"""
