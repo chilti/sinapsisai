@@ -344,7 +344,7 @@ def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list
             ids
         FROM {CH_DB}.authors
         WHERE lower(display_name) LIKE '%{search_term.lower()}%'
-        LIMIT {limit * 5}
+        LIMIT {limit * 25}
         """
         rows = ch.query(query).result_rows
         
@@ -518,8 +518,14 @@ def vectorize_snii_with_llm(limit_test=None):
                 t_esc = search_term.strip().replace("'", "").lower().replace("'", "''")
                 
                 if len(t_esc) >= 3:
-                    query = f"SELECT orcid, given_names, family_name, credit_name, last_affiliation FROM {CH_DB_ORCID}.orcid_records WHERE (lower(family_name) LIKE '%{t_esc}%' OR lower(credit_name) LIKE '%{t_esc}%') LIMIT 20"
-                    res = ch_client.query(query).result_rows
+                    # Verificar si la base de datos de ORCID existe en este servidor
+                    db_exists = ch_client.query(f"SELECT count() FROM system.databases WHERE name = '{CH_DB_ORCID}'").result_rows[0][0]
+                    if db_exists:
+                        query = f"SELECT orcid, given_names, family_name, credit_name, last_affiliation FROM {CH_DB_ORCID}.orcid_records WHERE (lower(family_name) LIKE '%{t_esc}%' OR lower(credit_name) LIKE '%{t_esc}%') LIMIT 20"
+                        res = ch_client.query(query).result_rows
+                    else:
+                        print(f"      ℹ️  Base de datos {CH_DB_ORCID} no encontrada en este servidor. Saltando búsqueda fuzzy de ORCID.")
+                        res = []
                     
                     from Levenshtein import jaro_winkler
                     sorted_seed = " ".join(sorted([t for t in normalize_text(snii_name).replace(',',' ').split() if len(t)>1]))

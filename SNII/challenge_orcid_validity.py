@@ -56,12 +56,18 @@ def get_orcid_details(orcid):
     """Obtiene detalles del ORCID desde ClickHouse."""
     from SNII.match_snii_orcid import CH_DB_ORCID
     client = get_ch_client()
-    query = f"""
-    SELECT given_names, family_name, credit_name, last_affiliation, last_affiliation_country
-    FROM {CH_DB_ORCID}.orcid_records
-    WHERE orcid = '{orcid}'
-    """
+    
+    # Verificar si la base de datos de ORCID existe
     try:
+        db_exists = client.query(f"SELECT count() FROM system.databases WHERE name = '{CH_DB_ORCID}'").result_rows[0][0]
+        if not db_exists:
+            return None
+            
+        query = f"""
+        SELECT given_names, family_name, credit_name, last_affiliation, last_affiliation_country
+        FROM {CH_DB_ORCID}.orcid_records
+        WHERE orcid = '{orcid}'
+        """
         res = client.query(query).result_rows
         if res:
             r = res[0]
