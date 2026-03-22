@@ -2,46 +2,52 @@ import os
 import clickhouse_connect
 from dotenv import load_dotenv
 
-def test_connection(host, port, user, password):
-    print(f"\n--- Probando conexión a {host}:{port} ---")
+def test_connection(name, host, port, user, password, database):
+    print(f"\n--- Probando [{name}] a {host}:{port} (DB: {database}) ---")
     try:
         client = clickhouse_connect.get_client(
             host=host,
             port=port,
             username=user,
-            password=password
+            password=password,
+            database=database
         )
-        print("✅ ¡Conexión exitosa!")
+        print(f"✅ ¡Conexión exitosa a {name}!")
         
         databases = client.query("SHOW DATABASES").result_rows
         print("\nBases de datos encontradas:")
         for db in databases:
             print(f"  - {db[0]}")
             
-        # Listar tablas en la base 'openalex' si existe
-        if any(db[0] == 'openalex' for db in databases):
-            print("\nTablas en 'openalex':")
-            tables = client.query("SHOW TABLES FROM openalex").result_rows
-            for t in tables:
-                print(f"    * {t[0]}")
+        tables = client.query(f"SHOW TABLES FROM {database}").result_rows
+        print(f"\nTablas en '{database}':")
+        for t in tables:
+            print(f"    * {t[0]}")
                 
     except Exception as e:
-        print(f"❌ Error de conexión: {e}")
+        print(f"❌ Error de conexión a {name}: {e}")
 
 if __name__ == "__main__":
-    load_dotenv()
+    env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '.env'))
+    load_dotenv(env_path)
     
-    # 1. Probar con lo que dice el .env (que ahora es el remoto)
+    # 1. Probar REMOTE (OpenAlex)
     test_connection(
+        "REMOTO - OpenAlex",
         os.getenv("CH_HOST"),
-        int(os.getenv("CH_PORT", 8123)),
+        int(os.getenv("CH_PORT", 8124)),
         os.getenv("CH_USER"),
-        os.getenv("CH_PASSWORD")
+        os.getenv("CH_PASSWORD"),
+        os.getenv("CH_DATABASE", "rag")
     )
     
-    # 2. Probar con LOCALHOST (por si el usuario quiere ver lo que tiene local)
-    # Solo si el .env no es ya localhost
-    if os.getenv("CH_HOST") not in ["localhost", "127.0.0.1"]:
-        print("\n" + "="*40)
-        print("¿Quieres probar tu ClickHouse LOCAL? (Usa Ctrl+C para cancelar)")
-        test_connection("127.0.0.1", 8123, "default", "")
+    # 2. Probar LOCAL (ORCID)
+    print("\n" + "="*40)
+    test_connection(
+        "LOCAL - ORCID",
+        os.getenv("CH_ORCID_HOST", "127.0.0.1"),
+        int(os.getenv("CH_ORCID_PORT", 8123)),
+        os.getenv("CH_ORCID_USER", "default"),
+        os.getenv("CH_ORCID_PASSWORD", ""),
+        os.getenv("CH_ORCID_DATABASE", "openalex")
+    )

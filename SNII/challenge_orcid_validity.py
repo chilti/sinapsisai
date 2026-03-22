@@ -54,8 +54,8 @@ llm = ChatOpenAI(
 
 def get_orcid_details(orcid):
     """Obtiene detalles del ORCID desde ClickHouse."""
-    from SNII.match_snii_orcid import CH_DB_ORCID
-    client = get_ch_client()
+    from SNII.match_snii_orcid import CH_DB_ORCID, get_orcid_client
+    client = get_orcid_client()
     
     # Verificar si la base de datos de ORCID existe
     try:

@@ -25,8 +25,14 @@ CH_HOST = os.getenv("CH_HOST", "127.0.0.1")
 CH_PORT = int(os.getenv("CH_PORT", 8123))
 CH_USER = os.getenv("CH_USER", "admin")
 CH_PASSWORD = os.getenv("CH_PASSWORD", "admin")
-CH_DB       = os.getenv("CH_DATABASE", "openalex")
-CH_DB_ORCID = os.getenv("CH_DB_ORCID", "openalex")
+CH_DB       = os.getenv("CH_DATABASE", "rag")
+
+# ClickHouse - LOCAL (ORCID)
+CH_ORCID_HOST = os.getenv("CH_ORCID_HOST", "127.0.0.1")
+CH_ORCID_PORT = int(os.getenv("CH_ORCID_PORT", 8123))
+CH_ORCID_USER = os.getenv("CH_ORCID_USER", "default")
+CH_ORCID_PASS = os.getenv("CH_ORCID_PASSWORD", "")
+CH_DB_ORCID   = os.getenv("CH_ORCID_DATABASE", "openalex")
 
 # Configuración Neo4j (Bolt)
 NEO4J_URI  = os.getenv("NEO4J_URI", "bolt://127.0.0.1:7687")
@@ -173,7 +179,12 @@ def calculate_score(seed_author, ch_record):
     return min(total_score, 1.0)
 
 def get_client():
+    """Conector para OpenAlex (Remoto)"""
     return clickhouse_connect.get_client(host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD, database=CH_DB)
+
+def get_orcid_client():
+    """Conector para ORCID Records (Local)"""
+    return clickhouse_connect.get_client(host=CH_ORCID_HOST, port=CH_ORCID_PORT, username=CH_ORCID_USER, password=CH_ORCID_PASS, database=CH_DB_ORCID)
 
 def load_existing_mappings():
     """Carga mapeos desde archivos Excel si existen para pre-llenar ORCIDs"""

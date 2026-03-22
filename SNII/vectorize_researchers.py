@@ -22,7 +22,7 @@ from langchain_core.messages import HumanMessage
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.vector_store import QdrantStore
 from database.knowledge_graph import Neo4jGraphStore
-from match_snii_orcid import normalize_text, get_client as get_ch_client, SNII_PATH, CH_DB, CH_DB_ORCID
+from match_snii_orcid import normalize_text, get_client as get_ch_client, get_orcid_client, SNII_PATH, CH_DB, CH_DB_ORCID
 
 # Cargar .env
 env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
@@ -505,7 +505,7 @@ def vectorize_snii_with_llm(limit_test=None):
                 
             # ClickHouse SQL Fuzzy Fallback
             try:
-                ch_client = get_ch_client()
+                ch_client = get_orcid_client()
                 parts = snii_name.replace(',', ' ').strip().split()
                 if ',' in snii_name:
                     search_term = normalize_text(snii_name.split(',')[0].split()[0])
