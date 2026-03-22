@@ -85,8 +85,19 @@ def get_embeddings(texts: list, batch_size: int = 10) -> list:
     all_embeddings = []
     for i in range(0, len(texts), batch_size):
         batch = [str(t) if t else " " for t in texts[i:i+batch_size]]
-        embs = embeddings_model.embed_documents(batch)
-        all_embeddings.extend(embs)
+        for attempt in range(5):
+            try:
+                embs = embeddings_model.embed_documents(batch)
+                all_embeddings.extend(embs)
+                break
+            except Exception as e:
+                wait = 10 * (attempt + 1)
+                print(f"      ⚠️ Error embeddings (intento {attempt+1}/5): {e}. Reintentando en {wait}s...")
+                time.sleep(wait)
+        else:
+            # Si todos los intentos fallaron, usar vector cero para no perder el registro
+            print(f"      ❌ Embeddings fallaron para batch {i}. Usando vector cero.")
+            all_embeddings.extend([[0.0] * 768] * len(batch))
     return all_embeddings
 
 # --- Config LLM ---
