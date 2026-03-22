@@ -371,6 +371,7 @@ def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list
         print(f"      ⚠️ Error buscando en OpenAlex authors ClickHouse: {e}")
         return []
 
+def vectorize_snii_with_llm(limit_test=None):
     """Paso 4: SNII -> Qdrant (Top 5 Local + Top 5 ORCID) -> LLM Verification"""
     print("\n🚀 Paso 4: Validando investigadores SNII con LLM (Reranking)...")
     from match_snii_orcid import SNII_PATH
