@@ -59,29 +59,43 @@ def check_local_api() -> bool:
     except Exception:
         return False
 
-def _fetch_from_official_lookup(client: httpx.Client, doi: str) -> dict | None:
-    """Step 1: Consulta oficial 1-a-1 por path de DOI (Lookup)."""
+def _fetch_from_official_bulk(client: httpx.Client, dois: list[str]) -> dict:
+    """Step 1: Consulta masiva a API Oficial de OpenAlex (Bulk Lookup)."""
     global OFFICIAL_API_BLOCKED
-    if OFFICIAL_API_BLOCKED:
-        return None
+    if OFFICIAL_API_BLOCKED or not dois:
+        return {}
     
-    clean_doi = doi.replace("https://doi.org/", "").strip()
-    url = f"https://api.openalex.org/works/doi:{clean_doi}"
+    found = {}
     params = {"mailto": pyalex.config.email}
     if os.getenv("OPENALEX_API_KEY"):
         params["api_key"] = os.getenv("OPENALEX_API_KEY")
-    
-    try:
-        resp = client.get(url, params=params, timeout=20, follow_redirects=True)
-        if resp.status_code == 200:
-            return resp.json()
-        if resp.status_code in (429, 403):
-            print(f"\n      [!] API OFICIAL BLOQUEADA ({resp.status_code}). Pasando a Local para el resto de la corrida.")
-            OFFICIAL_API_BLOCKED = True
-        return None
-    except Exception as e:
-        print(f"      [!] Error en lookup oficial para {doi}: {e}")
-        return None
+        
+    # OpenAlex permite agrupar varios items separados por | en un filter.
+    # Límite sugerido es ~50 valores por parámetro "filter".
+    for i in range(0, len(dois), 50):
+        chunk = dois[i:i+50]
+        doi_filter = "|".join([f"https://doi.org/{d}" for d in chunk])
+        params["filter"] = f"doi:{doi_filter}"
+        params["per_page"] = len(chunk)
+        
+        url = "https://api.openalex.org/works"
+        try:
+            resp = client.get(url, params=params, timeout=30, follow_redirects=True)
+            if resp.status_code == 200:
+                results = resp.json().get('results', [])
+                for w in results:
+                    d_val = (w.get('doi') or "").replace("https://doi.org/", "").strip().lower()
+                    if d_val: found[d_val] = w
+            elif resp.status_code in (429, 403):
+                print(f"\n      [!] API OFICIAL BLOQUEADA ({resp.status_code}). Pasando a Local para el resto de la corrida.")
+                OFFICIAL_API_BLOCKED = True
+                break
+        except Exception as e:
+            print(f"      [!] Error en bulk oficial: {e}")
+            
+        time.sleep(REQUEST_DELAY) # Rate limiting manual
+        
+    return found
 
 def _fetch_from_clickhouse_bulk(dois: list[str]) -> dict:
     """Step 2: Consulta masiva a ClickHouse local."""
@@ -195,20 +209,27 @@ def _parse_raw_meta(raw_meta_json):
         try: return ast.literal_eval(raw_meta_json)
         except: return {}
 
-def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, skip_existing=False, limit=None, chunk_size=5000, batch_size=20, local_only=False):
-    global LOCAL_API_AVAILABLE, OFFICIAL_API_BLOCKED
+def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, skip_existing=False, limit=None, chunk_size=5000, batch_size=20, local_only=False, official_only=False):
+    global LOCAL_API_AVAILABLE, OFFICIAL_API_BLOCKED, CH_API_BLOCKED
     LOCAL_API_AVAILABLE = check_local_api()
     if local_only:
         OFFICIAL_API_BLOCKED = True
         print("🔒 Modo --local-only activado. Se bloqueará la API oficial de OpenAlex.")
+    if official_only:
+        LOCAL_API_AVAILABLE = False
+        import SNII.match_snii_orcid # need to ensure CH_API_BLOCKED works globally
+        CH_API_BLOCKED = True
+        print("🌍 Modo --official activado. Se usarán únicamente los datos de OpenAlex oficial.")
+        
     if LOCAL_API_AVAILABLE:
         print(f"✅ API local de OpenAlex detectada en {LOCAL_API_URL} — se usará como fuente principal.")
     else:
-        print(f"⚠️  API local de OpenAlex NO disponible en {LOCAL_API_URL}.")
-        if local_only:
-            print("❌ Se requiere --local-only pero la API local no está levantada. Abortando.")
-            return
-        print("   Usando API oficial (puede alcanzar rate limit). Considera levantar el servidor local.")
+        if not official_only:
+            print(f"⚠️  API local de OpenAlex NO disponible en {LOCAL_API_URL}.")
+            if local_only:
+                print("❌ Se requiere --local-only pero la API local no está levantada. Abortando.")
+                return
+            print("   Usando API oficial (puede alcanzar rate limit). Considera levantar el servidor local.")
 
 
     from SNII.match_snii_orcid import NEO4J_URI, NEO4J_USER, NEO4J_PASS
@@ -318,16 +339,13 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
                     if clean_doi.startswith("10."):
                         doi_papers.append((raw_doi, clean_doi))
 
-                # --- STEP 1: Official API (1-by-1 Lookup) ---
+                # --- STEP 1: Official API (Bulk Lookup) ---
                 if not OFFICIAL_API_BLOCKED:
+                    official_results = _fetch_from_official_bulk(client, [r[1] for r in doi_papers])
                     for raw, clean in doi_papers:
-                        work = _fetch_from_official_lookup(client, clean)
-                        if work:
-                            oa_data[raw] = work
+                        if clean in official_results:
+                            oa_data[raw] = official_results[clean]
                             print(f"  🌐 [Oficial] Encontrado: {clean}", end="\r")
-                            time.sleep(REQUEST_DELAY) # Rate limiting
-                        if OFFICIAL_API_BLOCKED:
-                            break
 
                 # --- STEP 2: ClickHouse (Bulk Fallback) ---
                 remaining = [p for p in doi_papers if p[0] not in oa_data]
@@ -414,6 +432,8 @@ if __name__ == "__main__":
     parser.add_argument("--skip-existing", action="store_true")
     parser.add_argument("--local-only", action="store_true",
                         help="Aborta si la API local de OpenAlex (puerto 5009) no está disponible.")
+    parser.add_argument("--official", action="store_true",
+                        help="Consulta únicamente la API oficial y de forma masiva saltando lo local.")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--batch", type=int, default=20)
     parser.add_argument("--chunk", type=int, default=5000)
@@ -423,4 +443,4 @@ if __name__ == "__main__":
                      dry_run=args.dry_run,
                      skip_existing=args.skip_existing, limit=args.limit,
                      batch_size=args.batch, chunk_size=args.chunk,
-                     local_only=args.local_only)
+                     local_only=args.local_only, official_only=args.official)
