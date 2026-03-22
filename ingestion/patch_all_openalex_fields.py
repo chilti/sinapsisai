@@ -348,42 +348,57 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
                             print(f"  🏠 [Local API] Encontrado: {clean}", end="\r")
 
             # DB UPDATE
-            with graph_store.driver.session() as session:
-                for p_rec in to_patch:
-                    doi_key = str(p_rec['doi'] or "")
-                    if doi_key not in oa_data:
-                        fuente = LOCAL_API_URL if LOCAL_API_AVAILABLE else OFFICIAL_API_URL
-                        print(f"      ⚠️  No encontrado en OpenAlex [{fuente}]: https://doi.org/{doi_key}")
-                        errors += 1
-                        continue
+            updates_normal = []
+            updates_with_doi = []
+            
+            for p_rec in to_patch:
+                doi_key = str(p_rec['doi'] or "")
+                if doi_key not in oa_data:
+                    fuente = LOCAL_API_URL if LOCAL_API_AVAILABLE else OFFICIAL_API_URL
+                    # print(f"      ⚠️  No encontrado en OpenAlex [{fuente}]: https://doi.org/{doi_key}")
+                    errors += 1
+                    continue
+                
+                try:
+                    meta = _parse_raw_meta(p_rec['meta'])
+                    oa_work = oa_data[doi_key]
+                    new_data = extract_new_fields(oa_work)
+                    meta.update(new_data)
                     
-                    try:
-                        meta = _parse_raw_meta(p_rec['meta'])
-                        oa_work = oa_data[doi_key]
-                        new_data = extract_new_fields(oa_work)
-                        meta.update(new_data)
-                        
-                        # Si recuperamos un DOI de OpenAlex que no teníamos, lo actualizamos en el nodo
-                        found_doi = oa_work.get('doi')
-                        if found_doi: 
-                            found_doi = found_doi.replace("https://doi.org/", "").lower()
-                        
-                        # Extraer citas directamente para guardarlo ademas en Propiedades del Nodo
-                        citations_val = int(oa_work.get('cited_by_count', 0) or 0)
-                        
-                        if found_doi and not doi_key.startswith("10."):
-                            # Caso orcid-work -> DOI real descubierto
-                            session.run("""
-                                MATCH (p:Paper {id: $id}) 
-                                SET p.raw_metadata = $json, p.doi = $new_doi, p.citations = $citations
-                            """, id=p_rec['id'], json=json.dumps(meta, ensure_ascii=False), new_doi=found_doi, citations=citations_val)
-                        else:
-                            # Actualización normal
-                            session.run("MATCH (p:Paper {id: $id}) SET p.raw_metadata = $json, p.citations = $citations", 
-                                        id=p_rec['id'], json=json.dumps(meta, ensure_ascii=False), citations=citations_val)
-                        updated += 1
-                    except:
-                        errors += 1
+                    # Si recuperamos un DOI de OpenAlex que no teníamos, lo actualizamos en el nodo
+                    found_doi = oa_work.get('doi')
+                    if found_doi: 
+                        found_doi = found_doi.replace("https://doi.org/", "").lower()
+                    
+                    # Extraer citas directamente para guardarlo ademas en Propiedades del Nodo
+                    citations_val = int(oa_work.get('cited_by_count', 0) or 0)
+                    json_str = json.dumps(meta, ensure_ascii=False)
+                    
+                    if found_doi and not doi_key.startswith("10."):
+                        # Caso orcid-work -> DOI real descubierto
+                        updates_with_doi.append({"id": p_rec['id'], "new_doi": found_doi, "citations": citations_val, "json": json_str})
+                    else:
+                        # Actualización normal
+                        updates_normal.append({"id": p_rec['id'], "citations": citations_val, "json": json_str})
+                    
+                    updated += 1
+                except:
+                    errors += 1
+
+            if updates_normal or updates_with_doi:
+                with graph_store.driver.session() as session:
+                    if updates_normal:
+                        session.run("""
+                            UNWIND $batch AS b
+                            MATCH (p:Paper {id: b.id})
+                            SET p.raw_metadata = b.json, p.citations = b.citations
+                        """, batch=updates_normal)
+                    if updates_with_doi:
+                        session.run("""
+                            UNWIND $batch AS b
+                            MATCH (p:Paper {id: b.id})
+                            SET p.raw_metadata = b.json, p.doi = b.new_doi, p.citations = b.citations
+                        """, batch=updates_with_doi)
 
             processed += len(batch)
             print(f"  📊 {skip+i+len(batch)}/{total_papers} | OK: {updated} | Skip: {skipped} | Err: {errors}", end="\r")
