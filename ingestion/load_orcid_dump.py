@@ -6,12 +6,15 @@ import clickhouse_connect
 import os
 import io
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Configuración ClickHouse (Ajustar si el servidor tiene credenciales distintas)
-CH_HOST = "127.0.0.1" 
-CH_PORT = 8123
-CH_USER = "admin"
-CH_PASS = "admin"
-CH_DB   = "openalex"
+CH_HOST = os.getenv("CH_ORCID_HOST", "127.0.0.1")
+CH_PORT = int(os.getenv("CH_ORCID_PORT", 8123))
+CH_USER = os.getenv("CH_ORCID_USER", "admin")
+CH_PASS = os.getenv("CH_ORCID_PASSWORD", "admin")
+CH_DB   = os.getenv("CH_ORCID_DATABASE", "orcid")
 
 # Ruta al dump en el servidor
 ZIP_PATH = "/mnt/expansion/30375589_orcid2025.zip"
@@ -69,6 +72,7 @@ def parse_orcid_xml(xml_content):
         
         last_aff, last_city, last_country = "", "", ""
         dois = []
+        scopus_ids = []
         activities = root.find('.//activities:activities-summary', ns)
         if activities is not None:
             # 1. Empleos para Affiliation
@@ -98,14 +102,18 @@ def parse_orcid_xml(xml_content):
                                 val = ext_id.find('common:external-id-value', ns)
                                 if val is not None and val.text:
                                     dois.append(val.text.lower().strip())
+                            elif id_type is not None and id_type.text.lower() == 'scopus':
+                                val = ext_id.find('common:external-id-value', ns)
+                                if val is not None and val.text:
+                                    scopus_ids.append(val.text.strip())
 
-        return [orcid_id, given_names, family_name, credit_name, emails, dois, last_aff, last_city, last_country, "orcid_dump_2025"]
+        return [orcid_id, given_names, family_name, credit_name, emails, dois, scopus_ids, last_aff, last_city, last_country, "orcid_dump_2025"]
     except Exception as e:
         return None
 
 def run_ingestion(batch_size=5000):
     client = get_client()
-    cols = ['orcid', 'given_names', 'family_name', 'credit_name', 'emails', 'dois',
+    cols = ['orcid', 'given_names', 'family_name', 'credit_name', 'emails', 'dois', 'scopus_ids',
             'last_affiliation', 'last_affiliation_city', 'last_affiliation_country', 'source_id']
     
     print(f"Iniciando ingesta desde {ZIP_PATH} -> {TARGET_TAR}...")

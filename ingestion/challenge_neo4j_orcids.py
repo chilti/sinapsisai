@@ -26,7 +26,7 @@ from langchain_core.messages import HumanMessage
 # Añadir path raíz
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.knowledge_graph import Neo4jGraphStore
-from SNII.match_snii_orcid import get_client as get_ch_client
+from SNII.match_snii_orcid import get_client as get_ch_client, get_orcid_client, CH_DB_ORCID
 
 # Cargar .env
 env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
@@ -59,10 +59,10 @@ llm = ChatOpenAI(
 
 def get_orcid_details(orcid):
     """Obtiene detalles del ORCID desde ClickHouse."""
-    client = get_ch_client()
+    client = get_orcid_client()
     query = f"""
     SELECT given_names, family_name, credit_name, last_affiliation, last_affiliation_country, emails
-    FROM openalex.orcid_records
+    FROM {CH_DB_ORCID}.orcid_records
     WHERE orcid = '{orcid}'
     """
     try:

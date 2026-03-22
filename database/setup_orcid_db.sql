@@ -13,6 +13,7 @@ CREATE TABLE orcid_records (
     last_affiliation String,
     last_affiliation_city String,
     last_affiliation_country String,
+    scopus_ids Array(String),
     source_id String,
     last_modified DateTime DEFAULT now()
 ) ENGINE = MergeTree()

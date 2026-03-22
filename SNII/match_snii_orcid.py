@@ -32,7 +32,7 @@ CH_ORCID_HOST = os.getenv("CH_ORCID_HOST", "127.0.0.1")
 CH_ORCID_PORT = int(os.getenv("CH_ORCID_PORT", 8123))
 CH_ORCID_USER = os.getenv("CH_ORCID_USER", "default")
 CH_ORCID_PASS = os.getenv("CH_ORCID_PASSWORD", "")
-CH_DB_ORCID   = os.getenv("CH_ORCID_DATABASE", "openalex")
+CH_DB_ORCID   = os.getenv("CH_ORCID_DATABASE", "orcid")
 
 # Configuración Neo4j (Bolt)
 NEO4J_URI  = os.getenv("NEO4J_URI", "bolt://127.0.0.1:7687")
@@ -323,16 +323,16 @@ def discover_orcid_locally(graph_store, name, affiliation, mex_keywords):
         print(f"      [Neo4j Discovery] Error: {e}")
     return None, None
 
-def get_orcid_emails(client, orcid):
+def get_orcid_emails(orcid_client, orcid):
     """Extrae los correos electrónicos del ORCID desde la tabla local orcid_records."""
     try:
-        query = f"SELECT emails FROM {CH_DB}.orcid_records WHERE orcid = '{orcid}'"
-        res = client.query(query).result_rows
+        query = f"SELECT emails FROM {CH_DB_ORCID}.orcid_records WHERE orcid = '{orcid}'"
+        res = orcid_client.query(query).result_rows
         if res and res[0][0]:
             return res[0][0]
     except:
         pass
-    return ""
+    return []
 
 def run_matching(limit=500, min_score=0.5):
     client = get_client()

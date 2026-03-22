@@ -204,7 +204,7 @@ def vectorize_orcid_authors():
     
     query = f"""
     SELECT orcid, given_names, family_name, credit_name, last_affiliation, last_affiliation_country
-    FROM openalex.orcid_records
+    FROM {CH_DB_ORCID}.orcid_records
     WHERE (last_affiliation_country = 'MX') 
        OR ({kw_conditions})
     """
@@ -598,18 +598,33 @@ Respuesta:"""
                     
                     # Extraer Scopus IDs: primero desde el candidato (de OpenAlex), luego desde ClickHouse ORCID
                     scopus_ids = final_match.get('scopus_ids') or []
+                    # Extraer Scopus IDs: Prioridad LOCAL (orcid_records), luego REMOTE (OpenAlex authors)
+                    scopus_ids = final_match.get('scopus_ids') or []
                     if not scopus_ids and confirmed_orcid:
+                        clean_orcid = str(confirmed_orcid).replace('https://orcid.org/', '').strip()
+                        # 1. Intentar en Local (DUMP ORCID)
                         try:
-                            ch = get_ch_client()
-                            clean_orcid = str(confirmed_orcid).replace('https://orcid.org/', '').strip()
-                            q = f"SELECT external_ids FROM {CH_DB}.authors WHERE orcid = '{clean_orcid}' LIMIT 1"
-                            rows = ch.query(q).result_rows
-                            if rows and rows[0][0]:
-                                ext = json.loads(rows[0][0]) if isinstance(rows[0][0], str) else rows[0][0]
-                                raw = ext.get('Scopus') or ext.get('scopus') or []
-                                scopus_ids = [raw] if isinstance(raw, str) else raw
-                        except Exception as se:
-                            print(f"      ⚠️ No se pudieron extraer Scopus IDs: {se}")
+                            ch_local = get_orcid_client()
+                            q_local = f"SELECT scopus_ids FROM {CH_DB_ORCID}.orcid_records WHERE orcid = '{clean_orcid}' LIMIT 1"
+                            res_local = ch_local.query(q_local).result_rows
+                            if res_local and res_local[0][0]:
+                                scopus_ids = res_local[0][0]
+                        except Exception as sle:
+                            print(f"      ⚠️ No se pudieron extraer Scopus IDs de Local: {sle}")
+                        
+                        # 2. Fallback a Remote (OpenAlex Authors) - Si local falló o está vacío
+                        if not scopus_ids:
+                            try:
+                                ch_remote = get_ch_client()
+                                # El campo en OpenAlex authors es 'ids', no 'external_ids'
+                                q_remote = f"SELECT ids FROM {CH_DB}.authors WHERE orcid = '{clean_orcid}' LIMIT 1"
+                                rows = ch_remote.query(q_remote).result_rows
+                                if rows and rows[0][0]:
+                                    ext = json.loads(rows[0][0]) if isinstance(rows[0][0], str) else rows[0][0]
+                                    raw = ext.get('Scopus') or ext.get('scopus') or []
+                                    scopus_ids = [raw] if isinstance(raw, str) else raw
+                            except Exception as se:
+                                print(f"      ⚠️ No se pudieron extraer Scopus IDs de Remote: {se}")
                     
                     print(f"      ✅ MATCH CONFIRMADO por LLM: [SNII] {snii_name} ≈ [Match] {final_match['name']} ({confirmed_orcid})")
                     result_entry.update({
