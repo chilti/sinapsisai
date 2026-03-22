@@ -396,7 +396,15 @@ def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list
         try:
             with open(output_path, "r", encoding="utf-8") as f:
                 verified_results = json.load(f)
-                processed_names = {r["snii_author"] for r in verified_results}
+                processed_names = {
+                    r["snii_author"] for r in verified_results
+                    if r.get("match") or not str(r.get("reason", "")).startswith("Error en LLM")
+                }
+                # Quitar de verified_results los que se van a reintentar
+                verified_results = [
+                    r for r in verified_results
+                    if r["snii_author"] in processed_names
+                ]
             print(f"   Continuando proceso: {len(processed_names)} investigadores ya validados.")
         except Exception as e:
             print(f"   ⚠️ No se pudo cargar progreso previo: {e}")
@@ -605,6 +613,22 @@ Respuesta:"""
 
         except Exception as e:
             print(f"      ⚠️ Error consultando LLM para {snii_name}: {e}")
+            # Guardar el investigador como no procesado para no perderlo
+            verified_results.append({
+                "snii_author": snii_name,
+                "snii_institution": final_inst,
+                "snii_subdependency": final_sub,
+                "match": False,
+                "matched_author": None,
+                "matched_orcid": None,
+                "reason": f"Error en LLM: {e}",
+                "source": None
+            })
+            # Guardado inmediato para no perder progreso ante interrupciones
+            _output_path = os.path.join("data", "snii_llm_verified_matches.json")
+            os.makedirs("data", exist_ok=True)
+            with open(_output_path, "w", encoding="utf-8") as _f:
+                json.dump(verified_results, _f, ensure_ascii=False, indent=2)
 
     # Guardar resultados específicos
     output_path = os.path.join("data", "snii_llm_verified_matches.json")

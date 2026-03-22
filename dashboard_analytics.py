@@ -31,14 +31,21 @@ def load_cached_data(filename, entity_name=None, academic_name=None, institution
     
     # 1. Intentar estructura jerárquica (Nacional)
     if institution_name:
-        safe_inst = str(institution_name).replace('/', '_').replace('\\', '_')
+        if institution_name == "México" or institution_name == "Mexico":
+            safe_inst = "Mexico"
+        else:
+            safe_inst = str(institution_name).replace('/', '_').replace('\\', '_')
+
         if entity_name and academic_name:
             safe_ent = str(entity_name).replace('/', '_').replace('\\', '_')
             safe_ac = str(academic_name).replace('/', '_').replace('\\', '_')
             path = os.path.join(CACHE_DIR, safe_inst, safe_ent, safe_ac, filename)
-        elif entity_name:
+        elif entity_name and entity_name != institution_name:
             safe_ent = str(entity_name).replace('/', '_').replace('\\', '_')
             path = os.path.join(CACHE_DIR, safe_inst, safe_ent, filename)
+        else:
+            # Caso especial: Sin entidad o Entidad == Institución (ej. México)
+            path = os.path.join(CACHE_DIR, safe_inst, filename)
             
         if path and os.path.exists(path):
             return pd.read_parquet(path)
@@ -155,11 +162,11 @@ def load_hierarchy():
                         if target_inst not in hierarchy: hierarchy[target_inst] = set()
                         hierarchy[target_inst].add(ent)
             
-            # Garantizar que 'Sin Entidad' siempre exista para los SNIIs sin afiliación particular
-            if unam_name in hierarchy:
-                hierarchy[unam_name].add("Sin Entidad")
-            else:
-                hierarchy[unam_name] = {"Sin Entidad"}
+        # Asegurar que 'México' siempre aparezca como opción nacional principal
+        if "México" not in hierarchy:
+            hierarchy["México"] = {"Mexico"}
+        else:
+            hierarchy["México"].add("Mexico")
 
     except Exception as e:
         print(f"Error cargando jerarquía: {e}")
@@ -169,7 +176,7 @@ def load_hierarchy():
                 "INSTITUTO DE CIENCIAS NUCLEARES",
                 "INSTITUTO DE FISICA"
             },
-            "Nacional (México)": {"Mexico"}
+            "México": {"Mexico"}
         }
     finally:
         store.close()
