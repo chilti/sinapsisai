@@ -209,24 +209,24 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
 
     print(f"📊 Procesando padrón SNII...")
     
-    # Filtrar solo matches validados
-    valid_matches = [r for r in registros if r.get('match') is True and r.get('matched_orcid')]
+    # Procesar TODOS los registros, pero priorizando confirmados
+    def sort_priority(r):
+        v = r.get('audit', {}).get('verdict')
+        if v == "CONFIRMED": return 2
+        if v == "DOUBTFUL": return 1
+        return 0
+    
+    registros.sort(key=sort_priority, reverse=True)
     
     if confirmed_only:
-        valid_matches = [r for r in valid_matches if r.get('audit', {}).get('verdict') == "CONFIRMED"]
-        print(f"✅ Filtrando solo confirmados: {len(valid_matches)}")
+        registros_to_process = [r for r in registros if r.get('audit', {}).get('verdict') == "CONFIRMED"]
+        print(f"✅ Filtrando solo confirmados: {len(registros_to_process)}")
     else:
-        # Priorizar CONFIRMED, luego el resto
-        def sort_priority(r):
-            v = r.get('audit', {}).get('verdict')
-            if v == "CONFIRMED": return 2
-            if v == "DOUBTFUL": return 1
-            return 0
-        valid_matches.sort(key=sort_priority, reverse=True)
-        print(f"✅ Registros con match validado para procesar: {len(valid_matches)} (Priorizando confirmados)")
+        registros_to_process = registros
+        print(f"✅ Registros totales para procesar: {len(registros_to_process)} (Priorizando confirmados)")
 
     count = 0
-    for data in valid_matches:
+    for data in registros_to_process:
         academic_name = data.get('snii_author')
         if not academic_name: continue
 
@@ -242,22 +242,49 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
         sub_name = data.get('snii_subdependency', 'SIN INFORMACIÓN')
         orcid = data.get('matched_orcid')
         
-        # 1. Verificar existencia
-        if hasattr(graph_store, 'check_academic_exists') and graph_store.check_academic_exists(academic_name) and not force:
-            print(f"\n[{academic_name}] Ya existe en Neo4j. Asegurando afiliación...")
-            graph_store.add_academic_full_affiliation(academic_name, inst_name, sub_name)
+        # 1. Actualizar metadatos básicos y auditoría directamente (Independiente de si tiene papers)
+        audit = data.get('audit', {})
+        print(f"\n🏷️ [{academic_name}] Actualizando metadatos y afiliación...")
+        
+        # Usar el nuevo método para persistir auditoría incluso sin papers
+        if hasattr(graph_store, 'update_academic_metadata'):
+            graph_store.update_academic_metadata(
+                academic_name=academic_name,
+                orcid=orcid if data.get('match') is True and audit.get('verdict') != 'FALSE_POSITIVE' else None,
+                scopus_id=data.get('scopus_ids'),
+                audit_verdict=audit.get('verdict'),
+                audit_reason=audit.get('reason'),
+                audit_confidence=audit.get('confidence'),
+                audit_timestamp=audit.get('timestamp'),
+                match_reason=data.get('reason'),
+                is_snii=True
+            )
+        else:
             graph_store.set_academic_snii(academic_name, True)
+
+        # 2. Asegurar afiliación jerárquica
+        graph_store.add_academic_full_affiliation(academic_name, inst_name, sub_name)
+
+        # 3. Determinar si es seguro recolectar publicaciones
+        # NO recolectar si: no hay orcid, o es match=false, o es veredicto FALSE_POSITIVE
+        is_safe_match = data.get('match') is True and orcid and audit.get('verdict') != 'FALSE_POSITIVE'
+        
+        if not is_safe_match:
+            print(f"  ℹ️ Saltando recolección de publicaciones (Match: {data.get('match')}, Veredicto: {audit.get('verdict')})")
             continue
 
-        print(f"\n🧬 [{academic_name}] Iniciando recopilación API...")
-        graph_store.set_academic_snii(academic_name, True)
+        # 4. Verificar existencia de publicaciones (evitar procesar de nuevo si no se fuerza)
+        if hasattr(graph_store, 'check_academic_exists') and graph_store.check_academic_exists(academic_name) and not force:
+            print(f"  📍 Publicaciones ya existen en Neo4j. Saltando recolección API...")
+            continue
+
+        print(f"  🧬 Iniciando recopilación API para {orcid}...")
         
         # 1. Recolección de ORCID
         meta_unificada = obtener_metadatos_de_orcid(orcid)
         
         if not meta_unificada:
             print("  -> Sin publicaciones rastreables.")
-            graph_store.add_academic_full_affiliation(academic_name, inst_name, sub_name)
             continue
             
         print(f"  -> {len(meta_unificada)} artículos únicos. Enriqueciendo...")

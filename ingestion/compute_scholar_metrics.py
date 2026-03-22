@@ -152,7 +152,8 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
     if academic_filter:
         print(f"  -> Filtrando por Académico: {academic_filter} (Fuente: {source_filter})")
         query = """
-        MATCH (a:Academic {name: $academic})-[:AUTHORED]->(p{label_filter})
+        MATCH (a:Academic {name: $academic})
+        OPTIONAL MATCH (a)-[:AUTHORED]->(p{label_filter})
         OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
         OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(i:Institution)
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
@@ -181,7 +182,8 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
     elif entity_filter:
         print(f"  -> Filtrando por Entidad (Investigadores): {entity_filter} (Fuente: {source_filter})")
         query = """
-        MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p{label_filter})
+        MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)
+        OPTIONAL MATCH (a)-[:AUTHORED]->(p{label_filter})
         OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
         WITH e, a, p, CASE WHEN p_inst IS NOT NULL THEN p_inst ELSE (CASE WHEN e:Institution THEN e ELSE null END) END AS i
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
@@ -209,7 +211,8 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
     else:
         print(f"  -> Procesando todos los académicos (Fuente: {source_filter})")
         query = """
-        MATCH (a:Academic)-[:AUTHORED]->(p{label_filter})
+        MATCH (a:Academic)
+        OPTIONAL MATCH (a)-[:AUTHORED]->(p{label_filter})
         OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
         OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
         WITH a, p, e, CASE WHEN p_inst IS NOT NULL THEN p_inst ELSE (CASE WHEN e:Institution THEN e ELSE null END) END AS i
@@ -1014,9 +1017,19 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
     df_raw_list = []
     for chunk_df in extract_academic_papers(academic_filter=academic_filter, entity_filter=entity_filter, source_filter=source_filter):
         print(f"  → Procesando bloque de {len(chunk_df)} papers...")
-        chunk_df['year'] = pd.to_numeric(chunk_df['year'], errors='coerce')
-        chunk_df = chunk_df.dropna(subset=['year'])
-        chunk_df = chunk_df[chunk_df['year'] >= 1900]
+        
+        # Saneo de años: Solo aplicar a registros con papers. 
+        # Los registros sin papers (paper_id=None) se quedan para contar al investigador.
+        if not chunk_df.empty:
+            has_paper = chunk_df['paper_id'].notna()
+            
+            # Convertir año a numérico
+            chunk_df.loc[has_paper, 'year'] = pd.to_numeric(chunk_df.loc[has_paper, 'year'], errors='coerce')
+            
+            # Filtrar años inválidos SOLO para los que tienen papers
+            # Los que no tienen paper_id se mantienen intactos
+            invalid_year = has_paper & (chunk_df['year'].isna() | (chunk_df['year'] < 1900))
+            chunk_df = chunk_df[~invalid_year]
         
         # Saneo rápido
         list_cols = ['keywords', 'topics', 'indexed_in']

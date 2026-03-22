@@ -616,8 +616,9 @@ Respuesta:"""
                         if not scopus_ids:
                             try:
                                 ch_remote = get_ch_client()
-                                # El campo en OpenAlex authors es 'ids', no 'external_ids'
-                                q_remote = f"SELECT ids FROM {CH_DB}.authors WHERE orcid = '{clean_orcid}' LIMIT 1"
+                                # Extraccion desde el campo JSON 'ids' de OpenAlex
+                                col_to_get = "ids"
+                                q_remote = f"SELECT {col_to_get} FROM {CH_DB}.authors WHERE orcid = '{clean_orcid}' LIMIT 1"
                                 rows = ch_remote.query(q_remote).result_rows
                                 if rows and rows[0][0]:
                                     ext = json.loads(rows[0][0]) if isinstance(rows[0][0], str) else rows[0][0]

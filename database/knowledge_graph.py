@@ -453,6 +453,61 @@ class Neo4jGraphStore:
             except Exception as e:
                 print(f"Error marcando SNII para {academic_name}: {e}")
 
+    def update_academic_metadata(self, academic_name: str, orcid: str = None, scopus_id: str = None,
+                                  audit_verdict: str = None, audit_reason: str = None, 
+                                  audit_confidence: int = None, audit_timestamp: str = None,
+                                  match_reason: str = None, is_snii: bool = True):
+        """
+        Actualiza metadatos de un académico (ORCID, auditoría, SNII) sin necesidad de papers.
+        """
+        system_id = orcid if orcid else academic_name
+        
+        query = """
+        MERGE (a:Author {id: $system_id})
+        SET a:Academic, a.name = $academic_name
+        WITH a
+        CALL (a) {
+            WITH a WHERE $orcid IS NOT NULL
+            SET a.orcid = $orcid
+        }
+        CALL (a) {
+            WITH a WHERE $scopus_id IS NOT NULL
+            SET a.scopus_id = $scopus_id
+        }
+        CALL (a) {
+            WITH a WHERE $audit_verdict IS NOT NULL
+            SET a.audit_verdict = $audit_verdict,
+                a.audit_reason = $audit_reason,
+                a.audit_confidence = $audit_confidence,
+                a.audit_timestamp = $audit_timestamp
+        }
+        CALL (a) {
+            WITH a WHERE $match_reason IS NOT NULL
+            SET a.match_reason = $match_reason
+        }
+        CALL (a) {
+            WITH a WHERE $is_snii = true
+            SET a:SNII, a.is_snii = true
+        }
+        """
+        params = {
+            "system_id": system_id,
+            "academic_name": academic_name,
+            "orcid": orcid,
+            "scopus_id": scopus_id,
+            "audit_verdict": audit_verdict,
+            "audit_reason": audit_reason,
+            "audit_confidence": audit_confidence,
+            "audit_timestamp": audit_timestamp,
+            "match_reason": match_reason,
+            "is_snii": is_snii
+        }
+        with self.driver.session() as session:
+            try:
+                session.run(query, **params)
+            except Exception as e:
+                print(f"Error actualizando metadatos para {academic_name}: {e}")
+
     def get_database_statistics(self) -> dict:
         """Obtiene un resumen de la cantidad de nodos por etiqueta y relaciones en el grafo."""
         stats = {"nodes": {}, "relationships": 0}
