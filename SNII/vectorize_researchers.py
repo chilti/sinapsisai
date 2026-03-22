@@ -11,6 +11,7 @@ Implementa la estrategia de triple vectorización semántica en Qdrant:
 import os
 import sys
 import json
+import time
 import pandas as pd
 import httpx
 from dotenv import load_dotenv
