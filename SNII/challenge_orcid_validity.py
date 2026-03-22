@@ -54,10 +54,11 @@ llm = ChatOpenAI(
 
 def get_orcid_details(orcid):
     """Obtiene detalles del ORCID desde ClickHouse."""
+    from SNII.match_snii_orcid import CH_DB_ORCID
     client = get_ch_client()
     query = f"""
     SELECT given_names, family_name, credit_name, last_affiliation, last_affiliation_country
-    FROM openalex.orcid_records
+    FROM {CH_DB_ORCID}.orcid_records
     WHERE orcid = '{orcid}'
     """
     try:

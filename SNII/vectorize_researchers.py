@@ -22,7 +22,7 @@ from langchain_core.messages import HumanMessage
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.vector_store import QdrantStore
 from database.knowledge_graph import Neo4jGraphStore
-from match_snii_orcid import normalize_text, get_client as get_ch_client, SNII_PATH
+from match_snii_orcid import normalize_text, get_client as get_ch_client, SNII_PATH, CH_DB, CH_DB_ORCID
 
 # Cargar .env
 env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
@@ -342,7 +342,7 @@ def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list
             orcid,
             last_known_institution_name,
             ids
-        FROM openalex.authors
+        FROM {CH_DB}.authors
         WHERE lower(display_name) LIKE '%{search_term.lower()}%'
         LIMIT {limit * 5}
         """
@@ -518,7 +518,7 @@ def vectorize_snii_with_llm(limit_test=None):
                 t_esc = search_term.strip().replace("'", "").lower().replace("'", "''")
                 
                 if len(t_esc) >= 3:
-                    query = f"SELECT orcid, given_names, family_name, credit_name, last_affiliation FROM openalex.orcid_records WHERE (lower(family_name) LIKE '%{t_esc}%' OR lower(credit_name) LIKE '%{t_esc}%') LIMIT 20"
+                    query = f"SELECT orcid, given_names, family_name, credit_name, last_affiliation FROM {CH_DB_ORCID}.orcid_records WHERE (lower(family_name) LIKE '%{t_esc}%' OR lower(credit_name) LIKE '%{t_esc}%') LIMIT 20"
                     res = ch_client.query(query).result_rows
                     
                     from Levenshtein import jaro_winkler
@@ -596,7 +596,7 @@ Respuesta:"""
                         try:
                             ch = get_ch_client()
                             clean_orcid = str(confirmed_orcid).replace('https://orcid.org/', '').strip()
-                            q = f"SELECT external_ids FROM openalex.authors WHERE orcid = '{clean_orcid}' LIMIT 1"
+                            q = f"SELECT external_ids FROM {CH_DB}.authors WHERE orcid = '{clean_orcid}' LIMIT 1"
                             rows = ch.query(q).result_rows
                             if rows and rows[0][0]:
                                 ext = json.loads(rows[0][0]) if isinstance(rows[0][0], str) else rows[0][0]
