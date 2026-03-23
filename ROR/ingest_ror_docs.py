@@ -86,23 +86,23 @@ class RORIngestor:
         
         # 1. Buscar trabajos en OpenAlex (Prioridad: Local -> Oficial)
         # Intentar primero API Local (127.0.0.1:5009)
-        original_url = pyalex.config.api_url
+        original_url = getattr(pyalex.config, "openalex_url", "https://api.openalex.org")
         try:
-            pyalex.config.api_url = "http://127.0.0.1:5009"
+            pyalex.config.openalex_url = "http://127.0.0.1:5009"
             works_query = pyalex.Works().filter(institutions={"ror": ror_id})
             total_works = works_query.count()
             print(f"   -> Encontrados {total_works} trabajos en OpenAlex (API Local).")
         except Exception as e:
             print(f"   ⚠️ API Local (5009) no disponible o falló ({e}). Intentando API Oficial...")
             try:
-                pyalex.config.api_url = "https://api.openalex.org"
+                pyalex.config.openalex_url = "https://api.openalex.org"
                 works_query = pyalex.Works().filter(institutions={"ror": ror_id})
                 total_works = works_query.count()
                 print(f"   -> Encontrados {total_works} trabajos en OpenAlex (API Oficial).")
             except Exception as e2:
                 print(f"   ❌ Error final consultando OpenAlex (Oficial): {e2}")
                 # Restaurar y salir
-                pyalex.config.api_url = original_url
+                pyalex.config.openalex_url = original_url
                 return
             # Se queda con el api_url local para la paginación de abajo
 
@@ -114,7 +114,7 @@ class RORIngestor:
             print(f"   ❌ Error durante la paginación de OpenAlex: {e}")
         finally:
             # Restaurar URL original tras procesar
-            pyalex.config.api_url = "https://api.openalex.org"
+            pyalex.config.openalex_url = "https://api.openalex.org"
 
     def _process_works_batch(self, works, inst_name, sub_name):
         batch_payloads = []
