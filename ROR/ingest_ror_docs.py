@@ -84,37 +84,21 @@ class RORIngestor:
     def ingest_by_ror(self, ror_id: str, institution_name: str, subdependency_name: str = "SIN INFORMACIÓN"):
         print(f"\n🔍 Procesando ROR: {ror_id} ({institution_name} | {subdependency_name})")
         
-        # 1. Buscar trabajos en OpenAlex (Prioridad: Local -> Oficial)
-        # Intentar primero API Local (127.0.0.1:5009)
-        original_url = getattr(pyalex.config, "openalex_url", "https://api.openalex.org")
+        # 1. Buscar trabajos en OpenAlex usando el generador de openalex_utils
+        # (Este ya maneja la prioridad Local -> Oficial y la paginación)
         try:
-            pyalex.config.openalex_url = "http://127.0.0.1:5009"
-            works_query = pyalex.Works().filter(institutions={"ror": ror_id})
-            total_works = works_query.count()
-            print(f"   -> Encontrados {total_works} trabajos en OpenAlex (API Local).")
-        except Exception as e:
-            print(f"   ⚠️ API Local (5009) no disponible o falló ({e}). Intentando API Oficial...")
-            try:
-                pyalex.config.openalex_url = "https://api.openalex.org"
-                works_query = pyalex.Works().filter(institutions={"ror": ror_id})
-                total_works = works_query.count()
-                print(f"   -> Encontrados {total_works} trabajos en OpenAlex (API Oficial).")
-            except Exception as e2:
-                print(f"   ❌ Error final consultando OpenAlex (Oficial): {e2}")
-                # Restaurar y salir
-                pyalex.config.openalex_url = original_url
-                return
-            # Se queda con el api_url local para la paginación de abajo
-
-        try:
-            # Procesar por lotes (ej. 100)
-            for page in works_query.paginate(per_page=100):
+            processed_count = 0
+            for page in openalex_utils.get_works_by_ror(ror_id, per_page=100):
                 self._process_works_batch(page, institution_name, subdependency_name)
+                processed_count += len(page)
+            
+            if processed_count > 0:
+                print(f"   ✅ Se procesaron {processed_count} trabajos para este ROR.")
+            else:
+                print(f"   ⚠️ No se encontraron trabajos o hubo un error para este ROR.")
+                
         except Exception as e:
-            print(f"   ❌ Error durante la paginación de OpenAlex: {e}")
-        finally:
-            # Restaurar URL original tras procesar
-            pyalex.config.openalex_url = "https://api.openalex.org"
+            print(f"   ❌ Error durante la recuperación de OpenAlex: {e}")
 
     def _process_works_batch(self, works, inst_name, sub_name):
         batch_payloads = []

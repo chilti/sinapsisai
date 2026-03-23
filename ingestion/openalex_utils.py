@@ -203,3 +203,67 @@ def get_works_batch(dois: list, email: str = None,
                 results_dict[d_key] = w
 
     return results_dict
+
+
+# ─────────────────────────────────────────────────────────────────
+# get_works_by_ror: Recupera todos los trabajos por ROR
+# ─────────────────────────────────────────────────────────────────
+def get_works_by_ror(ror_id: str, per_page: int = 100):
+    """
+    Generador que devuelve páginas de trabajos asociados a un ROR.
+    Prioridad: API local → API oficial.
+    """
+    global OFFICIAL_API_BLOCKED
+
+    ror_id_clean = ror_id.replace("https://ror.org/", "").strip()
+    
+    # Intentar Local
+    try:
+        with httpx.Client(verify=False, timeout=30) as client:
+            # 1. Probar si responde
+            url = f"{LOCAL_BASE}/works"
+            params = {"filter": f"institutions.ror:{ror_id}", "per_page": 1}
+            resp = client.get(url, params=params)
+            if resp.status_code == 200:
+                print(f"      ✅ [Local] ROR {ror_id_clean} disponible.")
+                # Pagination loop
+                page = 1
+                while True:
+                    p = {"filter": f"institutions.ror:{ror_id}", "per_page": per_page, "page": page}
+                    r = client.get(url, params=p, timeout=60)
+                    if r.status_code != 200: break
+                    data = r.json()
+                    results = data.get("results", [])
+                    if not results: break
+                    yield results
+                    if len(results) < per_page: break
+                    page += 1
+                return
+    except Exception as e:
+        print(f"      ⚠️ [Local] No disponible para ROR ({e}). Intentando oficial...")
+
+    # Intentar Oficial
+    if OFFICIAL_API_BLOCKED:
+        return
+
+    auth = _auth_params()
+    try:
+        with httpx.Client(verify=False, timeout=30) as client:
+            url = f"{OFFICIAL_BASE}/works"
+            # Pagination loop (usando cursor o offset, pero para ROR simple el offset/page suele bastar)
+            page = 1
+            while True:
+                p = {**auth, "filter": f"institutions.ror:{ror_id}", "per_page": per_page, "page": page}
+                r = _backoff_get(client, url, p)
+                if not r or r.status_code != 200:
+                    if r and r.status_code in (403, 429):
+                        OFFICIAL_API_BLOCKED = True
+                    break
+                data = r.json()
+                results = data.get("results", [])
+                if not results: break
+                yield results
+                if len(results) < per_page: break
+                page += 1
+    except Exception as e:
+        print(f"      ❌ [Oficial] Error recuperando ROR {ror_id_clean}: {e}")
