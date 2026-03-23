@@ -145,17 +145,28 @@ def sync_embeddings(limit=None, chunk_size=5000, batch_size=32):
                 continue
 
             try:
-                # 3. Vectorizar el lote con endpoints OpenAI-compatibles locales a prueba de fallos
-                clean_batch = [str(t) if t else " " for t in texts_para_vectorizar]
+                # Truncar textos demasiado largos (ej. > 8000 caracteres ~= 1500 tokens)
+                # para evitar que el modelo exceda su ventana de contexto y el servidor aborte la conexión
+                clean_batch = [str(t)[:8000] if t else " " for t in texts_para_vectorizar]
                 embs = embeddings_model.embed_documents(clean_batch)
                 
-                # 4. Guardar en Qdrant
+                # Guardar en Qdrant
                 vector_store.add_documents(payloads_qdrant, embs)
                 updated += len(payloads_qdrant)
                 
             except Exception as e:
-                print(f"  ❌ Error en vectores para el batch: {e}")
-                errors += len(payloads_qdrant)
+                # Fallback: Si el lote entero falla (ej. Connection reset by peer), intentamos de uno en uno
+                print(f"\n  ⚠️ Lote falló ({e}). Reintentando uno por uno para aislar el problemático...")
+                for t, p in zip(texts_para_vectorizar, payloads_qdrant):
+                    try:
+                        single_t = str(t)[:8000] if t else " "
+                        single_emb = embeddings_model.embed_documents([single_t])
+                        vector_store.add_documents([p], single_emb)
+                        updated += 1
+                        print("    ✅ Recuperado 1", end="\r")
+                    except Exception as e_single:
+                        print(f"\n    ❌ Texto descartado completamente: {e_single}")
+                        errors += 1
 
             processed += len(batch)
             print(f"  📊 {processed}/{total_papers} | Vectorizados: {updated} | Ya en Qdrant/Skipped: {skipped} | Err: {errors}", end="\r")
