@@ -1082,6 +1082,11 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
         if c in df_raw.columns:
             df_raw[c] = df_raw[c].apply(lambda x: list(x) if isinstance(x, (list, tuple, np.ndarray)) else [])
 
+    # Convertir a string IDs que puedan venir como lista desde Neo4j (ej. scopus_id)
+    for c in ['scopus_id', 'orcid']:
+        if c in df_raw.columns:
+            df_raw[c] = df_raw[c].apply(lambda x: ",".join([str(i) for i in x]) if isinstance(x, (list, tuple, np.ndarray)) else (str(x) if pd.notnull(x) else None))
+
     # Exportar listado general de papers de Académicos
     save_disaggregated_parquets(df_raw, 'papers_profesor.parquet', 'academic', academics_map)
     
@@ -1226,6 +1231,36 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
             if inter_rows_inst:
                 df_inter_inst = pd.DataFrame(inter_rows_inst)
                 df_inst_tot = df_inst_tot.merge(df_inter_inst, on='entity_name', how='left')
+
+        # ── Estadisticas SNII para la entidad Mexico ────────────────────────────
+        snii_json_path = BASE_PATH / 'SNII' / 'snii_llm_verified_matches.json'
+        if snii_json_path.exists():
+            try:
+                import json
+                with open(snii_json_path, 'r', encoding='utf-8') as f:
+                    snii_data = json.load(f)
+                
+                total_snii = len(snii_data)
+                matched_snii = sum(1 for x in snii_data if x.get('match') is True)
+                confirmed_snii = sum(1 for x in snii_data if isinstance(x.get('audit'), dict) and x['audit'].get('verdict') == 'CONFIRMED')
+                doubtful_snii = sum(1 for x in snii_data if isinstance(x.get('audit'), dict) and x['audit'].get('verdict') == 'DOUBTFUL')
+                false_pos_snii = sum(1 for x in snii_data if isinstance(x.get('audit'), dict) and x['audit'].get('verdict') == 'FALSE_POSITIVE')
+                
+                # Asignarlo dinámicamente si existe la entidad Mexico
+                is_mexico = df_inst_tot['entity_name'].isin(['Mexico', 'México', 'MEXICO', 'MÉXICO'])
+                if is_mexico.any():
+                    for col in ['snii_total', 'snii_matched', 'snii_confirmed', 'snii_doubtful', 'snii_false_positives']:
+                        if col not in df_inst_tot.columns:
+                            df_inst_tot[col] = np.nan
+                            
+                    df_inst_tot.loc[is_mexico, 'snii_total'] = total_snii
+                    df_inst_tot.loc[is_mexico, 'snii_matched'] = matched_snii
+                    df_inst_tot.loc[is_mexico, 'snii_confirmed'] = confirmed_snii
+                    df_inst_tot.loc[is_mexico, 'snii_doubtful'] = doubtful_snii
+                    df_inst_tot.loc[is_mexico, 'snii_false_positives'] = false_pos_snii
+                    print(f"  → Estadísticas SNII integradas para Mexico: {total_snii} totales, {confirmed_snii} confirmados.")
+            except Exception as e:
+                print(f"  ❌ Error al integrar estadísticas SNII: {e}")
 
         save_disaggregated_parquets(df_inst_tot, 'institucion_total.parquet', 'entity', include_academics_list=True)
 
