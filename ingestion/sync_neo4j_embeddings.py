@@ -41,13 +41,22 @@ if user and password:
     else:
         auth_url = f"http://{user}:{password}@{base_url}"
 
-http_client = httpx.Client(verify=False, timeout=120)
+# Desactivar Keep-Alive y habilitar reintentos a nivel transporte 
+# para resolver el error [Errno 104] Connection reset by peer con LM Studio
+http_transport = httpx.HTTPTransport(retries=3)
+http_client = httpx.Client(
+    verify=False, 
+    timeout=120, 
+    transport=http_transport, 
+    limits=httpx.Limits(max_keepalive_connections=0)
+)
 
 embeddings_model = OpenAIEmbeddings(
     model=model_name,
     base_url=auth_url,
     api_key="lm-studio",
     http_client=http_client,
+    max_retries=5,
     check_embedding_ctx_length=False
 )
 
