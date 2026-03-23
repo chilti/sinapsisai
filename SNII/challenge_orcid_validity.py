@@ -182,9 +182,11 @@ def main():
                     "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
                 }
                 
-                # Guardado incremental en el archivo original
-                with open(matches_path, "w", encoding="utf-8") as f:
+                # Guardado atómico para evitar corrupción si se interrumpe o se lee simultáneamente
+                temp_path = matches_path + ".tmp"
+                with open(temp_path, "w", encoding="utf-8") as f:
                     json.dump(matches, f, ensure_ascii=False, indent=2)
+                os.replace(temp_path, matches_path)
             
             time.sleep(2)
 

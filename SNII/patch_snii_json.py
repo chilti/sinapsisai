@@ -45,8 +45,11 @@ for item in data:
             item['snii_subdependency'] = subdep
 
 print("Guardando JSON...")
-with open(json_path, 'w', encoding='utf-8') as f:
+# Guardado atómico para evitar corrupción
+temp_path = json_path + ".tmp"
+with open(temp_path, 'w', encoding='utf-8') as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
+os.replace(temp_path, json_path)
 
 print(f"Actualización completada exitosamente.")
 print(f" - Modificados por ser 2 niveles (DEPENDENCIA -> SUBDEPENDENCIA): {modificados_2_niveles}")
