@@ -12,15 +12,16 @@ import time
 import httpx
 import pyalex
 from dotenv import load_dotenv
-from ingestion import openalex_utils
 
+# Añadir path raíz ANTES de importar módulos locales
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # Configuración utf-8
 try:
     sys.stdout.reconfigure(encoding='utf-8')
 except AttributeError:
     pass
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from ingestion import openalex_utils
 from database.vector_store import QdrantStore
 from database.knowledge_graph import Neo4jGraphStore
 from langchain_openai import OpenAIEmbeddings
@@ -69,7 +70,7 @@ def deconstruct_abstract(inverted_abstract):
 
 class RORIngestor:
     def __init__(self):
-        self.vector_store = QdrantStore(collection_name="scientific_papers")
+        self.vector_store = QdrantStore(collection_name="api_papers")
         self.graph_store = Neo4jGraphStore()
         
     def load_mapping(self):
@@ -83,22 +84,23 @@ class RORIngestor:
     def ingest_by_ror(self, ror_id: str, institution_name: str, subdependency_name: str = "SIN INFORMACIÓN"):
         print(f"\n🔍 Procesando ROR: {ror_id} ({institution_name} | {subdependency_name})")
         
-        # 1. Buscar trabajos en OpenAlex
+        # 1. Buscar trabajos en OpenAlex (Prioridad: Local -> Oficial)
+        # Intentar primero API Local (127.0.0.1:5009)
+        original_url = pyalex.config.api_url
         try:
+            pyalex.config.api_url = "http://127.0.0.1:5009"
             works_query = pyalex.Works().filter(institutions={"ror": ror_id})
             total_works = works_query.count()
-            print(f"   -> Encontrados {total_works} trabajos en OpenAlex (API Oficial).")
+            print(f"   -> Encontrados {total_works} trabajos en OpenAlex (API Local).")
         except Exception as e:
-            print(f"   ⚠️ API Oficial falló o bloqueada ({e}). Intentando API Local (127.0.0.1:5009)...")
-            # Guardar original
-            original_url = pyalex.config.api_url
+            print(f"   ⚠️ API Local (5009) no disponible o falló ({e}). Intentando API Oficial...")
             try:
-                pyalex.config.api_url = "http://127.0.0.1:5009"
+                pyalex.config.api_url = "https://api.openalex.org"
                 works_query = pyalex.Works().filter(institutions={"ror": ror_id})
                 total_works = works_query.count()
-                print(f"   -> Encontrados {total_works} trabajos en OpenAlex (API Local).")
+                print(f"   -> Encontrados {total_works} trabajos en OpenAlex (API Oficial).")
             except Exception as e2:
-                print(f"   ❌ Error final consultando OpenAlex (Local): {e2}")
+                print(f"   ❌ Error final consultando OpenAlex (Oficial): {e2}")
                 # Restaurar y salir
                 pyalex.config.api_url = original_url
                 return
