@@ -431,8 +431,9 @@ class Neo4jGraphStore:
     def check_academic_exists(self, academic_name: str) -> bool:
         """
         Verifica si un académico ya fue ingestados con sus documentos en Neo4j.
+        Se considera que existe si tiene al menos un artículo vinculado.
         """
-        query = "MATCH (a:Academic {name: $academic_name}) RETURN count(a) > 0 as exists"
+        query = "MATCH (a:Academic {name: $academic_name})-[:AUTHORED]->(:Paper) RETURN count(a) > 0 as exists"
         with self.driver.session() as session:
             try:
                 result = session.run(query, academic_name=academic_name)

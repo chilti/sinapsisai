@@ -445,8 +445,13 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
         MATCH (e:Entity {name: $entity})
         OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
         WITH e, CASE WHEN p_inst IS NOT NULL THEN p_inst ELSE (CASE WHEN e:Institution THEN e ELSE null END) END AS i
-        OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)
-        OPTIONAL MATCH (e)-[:HAS_PAPER]->(p:Paper{label_filter})
+        
+        // Buscamos papers directos Y papers de académicos afiliados
+        OPTIONAL MATCH (e)-[:HAS_PAPER]->(p1:Paper{label_filter})
+        OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p2:Paper{label_filter})
+        WITH e, i, [p in collect(DISTINCT p1) + collect(DISTINCT p2) WHERE p IS NOT NULL] AS all_papers
+        UNWIND all_papers AS p
+        
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         RETURN e.name AS entity_name,
                collect(DISTINCT i.name) AS institutions,
@@ -461,9 +466,16 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
     else:
         print(f"  -> Procesando todas las entidades (Fuente: {source_filter})")
         query = """
-        MATCH (e:Entity)-[:HAS_PAPER]->(p:Paper{label_filter})
+        MATCH (e:Entity)
         OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
-        WITH e, p, CASE WHEN p_inst IS NOT NULL THEN p_inst ELSE (CASE WHEN e:Institution THEN e ELSE null END) END AS i
+        WITH e, CASE WHEN p_inst IS NOT NULL THEN p_inst ELSE (CASE WHEN e:Institution THEN e ELSE null END) END AS i
+        
+        // Buscamos papers directos Y papers de académicos afiliados
+        OPTIONAL MATCH (e)-[:HAS_PAPER]->(p1:Paper{label_filter})
+        OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p2:Paper{label_filter})
+        WITH e, i, [p in (collect(DISTINCT p1) + collect(DISTINCT p2)) WHERE p IS NOT NULL] AS all_papers
+        UNWIND all_papers AS p
+        
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         RETURN e.name AS entity_name,
                collect(DISTINCT i.name) AS institutions,
