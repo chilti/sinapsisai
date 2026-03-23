@@ -14,8 +14,14 @@ class QdrantStore:
     Gestor de la base de datos vectorial Qdrant para almacenar 
     representaciones semánticas de textos y documentos.
     """
-    def __init__(self, host="127.0.0.1", port=6333, collection_name="scientific_papers"):
-        self.client = QdrantClient(host=host, port=port)
+    def __init__(self, host=None, port=None, collection_name="scientific_papers"):
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        
+        self.host = host or os.getenv("QDRANT_HOST", "127.0.0.1")
+        self.port = int(port or os.getenv("QDRANT_PORT", 6333))
+        self.client = QdrantClient(host=self.host, port=self.port)
         self.collection_name = collection_name
         self.vector_size = 768 # Dimensión para nomic-embed-text (O usar 1024 para bge-large-en-v1.5)
         
