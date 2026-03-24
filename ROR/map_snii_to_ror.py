@@ -87,7 +87,7 @@ def find_ror_candidates(name, ror_list, limit=10):
         })
     return candidates
 
-def validate_with_llm(snii_inst, snii_sub, ror_candidates):
+def validate_with_llm(snii_inst, snii_sub, parent_candidates, child_candidates):
     prompt = f"""
 Eres un experto en el sistema de investigación mexicano. Necesito mapear una entidad del SNII a su registro ROR/OpenAlex correcto.
 
@@ -95,8 +95,18 @@ ENTIDAD SNII:
 - Institución: {snii_inst}
 - Subdependencia: {snii_sub}
 
-CANDIDATOS ROR (Nombre | ROR | Tipo):
-{chr(10).join([f"- {c['name']} | {c['ror']} | {c['type']}" for c in ror_candidates])}
+CANDIDATOS PARA LA INSTITUCIÓN ({snii_inst}):
+{chr(10).join([f"- {c['name']} | {c['ror']} | {c['type']}" for c in parent_candidates[:5]])}
+
+CANDIDATOS PARA LA SUBDEPENDENCIA ({snii_sub}):
+{chr(10).join([f"- {c['name']} | {c['ror']} | {c['type']}" for c in child_candidates[:10]]) if child_candidates else "Sin subdependencia específica o sin candidatos."}
+
+REGLAS CRÍTICAS:
+1. Si la subdependencia es "SIN INFORMACIÓN", busca el mejor ROR entre los CANDIDATOS PARA LA INSTITUCIÓN.
+2. Si existe una subdependencia específica:
+   - Busca si entre los CANDIDATOS PARA LA SUBDEPENDENCIA hay uno que pertenezca a la institución {snii_inst}.
+   - Si encuentras un ROR específico para la subdependencia, elígelo.
+   - Si NO encuentras uno específico para la subdependencia, pon "best_match_ror": null. NUNCA elijas el ROR de la institución padre para una subdependencia.
 
 Responde ÚNICAMENTE en formato JSON con la siguiente estructura:
 {{
@@ -104,11 +114,9 @@ Responde ÚNICAMENTE en formato JSON con la siguiente estructura:
   "confidence": 0-100,
   "reason": "breve explicacion"
 }}
-Si la subdependencia tiene su propio ROR (ej. un Instituto), elígelo. Si no tiene ROR propio, pon "best_match_ror": null. NUNCA elijas el ROR de la institución padre si la entidad es una subdependencia.
 """
     response = call_llm(prompt)
     try:
-        # Limpiar posible markdown del LLM
         clean_json = response.strip().replace('```json', '').replace('```', '')
         return json.loads(clean_json)
     except:
@@ -133,23 +141,28 @@ def main():
     # Procesar todas las entidades
     for inst, sub in unique_entities:
         key = f"{inst} || {sub}"
+        # Forzamos re-procesamiento si el usuario quiere (o simplemente no saltamos si ror es null)
+        # Por ahora mantenemos el skip para eficiencia, pero el usuario puede borrar el archivo.
         if key in mapping and mapping[key].get('best_match_ror') is not None:
-             # Omitimos print para no saturar si ya existen
              continue
 
         print(f"🔍 Mapeando ({len(mapping)+1}/{len(unique_entities)}): {inst} | {sub}")
         
-        # 1. Candidatos para la subdependencia (si existe)
-        target = f"{sub} {inst}" if sub and sub != "SIN INFORMACIÓN" else inst
-        candidates = find_ror_candidates(target, ror_data)
+        # 1. Candidatos para la institución
+        parent_candidates = find_ror_candidates(inst, ror_data)
         
-        # 2. Validación LLM
-        result = validate_with_llm(inst, sub, candidates)
+        # 2. Candidatos para la subdependencia
+        child_candidates = []
+        if sub and sub != "SIN INFORMACIÓN":
+            # Buscamos combinando sub + inst para desambiguar en la búsqueda fuzzy
+            child_candidates = find_ror_candidates(f"{sub} {inst}", ror_data)
+        
+        # 3. Validación LLM
+        result = validate_with_llm(inst, sub, parent_candidates, child_candidates)
         
         mapping[key] = result
         print(f"   -> Result: {result.get('best_match_ror')} ({result.get('confidence')}%)")
         
-        # Guardar progreso incrementalmente cada 5 registros para no perder trabajo
         if len(mapping) % 5 == 0:
             with open(mapping_file, 'w', encoding='utf-8') as f:
                 json.dump(mapping, f, ensure_ascii=False, indent=2)
