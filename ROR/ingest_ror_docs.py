@@ -10,7 +10,6 @@ import os
 import json
 import time
 import httpx
-import pyalex
 from dotenv import load_dotenv
 
 # Añadir path raíz ANTES de importar módulos locales
@@ -29,10 +28,6 @@ from langchain_openai import OpenAIEmbeddings
 # Cargar .env de la raíz
 env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
 load_dotenv(env_path)
-
-pyalex.config.email = os.getenv("EMAIL_ADDRESS", "sin_correo@ciencias.unam.mx")
-if os.getenv("OPENALEX_API_KEY"):
-    pyalex.config.api_key = os.getenv("OPENALEX_API_KEY")
 
 # --- Config Embeddings ---
 user = os.getenv("LLM_USER")
