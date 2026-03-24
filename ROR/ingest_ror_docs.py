@@ -104,11 +104,12 @@ class RORIngestor:
             if not doi_raw: continue
             doi = doi_raw.replace("https://doi.org/", "").strip().lower()
             
-            # 1. Verificar si ya existe
-            exists = self.graph_store.check_paper_exists(doi)
+            # 1. Verificar si ya existe en ambas bases
+            exists_graph = self.graph_store.check_paper_exists(doi)
+            exists_qdrant = self.vector_store.check_document_exists(doi)
             
-            # 2. Si no existe, preparar para Qdrant
-            if not exists:
+            # 2. Si no existe en Qdrant, preparar para vectorización
+            if not exists_qdrant:
                 title = work.get('display_name') or work.get('title') or "Sin Título"
                 abstract = deconstruct_abstract(work.get('abstract_inverted_index'))
                 year = work.get('publication_year', 0)
