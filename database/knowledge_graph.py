@@ -123,8 +123,9 @@ class Neo4jGraphStore:
         
         WITH p, author, a
         UNWIND (CASE WHEN author.institutions IS NOT NULL THEN author.institutions ELSE [] END) AS inst
-        MERGE (i:Institution {id: inst.id})
-        SET i.name = inst.name, i:Entity
+        // Priorizar MERGE por nombre para cumplir con restricción de Entity
+        MERGE (i:Entity {name: inst.name})
+        SET i:Institution, i.id = coalesce(i.id, inst.id)
         MERGE (a)-[:AFFILIATED_TO]->(i)
         
         WITH p

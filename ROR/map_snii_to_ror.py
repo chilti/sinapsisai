@@ -104,7 +104,7 @@ Responde ÚNICAMENTE en formato JSON con la siguiente estructura:
   "confidence": 0-100,
   "reason": "breve explicacion"
 }}
-Si la subdependencia tiene su propio ROR (ej. un Instituto), elígelo. Si no, elige el de la institución padre.
+Si la subdependencia tiene su propio ROR (ej. un Instituto), elígelo. Si no tiene ROR propio, pon "best_match_ror": null. NUNCA elijas el ROR de la institución padre si la entidad es una subdependencia.
 """
     response = call_llm(prompt)
     try:
