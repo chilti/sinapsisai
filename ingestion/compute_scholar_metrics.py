@@ -503,10 +503,18 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
         for row in result:
             e_name = row['entity_name']
             insts = row.get('institutions', [])
-            p_inst = insts[0] if insts else "SIN INSTITUCIÓN"
+            
+            # Promoción de "Mexico" a Institución de primer nivel
+            if not insts and e_name.lower() in ["mexico", "méxico"]:
+                p_inst = "MÉXICO"
+            else:
+                p_inst = insts[0] if insts else "SIN INSTITUCIÓN"
+            
             mapping_key = f"{p_inst} || {e_name}"
+            # Si la entidad se promocionó a Institución, la subdependencia en el mapeo suele ser "SIN INFORMACIÓN"
             if mapping_key not in ror_map and e_name == p_inst:
                 mapping_key = f"{p_inst} || SIN INFORMACIÓN"
+            
             ror_info = ror_map.get(mapping_key, {})
             ror_id = ror_info.get('best_match_ror')
             ror_reason = ror_info.get('reason')
@@ -1100,7 +1108,11 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
         if isinstance(affils, list):
             for a in affils:
                 if isinstance(a, dict) and a.get('ent'):
-                    valid_affils.append((a['ent'], a.get('inst')))
+                    ent = a['ent']
+                    inst = a.get('inst')
+                    if not inst and ent.lower() in ["mexico", "méxico"]:
+                        inst = "MÉXICO"
+                    valid_affils.append((ent, inst))
         
         if ac_name not in academics_map:
             academics_map[ac_name] = set(valid_affils)
