@@ -488,10 +488,29 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
         """.replace("{label_filter}", label_filter)
         params = {}
         
+    # Cargar mapeo de ROR
+    ror_map = {}
+    mapping_path = BASE_PATH / 'ROR' / 'snii_ror_mapping.json'
+    if mapping_path.exists():
+        try:
+            with open(mapping_path, 'r', encoding='utf-8') as f:
+                ror_map = json.load(f)
+        except: pass
+
     records = []
     with graph_store.driver.session() as session:
         result = session.run(query, **params)
         for row in result:
+            e_name = row['entity_name']
+            insts = row.get('institutions', [])
+            p_inst = insts[0] if insts else "SIN INSTITUCIÓN"
+            mapping_key = f"{p_inst} || {e_name}"
+            if mapping_key not in ror_map and e_name == p_inst:
+                mapping_key = f"{p_inst} || SIN INFORMACIÓN"
+            ror_info = ror_map.get(mapping_key, {})
+            ror_id = ror_info.get('best_match_ror')
+            ror_reason = ror_info.get('reason')
+
             raw_meta = {}
             
             if row['raw_metadata']:
@@ -659,7 +678,10 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
                 'ODS_ID': sdg_id,
                 'ODS_Nombre': sdg_name,
                 'ODS_Confianza': sdg_conf,
-                'ODS_Justificacion': sdg_reas
+                'ODS_Justificacion': sdg_reas,
+                # ── ROR Info ──────────────────────────────────────────────────
+                'ror_id': ror_id,
+                'ror_reason': ror_reason
             })
             
     return pd.DataFrame(records)
@@ -816,7 +838,7 @@ def aggregate_metrics(df_papers, group_cols):
                 agg_funcs[acol] = 'first'
     
     # Agregar columnas informativas si existen y no están en group_cols
-    for col in ['orcid', 'scopus_id', 'entities', 'institutions', 'siia_url']:
+    for col in ['orcid', 'scopus_id', 'entities', 'institutions', 'siia_url', 'ror_id', 'ror_reason']:
         if col in df_papers.columns and col not in group_cols:
             agg_funcs[col] = 'first'
     
