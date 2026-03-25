@@ -232,17 +232,23 @@ def get_works_by_ror(ror_id: str, per_page: int = 100, local_only: bool = False)
 
             if resp_check.status_code == 200:
                 print(f"      ✅ [Local] ROR {ror_id_clean} disponible.")
-                # Pagination loop
+                # Pagination loop - use full ROR URL for the filter (raw_data LIKE match)
                 url = f"{LOCAL_BASE}/works"
                 page = 1
                 while True:
                     p = {"filter": f"institutions.ror:{ror_id}", "per_page": per_page, "page": page}
                     r = client.get(url, params=p, timeout=60)
-                    if r.status_code != 200: break
+                    if r.status_code != 200:
+                        print(f"      ⚠️ [Local] HTTP {r.status_code} en página {page}. Deteniendo.")
+                        break
+                    if not r.content:
+                        print(f"      ⚠️ [Local] Respuesta vacía en página {page}. Deteniendo.")
+                        break
                     try:
                         data = r.json()
                     except Exception as json_err:
-                        print(f"      ⚠️ [Local] Respuesta no-JSON en página {page}: {json_err}. Saltando.")
+                        print(f"      ⚠️ [Local] Respuesta no-JSON en página {page}: {json_err}. Deteniendo.")
+                        print(f"         Respuesta recibida: {r.text[:200]}")
                         break
                     results = data.get("results", [])
                     if not results: break
