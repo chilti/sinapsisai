@@ -126,7 +126,7 @@ class Neo4jGraphStore:
         // Priorizar MERGE por nombre para cumplir con restricción de Entity
         MERGE (i:Entity {name: inst.name})
         SET i:Institution
-        WITH a, i, inst
+        WITH p, a, i, inst
         // Solo asignar ID si el nodo no lo tiene y no existe conflicto con otro nodo
         // Esto evita el error Neo.ClientError.Schema.ConstraintValidationFailed
         CALL {
