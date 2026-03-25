@@ -40,6 +40,20 @@ def _get_h_index(citations_list):
             break
     return h
 
+def _safe_float(val):
+    """
+    Convierte un valor a float de forma segura, manejando el caso de diccionarios 
+    (formato OpenAlex: {"value": 1.2, "is_estimated": False}) o strings.
+    """
+    if val is None:
+        return np.nan
+    if isinstance(val, dict):
+        return float(val.get('value', np.nan))
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return np.nan
+
 CURRENT_YEAR = 2026
 
 def compute_citation_velocity(counts_by_year, pub_year) -> dict:
@@ -301,15 +315,15 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                 fwci = raw_meta.get('fwci')
                 if fwci is None and 'raw_metadata' in raw_meta:
                     fwci = raw_meta['raw_metadata'].get('fwci')
-                fwci = float(fwci) if fwci is not None else np.nan
+                fwci = _safe_float(fwci) if fwci is not None else np.nan
                 
                 percentile = raw_meta.get('citation_normalized_percentile')
                 if percentile is None and 'raw_metadata' in raw_meta:
                     percentile = raw_meta['raw_metadata'].get('citation_normalized_percentile')
-                percentile = float(percentile) if percentile is not None else np.nan
+                percentile = _safe_float(percentile) if percentile is not None else np.nan
                 
-                is_in_top_10_percent = float(is_in_top_10_percent) if is_in_top_10_percent is not None else np.nan
-                is_in_top_1_percent = float(is_in_top_1_percent) if is_in_top_1_percent is not None else np.nan
+                is_in_top_10_percent = _safe_float(is_in_top_10_percent) if is_in_top_10_percent is not None else np.nan
+                is_in_top_1_percent = _safe_float(is_in_top_1_percent) if is_in_top_1_percent is not None else np.nan
             else:
                 fwci = np.nan
                 percentile = np.nan
@@ -577,15 +591,15 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
                 fwci = raw_meta.get('fwci')
                 if fwci is None and 'raw_metadata' in raw_meta:
                     fwci = raw_meta['raw_metadata'].get('fwci')
-                fwci = float(fwci) if fwci is not None else np.nan
+                fwci = _safe_float(fwci) if fwci is not None else np.nan
                 
                 percentile = raw_meta.get('citation_normalized_percentile')
                 if percentile is None and 'raw_metadata' in raw_meta:
                     percentile = raw_meta['raw_metadata'].get('citation_normalized_percentile')
-                percentile = float(percentile) if percentile is not None else np.nan
+                percentile = _safe_float(percentile) if percentile is not None else np.nan
                 
-                is_in_top_10_percent = float(is_in_top_10_percent) if is_in_top_10_percent is not None else np.nan
-                is_in_top_1_percent = float(is_in_top_1_percent) if is_in_top_1_percent is not None else np.nan
+                is_in_top_10_percent = _safe_float(is_in_top_10_percent) if is_in_top_10_percent is not None else np.nan
+                is_in_top_1_percent = _safe_float(is_in_top_1_percent) if is_in_top_1_percent is not None else np.nan
             else:
                 fwci = np.nan
                 percentile = np.nan
