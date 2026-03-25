@@ -239,7 +239,11 @@ def get_works_by_ror(ror_id: str, per_page: int = 100, local_only: bool = False)
                     p = {"filter": f"institutions.ror:{ror_id}", "per_page": per_page, "page": page}
                     r = client.get(url, params=p, timeout=60)
                     if r.status_code != 200: break
-                    data = r.json()
+                    try:
+                        data = r.json()
+                    except Exception as json_err:
+                        print(f"      ⚠️ [Local] Respuesta no-JSON en página {page}: {json_err}. Saltando.")
+                        break
                     results = data.get("results", [])
                     if not results: break
                     yield results
