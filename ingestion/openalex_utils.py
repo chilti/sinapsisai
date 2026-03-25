@@ -222,13 +222,13 @@ def get_works_by_ror(ror_id: str, per_page: int = 100, local_only: bool = False)
         with httpx.Client(verify=False, timeout=30) as client:
             # 1. Probar si el ROR existe localmente usando el nuevo path
             check_url = f"{LOCAL_BASE}/institutions/ror:{ror_id_clean}"
-            resp_check = client.get(check_url, timeout=10)
+            resp_check = client.get(check_url, timeout=30)
             
             if resp_check.status_code != 200:
                 # Fallback: intentar por búsqueda de works si el path directo no está listo
                 url = f"{LOCAL_BASE}/works"
-                params = {"filter": f"institutions.ror:{ror_id}", "per_page": 1}
-                resp_check = client.get(url, params=params)
+                params = {"filter": f"institutions.ror:{ror_id}", "per_page": 1, "skip_count": "true"}
+                resp_check = client.get(url, params=params, timeout=30)
 
             if resp_check.status_code == 200:
                 print(f"      ✅ [Local] ROR {ror_id_clean} disponible.")

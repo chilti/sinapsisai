@@ -54,6 +54,19 @@ def _safe_float(val):
     except (ValueError, TypeError):
         return np.nan
 
+def _clean_keywords(kw_list):
+    """Normaliza la lista de keywords a solo strings para evitar errores de Arrow."""
+    if not isinstance(kw_list, list): return []
+    res = []
+    for k in kw_list:
+        if isinstance(k, dict):
+            # OpenAlex format: {"keyword": "...", "score": ...}
+            name = k.get('keyword') or k.get('display_name')
+            if name: res.append(str(name))
+        elif k:
+            res.append(str(k))
+    return res
+
 CURRENT_YEAR = 2026
 
 def compute_citation_velocity(counts_by_year, pub_year) -> dict:
@@ -412,7 +425,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                 'primary_topic_field':    raw_meta.get('primary_topic_field'),
                 'primary_topic_subfield': raw_meta.get('primary_topic_subfield'),
                 'primary_topic_score':    raw_meta.get('primary_topic_score'),
-                'keywords':              raw_meta.get('keywords') or [],
+                'keywords':              _clean_keywords(raw_meta.get('keywords')),
                 'topics': row.get('graph_topics', [])
             })
             
@@ -694,7 +707,7 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
                 'primary_topic_field':    raw_meta.get('primary_topic_field'),
                 'primary_topic_subfield': raw_meta.get('primary_topic_subfield'),
                 'primary_topic_score':    raw_meta.get('primary_topic_score'),
-                'keywords':              raw_meta.get('keywords') or [],
+                'keywords':              _clean_keywords(raw_meta.get('keywords')),
                 # ── Tópicos y ODS ──────────────────────────────────────────────
                 'topics': topics,
                 'ODS_ID': sdg_id,
