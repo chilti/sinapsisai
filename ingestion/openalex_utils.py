@@ -244,6 +244,11 @@ def get_works_by_ror(ror_id: str, per_page: int = 100, local_only: bool = False)
                     if not r.content:
                         print(f"      ⚠️ [Local] Respuesta vacía en página {page}. Deteniendo.")
                         break
+                    # Si el servidor devuelve HTML (SPA fallback), el filtro no está soportado localmente
+                    ct = r.headers.get("content-type", "")
+                    if "text/html" in ct:
+                        print(f"      ℹ️ [Local] Filtro institutions.ror no soportado para {ror_id_clean}. Sin works locales.")
+                        break
                     try:
                         data = r.json()
                     except Exception as json_err:
