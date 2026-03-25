@@ -109,25 +109,19 @@ class RORIngestor:
             exists_graph = self.graph_store.check_paper_exists(doi)
             exists_qdrant = self.vector_store.check_document_exists(doi)
             
-            # 2. Si no existe en Qdrant, preparar para vectorización
+            # 2. Si ya existe en Neo4j, saltar (o actualizar si fuera necesario, pero por ahora saltamos por eficiencia)
+            if exists_graph:
+                # Si falta en Qdrant pero existe en Neo4j, aún podemos vectorizarlo
+                if not exists_qdrant:
+                    self._prepare_for_qdrant(work, inst_name, sub_name, batch_texts, batch_payloads)
+                continue
+            
+            # 3. Si no existe en Neo4j, procesar e insertar
+            # 3a. Preparar para Qdrant (si no existe)
             if not exists_qdrant:
-                title = work.get('display_name') or work.get('title') or "Sin Título"
-                abstract = deconstruct_abstract(work.get('abstract_inverted_index'))
-                year = work.get('publication_year', 0)
-                
-                text_content = f"Title: {title}\nAbstract: {abstract or ''}".strip()
-                batch_texts.append(text_content)
-                batch_payloads.append({
-                    "paper_id": doi,
-                    "title":    title,
-                    "year":     year,
-                    "doi":      doi,
-                    "entity":   sub_name if sub_name != "SIN INFORMACIÓN" else inst_name,
-                    "text":     text_content
-                })
+                self._prepare_for_qdrant(work, inst_name, sub_name, batch_texts, batch_payloads)
 
-            # 3. Preparar datos para Neo4j (basado en el esquema de add_paper)
-            # Extraer autores simplificados para el merge
+            # 3b. Preparar datos para Neo4j (basado en el esquema de add_paper)
             authors = []
             for auth in work.get('authorships', []):
                 author_name = auth.get('author', {}).get('display_name', 'Unknown')
@@ -139,7 +133,6 @@ class RORIngestor:
                     })
                 authors.append({"name": author_name, "institutions": insts})
 
-            # Extraer conceptos
             concepts = []
             for concept in work.get('concepts', []):
                 concepts.append({
@@ -158,16 +151,14 @@ class RORIngestor:
                 "raw_metadata": work
             }
             
-            # Guardamos/Mergeamos el paper
+            # Guardamos el paper (la validación de existencia ya se hizo arriba)
             self.graph_store.add_paper(paper_data)
             
-            # 4. Marcar como IndexedOpenAlex y poner su OA URL
+            # 4. Marcar como IndexedOpenAlex
             self.graph_store.mark_paper_as_indexed(doi, 'openalex')
             self.graph_store.set_paper_openalex_id(doi, work.get('id'))
             
-            # 5. Link Jerárquico (Institución + Subdependencia)
-            # Nota: add_academic_full_affiliation no sirve aquí porque es para Academic.
-            # Usamos add_entity_paper_link para ambos niveles si aplica.
+            # 5. Link Jerárquico
             self.graph_store.add_entity_paper_link(inst_name, doi)
             if sub_name and sub_name != "SIN INFORMACIÓN":
                  self.graph_store.add_entity_paper_link(sub_name, doi)
@@ -180,6 +171,27 @@ class RORIngestor:
                 self.vector_store.add_documents(batch_payloads, embeddings)
             except Exception as e:
                 print(f"      ❌ Error en vectorización: {e}")
+
+    def _prepare_for_qdrant(self, work, inst_name, sub_name, batch_texts, batch_payloads):
+        """Prepara un documento para ser vectorizado en Qdrant."""
+        title = work.get('display_name') or work.get('title') or "Sin Título"
+        abstract = deconstruct_abstract(work.get('abstract_inverted_index'))
+        year = work.get('publication_year', 0)
+        
+        doi_raw = work.get('doi')
+        if not doi_raw: return
+        doi = doi_raw.replace("https://doi.org/", "").strip().lower()
+
+        text_content = f"Title: {title}\nAbstract: {abstract or ''}".strip()
+        batch_texts.append(text_content)
+        batch_payloads.append({
+            "paper_id": doi,
+            "title":    title,
+            "year":     year,
+            "doi":      doi,
+            "entity":   sub_name if sub_name != "SIN INFORMACIÓN" else inst_name,
+            "text":     text_content
+        })
 
     def run(self, limit=None, local_only=False):
         mapping = self.load_mapping()
