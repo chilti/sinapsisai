@@ -124,13 +124,13 @@ class Neo4jGraphStore:
         WITH p, author, a
         UNWIND (CASE WHEN author.institutions IS NOT NULL THEN author.institutions ELSE [] END) AS inst
         // Priorizar MERGE por nombre para cumplir con restricción de Entity
-        MERGE (i:Entity {name: inst.name})
+        MERGE (i:Entity {name: coalesce(inst.name, "Institución Desconocida")})
         SET i:Institution
         WITH p, a, i, inst
         // Solo asignar ID si el nodo no lo tiene y no existe conflicto con otro nodo
         // Esto evita el error Neo.ClientError.Schema.ConstraintValidationFailed
-        CALL {
-            WITH i, inst
+        // Usamos la nueva sintaxis CALL (i, inst) { ... } para evitar el warning de deprecación.
+        CALL (i, inst) {
             WITH i, inst WHERE i.id IS NULL AND inst.id IS NOT NULL
             OPTIONAL MATCH (other:Institution {id: inst.id})
             WITH i, inst, other WHERE other IS NULL

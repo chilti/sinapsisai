@@ -129,7 +129,7 @@ class RORIngestor:
                 for inst_data in auth.get('institutions', []):
                     insts.append({
                         "id": inst_data.get('id'),
-                        "name": inst_data.get('display_name')
+                        "name": inst_data.get('display_name') or inst_data.get('name') or "Institución Desconocida"
                     })
                 authors.append({"name": author_name, "institutions": insts})
 
