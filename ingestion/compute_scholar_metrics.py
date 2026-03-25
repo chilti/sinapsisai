@@ -67,6 +67,19 @@ def _clean_keywords(kw_list):
             res.append(str(k))
     return res
 
+def _clean_topics(topics_list):
+    """Normaliza la lista de topics (OpenAlex o Neo4j) a solo strings."""
+    if not isinstance(topics_list, list): return []
+    res = []
+    for t in topics_list:
+        if isinstance(t, dict):
+            # OpenAlex: {"display_name": "...", "score": ...} o Neo4j: {"name": "..."}
+            name = t.get('display_name') or t.get('name') or t.get('topic')
+            if name: res.append(str(name))
+        elif t:
+            res.append(str(t))
+    return res
+
 CURRENT_YEAR = 2026
 
 def compute_citation_velocity(counts_by_year, pub_year) -> dict:
@@ -426,7 +439,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                 'primary_topic_subfield': raw_meta.get('primary_topic_subfield'),
                 'primary_topic_score':    raw_meta.get('primary_topic_score'),
                 'keywords':              _clean_keywords(raw_meta.get('keywords')),
-                'topics': row.get('graph_topics', [])
+                'topics': _clean_topics(row.get('graph_topics', []))
             })
             
             # temas y sdgs desde el grafo (Neo4j)
@@ -709,7 +722,7 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
                 'primary_topic_score':    raw_meta.get('primary_topic_score'),
                 'keywords':              _clean_keywords(raw_meta.get('keywords')),
                 # ── Tópicos y ODS ──────────────────────────────────────────────
-                'topics': topics,
+                'topics': _clean_topics(topics),
                 'ODS_ID': sdg_id,
                 'ODS_Nombre': sdg_name,
                 'ODS_Confianza': sdg_conf,
