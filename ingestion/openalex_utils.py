@@ -208,7 +208,7 @@ def get_works_batch(dois: list, email: str = None,
 # ─────────────────────────────────────────────────────────────────
 # get_works_by_ror: Recupera todos los trabajos por ROR
 # ─────────────────────────────────────────────────────────────────
-def get_works_by_ror(ror_id: str, per_page: int = 100):
+def get_works_by_ror(ror_id: str, per_page: int = 100, local_only: bool = False):
     """
     Generador que devuelve páginas de trabajos asociados a un ROR.
     Prioridad: API local → API oficial.
@@ -250,7 +250,7 @@ def get_works_by_ror(ror_id: str, per_page: int = 100):
         print(f"      ⚠️ [Local] No disponible para ROR ({e}). Intentando oficial...")
 
     # Intentar Oficial
-    if OFFICIAL_API_BLOCKED:
+    if local_only or OFFICIAL_API_BLOCKED:
         return
 
     auth = _auth_params()

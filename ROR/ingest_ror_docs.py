@@ -76,14 +76,15 @@ class RORIngestor:
         with open(path, 'r', encoding='utf-8') as f:
             return json.load(f)
 
-    def ingest_by_ror(self, ror_id: str, institution_name: str, subdependency_name: str = "SIN INFORMACIÓN"):
+    def ingest_by_ror(self, ror_id: str, institution_name: str, subdependency_name: str = "SIN INFORMACIÓN", local_only: bool = False):
         print(f"\n🔍 Procesando ROR: {ror_id} ({institution_name} | {subdependency_name})")
+        if local_only:
+            print("   ℹ️ Modo 'Local Only' activado. Saltando API oficial.")
         
         # 1. Buscar trabajos en OpenAlex usando el generador de openalex_utils
-        # (Este ya maneja la prioridad Local -> Oficial y la paginación)
         try:
             processed_count = 0
-            for page in openalex_utils.get_works_by_ror(ror_id, per_page=100):
+            for page in openalex_utils.get_works_by_ror(ror_id, per_page=100, local_only=local_only):
                 self._process_works_batch(page, institution_name, subdependency_name)
                 processed_count += len(page)
             
@@ -180,7 +181,7 @@ class RORIngestor:
             except Exception as e:
                 print(f"      ❌ Error en vectorización: {e}")
 
-    def run(self, limit=None):
+    def run(self, limit=None, local_only=False):
         mapping = self.load_mapping()
         print(f"DEBUG: {len(mapping)} entries in mapping.")
         count = 0
@@ -188,33 +189,31 @@ class RORIngestor:
             ror_id = data.get('best_match_ror')
             conf = data.get('confidence', 0)
             
-            print(f"DEBUG: Testing {key} | ROR: {ror_id} | Conf: {conf}")
+            # print(f"DEBUG: Testing {key} | ROR: {ror_id} | Conf: {conf}") # Limpiar debug ruidoso
             
             if not ror_id or conf < 70:
-                print(f"DEBUG: Skipping {key} (Conf too low or No ROR)")
                 continue
             
             if limit and count >= limit: 
-                print(f"DEBUG: Limit {limit} reached.")
                 break
             
-            print(f"DEBUG: >>> CALLING INGEST for {key}")
             parts = key.split(' || ')
             inst = parts[0]
             sub = parts[1] if len(parts) > 1 else "SIN INFORMACIÓN"
             
-            self.ingest_by_ror(ror_id, inst, sub)
+            self.ingest_by_ror(ror_id, inst, sub, local_only=local_only)
             count += 1
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Ingesta de documentos ROR desde OpenAlex")
     parser.add_argument("--limit", type=int, help="Límite de instituciones a procesar")
+    parser.add_argument("--local-only", action="store_true", help="Usar sólo la API local de OpenAlex")
     args = parser.parse_args()
     
     ingestor = RORIngestor()
     try:
-        ingestor.run(limit=args.limit)
+        ingestor.run(limit=args.limit, local_only=args.local_only)
     finally:
         ingestor.graph_store.close()
         print("\n🎉 Finalizado.")
