@@ -1,5 +1,10 @@
 import pandas as pd
 import os
+import sys
+
+# Agregar el directorio raíz al path para poder importar la base de datos
+sys.path.append(os.getcwd())
+
 from database.knowledge_graph import Neo4jGraphStore
 
 def populate_geography():
