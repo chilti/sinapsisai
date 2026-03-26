@@ -136,6 +136,16 @@ class Neo4jGraphStore:
             WITH i, inst, other WHERE other IS NULL
             SET i.id = inst.id
         }
+        // Enriquecimiento de metadatos ROR/País/Tipo
+        CALL (i, inst) {
+            WITH i, inst WHERE inst.ror IS NOT NULL SET i.ror = inst.ror
+        }
+        CALL (i, inst) {
+            WITH i, inst WHERE inst.country_code IS NOT NULL SET i.country_code = inst.country_code
+        }
+        CALL (i, inst) {
+            WITH i, inst WHERE inst.type IS NOT NULL SET i.type = inst.type
+        }
         MERGE (a)-[:AFFILIATED_TO]->(i)
         
         WITH p
@@ -160,7 +170,23 @@ class Neo4jGraphStore:
                 session.run(query, **data)
             except Exception as e:
                 print(f"Error Neo4j en paper {data.get('paper_id')}: {e}")
-            
+
+    def upsert_institution_metadata(self, inst_data: Dict[str, Any]):
+        """Actualiza metadatos de una institución/entidad sin necesidad de un paper."""
+        query = """
+        MERGE (i:Entity {name: $name})
+        SET i:Institution
+        SET i.id = coalesce(i.id, $id),
+            i.ror = coalesce($ror, i.ror),
+            i.country_code = coalesce($country_code, i.country_code),
+            i.type = coalesce($type, i.type)
+        """
+        with self.driver.session() as session:
+            try:
+                session.run(query, **inst_data)
+            except Exception as e:
+                print(f"Error Neo4j en upsert_institution {inst_data.get('name')}: {e}")
+
     def get_author_coauthors(self, author_name: str) -> List[str]:
         """Ejemplo: Encuentra coautores de un investigador dado."""
         query = """

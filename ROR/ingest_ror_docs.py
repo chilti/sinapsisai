@@ -100,6 +100,23 @@ class RORIngestor:
         batch_payloads = []
         batch_texts = []
         
+        # Enriquecer metadatos de la institución (Entity) con el primer work válido de la página
+        if works:
+            print(f"   📂 Procesando bloque de {len(works)} trabajos para [{inst_name}]...")
+            first_work = works[0]
+            for auth in first_work.get('authorships', []):
+                for inst_data in auth.get('institutions', []):
+                    # Si el nombre coincide o estamos procesando por ROR, actualizamos metadatos
+                    if inst_data.get('display_name') == inst_name or inst_data.get('name') == inst_name:
+                        self.graph_store.upsert_institution_metadata({
+                            "name": inst_name,
+                            "id": inst_data.get('id'),
+                            "ror": inst_data.get('ror'),
+                            "country_code": inst_data.get('country_code'),
+                            "type": inst_data.get('type')
+                        })
+                        break
+
         for work in works:
             doi_raw = work.get('doi')
             if not doi_raw: continue
@@ -129,7 +146,10 @@ class RORIngestor:
                 for inst_data in auth.get('institutions', []):
                     insts.append({
                         "id": inst_data.get('id'),
-                        "name": inst_data.get('display_name') or inst_data.get('name') or "Institución Desconocida"
+                        "name": inst_data.get('display_name') or inst_data.get('name'),
+                        "ror": inst_data.get('ror'),
+                        "country_code": inst_data.get('country_code'),
+                        "type": inst_data.get('type')
                     })
                 authors.append({"name": author_name, "institutions": insts})
 
@@ -165,7 +185,7 @@ class RORIngestor:
 
         # 6. Embeddings masivos
         if batch_texts:
-            print(f"      -> Vectorizando {len(batch_texts)} nuevos artículos...")
+            print(f"      -> Vectorizando {len(batch_texts)} nuevos artículos para [{inst_name}]...")
             try:
                 embeddings = embeddings_model.embed_documents(batch_texts)
                 self.vector_store.add_documents(batch_payloads, embeddings)
