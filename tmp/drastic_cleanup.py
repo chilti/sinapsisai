@@ -47,12 +47,17 @@ def drastic_cleanup():
                     print(f"   🚀 Sincronizando Qdrant ({len(dois_to_delete)} vectores)...")
                     try:
                         q_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
-                        # Qdrant delete supports filtering by ID
-                        q_client.delete(
-                            collection_name="api_papers",
-                            points_selector=dois_to_delete
-                        )
-                        print("   ✅ Qdrant: Vectores eliminados.")
+                        # Batching: Qdrant tiene un límite de tamaño de payload
+                        batch_size = 5000
+                        for i in range(0, len(dois_to_delete), batch_size):
+                            batch = dois_to_delete[i:i+batch_size]
+                            q_client.delete(
+                                collection_name="api_papers",
+                                points_selector=batch
+                            )
+                            if (i // batch_size) % 10 == 0:
+                                print(f"      ✅ Procesados {i + len(batch)} / {len(dois_to_delete)}...")
+                        print("   ✅ Qdrant: Todos los vectores eliminados.")
                     except Exception as qe:
                         print(f"   ⚠️ Qdrant Error: {qe}")
 
