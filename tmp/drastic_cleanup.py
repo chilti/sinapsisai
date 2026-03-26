@@ -37,9 +37,21 @@ def drastic_cleanup():
                 res_dois = session.run("MATCH (p:Paper) WHERE NOT (p:IndexedWoS) RETURN p.doi as doi")
                 dois_to_delete = [r['doi'] for r in res_dois if r['doi']]
                 
-                # Ejecutar borrado en Neo4j
-                print(f"   🗑️ Borrando {to_delete_count} papers en Neo4j...")
-                session.run("MATCH (p:Paper) WHERE NOT (p:IndexedWoS) DETACH DELETE p")
+                # Ejecutar borrado en Neo4j en lotes de 10,000 para evitar agotar la memoria de Neo4j
+                print(f"   🗑️ Borrando {to_delete_count} papers en Neo4j en lotes de 10,000...")
+                total_deleted_neo4j = 0
+                while True:
+                    batch_res = session.run("""
+                        MATCH (p:Paper)
+                        WHERE NOT (p:IndexedWoS)
+                        WITH p LIMIT 10000
+                        DETACH DELETE p
+                        RETURN count(p) as count
+                    """)
+                    count = batch_res.single()['count']
+                    if count == 0: break
+                    total_deleted_neo4j += count
+                    print(f"      ✅ Neo4j: {total_deleted_neo4j} / {to_delete_count} eliminados...")
                 print("   ✅ Neo4j: Papers eliminados.")
 
                 # 2. Limpiar Qdrant

@@ -171,21 +171,41 @@ class Neo4jGraphStore:
             except Exception as e:
                 print(f"Error Neo4j en paper {data.get('paper_id')}: {e}")
 
-    def upsert_institution_metadata(self, inst_data: Dict[str, Any]):
-        """Actualiza metadatos de una institución/entidad sin necesidad de un paper."""
+    def upsert_institution_metadata(self, name: str, ror: str = None, inst_type: str = None, country_code: str = None):
+        """Actualiza metadatos de una institución (ROR, tipo, país) sin borrar los existentes."""
         query = """
         MERGE (i:Entity {name: $name})
         SET i:Institution
-        SET i.id = coalesce(i.id, $id),
-            i.ror = coalesce($ror, i.ror),
-            i.country_code = coalesce($country_code, i.country_code),
-            i.type = coalesce($type, i.type)
+        SET i.ror = coalesce($ror, i.ror),
+            i.type = coalesce($inst_type, i.type),
+            i.country_code = coalesce($country_code, i.country_code)
+        """
+        with self.driver.session() as session:
+            session.run(query, name=name, ror=ror, inst_type=inst_type, country_code=country_code)
+
+    def upsert_geography(self, inst_name: str, state_name: str = None, country_name: str = "Mexico"):
+        """Establece la jerarquía geográfica de una institución (País e Entidad Federativa)."""
+        query = """
+        MERGE (c:Country {name: $country_name})
+        
+        WITH c
+        MERGE (i:Entity {name: $inst_name})
+        SET i:Institution
+        MERGE (i)-[:LOCATED_IN]->(c)
+        
+        WITH i, c
+        CALL (i, c, $state_name) {
+            WITH i, c, $state_name WHERE $state_name IS NOT NULL AND $state_name <> "" AND $state_name <> "nan"
+            MERGE (s:State {name: $state_name})
+            MERGE (i)-[:LOCATED_IN]->(s)
+            MERGE (s)-[:PART_OF]->(c)
+        }
         """
         with self.driver.session() as session:
             try:
-                session.run(query, **inst_data)
+                session.run(query, inst_name=inst_name, state_name=state_name, country_name=country_name)
             except Exception as e:
-                print(f"Error Neo4j en upsert_institution {inst_data.get('name')}: {e}")
+                print(f"Error Neo4j en upsert_geography para institución {inst_name}: {e}")
 
     def get_author_coauthors(self, author_name: str) -> List[str]:
         """Ejemplo: Encuentra coautores de un investigador dado."""
