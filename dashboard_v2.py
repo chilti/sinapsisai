@@ -880,6 +880,8 @@ with tab_about:
         
         Academic ||--|| Author : is_subclass_of
         Entity ||--|| Institution : is_subclass_of
+        Institution }o--|| State : LOCATED_IN
+        State }o--|| Country : PART_OF
         
         Author {
             string id
@@ -937,6 +939,8 @@ with tab_about:
             elif node["label"] == "Institution": color = "#6366f1"
             elif node["label"] == "Funder": color = "#eab308"
             elif node["label"] == "Award": color = "#fbbf24"
+            elif node["label"] == "State": color = "#94a3b8"  # Gris pizarra
+            elif node["label"] == "Country": color = "#1e293b" # Azul muy oscuro (casi negro)
             
             # Sanitizar textos por caracteres raros
             title_text = str(node.get("title", ""))[:45]

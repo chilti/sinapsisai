@@ -595,7 +595,18 @@ class Neo4jGraphStore:
 
     def get_sample_graph(self, limit: int = 150) -> dict:
         """Extrae una sub-muestra del grafo para visualización en PyVis interactiva."""
-        query = f"MATCH (n)-[r]->(m) RETURN n, r, m LIMIT {limit}"
+        # Query que intenta traer un poco de todo, incluyendo la jerarquía geográfica
+        query = f"""
+        MATCH (n)-[r]->(m) 
+        WITH n, r, m LIMIT {limit}
+        RETURN n, r, m
+        UNION
+        MATCH (i:Institution)-[r:LOCATED_IN]->(s:State)
+        RETURN i as n, r, s as m LIMIT 10
+        UNION
+        MATCH (s:State)-[r:PART_OF]->(c:Country)
+        RETURN s as n, r, c as m LIMIT 5
+        """
         nodes = {}
         edges = []
         with self.driver.session() as session:
