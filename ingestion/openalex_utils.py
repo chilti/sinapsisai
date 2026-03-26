@@ -255,8 +255,25 @@ def get_works_by_ror(ror_id: str, per_page: int = 100, local_only: bool = False)
                         print(f"      ⚠️ [Local] Respuesta no-JSON en página {page}: {json_err}. Deteniendo.")
                         print(f"         Respuesta recibida: {r.text[:200]}")
                         break
+                    
                     results = data.get("results", [])
                     if not results: break
+                    
+                    # VALIDACIÓN CRÍTICA: La API local a veces ignora el filtro y manda TODO
+                    # Verificamos si al menos el primer resultado tiene el ROR solicitado
+                    if page == 1 and results:
+                        first_work = results[0]
+                        found_ror = False
+                        for auth in first_work.get('authorships', []):
+                            for inst in auth.get('institutions', []):
+                                if inst.get('ror') == ror_id or inst.get('ror') == f"https://ror.org/{ror_id_clean}":
+                                    found_ror = True
+                                    break
+                        if not found_ror:
+                            print(f"      ❌ [Local] ERROR CRÍTICO: El ROR {ror_id_clean} no aparece en los resultados. La API local parece estar ignorando el filtro.")
+                            print(f"         Abortando para evitar ingesta masiva errónea.")
+                            break
+                    
                     yield results
                     if len(results) < per_page: break
                     page += 1

@@ -13,6 +13,7 @@ import time
 from thefuzz import fuzz, process
 from dotenv import load_dotenv
 import httpx
+import pandas as pd
 
 # Cargar .env de la raíz
 env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
@@ -24,6 +25,39 @@ user = os.getenv("LLM_USER")
 password = os.getenv("LLM_PASSWORD")
 base_url = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1/")
 model_name = os.getenv("LLM_MODEL", "local-model")
+
+# Cache de detalles de ROR para evitar duplicar llamadas
+ROR_CACHE = {}
+
+def get_ror_details(ror_url):
+    """Obtiene detalles adicionales de la API de ROR."""
+    if not ror_url: return None
+    ror_id = ror_url.replace("https://ror.org/", "").strip()
+    if ror_id in ROR_CACHE:
+        return ROR_CACHE[ror_id]
+    
+    print(f"      📡 Fetching ROR details: {ror_id}...")
+    try:
+        with httpx.Client(verify=False, timeout=20) as client:
+            resp = client.get(f"https://api.ror.org/organizations/{ror_id}")
+            if resp.status_code == 200:
+                data = resp.json()
+                # Extraemos solo lo relevante para ahorrar tokens
+                details = {
+                    "labels": [l.get('label') for l in data.get('labels', [])],
+                    "aliases": data.get('aliases', []),
+                    "types": data.get('types', []),
+                    "relationships": [
+                        {"type": r.get('type'), "label": r.get('label'), "id": r.get('id')}
+                        for r in data.get('relationships', [])
+                    ],
+                    "status": data.get('status')
+                }
+                ROR_CACHE[ror_id] = details
+                return details
+    except Exception as e:
+        print(f"      ⚠️ Error fetching ROR API: {e}")
+    return None
 
 if not base_url.endswith("/"): base_url += "/"
 auth_url = base_url
@@ -52,11 +86,50 @@ def call_llm(prompt):
         return None
 
 def load_data():
-    with open('data/snii_llm_verified_matches.json', 'r', encoding='utf-8') as f:
-        snii_data = json.load(f)
+    snii_entities = set()
+    
+    # 1. Intentar cargar desde Excel para cobertura TOTAL
+    excel_path = 'SNII/Investigadores_vigentes_2025.xlsx'
+    if os.path.exists(excel_path):
+        print(f"   📊 Leyendo Excel: {excel_path}...")
+        try:
+            df = pd.read_excel(excel_path)
+            # Normalizar nombres de columnas (quitar espacios extra si los hay)
+            df.columns = [c.strip() for c in df.columns]
+            
+            # Usar las columnas identificadas
+            inst_col = 'INSTITUCIÓN DE COMISIÓN'
+            sub_col = 'DEPENDENCIA DE COMISIÓN'
+            
+            if inst_col in df.columns:
+                for _, row in df.iterrows():
+                    inst = str(row[inst_col]).strip() if pd.notna(row[inst_col]) else None
+                    sub = str(row[sub_col]).strip() if pd.notna(row[sub_col]) else "SIN INFORMACIÓN"
+                    if inst and inst != "nan":
+                        snii_entities.add((inst, sub))
+                print(f"   ✅ Extraídas {len(snii_entities)} entidades únicas del Excel.")
+        except Exception as e:
+            print(f"   ⚠️ Error leyendo Excel: {e}")
+
+    # 2. Fallback/Complemento: Cargar desde JSON verificado si existe
+    json_path = 'data/snii_llm_verified_matches.json'
+    if os.path.exists(json_path):
+        print(f"   📂 Leyendo JSON: {json_path}...")
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                snii_data = json.load(f)
+                for r in snii_data:
+                    inst = r.get('snii_institution')
+                    sub = r.get('snii_subdependency') or "SIN INFORMACIÓN"
+                    if inst:
+                        snii_entities.add((inst, sub))
+        except Exception as e:
+            print(f"   ⚠️ Error leyendo JSON: {e}")
+
     with open('ROR/mexican_institutions_rors.json', 'r', encoding='utf-8') as f:
         ror_data = json.load(f)
-    return snii_data, ror_data
+        
+    return sorted(list(snii_entities)), ror_data
 
 def get_unique_snii_entities(snii_data):
     entities = set()
@@ -75,19 +148,39 @@ def find_ror_candidates(name, ror_list, limit=10):
     candidates = []
     for match_name, score in matches:
         # Encontrar el record original
-        # Usamos el primer match exacto por nombre
         record = next(r for r in ror_list if r['name'] == match_name)
+        
+        # Enriquecer con API para los top 3 candidatos
+        api_details = None
+        if len(candidates) < 3:
+            api_details = get_ror_details(record['ror'])
+
         candidates.append({
             "name": record['name'],
             "ror": record['ror'],
             "id": record['openalex_id'],
             "type": record['type'],
             "score": score,
-            "lineage": record.get('lineage', [])
+            "lineage": record.get('lineage', []),
+            "api_details": api_details
         })
     return candidates
 
 def validate_with_llm(snii_inst, snii_sub, parent_candidates, child_candidates):
+    # Formatear candidatos con detalles enriquecidos
+    def format_cand(c):
+        base = f"- {c['name']} | {c['ror']} | {c['type']}"
+        if c.get('api_details'):
+            det = c['api_details']
+            extras = []
+            if det.get('aliases'): extras.append(f"Aliases: {', '.join(det['aliases'])}")
+            if det.get('relationships'):
+                rels = [f"{r['type']}:{r['label']}" for r in det['relationships']]
+                extras.append(f"Rels: {', '.join(rels)}")
+            if extras:
+                base += f" ({'; '.join(extras)})"
+        return base
+
     prompt = f"""
 Eres un experto en el sistema de investigación mexicano. Necesito mapear una entidad del SNII a su registro ROR/OpenAlex correcto.
 
@@ -96,23 +189,24 @@ ENTIDAD SNII:
 - Subdependencia: {snii_sub}
 
 CANDIDATOS PARA LA INSTITUCIÓN ({snii_inst}):
-{chr(10).join([f"- {c['name']} | {c['ror']} | {c['type']}" for c in parent_candidates[:5]])}
+{chr(10).join([format_cand(c) for c in parent_candidates[:5]])}
 
 CANDIDATOS PARA LA SUBDEPENDENCIA ({snii_sub}):
-{chr(10).join([f"- {c['name']} | {c['ror']} | {c['type']}" for c in child_candidates[:10]]) if child_candidates else "Sin subdependencia específica o sin candidatos."}
+{chr(10).join([format_cand(c) for c in child_candidates[:10]]) if child_candidates else "Sin subdependencia específica o sin candidatos."}
 
 REGLAS CRÍTICAS:
 1. Si la subdependencia es "SIN INFORMACIÓN", busca el mejor ROR entre los CANDIDATOS PARA LA INSTITUCIÓN.
-2. Si existe una subdependencia específica:
-   - Busca si entre los CANDIDATOS PARA LA SUBDEPENDENCIA hay uno que pertenezca a la institución {snii_inst}.
-   - Si encuentras un ROR específico para la subdependencia, elígelo.
-   - Si NO encuentras uno específico para la subdependencia, pon "best_match_ror": null. NUNCA elijas el ROR de la institución padre para una subdependencia.
+2. Si existe una subdependencia específica (ej: Facultad, Instituto):
+   - BUSCA ACTIVAMENTE un ROR que sea una sub-unidad (Facility o Education) y que tenga una relación de "parent" o "child" con la institución {snii_inst}.
+   - NUNCA elijas el ROR de la institución padre (Universidad) si existe un ROR específico para la Facultad/Instituto solicitado.
+   - Si la subdependencia es específica pero los candidatos solo muestran el ROR de la Universidad principal, pon "best_match_ror": null en lugar de asignar el padre.
+3. Fíjate en los 'Aliases' y 'Rels' (Relationships). Si el candidato tiene un alias que coincide con la subdependencia, es muy probable que sea el correcto.
 
 Responde ÚNICAMENTE en formato JSON con la siguiente estructura:
 {{
   "best_match_ror": "url_o_null",
   "confidence": 0-100,
-  "reason": "breve explicacion"
+  "reason": "breve explicacion mencionando por qué coincide la jerarquía o el nombre"
 }}
 """
     response = call_llm(prompt)
@@ -124,9 +218,8 @@ Responde ÚNICAMENTE en formato JSON con la siguiente estructura:
 
 def main():
     print("🚀 Cargando datos...")
-    snii_data, ror_data = load_data()
-    unique_entities = get_unique_snii_entities(snii_data)
-    print(f"Entities found: {len(unique_entities)}")
+    unique_entities, ror_data = load_data()
+    print(f"Entities to process: {len(unique_entities)}")
 
     mapping_file = 'ROR/snii_ror_mapping.json'
     mapping = {}
@@ -141,10 +234,13 @@ def main():
     # Procesar todas las entidades
     for inst, sub in unique_entities:
         key = f"{inst} || {sub}"
-        # Forzamos re-procesamiento si el usuario quiere (o simplemente no saltamos si ror es null)
-        # Por ahora mantenemos el skip para eficiencia, pero el usuario puede borrar el archivo.
+        
+        # Saltamos si ya existe y no se fuerza, A MENOS que queramos corregir errores conocidos
+        # Por ejemplo, si el nombre del ROR es exactamente igual al de la institución padre 
+        # pero tenemos una subdependencia específica.
         if key in mapping and mapping[key].get('best_match_ror') is not None:
-             continue
+             if not getattr(args, 'force', False):
+                 continue
 
         print(f"🔍 Mapeando ({len(mapping)+1}/{len(unique_entities)}): {inst} | {sub}")
         
@@ -174,4 +270,9 @@ def main():
     print(f"✅ Proceso completo. Mapeo guardado en {mapping_file}")
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Mapea SNII a ROR usando LLM")
+    parser.add_argument("--force", action="store_true", help="Fuerza el re-procesamiento de mapeos existentes")
+    args = parser.parse_args()
+    
     main()
