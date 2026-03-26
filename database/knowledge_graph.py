@@ -193,10 +193,10 @@ class Neo4jGraphStore:
         SET i:Institution
         MERGE (i)-[:LOCATED_IN]->(c)
         
-        WITH i, c
-        CALL (i, c, $state_name) {
-            WITH i, c, $state_name WHERE $state_name IS NOT NULL AND $state_name <> "" AND $state_name <> "nan"
-            MERGE (s:State {name: $state_name})
+        WITH i, c, $state_name AS s_name
+        CALL (i, c, s_name) {
+            WITH i, c, s_name WHERE s_name IS NOT NULL AND s_name <> "" AND s_name <> "nan"
+            MERGE (s:State {name: s_name})
             MERGE (i)-[:LOCATED_IN]->(s)
             MERGE (s)-[:PART_OF]->(c)
         }
