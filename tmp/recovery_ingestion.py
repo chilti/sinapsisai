@@ -1,4 +1,5 @@
 import json
+import os
 from neo4j import GraphDatabase
 from qdrant_client import QdrantClient
 
@@ -94,6 +95,7 @@ def recover_from_wrong_ingestion():
                 print(f"   🗑️ {len(deleted_dois)} papers huérfanos eliminados de Neo4j.")
                 
                 # Limpieza en Qdrant
+                # Limpieza en Qdrant
                 if deleted_dois:
                     print(f"\n🚀 Conectando a Qdrant para limpiar {len(deleted_dois)} vectores...")
                     try:
@@ -105,6 +107,18 @@ def recover_from_wrong_ingestion():
                         print("   ✅ Qdrant sincronizado.")
                     except Exception as qe:
                         print(f"   ⚠️ Error en Qdrant: {qe}")
+                
+                # 4. Limpiar Autores huérfanos
+                print("\n👤 Limpiando autores que se quedaron sin trabajos...")
+                res_auth = session.run("""
+                    MATCH (a:Author)
+                    WHERE NOT (a:Academic)
+                    AND NOT (a)-[:AUTHORED]->(:Paper)
+                    WITH a, a.name as name
+                    DETACH DELETE a
+                    RETURN count(a) as deleted_count
+                """)
+                print(f"   🗑️ {res_auth.single()['deleted_count']} autores huérfanos eliminados.")
 
     except Exception as e:
         print(f"❌ Error: {e}")
