@@ -63,9 +63,12 @@ def drastic_cleanup():
                         batch_size = 5000
                         for i in range(0, len(dois_to_delete), batch_size):
                             batch = dois_to_delete[i:i+batch_size]
+                            # IMPORTANTE: Convertir DOI a UUID determinista (como en QdrantStore)
+                            uuids_to_delete = [str(uuid.uuid5(uuid.NAMESPACE_URL, d)) for d in batch]
+                            
                             q_client.delete(
                                 collection_name="api_papers",
-                                points_selector=batch
+                                points_selector=models.PointIdsList(points=uuids_to_delete)
                             )
                             if (i // batch_size) % 10 == 0:
                                 print(f"      ✅ Procesados {i + len(batch)} / {len(dois_to_delete)}...")
