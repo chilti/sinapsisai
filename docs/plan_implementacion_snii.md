@@ -26,6 +26,41 @@ En la función `render_investigador_view`, dentro del expander "🔗 Ver Perfile
 - **Si es SNII + IA**: Mostrar mensaje "Buscado usando IA", el argumento de la coincidencia y el veredicto de la auditoría.
 - **Si es UNAM + SIIA**: Mostrar mensaje indicando que el ORCID/Scopus IDs se extrajeron del sitio web del SIIA.
 
+## Procedimiento de Vinculación de Investigadores SNII
+
+El script `SNII/vectorize_researchers.py` implementa una estrategia de búsqueda híbrida y validación por IA para encontrar el identificador ORCID de los investigadores en el padrón del SNII 2025.
+
+```mermaid
+graph TD
+    A[Excel SNII 2025] --> B[Normalizar Nombres e Instituciones]
+    B --> C{Búsqueda Híbrida de Candidatos}
+    
+    subgraph Búsqueda Semántica (Qdrant)
+        C --> D1[Colección: local_authors <br/>Neo4j Mexico/SIIA]
+        C --> D2[Colección: orcid_authors_vec <br/>Dump ORCID Global/MX]
+    end
+    
+    subgraph Búsqueda Textual (ClickHouse)
+        C --> E1[OpenAlex authors <br/>Búsqueda por Apellido/Nombre]
+        C --> E2[orcid_records <br/>Fuzzy Search en ClickHouse]
+    end
+    
+    D1 & D2 & E1 & E2 --> F[Recopilar Top 5-10 Candidatos]
+    F --> G[Prompt Detallado al LLM <br/>Reranking & Contexto de Afiliación]
+    
+    G --> H{¿Match Confirmado?}
+    H -- Sí --> I[Extraer ORCID y Scopus IDs]
+    H -- No --> J[Marcar como NINGUNO / Error]
+    
+    I & J --> K[Guardar en snii_llm_verified_matches.json]
+    K --> L[Ingesta en Grafo de Conocimiento Neo4j]
+```
+
+### Detalles Técnicos del Script
+1.  **Triple Vectorización**: Se generan embeddings para autores locales, autores del dump de ORCID y los investigadores del SNII para permitir búsquedas semánticas resilientes a variaciones de nombre.
+2.  **Validación LLM**: Se utiliza un modelo de lenguaje (GPT-OSS o similar) para actuar como verificador final, comparando la jerarquía de instituciones (Nivel 1 y Nivel 2) entre el SNII y los metadatos de OpenAlex/ORCID.
+3.  **Manejo de Casos Especiales**: El prompt del LLM está instruido para ignorar discrepancias de afiliación cuando el SNII marca al investigador como "SIN INSTITUCIÓN", priorizando la coincidencia onomástica.
+
 ## Plan de Verificación
 
 ### Pruebas Manuales

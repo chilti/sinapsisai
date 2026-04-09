@@ -270,23 +270,18 @@ st.title("Sinapsis AI: Hub de Ciencia Abierta")
 st.info("🚀 **Nota:** El sistema se encuentra en fase de desarrollo. Los datos se están cargando y procesando.")
 st.markdown("Inteligencia Bibliométrica Híbrida")
 
-tab_inst, tab_inv, tab_chat, tab_about = st.tabs([
+tab_inst, tab_inv, tab_chat, tab_council, tab_about = st.tabs([
     "🏢 Panorama Institucional",
     "👤 Perfil Académico",
     "🤖 Asistente",
+    "🏛️ Consejo Estratégico",
     "ℹ️ Acerca de..."
 ])
 
 # =======================================================
 # TAB: Consejo Estratégico Virtual (Multi-Agente AutoGen)
 # =======================================================
-with tab_chat:
-    pass  # Placeholder if you need something here later
-
-# =======================================================
-# TAB: Consejo Estratégico Virtual (Multi-Agente AutoGen) - OCULTO TEMPORALMENTE
-# =======================================================
-if False: # with tab_council:
+with tab_council:
     st.header("🏛️ Consejo Estratégico Virtual")
     st.markdown(
         "Sistema multi-agente que orquesta un comité plural y diverso para diseñar y ejecutar estudios bibliométricos de forma autónoma."
@@ -321,7 +316,8 @@ if False: # with tab_council:
     with col_entity:
         council_entity = st.selectbox(
             "Entidad objetivo",
-            entidades_disponibles,
+            entidades_filtradas,
+            index=default_ent_idx,
             key="council_entity_select",
         )
 

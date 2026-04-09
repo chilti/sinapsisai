@@ -565,8 +565,16 @@ Instrucciones vitales:
 2. Analiza la afiliación desglosada en Nivel 1 (Institución) y Nivel 2 (Subdependencia).
 3. ATENCIÓN: Si el investigador SNII indica 'Institución: SIN INSTITUCIÓN', DEBES IGNORAR por completo las afiliaciones de los candidatos y realizar el match 100% evaluando la compatibilidad de los nombres. ¡No penalices al candidato por tener una institución registrada en ORCID si al SNII le falta el dato!
 4. Si crees que hay coincidencia segura, responde con el número del candidato y su ORCID.
-5. Si ninguno coincide con seguridad, responde 'NINGUNO'.
-6. Requisito de formato de salida estricto: JSON plano {"{"} "match": true/false, "candidate_index": int/null, "orcid": "...", "reason": "breve justificación" {"}"}. No agregues markdown de bloques de código.
+5. No respondas con "NINGUNO" si hay dudas; mejor marca "match": false.
+6. Requisito de formato de salida estricto: JSON plano {
+    "match": true/false, 
+    "candidate_index": int/null, 
+    "orcid": "...", 
+    "reason": "breve justificación",
+    "discarded_candidates": [
+        {"index": int, "name": "...", "orcid": "...", "reason": "razón breve del descarte"}
+    ]
+}. No agregues markdown de bloques de código.
 
 Respuesta:"""
 
@@ -587,6 +595,7 @@ Respuesta:"""
                 "matched_author": None,
                 "matched_orcid": None,
                 "reason": res_json.get("reason", "No match"),
+                "discarded_candidates": res_json.get("discarded_candidates", []),
                 "source": None
             }
 

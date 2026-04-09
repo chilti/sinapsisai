@@ -265,6 +265,7 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
                 audit_confidence=audit.get('confidence'),
                 audit_timestamp=audit.get('timestamp'),
                 match_reason=data.get('reason'),
+                discarded_candidates=data.get('discarded_candidates'),
                 is_snii=True
             )
         else:
@@ -367,6 +368,7 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
                 audit_confidence=audit.get('confidence'),
                 audit_timestamp=audit.get('timestamp'),
                 match_reason=data.get('reason'),
+                discarded_candidates=data.get('discarded_candidates'),
                 entity_name=sub_name if sub_name != "SIN INFORMACIÓN" else inst_name
             )
             

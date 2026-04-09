@@ -220,7 +220,7 @@ class Neo4jGraphStore:
     def add_api_paper(self, paper_data: Dict[str, Any], academic_name: str, orcid: str = None, scopus_id: str = None, 
                      siia_url: str = None, entity_name: str = None,
                      audit_verdict: str = None, audit_reason: str = None, audit_confidence: int = None, audit_timestamp: str = None,
-                     match_reason: str = None):
+                     match_reason: str = None, discarded_candidates: list = None):
         """
         Inserta datos de APIs (OpenAlex/Scopus/ORCID) vinculando al investigador por un ID robusto y el artículo por DOI.
         ID Jerárquico: ORCID > Scopus_id > Name@Entity > Name
@@ -288,6 +288,7 @@ class Neo4jGraphStore:
             "audit_confidence": audit_confidence,
             "audit_timestamp": audit_timestamp,
             "match_reason": match_reason,
+            "discarded_candidates": json.dumps(discarded_candidates, ensure_ascii=False) if discarded_candidates else None,
             "funders": unique_funders,
             "awards": unique_awards
         }
@@ -322,7 +323,8 @@ class Neo4jGraphStore:
         }
         CALL (a) {
             WITH a WHERE $match_reason IS NOT NULL
-            SET a.match_reason = $match_reason
+            SET a.match_reason = $match_reason,
+                a.discarded_candidates = $discarded_candidates
         }
         WITH a
         MERGE (p:Paper {id: $doi})
@@ -514,10 +516,12 @@ class Neo4jGraphStore:
     def update_academic_metadata(self, academic_name: str, orcid: str = None, scopus_id: str = None,
                                   audit_verdict: str = None, audit_reason: str = None, 
                                   audit_confidence: int = None, audit_timestamp: str = None,
-                                  match_reason: str = None, is_snii: bool = True):
+                                  match_reason: str = None, is_snii: bool = True,
+                                  discarded_candidates: list = None):
         """
         Actualiza metadatos de un académico (ORCID, auditoría, SNII) sin necesidad de papers.
         """
+        import json
         system_id = orcid if orcid else academic_name
         
         query = """
@@ -541,7 +545,8 @@ class Neo4jGraphStore:
         }
         CALL (a) {
             WITH a WHERE $match_reason IS NOT NULL
-            SET a.match_reason = $match_reason
+            SET a.match_reason = $match_reason,
+                a.discarded_candidates = $discarded_candidates
         }
         CALL (a) {
             WITH a WHERE $is_snii = true
@@ -558,6 +563,7 @@ class Neo4jGraphStore:
             "audit_confidence": audit_confidence,
             "audit_timestamp": audit_timestamp,
             "match_reason": match_reason,
+            "discarded_candidates": json.dumps(discarded_candidates, ensure_ascii=False) if discarded_candidates else None,
             "is_snii": is_snii
         }
         with self.driver.session() as session:

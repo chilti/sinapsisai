@@ -849,6 +849,22 @@ def render_investigador_view(entity_name, institution_name=None):
         if is_snii and match_reason:
             st.info(f"🤖 **Buscado usando IA**\n\n**Argumento de la IA:** {match_reason}")
             
+            discarded = inv_data.get('discarded_candidates')
+            if discarded and isinstance(discarded, str):
+                import json
+                try:
+                    discarded_list = json.loads(discarded)
+                    if discarded_list:
+                        with st.expander("Ver otros perfiles analizados (Descartados)"):
+                            for dc in discarded_list:
+                                if isinstance(dc, dict):
+                                    name = dc.get("name", "Desconocido")
+                                    o_id = dc.get("orcid", "N/A")
+                                    reason = dc.get("reason", "Sin razón provista")
+                                    st.markdown(f"- **{name}** ({o_id}): {reason}")
+                except Exception:
+                    pass
+            
         if audit_verdict:
             conf = int(inv_data.get('audit_confidence', 0))
             reason = inv_data.get('audit_reason', 'Sin detalle.')
