@@ -205,6 +205,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                a.audit_verdict AS audit_verdict,
                a.audit_reason AS audit_reason,
                a.match_reason AS match_reason,
+               a.discarded_candidates AS discarded_candidates,
                a.audit_confidence AS audit_confidence,
                a.audit_timestamp AS audit_timestamp,
                a.is_snii AS is_snii,
@@ -235,6 +236,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                a.audit_verdict AS audit_verdict,
                a.audit_reason AS audit_reason,
                a.match_reason AS match_reason,
+               a.discarded_candidates AS discarded_candidates,
                a.audit_confidence AS audit_confidence,
                a.audit_timestamp AS audit_timestamp,
                a.is_snii AS is_snii,
@@ -392,6 +394,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                 'audit_confidence': row.get('audit_confidence'),
                 'audit_timestamp': row.get('audit_timestamp'),
                 'match_reason':    row.get('match_reason'),
+                'discarded_candidates': row.get('discarded_candidates'),
                 'is_snii':   bool(row.get('is_snii', False)),
                 'affiliations': affiliations,
                 'entities':  ";".join(list(set(ents_list))) if ents_list else "Sin Entidad",
@@ -877,7 +880,7 @@ def aggregate_metrics(df_papers, group_cols):
     }
     
     # Validaciones para columnas audit e is_snii (sólo si existen)
-    audit_cols = ['audit_verdict', 'audit_reason', 'audit_confidence', 'audit_timestamp', 'is_snii']
+    audit_cols = ['audit_verdict', 'audit_reason', 'audit_confidence', 'audit_timestamp', 'is_snii', 'match_reason', 'discarded_candidates']
     for acol in audit_cols:
         if acol in df_papers.columns:
             if acol == 'is_snii':

@@ -566,15 +566,15 @@ Instrucciones vitales:
 3. ATENCIÓN: Si el investigador SNII indica 'Institución: SIN INSTITUCIÓN', DEBES IGNORAR por completo las afiliaciones de los candidatos y realizar el match 100% evaluando la compatibilidad de los nombres. ¡No penalices al candidato por tener una institución registrada en ORCID si al SNII le falta el dato!
 4. Si crees que hay coincidencia segura, responde con el número del candidato y su ORCID.
 5. No respondas con "NINGUNO" si hay dudas; mejor marca "match": false.
-6. Requisito de formato de salida estricto: JSON plano {
+6. Requisito de formato de salida estricto: JSON plano {{
     "match": true/false, 
     "candidate_index": int/null, 
     "orcid": "...", 
     "reason": "breve justificación",
     "discarded_candidates": [
-        {"index": int, "name": "...", "orcid": "...", "reason": "razón breve del descarte"}
+        {{"index": int, "name": "...", "orcid": "...", "reason": "razón breve del descarte"}}
     ]
-}. No agregues markdown de bloques de código.
+}}. No agregues markdown de bloques de código.
 
 Respuesta:"""
 
