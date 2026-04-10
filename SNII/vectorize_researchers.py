@@ -615,23 +615,16 @@ Respuesta:"""
                     final_match = all_candidates[m_idx-1]
                     confirmed_orcid = res_json.get("orcid") or final_match.get('orcid')
                     
-                    # Extraer Scopus IDs: primero desde el candidato (de OpenAlex), luego desde ClickHouse ORCID
+                    # Extraer Scopus IDs: Prioridad CANDIDATO (OpenAlex), luego FALLBACK REMOTE (OpenAlex authors)
                     scopus_ids = final_match.get('scopus_ids') or []
-                    # Extraer Scopus IDs: Prioridad LOCAL (orcid_records), luego REMOTE (OpenAlex authors)
-                    scopus_ids = final_match.get('scopus_ids') or []
-                    if not scopus_ids and confirmed_orcid:
+                    
+                    if not scopus_ids and confirmed_orcid and str(confirmed_orcid).lower() != 'none':
                         clean_orcid = str(confirmed_orcid).replace('https://orcid.org/', '').strip()
-                        # 1. Intentar en Local (DUMP ORCID)
-                        try:
-                            ch_local = get_orcid_client()
-                            q_local = f"SELECT scopus_ids FROM {CH_DB_ORCID}.orcid_records WHERE orcid = '{clean_orcid}' LIMIT 1"
-                            res_local = ch_local.query(q_local).result_rows
-                            if res_local and res_local[0][0]:
-                                scopus_ids = res_local[0][0]
-                        except Exception as sle:
-                            print(f"      ⚠️ No se pudieron extraer Scopus IDs de Local: {sle}")
+                        # 1. Intentar en Local (DUMP ORCID) - Omitido temporalmente por error en esquema/conexión
+                        # En local_records usualmente no tenemos Scopus IDs directamente como columna.
                         
-                        # 2. Fallback a Remote (OpenAlex Authors) - Si local falló o está vacío
+                        # 2. Fallback a Remote (OpenAlex Authors) - Fuente fiable para IDs externos
+                        if not scopus_ids:
                         if not scopus_ids:
                             try:
                                 ch_remote = get_ch_client()
