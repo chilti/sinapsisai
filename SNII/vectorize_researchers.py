@@ -625,7 +625,6 @@ Respuesta:"""
                         
                         # 2. Fallback a Remote (OpenAlex Authors) - Fuente fiable para IDs externos
                         if not scopus_ids:
-                        if not scopus_ids:
                             try:
                                 ch_remote = get_ch_client()
                                 # Extraccion desde el campo JSON 'ids' de OpenAlex
