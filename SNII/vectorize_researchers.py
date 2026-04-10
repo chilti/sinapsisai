@@ -403,31 +403,28 @@ def vectorize_snii_with_llm(limit_test=None):
     
     output_path = os.path.join("data", "snii_llm_verified_matches.json")
     verified_results = []
-    processed_names = set()
+    lookup = {} # (name, inst, sub) -> index
+    processed_in_this_run = set()
     
     if os.path.exists(output_path):
         try:
             with open(output_path, "r", encoding="utf-8") as f:
-                verified_results = json.load(f)
-                # Solo mantener los ya confirmados (match: true). Los sin match se reintentan.
-                processed_names = {
-                    r["snii_author"] for r in verified_results
-                    if r.get("match") is True
-                }
-                # Quitar de verified_results los que se van a reintentar
-                verified_results = [
-                    r for r in verified_results
-                    if r["snii_author"] in processed_names
-                ]
-            print(f"   Continuando proceso: {len(processed_names)} investigadores ya validados.")
+                temp_data = json.load(f)
+                # Deduplicar al cargar
+                seen_keys = set()
+                for r in temp_data:
+                    key = (r["snii_author"], r.get("snii_institution", ""), r.get("snii_subdependency", ""))
+                    if key not in seen_keys:
+                        lookup[key] = len(verified_results)
+                        verified_results.append(r)
+                        seen_keys.add(key)
+            print(f"   Cargados {len(verified_results)} registros previos deduplicados.")
         except Exception as e:
             print(f"   ⚠️ No se pudo cargar progreso previo: {e}")
 
     for idx, row in df.iterrows():
         snii_name = str(row[name_col]).strip()
-        if snii_name in processed_names:
-            continue
-            
+        
         raw_inst = str(row[inst_col]).strip() if pd.notna(row[inst_col]) else ""
         raw_dep = str(row[dep_inst_col]).strip() if pd.notna(row[dep_inst_col]) else ""
         raw_sub = str(row[sub_inst_col]).strip() if pd.notna(row[sub_inst_col]) else ""
@@ -441,6 +438,19 @@ def vectorize_snii_with_llm(limit_test=None):
         else:
             final_inst = raw_inst
             final_sub = raw_sub
+
+        key = (snii_name, final_inst, final_sub)
+        
+        # Evitar procesar lo mismo dos veces en la misma corrida (duplicados en Excel)
+        if key in processed_in_this_run:
+            continue
+            
+        # Si ya existe match confirmado, saltar
+        if key in lookup:
+            existing_record = verified_results[lookup[key]]
+            if existing_record.get("match") is True:
+                processed_in_this_run.add(key)
+                continue
             
         snii_info = f"Nombre: {snii_name} | Institución: {final_inst} | Subdependencia: {final_sub}"
         
@@ -648,10 +658,18 @@ Respuesta:"""
             else:
                 print(f"      ❌ NINGUNO: No se encontró match para {snii_name}")
             
-            verified_results.append(result_entry)
+            # Actualizar o Añadir
+            if key in lookup:
+                verified_results[lookup[key]] = result_entry
+            else:
+                lookup[key] = len(verified_results)
+                verified_results.append(result_entry)
+            
+            processed_in_this_run.add(key)
 
             # Guardado incremental cada 10 registros
             if (idx + 1) % 10 == 0:
+                os.makedirs("data", exist_ok=True)
                 output_path = os.path.join("data", "snii_llm_verified_matches.json")
                 with open(output_path, "w", encoding="utf-8") as f:
                     json.dump(verified_results, f, ensure_ascii=False, indent=2)
@@ -659,7 +677,7 @@ Respuesta:"""
         except Exception as e:
             print(f"      ⚠️ Error consultando LLM para {snii_name}: {e}")
             # Guardar el investigador como no procesado para no perderlo
-            verified_results.append({
+            error_entry = {
                 "snii_author": snii_name,
                 "snii_institution": final_inst,
                 "snii_subdependency": final_sub,
@@ -668,7 +686,15 @@ Respuesta:"""
                 "matched_orcid": None,
                 "reason": f"Error en LLM: {e}",
                 "source": None
-            })
+            }
+            if key in lookup:
+                verified_results[lookup[key]] = error_entry
+            else:
+                lookup[key] = len(verified_results)
+                verified_results.append(error_entry)
+            
+            processed_in_this_run.add(key)
+            
             # Guardado inmediato para no perder progreso ante interrupciones
             _output_path = os.path.join("data", "snii_llm_verified_matches.json")
             os.makedirs("data", exist_ok=True)
