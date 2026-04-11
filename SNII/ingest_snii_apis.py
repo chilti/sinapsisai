@@ -300,7 +300,8 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
 
         batch_payloads = []
         batch_texts = []
-        openalex_blocked = getattr(openalex_utils, 'OFFICIAL_API_BLOCKED', False)
+        # Determinar si usamos OpenAlex local o oficial
+        openalex_blocked = force_local or getattr(openalex_utils, 'OFFICIAL_API_BLOCKED', False)
         for doi, record in meta_unificada.items():
             text_for_embedding = f"Title: {record.get('Title')}\n"
             paper_exists = False
@@ -394,7 +395,7 @@ if __name__ == "__main__":
     parser.add_argument("--limit", type=int, help="Límite")
     parser.add_argument("--name", type=str, help="Nombre")
     parser.add_argument("--force", action="store_true", help="Forzar")
-    parser.add_argument("--local", action="store_true", help="Local embeddings")
+    parser.add_argument("--local", action="store_true", help="Usar recursos locales (OpenAlex y Embeddings) para evitar límites de API")
     parser.add_argument("--confirmed-only", action="store_true", help="Procesar solo los auditados como CONFIRMED")
     args = parser.parse_args()
     
