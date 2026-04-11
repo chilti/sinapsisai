@@ -329,7 +329,8 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
                     if record['Abstract_oa']: record['Abstract'] = record['Abstract_oa']
                     record['Cited_by'] = work.get('cited_by_count', record.get('Cited_by', 0))
                     record['Source'] += ' + OpenAlex'
-            except: pass
+            except Exception:
+                pass
             
             # Procesar Qdrant para todos (existan o no en Neo4j, ya que UUID previene duplicados en Qdrant)
             qdrant_exists = False
