@@ -167,26 +167,13 @@ graph TD
     python ingestion/compute_scholar_metrics.py --entity "Facultad de Ciencias"
     ```
 
-### 6. Pipeline Nacional (SNII Matching y Verificación)
-Para implementaciones a escala país (como la validación de los +40,000 miembros del SNII contra repositorios abiertos), el pipeline incluye un submódulo de vinculación híbrida y vectorial:
-12. **Vectorización y Limpieza de Padrón Local**
-    Crea embeddings de los investigadores priorizando datos de la universidad base contra el resto.
-    ```bash
-    python SNII/vectorize_researchers.py --step 1
-    ```
-13. **Validación Híbrida con LLMs (Orquestación RAG)**
-    Utiliza búsqueda de ClickHouse/Qdrant combinada con un LLM como juez absoluto para desambiguar homónimos y limpiar jerarquías.
-    ```bash
-    python SNII/match_snii_orcid.py
-    ```
-12. **Carga y Cálculo en ClickHouse (Rendimiento Masivo)**
-    Si requieres analizar datasets masivos a nivel país o región (millones de registros), la ingesta puede derivarse a ClickHouse.
-    ```bash
-    python clickhouse/load_openalex_clickhouse.py
-    python clickhouse/compute_metrics_clickhouse.py
-    ```
+### 6. Pipeline Nacional (SNII y ROR)
+Para implementaciones a escala país o análisis masivos de todo México, consulta la documentación específica:
+👉 [**Guía del Pipeline Nacional (SNII/ROR)**](docs/NATIONAL_PIPELINE.md)
 
-13. **Generación de Reportes Automatizados con IA**
+---
+
+### 7. Generación de Reportes Automatizados con IA
     El sistema puede redactar e interpretar reportes en HTML tipo "Journal" alimentándose de los parquets locales. El dashboard invoca automáticamente este script, o se puede usar de forma stand-alone:
     ```bash
     python report_generator.py --type inst --name "Facultad de Ciencias"
