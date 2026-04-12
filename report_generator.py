@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from pyvis.network import Network
 import httpx
 import dashboard_analytics as da
-import viz_ods
+from lib import viz_ods
 from database.knowledge_graph import Neo4jGraphStore
 
 load_dotenv()

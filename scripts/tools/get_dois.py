@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
 from database.knowledge_graph import Neo4jGraphStore
 graph = Neo4jGraphStore()
 q = "MATCH (e:Entity {name: 'Mexico'})-[:HAS_PAPER]->(p:Paper) RETURN p.doi LIMIT 20"

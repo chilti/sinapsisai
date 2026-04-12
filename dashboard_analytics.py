@@ -7,12 +7,15 @@ import os
 import sys
 import json
 import numpy as np
-import viz_ods  # Nuevo módulo para pintar la matriz de ODS
+from lib import viz_ods  # Nuevo módulo para pintar la matriz de ODS
 
 try:
-    import wordcloud_helper as _wc_helper
+    from lib import wordcloud_helper as _wc_helper
     _HAS_WORDCLOUD = True
 except ImportError:
+    from lib import wordcloud_helper as _wc_helper
+    _HAS_WORDCLOUD = True
+except Exception:
     _wc_helper = None
     _HAS_WORDCLOUD = False
 

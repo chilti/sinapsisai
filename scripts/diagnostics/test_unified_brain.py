@@ -9,6 +9,8 @@ async def main():
     # 1. Configuración del Servidor MCP de OpenAlex (ejecutado como subproceso)
     # Importante: Asegúrate de que el path sea correcto y mcp_server.py sea ejecutable
     import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
     server_params = StdioServerParameters(
         command=sys.executable,
         args=["agent/mcp_server.py"],
