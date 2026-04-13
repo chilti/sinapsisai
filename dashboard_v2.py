@@ -768,7 +768,7 @@ with tab_coauthra:
     
     col_c1, col_c2 = st.columns([4, 1])
     with col_c2:
-        val_height = st.slider("📏 Altura", 500, 1800, 900, step=50, help="Ajusta la altura vertical de la visualización")
+        val_height = st.slider("📏 Altura", 500, 1800, 1150, step=50, help="Ajusta la altura vertical de la visualización")
     
     with col_c1:
         st.caption(f"Visualización actual: {val_height}px")
