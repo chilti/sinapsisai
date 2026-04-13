@@ -819,10 +819,7 @@ with tab_about:
     with col_repo1:
         st.markdown("**Repositorio en GitHub:**")
         st.markdown("[github.com/chilti/sinapsisai](https://github.com/chilti/sinapsisai)")
-    with col_repo2:
-        st.markdown("**Acceso Directo (Live):**")
-        st.markdown("[dinamica1.fciencias.unam.mx/sinapsisai](https://dinamica1.fciencias.unam.mx/sinapsisai/)")
-
+    
     st.header("👥 Equipo de Trabajo")
     
     col_team1, col_team2 = st.columns(2)
