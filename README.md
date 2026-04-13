@@ -1,6 +1,10 @@
 # Sinapsis AI - Hub de Ciencia Abierta
 Sistema de Inteligencia Bibliométrica Híbrida y Orquestador RAG para entidades académicas.
 
+### 📍 Acceso al Sistema
+El sistema se encuentra desplegado y funcional para la comunidad UNAM en:
+👉 [**https://dinamica1.fciencias.unam.mx/sinapsisai/**](https://dinamica1.fciencias.unam.mx/sinapsisai/)
+
 ## 🛠 Requisitos Previos
 
 - **Python 3.10+** (Recomendado 3.12)

@@ -814,6 +814,15 @@ with tab_about:
         **Privacidad y Datos Personales:** Este sistema no almacena ni procesa datos personales sensibles. La plataforma se limita exclusivamente al análisis de metadatos de carácter público relacionados con la trayectoria científica y académica, con el objetivo de fomentar la Ciencia Abierta y la transparencia en la investigación nacional.
     """)
     
+    st.header("📂 Código Fuente y Acceso")
+    col_repo1, col_repo2 = st.columns(2)
+    with col_repo1:
+        st.markdown("**Repositorio en GitHub:**")
+        st.markdown("[github.com/chilti/sinapsisai](https://github.com/chilti/sinapsisai)")
+    with col_repo2:
+        st.markdown("**Acceso Directo (Live):**")
+        st.markdown("[dinamica1.fciencias.unam.mx/sinapsisai](https://dinamica1.fciencias.unam.mx/sinapsisai/)")
+
     st.header("👥 Equipo de Trabajo")
     
     col_team1, col_team2 = st.columns(2)
