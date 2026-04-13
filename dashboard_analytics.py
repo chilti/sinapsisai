@@ -904,6 +904,13 @@ def render_investigador_view(entity_name, institution_name=None):
                 elif "http" in str(inv_scopus):
                     st.markdown(f"- **Scopus:** [Ver Perfil]({inv_scopus})")
             
+    # --- Integración CoAuthra ---
+            coauthra_id = inv_orcid or inv_scopus or selected_inv
+            if st.button("🕸️ Ver Red de Colaboración (CoAuthra)", use_container_width=True):
+                st.session_state.coauthra_author_id = coauthra_id
+                st.session_state.switch_to_coauthra = True
+                st.toast(f"Red de {selected_inv} preparada. Redirigiendo...", icon="🕸️")
+            
     
 
     # 1. KPIs del Investigador

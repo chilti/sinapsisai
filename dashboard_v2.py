@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import asyncio
 import concurrent.futures
 import os
@@ -20,6 +21,7 @@ from database.vector_store import QdrantStore
 from agent.orchestrator import RAGOrchestrator
 from agent.interpreter_agent import InterpreterOrchestrator
 from dashboard_analytics import render_institucion_view, render_investigador_view, load_cached_data, get_institution_hierarchy
+from lib.coauthra_integration import render_coauthra
 
 load_dotenv()
 
@@ -184,9 +186,14 @@ if "orchestrator" not in st.session_state:
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-if "pending_plan" not in st.session_state:
     st.session_state.pending_plan = None
     st.session_state.pending_prompt = None
+
+if "coauthra_author_id" not in st.session_state:
+    st.session_state.coauthra_author_id = None
+
+if "switch_to_coauthra" not in st.session_state:
+    st.session_state.switch_to_coauthra = False
 
 
 # ---- Sidebar ----
@@ -270,11 +277,12 @@ st.title("Sinapsis AI: Hub de Ciencia Abierta")
 st.info("🚀 **Nota:** El sistema se encuentra en fase de desarrollo. Los datos se están cargando y procesando.")
 st.markdown("Inteligencia Bibliométrica Híbrida")
 
-tab_inst, tab_inv, tab_chat, tab_council, tab_about = st.tabs([
+tab_inst, tab_inv, tab_chat, tab_council, tab_coauthra, tab_about = st.tabs([
     "🏢 Panorama Institucional",
     "👤 Perfil Académico",
     "🤖 Asistente",
     "🏛️ Consejo Estratégico",
+    "🕸️ Red de Colaboración",
     "ℹ️ Acerca de..."
 ])
 
@@ -752,7 +760,50 @@ with tab_inv:
     render_investigador_view(selected_entity, institution_name=selected_institution)
 
 # =======================================================
-# TAB 4: Acerca de / Estado DB
+# TAB 5: Red de Colaboración (CoAuthra)
+# =======================================================
+with tab_coauthra:
+    # Renderizar el componente CoAuthra. 
+    # Si venimos redirigidos desde un perfil, usará el author_id guardado.
+    
+    col_c1, col_c2 = st.columns([4, 1])
+    with col_c2:
+        val_height = st.slider("📏 Altura", 500, 1800, 900, step=50, help="Ajusta la altura vertical de la visualización")
+    
+    with col_c1:
+        st.caption(f"Visualización actual: {val_height}px")
+
+    render_coauthra(st.session_state.coauthra_author_id, height=val_height)
+    # Limpiar el ID después de renderizar para que no se repita la búsqueda automática en refrescos
+    st.session_state.coauthra_author_id = None
+
+# --- Script de navegación automática ---
+if st.session_state.get('switch_to_coauthra'):
+    components.html("""
+        <script>
+            function switchToTab() {
+                const tabs = window.parent.document.querySelectorAll('button[role="tab"]');
+                let found = false;
+                tabs.forEach(tab => {
+                    const text = tab.textContent || tab.innerText;
+                    if (text && text.toLowerCase().includes('red de colaboración')) {
+                        tab.click();
+                        found = true;
+                    }
+                });
+                if (!found) {
+                    console.log("Tab 'Red de Colaboración' not found, retrying...");
+                    setTimeout(switchToTab, 300);
+                }
+            }
+            // Ejecutar con un pequeño delay para asegurar que el DOM de los tabs es accesible
+            setTimeout(switchToTab, 100);
+        </script>
+    """, height=1)
+    st.session_state.switch_to_coauthra = False
+
+# =======================================================
+# TAB 6: Acerca de / Estado DB
 # =======================================================
 with tab_about:
     st.info("""
