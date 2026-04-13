@@ -843,7 +843,41 @@ def render_investigador_view(entity_name, institution_name=None):
     inv_siia = inv_data.get('siia_url') or academico_info.get("siia")
 
     st.markdown("---")
-    with st.expander("🔗 Ver Perfiles Académicos", expanded=False):
+    
+    # --- Enlaces y Acciones Principales ---
+    if inv_siia or inv_orcid or inv_scopus:
+        col_links1, col_links2 = st.columns([3, 1])
+        with col_links1:
+            if inv_siia and "http" in str(inv_siia) and "No encont" not in str(inv_siia):
+                st.markdown(f"- **SIIA-UNAM:** [Ver Perfil de {selected_inv}]({inv_siia})")
+                if "unam.mx" in str(inv_siia):
+                    st.caption("ℹ️ Extraímos ORCID y Scopus IDs de la página web del SIIA.")
+            
+            if inv_orcid:
+                orcid_link = inv_orcid if "http" in inv_orcid else f"https://orcid.org/{inv_orcid}"
+                st.markdown(f"- **ORCID:** [Ver Perfil]({orcid_link})")
+            
+            if inv_scopus:
+                import re
+                all_ids = re.findall(r'\d+', str(inv_scopus))
+                if all_ids:
+                    for sid in all_ids:
+                        scopus_link = f"https://www.scopus.com/authid/detail.uri?authorId={sid}"
+                        st.markdown(f"- **Scopus ({sid}):** [Ver Perfil]({scopus_link})")
+                elif "http" in str(inv_scopus):
+                    st.markdown(f"- **Scopus:** [Ver Perfil]({inv_scopus})")
+        
+        with col_links2:
+            # --- Integración CoAuthra ---
+            coauthra_id = inv_orcid
+            btn_help = "Se requiere un ORCID vinculado para visualizar la red de colaboración" if not coauthra_id else "Ver mapa interactivo de colaboradores en CoAuthra"
+            if st.button("🕸️ Ver Red", use_container_width=True, disabled=not coauthra_id, help=btn_help):
+                st.session_state.coauthra_author_id = coauthra_id
+                st.session_state.switch_to_coauthra = True
+                st.toast(f"Red de {selected_inv} preparada. Redirigiendo...", icon="🕸️")
+
+    # --- Detalles Técnicos y Auditoría (LLM) ---
+    with st.expander("🔍 Ver detalles de los perfiles académicos", expanded=False):
         # Mostrar Auditoría y Razonamiento IA
         audit_verdict = inv_data.get('audit_verdict')
         match_reason = inv_data.get('match_reason')
@@ -883,33 +917,6 @@ def render_investigador_view(entity_name, institution_name=None):
             if ts: st.caption(f"Auditado el: {ts}")
             st.markdown("---")
 
-        col_links1, col_links2 = st.columns([3, 1])
-        with col_links1:
-            if inv_siia and "http" in str(inv_siia) and "No encont" not in str(inv_siia):
-                st.markdown(f"- **SIIA-UNAM:** [Ver Perfil de {selected_inv}]({inv_siia})")
-                if "unam.mx" in str(inv_siia):
-                    st.caption("ℹ️ Extraímos ORCID y Scopus IDs de la página web del SIIA.")
-            
-            if inv_orcid:
-                orcid_link = inv_orcid if "http" in inv_orcid else f"https://orcid.org/{inv_orcid}"
-                st.markdown(f"- **ORCID:** [Ver Perfil]({orcid_link})")
-            
-            if inv_scopus:
-                import re
-                all_ids = re.findall(r'\d+', str(inv_scopus))
-                if all_ids:
-                    for sid in all_ids:
-                        scopus_link = f"https://www.scopus.com/authid/detail.uri?authorId={sid}"
-                        st.markdown(f"- **Scopus ({sid}):** [Ver Perfil]({scopus_link})")
-                elif "http" in str(inv_scopus):
-                    st.markdown(f"- **Scopus:** [Ver Perfil]({inv_scopus})")
-            
-    # --- Integración CoAuthra ---
-            coauthra_id = inv_orcid or inv_scopus or selected_inv
-            if st.button("🕸️ Ver Red de Colaboración (CoAuthra)", use_container_width=True):
-                st.session_state.coauthra_author_id = coauthra_id
-                st.session_state.switch_to_coauthra = True
-                st.toast(f"Red de {selected_inv} preparada. Redirigiendo...", icon="🕸️")
             
     
 
