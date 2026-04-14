@@ -85,21 +85,47 @@ def get_embeddings_model(**kwargs):
 
 def handle_llm_exception(e):
     """
-    Analiza una excepción de LLM y determina si es un fallo crítico del servidor.
-    Lanza ConnectionError si el modelo no está cargado o crasheó.
+    Analiza excepciones del LLM para detectar fallos críticos del servidor.
+    Lanza ConnectionError si el servidor está caído o el modelo no está cargado.
     """
-    err_msg = str(e)
-    # Patrones comunes de error en LM Studio cuando falla el modelo
+    err_msg = str(e).lower()
+    
+    # Patrones conocidos de fallos críticos en LM Studio / OpenAI API
     critical_patterns = [
-        "No models loaded",
-        "model has crashed",
-        "invalid_request_error", # A veces devuelve esto cuando el model param no coincide con nada cargado
-        "Connection refused",
-        "RemoteProtocolError"
+        "connection error",
+        "no models loaded", 
+        "model not found",
+        "server is not running",
+        "the model has crashed" # Nuevo patrón detectado
     ]
     
     if any(pattern in err_msg for pattern in critical_patterns):
-        print(f"\n[CRITICAL] FALLO EN LLM SERVER: {err_msg}")
-        raise ConnectionError(f"LLM Server Unavailable: {err_msg}")
+        raise ConnectionError(f"LLM Server Unavailable: {e}")
     
-    return err_msg
+    # Otros errores se reportan pero no necesariamente detienen todo el pipeline
+    return False
+
+def wait_for_llm_recovery(client, max_attempts=5, delay_seconds=300):
+    """
+    Entra en un bucle de espera activa si el servidor LLM falla.
+    Diseñado para ser llamado desde cualquier script de ingesta.
+    """
+    import time
+    print(f"\n[!] INICIANDO MODO RECUPERACIÓN. El servidor LLM no responde o el modelo crasheó.")
+    print(f"    Se realizarán hasta {max_attempts} intentos cada {delay_seconds//60} minutos.")
+    
+    for i in range(1, max_attempts + 1):
+        print(f"\n[Intento {i}/{max_attempts}] Esperando {delay_seconds//60} minutos...")
+        time.sleep(delay_seconds)
+        
+        try:
+            print(f"    Verificando estado del servidor...")
+            # PING: listado de modelos
+            client.models.list()
+            print(f"    [OK] El servidor LLM ha respondido. Reanudando proceso...")
+            return True
+        except Exception as e:
+            print(f"    [ERROR] El servidor sigue caído: {e}")
+            
+    print("\n[CRITICAL] No se pudo recuperar la conexión con el LLM tras varios intentos.")
+    return False

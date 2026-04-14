@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 # Asegurar que el directorio raíz esté en el path para importar lib.llm_utils
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from lib.llm_utils import get_openai_client, handle_llm_exception
+from lib.llm_utils import get_openai_client, handle_llm_exception, wait_for_llm_recovery
 from database.knowledge_graph import Neo4jGraphStore
 
 load_dotenv()
@@ -101,29 +101,6 @@ def clasificar_papers_batch(lista_papers):
         handle_llm_exception(e)
         raise e # Re-lanzamos para que lo atrape el bucle de recuperación
 
-def esperar_recuperacion_llm(max_intentos=5, delay_segundos=300):
-    """
-    Entra en un bucle de espera activa si el servidor LLM falla.
-    Retorna True si el servidor se recupera, False en caso contrario.
-    """
-    print(f"\n[!] INICIANDO MODO RECUPERACION. El servidor LLM no responde o el modelo crasheo.")
-    print(f"    Se realizaran hasta {max_intentos} intentos de reconexion cada {delay_segundos//60} minutos.")
-    
-    for i in range(1, max_intentos + 1):
-        print(f"\n[Intento {i}/{max_intentos}] Esperando {delay_segundos//60} minutos...")
-        time.sleep(delay_segundos)
-        
-        try:
-            print(f"    Verificando estado del servidor...")
-            # Un simple 'ping' listando modelos para ver si el server esta vivo
-            client.models.list()
-            print(f"    [OK] El servidor LLM ha respondido. Reanudando proceso...")
-            return True
-        except Exception as e:
-            print(f"    [Error] El servidor sigue caido: {e}")
-            
-    print("\n[CRITICAL] No se pudo recuperar la conexion con el LLM tras varios intentos.")
-    return False
 
 def fetch_unclassified_papers(entity_filter=None, academic_filter=None, force=False):
     """Obtiene los papers de Neo4j que aún no tienen clasificación SDG."""
@@ -263,7 +240,7 @@ def run(entity_filter=None, academic_filter=None, force=False):
             resultados_batch = clasificar_papers_batch(lote)
         except ConnectionError as ce:
             print(f"\n❌ Fallo critico en LLM durante lote: {ce}")
-            if esperar_recuperacion_llm():
+            if wait_for_llm_recovery(client):
                 try:
                     resultados_batch = clasificar_papers_batch(lote)
                 except Exception as e2:
