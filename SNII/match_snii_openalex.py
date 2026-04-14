@@ -26,8 +26,9 @@ from lib.llm_utils import get_openai_client
 client_llm = get_openai_client()
 
 def get_token_sorted_name(name_str):
-    """Normaliza y ordena tokens del nombre para comparación fuzzy."""
-    clean = normalize_text(name_str).replace(',', ' ')
+    """Normaliza, elimina guiones y ordena tokens del nombre."""
+    # Reemplazar comas y guiones por espacios antes de normalizar
+    clean = normalize_text(name_str).replace(',', ' ').replace('-', ' ')
     tokens = sorted([t for t in clean.split() if len(t) > 1])
     return " ".join(tokens)
 
@@ -55,13 +56,17 @@ def filter_by_recent_affiliation(author_data, start_year=2021, end_year=2025):
 
 def search_authors_local(name):
     """Consulta autores en la API local de OpenAlex."""
+    # Limpiar comas para la búsqueda (algunas APIs fallan con comas)
+    search_query = name.replace(',', ' ')
     url = f"{LOCAL_API}/authors"
-    params = {"search": name, "per_page": 10}
+    params = {"search": search_query, "per_page": 10}
     try:
         with httpx.Client(verify=False, timeout=30) as client:
             resp = client.get(url, params=params)
             if resp.status_code == 200:
                 return resp.json().get('results', [])
+            else:
+                print(f"      [WARN] API Local devolvió estatus {resp.status_code}")
     except Exception as e:
         print(f"      [WARN] Error consultando API Local: {e}")
     return []
@@ -158,11 +163,18 @@ def run_openalex_matching(limit=50, min_score=0.75):
         potential_candidates = []
         snii_sorted = get_token_sorted_name(name)
         
+        if not raw_candidates:
+            print(f"   [DEBUG] La API Local no devolvió candidatos para '{name}'")
+
         for cand in raw_candidates:
             cand_name = cand.get('display_name', '')
             is_recent, recent_inst, active_years = filter_by_recent_affiliation(cand)
-            score = jaro_winkler(snii_sorted, get_token_sorted_name(cand_name))
+            cand_sorted = get_token_sorted_name(cand_name)
+            score = jaro_winkler(snii_sorted, cand_sorted)
             
+            # Log de cada candidato para diagnóstico
+            print(f"      - Candidato: {cand_name[:30]}... | Score: {score:.3f}")
+
             if score >= min_score:
                 potential_candidates.append({
                     "name": cand_name,
