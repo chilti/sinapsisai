@@ -37,46 +37,37 @@ def get_token_sorted_name(name_str):
 def generate_search_variants(full_name):
     """Genera variantes de búsqueda para maximizar el hit en el índice de OpenAlex."""
     variants = []
-    
-    # Variante original limpia
     clean_original = full_name.replace(',', ' ').strip()
     variants.append(clean_original)
     
-    # Manejar formato "SURNAMES, NAME"
     if ',' in full_name:
         parts = full_name.split(',')
         surnames = parts[0].strip()
         names_str = parts[1].strip()
-        
-        # Tokenizar nombres (ej: ["MA.", "GISELA"])
         name_tokens = [t.strip() for t in names_str.split() if len(t.strip()) > 1 or t.endswith('.')]
         
-        # 1. Variante: "Full Names Surnames"
         variants.append(f"{names_str} {surnames}")
-        
-        # 2. Variantes por cada nombre individual (muy útil para MA. GISELA -> GISELA)
         if len(name_tokens) > 1:
             for token in name_tokens:
                 variants.append(f"{token} {surnames}")
                 
-        # 3. Variantes con Surnames-con-guion
         if ' ' in surnames:
             hyphenated_surnames = surnames.replace(' ', '-')
             variants.append(f"{names_str} {hyphenated_surnames}")
-        # 4. Variantes de solo apellidos (último recurso)
+            if len(name_tokens) > 1:
+                for token in name_tokens:
+                    variants.append(f"{token} {hyphenated_surnames}")
+        
         variants.append(surnames)
         if ' ' in surnames:
             variants.append(surnames.replace(' ', '-'))
             
-    # Eliminar duplicados manteniendo orden
     return list(dict.fromkeys(variants))
 
-def filter_by_recent_affiliation(author_data, start_year=2021, end_year=2025):
+def filter_by_recent_affiliation(author_data, start_year=2018, end_year=2025):
     """Verifica actividad reciente y retorna mejor institución."""
-    # Soportar tanto dict (API Local) como Author object (Pyalex)
+    # Soportar dict (API Local) o Author object (Pyalex)
     affiliations = author_data.get('affiliations', [])
-    
-    # Algunos resultados de Pyalex vienen con estructuras ligeramente diferentes
     sorted_affs = sorted(affiliations, key=lambda x: max(x.get('years', [0])) if x.get('years') else 0, reverse=True)
     
     recent_match = False
@@ -89,26 +80,59 @@ def filter_by_recent_affiliation(author_data, start_year=2021, end_year=2025):
         if any(start_year <= y <= end_year for y in years):
             recent_match = True
             if not best_inst:
-                # API Local usa display_name dentro de institution
                 inst_obj = aff.get('institution', {})
                 best_inst = inst_obj.get('display_name', '') if isinstance(inst_obj, dict) else str(inst_obj)
                 
     return recent_match, best_inst, sorted(list(set(all_years)))
 
-def map_pyalex_author(author):
-    """Convierte un objeto Author de Pyalex al formato interno de candidatos."""
-    # Intentar obtener institución reciente
+def clean_orcid(orcid_str):
+    """Limpia el ORCID para dejar solo el ID de 19 caracteres."""
+    if not orcid_str: return None
+    return orcid_str.split('/')[-1].strip()
+
+def map_author_data(author, source="Unknown"):
+    """Mapea datos de autor de cualquier fuente al formato interno, incluyendo ORCID."""
     is_recent, recent_inst, active_years = filter_by_recent_affiliation(author)
     
+    # Extraer ORCID de la fuente (OpenAlex suele devolverlo como URL completa)
+    raw_orcid = author.get('orcid')
+    if not raw_orcid and 'ids' in author:
+        raw_orcid = author['ids'].get('orcid')
+        
     return {
-        "name": author.get('display_name'),
-        "openalex_id": author.get('id'),
+        "name": author.get('display_name') or author.get('name'),
+        "openalex_id": author.get('id') or author.get('openalex_id'),
+        "orcid": clean_orcid(raw_orcid),
         "institution": recent_inst or author.get('last_known_institution', {}).get('display_name', 'Unknown'),
-        "years": active_years[-5:] if active_years else []
+        "years": active_years[-5:] if active_years else [],
+        "found_source": source
     }
 
+def search_author_by_orcid_local(orcid):
+    """Busca un autor por su ORCID en la API Local."""
+    url = f"{LOCAL_API}/authors"
+    params = {"filter": f"orcid:{orcid}"}
+    try:
+        with httpx.Client(verify=False, timeout=15) as client:
+            resp = client.get(url, params=params)
+            if resp.status_code == 200:
+                results = resp.json().get('results', [])
+                return [map_author_data(r, "LocalORCID") for r in results]
+    except Exception:
+        pass
+    return []
+
+def search_author_by_orcid_official(orcid):
+    """Busca un autor por su ORCID en la API Oficial."""
+    try:
+        results = pyalex.Authors().filter(orcid=orcid).get()
+        return [map_author_data(r, "OfficialORCID") for r in results]
+    except Exception as e:
+        print(f"      [WARN] Error en búsqueda ORCID Oficial: {e}")
+    return []
+
 def search_authors_local(name):
-    """Consulta autores en la API local de OpenAlex."""
+    """Búsqueda por nombre en API Local."""
     search_query = name.replace(',', ' ')
     url = f"{LOCAL_API}/authors"
     params = {"search": search_query, "per_page": 5}
@@ -116,29 +140,29 @@ def search_authors_local(name):
         with httpx.Client(verify=False, timeout=15) as client:
             resp = client.get(url, params=params)
             if resp.status_code == 200:
-                return resp.json().get('results', [])
+                results = resp.json().get('results', [])
+                return [map_author_data(r, "LocalName") for r in results]
     except Exception:
         pass
     return []
 
 def search_authors_official(name):
-    """Consulta autores en la API Oficial de OpenAlex usando Pyalex."""
+    """Búsqueda por nombre en API Oficial."""
     try:
-        # Usamos search para mayor flexibilidad
         results = pyalex.Authors().search(name).limit(5).get()
-        return [map_pyalex_author(a) for a in results]
+        return [map_author_data(r, "OfficialName") for r in results]
     except Exception as e:
         print(f"      [WARN] Error en API Oficial: {e}")
     return []
 
 def challenge_openalex_id_with_llm(snii_info, candidates):
-    """Somete los candidatos de OpenAlex a juicio del LLM."""
+    """Somete los candidatos a juicio del LLM."""
     from langchain_core.messages import HumanMessage
     if not candidates: return None
     
     candidates_str = ""
     for i, c in enumerate(candidates):
-        candidates_str += f"{i+1}. Nombre: {c['name']} | ID: {c['openalex_id']} | Inst: {c['institution']} | Años Activos: {c['years']}\n"
+        candidates_str += f"{i+1}. Nombre: {c['name']} | ID: {c['openalex_id']} | ORCID: {c.get('orcid')} | Inst: {c['institution']} | Años Activos: {c['years']}\n"
         
     prompt = f"""Eres un experto en bibliometría académica. Tu tarea es identificar si alguno de los candidatos de OpenAlex coincide con el investigador del SNII.
     
@@ -150,9 +174,10 @@ CANDIDATOS ENCONTRADOS EN OPENALEX:
 
 Instrucciones:
 1. Valida como MATCH si el nombre coincide plenamente y la institución es la misma (o muy similar), incluso si la actividad reciente es escasa.
-2. Considera actividad relevante a partir de 2018 en adelante.
-3. Analiza variaciones de nombre (apellidos invertidos, nombres omitidos).
-4. Responde estrictamente en JSON plano con este formato:
+2. Si un candidato tiene el MISMO ORCID que el buscado (si se proporciona), es un match casi seguro.
+3. Considera actividad relevante a partir de 2018 en adelante.
+4. Analiza variaciones de nombre (apellidos invertidos, nombres omitidos).
+5. Responde estrictamente en JSON plano con este formato:
 {{
     "match": true/false,
     "candidate_index": int (1-based) o null,
@@ -179,7 +204,7 @@ Respuesta:"""
             print(f"      [ERROR] Fallo en LLM Judge: {e}")
             return None
         except ConnectionError as ce:
-            print(f"      [CRITICAL] Error de conexión LLM: {ce}")
+            print(f"      [CRITICAL) Error de conexión LLM: {ce}")
             if wait_for_llm_recovery(client_llm):
                 try:
                     return perform_invoke()
@@ -188,8 +213,8 @@ Respuesta:"""
             return None
 
 def run_openalex_matching(limit=50, min_score=0.75):
-    """Proceso principal de matching con múltiples estrategias de búsqueda."""
-    print(f"[INFO] Iniciando Enriquecimiento de OpenAlex IDs (Estrategia Robusta)...")
+    """Proceso principal de matching bidireccional y robusto."""
+    print(f"[INFO] Iniciando Enriquecimiento Bidireccional SNII-OpenAlex...")
     
     results = []
     if os.path.exists(OUTPUT_PATH):
@@ -212,68 +237,70 @@ def run_openalex_matching(limit=50, min_score=0.75):
         snii_name = entry['snii_author']
         inst = entry.get('snii_institution', '')
         sub = entry.get('snii_subdependency', '')
-        snii_info = f"Nombre: {snii_name} | Institución: {inst} | Subdependencia: {sub}"
+        # Extraer ORCID previo si existe
+        snii_orcid = clean_orcid(entry.get('matched_orcid'))
+        
+        snii_info = f"Nombre: {snii_name} | Institución: {inst} | Subdependencia: {sub} | ORCID previo: {snii_orcid or 'N/A'}"
         snii_sorted = get_token_sorted_name(snii_name)
         
         print(f"\n[CHECK] [{count+1}/{limit}] Procesando: {snii_name}")
         
-        # 1. Generar variantes de búsqueda
+        candidates_map = {} # deduplicar por OpenAlex ID
+        
+        # --- PASO 0: Búsqueda por ORCID (Prioridad Máxima) ---
+        if snii_orcid:
+            print(f"   -> Buscando por ORCID '{snii_orcid}' en Local...")
+            orcid_results = search_author_by_orcid_local(snii_orcid)
+            if not orcid_results:
+                print(f"   -> Buscando por ORCID '{snii_orcid}' en Oficial...")
+                orcid_results = search_author_by_orcid_official(snii_orcid)
+            
+            for cand in orcid_results:
+                candidates_map[cand['openalex_id']] = cand
+        
+        # --- PASO 1: Búsqueda por Variantes de Nombre (Local) ---
         search_variants = generate_search_variants(snii_name)
-        
-        raw_candidates = []
-        found_source = None
-        
-        # 2. Estrategia A: API Local con TODAS las variantes
-        candidates_map = {} # Usar mapa para deduplicar por ID
-        
         for variant in search_variants:
             print(f"   -> Buscando variante local: '{variant}'...")
             local_results = search_authors_local(variant)
             for cand in local_results:
-                cid = cand.get('id') or cand.get('openalex_id')
-                if cid and cid not in candidates_map:
-                    cand['found_source'] = "Local"
+                cid = cand['openalex_id']
+                if cid not in candidates_map:
                     candidates_map[cid] = cand
         
-        # 3. Estrategia B: API Oficial Fallback (si la local no devolvió nada tras probar todas)
+        # --- PASO 2: Fallback API Oficial (si no hay candidatos sólidos aún) ---
+        # Solo lo hacemos si no tenemos candidatos o si los que tenemos tienen scores bajos
         if not candidates_map:
-            print(f"   [!] Local no devolvió resultados. Intentando API Oficial con variantes...")
+            print(f"   [!] Sin resultados locales. Intentando API Oficial con variantes...")
             for variant in search_variants:
                 print(f"      -> Buscando variante oficial: '{variant}'...")
                 official_results = search_authors_official(variant)
                 for cand in official_results:
-                    cid = cand.get('id') or cand.get('openalex_id')
-                    if cid and cid not in candidates_map:
-                        cand['found_source'] = "Official"
+                    cid = cand['openalex_id']
+                    if cid not in candidates_map:
                         candidates_map[cid] = cand
                     
-        # 4. Filtrar y puntuar candidatos acumulados
+        # --- PASO 3: Filtrado y Puntuación ---
         potential_candidates = []
         for cid, cand in candidates_map.items():
-            cand_name = cand.get('name') or cand.get('display_name')
             is_recent, recent_inst, active_years = filter_by_recent_affiliation(cand)
-            cand_sorted = get_token_sorted_name(cand_name)
+            cand_sorted = get_token_sorted_name(cand['name'])
             score = jaro_winkler(snii_sorted, cand_sorted)
             source = cand.get('found_source', 'Unknown')
             
-            # Log detallado solicitado para revisión
-            inst_log = recent_inst or cand.get('last_known_institution', {}).get('display_name', 'Unknown')
+            # Log de revisión
+            inst_log = cand.get('institution', 'Unknown')
             id_short = str(cid).split('/')[-1]
-            print(f"      - [{source}] {cand_name[:25]}... | {id_short} | Inst: {inst_log[:30]} | Score: {score:.3f}")
+            print(f"      - [{source}] {cand['name'][:25]}... | {id_short} | Inst: {inst_log[:30]} | Score: {score:.3f}")
             
-            if score >= min_score:
-                potential_candidates.append({
-                    "name": cand_name,
-                    "openalex_id": cid,
-                    "institution": inst_log,
-                    "years": active_years[-5:] if active_years else [],
-                    "score": score,
-                    "source": source
-                })
+            # Si el ORCID coincide, el score name es secundario (pero lo mantenemos para el log)
+            if cand.get('orcid') == snii_orcid or score >= min_score:
+                cand['score'] = score
+                potential_candidates.append(cand)
 
-        # 5. Juicio del LLM
+        # --- PASO 4: Juicio del LLM ---
         if potential_candidates:
-            print(f"   -> {len(potential_candidates)} potenciales. Juicio LLM... {potential_candidates}")
+            print(f"   -> {len(potential_candidates)} potenciales. Juicio LLM...")
             judgment = challenge_openalex_id_with_llm(snii_info, potential_candidates)
             
             if judgment and judgment.get('match'):
@@ -282,9 +309,19 @@ def run_openalex_matching(limit=50, min_score=0.75):
                     match_data = potential_candidates[idx-1]
                     print(f"   [OK] VALIDADO: {match_data['openalex_id']} ({match_data['name']})")
                     entry["matched_openalex_id"] = match_data['openalex_id']
+                    
+                    # BIDIRECCIONALIDAD: Si descubrimos un ORCID en OpenAlex, actualizar el registro
+                    discov_orcid = match_data.get('orcid')
+                    if discov_orcid:
+                        if not snii_orcid:
+                            print(f"   [NEW] ORCID DESCUBIERTO: {discov_orcid}")
+                            entry["matched_orcid"] = discov_orcid
+                        elif snii_orcid != discov_orcid:
+                            print(f"   [WARN] Conflicto ORCID: SNII({snii_orcid}) vs OA({discov_orcid})")
+                    
                     entry["oa_audit"] = {
                         "reason": judgment.get('reason'),
-                        "source": found_source,
+                        "source": match_data.get('found_source'),
                         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
                     }
                 else:
@@ -294,11 +331,9 @@ def run_openalex_matching(limit=50, min_score=0.75):
                 print(f"   [FAIL] Descartado. Razón: {reason}")
                 entry["matched_openalex_id"] = False 
         else:
-            print(f"   [FAIL] Sin candidatos válidos tras todas las variantes.")
+            print(f"   [FAIL] Sin candidatos válidos.")
             
         count += 1
-        
-        # Guardado atómico
         if count % 5 == 0:
             temp_path = OUTPUT_PATH + ".tmp"
             with open(temp_path, 'w', encoding='utf-8') as f:
@@ -307,11 +342,11 @@ def run_openalex_matching(limit=50, min_score=0.75):
 
     with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
-    print(f"\n[DONE] Enriquecimiento completado.")
+    print(f"\n[DONE] Enriquecimiento bidireccional completado.")
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Enrich SNII JSON with OpenAlex IDs using Robust Logic")
+    parser = argparse.ArgumentParser(description="Enrich SNII JSON with OpenAlex IDs and ORCID Discovery")
     parser.add_argument("--limit", type=int, default=10, help="Límite de registros")
     args = parser.parse_args()
     run_openalex_matching(limit=args.limit)
