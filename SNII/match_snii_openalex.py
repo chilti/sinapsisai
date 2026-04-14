@@ -46,16 +46,27 @@ def generate_search_variants(full_name):
     if ',' in full_name:
         parts = full_name.split(',')
         surnames = parts[0].strip()
-        names = parts[1].strip()
+        names_str = parts[1].strip()
         
-        # Variante: "Name Surnames" (muy común en OpenAlex)
-        variants.append(f"{names} {surnames}")
+        # Tokenizar nombres (ej: ["MA.", "GISELA"])
+        name_tokens = [t.strip() for t in names_str.split() if len(t.strip()) > 1 or t.endswith('.')]
         
-        # Variante: "Name Surnames-con-guion" (formato internacional común)
-        # Solo si surnames tiene espacios (más de un apellido)
+        # 1. Variante: "Full Names Surnames"
+        variants.append(f"{names_str} {surnames}")
+        
+        # 2. Variantes por cada nombre individual (muy útil para MA. GISELA -> GISELA)
+        if len(name_tokens) > 1:
+            for token in name_tokens:
+                variants.append(f"{token} {surnames}")
+                
+        # 3. Variantes con Surnames-con-guion
         if ' ' in surnames:
             hyphenated_surnames = surnames.replace(' ', '-')
-            variants.append(f"{names} {hyphenated_surnames}")
+            variants.append(f"{names_str} {hyphenated_surnames}")
+        # 4. Variantes de solo apellidos (último recurso)
+        variants.append(surnames)
+        if ' ' in surnames:
+            variants.append(surnames.replace(' ', '-'))
             
     # Eliminar duplicados manteniendo orden
     return list(dict.fromkeys(variants))
@@ -138,9 +149,10 @@ CANDIDATOS ENCONTRADOS EN OPENALEX:
 {candidates_str}
 
 Instrucciones:
-1. Prioriza autores con actividad reciente (2021-2025) y coincidencia institucional.
-2. Analiza variaciones de nombre (apellidos invertidos, nombres omitidos).
-3. Responde estrictamente en JSON plano con este formato:
+1. Valida como MATCH si el nombre coincide plenamente y la institución es la misma (o muy similar), incluso si la actividad reciente es escasa.
+2. Considera actividad relevante a partir de 2018 en adelante.
+3. Analiza variaciones de nombre (apellidos invertidos, nombres omitidos).
+4. Responde estrictamente en JSON plano con este formato:
 {{
     "match": true/false,
     "candidate_index": int (1-based) o null,
