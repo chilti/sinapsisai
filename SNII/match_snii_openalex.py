@@ -212,7 +212,7 @@ Respuesta:"""
                     print(f"      [ERROR] Error tras recuperación: {e2}")
             return None
 
-def run_openalex_matching(limit=50, min_score=0.75):
+def run_openalex_matching(limit=0, min_score=0.75):
     """Proceso principal de matching bidireccional y robusto."""
     print(f"[INFO] Iniciando Enriquecimiento Bidireccional SNII-OpenAlex...")
     
@@ -230,9 +230,10 @@ def run_openalex_matching(limit=50, min_score=0.75):
         print("[OK] Todos los registros ya están enriquecidos.")
         return
 
+    total = len(to_process) if limit == 0 else min(limit, len(to_process))
     count = 0
     for entry in to_process:
-        if count >= limit: break
+        if limit > 0 and count >= limit: break
         
         snii_name = entry['snii_author']
         inst = entry.get('snii_institution', '')
@@ -243,7 +244,7 @@ def run_openalex_matching(limit=50, min_score=0.75):
         snii_info = f"Nombre: {snii_name} | Institución: {inst} | Subdependencia: {sub} | ORCID previo: {snii_orcid or 'N/A'}"
         snii_sorted = get_token_sorted_name(snii_name)
         
-        print(f"\n[CHECK] [{count+1}/{limit}] Procesando: {snii_name}")
+        print(f"\n[CHECK] [{count+1}/{total}] Procesando: {snii_name}")
         
         candidates_map = {} # deduplicar por OpenAlex ID
         
@@ -365,6 +366,6 @@ def run_openalex_matching(limit=50, min_score=0.75):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Enrich SNII JSON with OpenAlex IDs and ORCID Discovery")
-    parser.add_argument("--limit", type=int, default=10, help="Límite de registros")
+    parser.add_argument("--limit", type=int, default=0, help="Límite de registros (0 = sin límite)")
     args = parser.parse_args()
     run_openalex_matching(limit=args.limit)
