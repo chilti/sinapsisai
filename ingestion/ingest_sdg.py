@@ -226,7 +226,7 @@ def run(entity_filter=None, academic_filter=None, force=False):
         print("  -> MODO FORZADO ACTIVADO (Re-procesando clasificados)")
         
     total_total = count_unclassified_papers(entity_filter=entity_filter, academic_filter=academic_filter, force=force)
-    print(f"✅ Se encontraron {total_total} papers para clasificar por ODS.")
+    print(f"[OK] Se encontraron {total_total} papers para clasificar por ODS.")
     
     procesados = 0
     papers = fetch_unclassified_papers(entity_filter=entity_filter, academic_filter=academic_filter, force=force)
