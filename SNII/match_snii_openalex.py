@@ -326,12 +326,30 @@ def run_openalex_matching(limit=50, min_score=0.75):
                     }
                 else:
                     print("   [FAIL] LLM devolvió índice inválido.")
+                    entry["oa_audit"] = {
+                        "reason": "LLM devolvió índice inválido",
+                        "source": "LLM",
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                    }
             else:
-                reason = judgment.get('reason') if judgment else 'Descartado'
+                reason = judgment.get('reason') if judgment else 'Sin respuesta del LLM'
+                discarded = judgment.get('discarded_candidates', []) if judgment else []
                 print(f"   [FAIL] Descartado. Razón: {reason}")
-                entry["matched_openalex_id"] = False 
+                entry["matched_openalex_id"] = False
+                entry["oa_audit"] = {
+                    "reason": reason,
+                    "discarded_candidates": discarded,
+                    "source": "LLM",
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                }
         else:
             print(f"   [FAIL] Sin candidatos válidos.")
+            entry["matched_openalex_id"] = False
+            entry["oa_audit"] = {
+                "reason": "No se encontraron candidatos en ninguna fuente",
+                "source": "Search",
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+            }
             
         count += 1
         if count % 5 == 0:
