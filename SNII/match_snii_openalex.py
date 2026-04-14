@@ -212,9 +212,152 @@ Respuesta:"""
                     print(f"      [ERROR] Error tras recuperación: {e2}")
             return None
 
-def run_openalex_matching(limit=0, min_score=0.75):
-    """Proceso principal de matching bidireccional y robusto."""
-    print(f"[INFO] Iniciando Enriquecimiento Bidireccional SNII-OpenAlex...")
+# --- Lock global para escritura segura al JSON ---
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+_save_lock = threading.Lock()
+_counter_lock = threading.Lock()
+_processed_count = 0
+
+def _atomic_save(results):
+    """Guardado atómico del JSON con lock."""
+    with _save_lock:
+        temp_path = OUTPUT_PATH + ".tmp"
+        with open(temp_path, 'w', encoding='utf-8') as f:
+            json.dump(results, f, ensure_ascii=False, indent=2)
+        os.replace(temp_path, OUTPUT_PATH)
+
+def process_single_entry(entry, total, results, min_score=0.75):
+    """Procesa un solo investigador: búsqueda + puntuación + juicio LLM."""
+    global _processed_count
+    
+    snii_name = entry['snii_author']
+    inst = entry.get('snii_institution', '')
+    sub = entry.get('snii_subdependency', '')
+    snii_orcid = clean_orcid(entry.get('matched_orcid'))
+    
+    snii_info = f"Nombre: {snii_name} | Institución: {inst} | Subdependencia: {sub} | ORCID previo: {snii_orcid or 'N/A'}"
+    snii_sorted = get_token_sorted_name(snii_name)
+    
+    with _counter_lock:
+        _processed_count += 1
+        current = _processed_count
+    
+    print(f"\n[CHECK] [{current}/{total}] Procesando: {snii_name}")
+    
+    candidates_map = {}
+    
+    # --- PASO 0: Búsqueda por ORCID (Prioridad Máxima) ---
+    if snii_orcid:
+        print(f"   -> [{snii_name[:20]}] Buscando por ORCID '{snii_orcid}' en Local...")
+        orcid_results = search_author_by_orcid_local(snii_orcid)
+        if not orcid_results:
+            print(f"   -> [{snii_name[:20]}] Buscando por ORCID '{snii_orcid}' en Oficial...")
+            orcid_results = search_author_by_orcid_official(snii_orcid)
+        
+        for cand in orcid_results:
+            candidates_map[cand['openalex_id']] = cand
+    
+    # --- PASO 1: Búsqueda por Variantes de Nombre (Local) ---
+    search_variants = generate_search_variants(snii_name)
+    for variant in search_variants:
+        local_results = search_authors_local(variant)
+        for cand in local_results:
+            cid = cand['openalex_id']
+            if cid not in candidates_map:
+                candidates_map[cid] = cand
+    
+    # --- PASO 2: Fallback API Oficial ---
+    if not candidates_map:
+        for variant in search_variants:
+            official_results = search_authors_official(variant)
+            for cand in official_results:
+                cid = cand['openalex_id']
+                if cid not in candidates_map:
+                    candidates_map[cid] = cand
+                
+    # --- PASO 3: Filtrado y Puntuación ---
+    potential_candidates = []
+    for cid, cand in candidates_map.items():
+        is_recent, recent_inst, active_years = filter_by_recent_affiliation(cand)
+        cand_sorted = get_token_sorted_name(cand['name'])
+        score = jaro_winkler(snii_sorted, cand_sorted)
+        source = cand.get('found_source', 'Unknown')
+        
+        inst_log = cand.get('institution', 'Unknown')
+        id_short = str(cid).split('/')[-1]
+        print(f"      - [{source}] {cand['name'][:25]}... | {id_short} | Inst: {inst_log[:30]} | Score: {score:.3f}")
+        
+        if cand.get('orcid') == snii_orcid or score >= min_score:
+            cand['score'] = score
+            potential_candidates.append(cand)
+
+    # --- PASO 4: Juicio del LLM ---
+    if potential_candidates:
+        print(f"   -> [{snii_name[:20]}] {len(potential_candidates)} potenciales. Juicio LLM...")
+        judgment = challenge_openalex_id_with_llm(snii_info, potential_candidates)
+        
+        if judgment and judgment.get('match'):
+            idx = judgment['candidate_index']
+            if idx and 1 <= idx <= len(potential_candidates):
+                match_data = potential_candidates[idx-1]
+                print(f"   [OK] [{snii_name[:20]}] VALIDADO: {match_data['openalex_id']} ({match_data['name']})")
+                entry["matched_openalex_id"] = match_data['openalex_id']
+                
+                discov_orcid = match_data.get('orcid')
+                if discov_orcid:
+                    if not snii_orcid:
+                        print(f"   [NEW] [{snii_name[:20]}] ORCID DESCUBIERTO: {discov_orcid}")
+                        entry["matched_orcid"] = discov_orcid
+                    elif snii_orcid != discov_orcid:
+                        print(f"   [WARN] [{snii_name[:20]}] Conflicto ORCID: SNII({snii_orcid}) vs OA({discov_orcid})")
+                
+                entry["oa_audit"] = {
+                    "reason": judgment.get('reason'),
+                    "source": match_data.get('found_source'),
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                }
+            else:
+                print(f"   [FAIL] [{snii_name[:20]}] LLM devolvió índice inválido.")
+                entry["oa_audit"] = {
+                    "reason": "LLM devolvió índice inválido",
+                    "source": "LLM",
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                }
+        else:
+            reason = judgment.get('reason') if judgment else 'Sin respuesta del LLM'
+            discarded = judgment.get('discarded_candidates', []) if judgment else []
+            print(f"   [FAIL] [{snii_name[:20]}] Descartado. Razón: {reason}")
+            entry["matched_openalex_id"] = False
+            entry["oa_audit"] = {
+                "reason": reason,
+                "discarded_candidates": discarded,
+                "source": "LLM",
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+            }
+    else:
+        print(f"   [FAIL] [{snii_name[:20]}] Sin candidatos válidos.")
+        entry["matched_openalex_id"] = False
+        entry["oa_audit"] = {
+            "reason": "No se encontraron candidatos en ninguna fuente",
+            "source": "Search",
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+    
+    # Guardado periódico thread-safe
+    if current % 20 == 0:
+        _atomic_save(results)
+        print(f"   [SAVE] Progreso guardado ({current}/{total})")
+    
+    return current
+
+def run_openalex_matching(limit=0, min_score=0.75, workers=4):
+    """Proceso principal de matching bidireccional, robusto y paralelo."""
+    global _processed_count
+    _processed_count = 0
+    
+    print(f"[INFO] Iniciando Enriquecimiento Bidireccional SNII-OpenAlex ({workers} workers)...")
     
     results = []
     if os.path.exists(OUTPUT_PATH):
@@ -230,142 +373,33 @@ def run_openalex_matching(limit=0, min_score=0.75):
         print("[OK] Todos los registros ya están enriquecidos.")
         return
 
-    total = len(to_process) if limit == 0 else min(limit, len(to_process))
-    count = 0
-    for entry in to_process:
-        if limit > 0 and count >= limit: break
+    if limit > 0:
+        to_process = to_process[:limit]
+    total = len(to_process)
+    print(f"[INFO] Procesando {total} registros con {workers} hilos...")
+    
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(process_single_entry, entry, total, results, min_score): entry
+            for entry in to_process
+        }
         
-        snii_name = entry['snii_author']
-        inst = entry.get('snii_institution', '')
-        sub = entry.get('snii_subdependency', '')
-        # Extraer ORCID previo si existe
-        snii_orcid = clean_orcid(entry.get('matched_orcid'))
-        
-        snii_info = f"Nombre: {snii_name} | Institución: {inst} | Subdependencia: {sub} | ORCID previo: {snii_orcid or 'N/A'}"
-        snii_sorted = get_token_sorted_name(snii_name)
-        
-        print(f"\n[CHECK] [{count+1}/{total}] Procesando: {snii_name}")
-        
-        candidates_map = {} # deduplicar por OpenAlex ID
-        
-        # --- PASO 0: Búsqueda por ORCID (Prioridad Máxima) ---
-        if snii_orcid:
-            print(f"   -> Buscando por ORCID '{snii_orcid}' en Local...")
-            orcid_results = search_author_by_orcid_local(snii_orcid)
-            if not orcid_results:
-                print(f"   -> Buscando por ORCID '{snii_orcid}' en Oficial...")
-                orcid_results = search_author_by_orcid_official(snii_orcid)
-            
-            for cand in orcid_results:
-                candidates_map[cand['openalex_id']] = cand
-        
-        # --- PASO 1: Búsqueda por Variantes de Nombre (Local) ---
-        search_variants = generate_search_variants(snii_name)
-        for variant in search_variants:
-            print(f"   -> Buscando variante local: '{variant}'...")
-            local_results = search_authors_local(variant)
-            for cand in local_results:
-                cid = cand['openalex_id']
-                if cid not in candidates_map:
-                    candidates_map[cid] = cand
-        
-        # --- PASO 2: Fallback API Oficial (si no hay candidatos sólidos aún) ---
-        # Solo lo hacemos si no tenemos candidatos o si los que tenemos tienen scores bajos
-        if not candidates_map:
-            print(f"   [!] Sin resultados locales. Intentando API Oficial con variantes...")
-            for variant in search_variants:
-                print(f"      -> Buscando variante oficial: '{variant}'...")
-                official_results = search_authors_official(variant)
-                for cand in official_results:
-                    cid = cand['openalex_id']
-                    if cid not in candidates_map:
-                        candidates_map[cid] = cand
-                    
-        # --- PASO 3: Filtrado y Puntuación ---
-        potential_candidates = []
-        for cid, cand in candidates_map.items():
-            is_recent, recent_inst, active_years = filter_by_recent_affiliation(cand)
-            cand_sorted = get_token_sorted_name(cand['name'])
-            score = jaro_winkler(snii_sorted, cand_sorted)
-            source = cand.get('found_source', 'Unknown')
-            
-            # Log de revisión
-            inst_log = cand.get('institution', 'Unknown')
-            id_short = str(cid).split('/')[-1]
-            print(f"      - [{source}] {cand['name'][:25]}... | {id_short} | Inst: {inst_log[:30]} | Score: {score:.3f}")
-            
-            # Si el ORCID coincide, el score name es secundario (pero lo mantenemos para el log)
-            if cand.get('orcid') == snii_orcid or score >= min_score:
-                cand['score'] = score
-                potential_candidates.append(cand)
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                entry = futures[future]
+                print(f"   [ERROR] Excepción procesando {entry.get('snii_author', '?')}: {e}")
 
-        # --- PASO 4: Juicio del LLM ---
-        if potential_candidates:
-            print(f"   -> {len(potential_candidates)} potenciales. Juicio LLM...")
-            judgment = challenge_openalex_id_with_llm(snii_info, potential_candidates)
-            
-            if judgment and judgment.get('match'):
-                idx = judgment['candidate_index']
-                if idx and 1 <= idx <= len(potential_candidates):
-                    match_data = potential_candidates[idx-1]
-                    print(f"   [OK] VALIDADO: {match_data['openalex_id']} ({match_data['name']})")
-                    entry["matched_openalex_id"] = match_data['openalex_id']
-                    
-                    # BIDIRECCIONALIDAD: Si descubrimos un ORCID en OpenAlex, actualizar el registro
-                    discov_orcid = match_data.get('orcid')
-                    if discov_orcid:
-                        if not snii_orcid:
-                            print(f"   [NEW] ORCID DESCUBIERTO: {discov_orcid}")
-                            entry["matched_orcid"] = discov_orcid
-                        elif snii_orcid != discov_orcid:
-                            print(f"   [WARN] Conflicto ORCID: SNII({snii_orcid}) vs OA({discov_orcid})")
-                    
-                    entry["oa_audit"] = {
-                        "reason": judgment.get('reason'),
-                        "source": match_data.get('found_source'),
-                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-                    }
-                else:
-                    print("   [FAIL] LLM devolvió índice inválido.")
-                    entry["oa_audit"] = {
-                        "reason": "LLM devolvió índice inválido",
-                        "source": "LLM",
-                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-                    }
-            else:
-                reason = judgment.get('reason') if judgment else 'Sin respuesta del LLM'
-                discarded = judgment.get('discarded_candidates', []) if judgment else []
-                print(f"   [FAIL] Descartado. Razón: {reason}")
-                entry["matched_openalex_id"] = False
-                entry["oa_audit"] = {
-                    "reason": reason,
-                    "discarded_candidates": discarded,
-                    "source": "LLM",
-                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-                }
-        else:
-            print(f"   [FAIL] Sin candidatos válidos.")
-            entry["matched_openalex_id"] = False
-            entry["oa_audit"] = {
-                "reason": "No se encontraron candidatos en ninguna fuente",
-                "source": "Search",
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-            }
-            
-        count += 1
-        if count % 5 == 0:
-            temp_path = OUTPUT_PATH + ".tmp"
-            with open(temp_path, 'w', encoding='utf-8') as f:
-                json.dump(results, f, ensure_ascii=False, indent=2)
-            os.replace(temp_path, OUTPUT_PATH)
-
-    with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
-    print(f"\n[DONE] Enriquecimiento bidireccional completado.")
+    # Guardado final
+    _atomic_save(results)
+    print(f"\n[DONE] Enriquecimiento bidireccional completado. {total} registros procesados.")
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Enrich SNII JSON with OpenAlex IDs and ORCID Discovery")
     parser.add_argument("--limit", type=int, default=0, help="Límite de registros (0 = sin límite)")
+    parser.add_argument("--workers", type=int, default=4, help="Número de hilos paralelos")
     args = parser.parse_args()
-    run_openalex_matching(limit=args.limit)
+    run_openalex_matching(limit=args.limit, workers=args.workers)
+
