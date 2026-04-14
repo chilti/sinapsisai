@@ -3,7 +3,12 @@ import os
 import base64
 import httpx
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
+
+# Asegurar que el directorio raíz esté en el path para importar lib.llm_utils
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from lib.llm_utils import get_chat_model
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import HumanMessage
@@ -19,31 +24,11 @@ class RAGOrchestrator:
         """
         Inicializa el orquestador que conecta LLMs, Herramientas, Memoria y Open Interpreter.
         """
-        # Cargar valores por defecto de .env si no se proporcionan
-        user = os.getenv("LLM_USER")
-        password = os.getenv("LLM_PASSWORD")
-        base_url = base_url or os.getenv("LLM_BASE_URL", "http://localhost:1234/v1/")
-        model_name = model_name or os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
+        # Delegamos la creación del LLM y el cliente HTTP a la fábrica centralizada
+        self.llm = get_chat_model(temperature=0)
         
-        # Construimos la URL autenticada (Basic Auth en URL para evitar sobreescritura de OpenAI)
-        auth_url = base_url
-        if user and password:
-             if "://" in base_url:
-                  protocol, rest = base_url.split("://", 1)
-                  auth_url = f"{protocol}://{user}:{password}@{rest}"
-             else:
-                  auth_url = f"http://{user}:{password}@{base_url}"
-
-        # Clientes para saltar verificación SSL (como en el ejemplo del usuario)
-        self.http_client = httpx.AsyncClient(verify=False)
-
-        self.llm = ChatOpenAI(
-            model=model_name,
-            base_url=auth_url, 
-            api_key=api_key,
-            http_async_client=self.http_client,
-            temperature=0
-        )
+        # Guardamos referencia del cliente http (opcional, para limpieza posterior si se requiere)
+        self.http_client = self.llm.http_async_client
         
         # Agregamos hybrid_tools y open_interpreter a las herramientas regulares
         # Verificación defensiva: aseguramos que tools_list sea una lista

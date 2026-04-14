@@ -40,32 +40,11 @@ pyalex.config.email = os.getenv("EMAIL_ADDRESS", "sin_correo@ciencias.unam.mx")
 if os.getenv("OPENALEX_API_KEY"):
     pyalex.config.api_key = os.getenv("OPENALEX_API_KEY")
 
-from langchain_openai import OpenAIEmbeddings
+from lib.llm_utils import get_embeddings_model
 
 # --- Config Embeddings ---
-user = os.getenv("LLM_USER")
-password = os.getenv("LLM_PASSWORD")
-base_url = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1/")
-if not base_url.endswith("/"):
-    base_url += "/"
-model_name = os.getenv("EMBEDDING_MODEL", "text-embedding-nomic-ai-nomic-embed-text-v2-moe")
-auth_url = base_url
-if user and password:
-    if "://" in base_url:
-        proto, rest = base_url.split("://", 1)
-        auth_url = f"{proto}://{user}:{password}@{rest}"
-    else:
-        auth_url = f"http://{user}:{password}@{base_url}"
-
-http_client = httpx.Client(verify=False, timeout=120)
-
-embeddings_model = OpenAIEmbeddings(
-    model=model_name,
-    base_url=auth_url,
-    api_key="lm-studio",
-    http_client=http_client,
-    check_embedding_ctx_length=False
-)
+# Usamos la fábrica centralizada que ya maneja Auth, SSL y Timeouts
+embeddings_model = get_embeddings_model()
 
 def get_embeddings(texts: list, batch_size: int = 5, force_local: bool = False) -> list:
     if not texts: return []

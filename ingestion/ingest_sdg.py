@@ -3,37 +3,20 @@ import json
 import uuid
 import sys
 import argparse
-from openai import OpenAI
 from dotenv import load_dotenv
 
-# Asegurar que reconozca los módulos del proyecto
+# Asegurar que el directorio raíz esté en el path para importar lib.llm_utils
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from lib.llm_utils import get_openai_client, handle_llm_exception
 from database.knowledge_graph import Neo4jGraphStore
 
 load_dotenv()
 
 import httpx
-# --- CONFIGURACIÓN ---
-LLM_USER = os.getenv("LLM_USER")
-LLM_PASSWORD = os.getenv("LLM_PASSWORD")
-BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1/")
+# Cliente compatible con OpenAI para conectar con LM Studio desde la librería central
+client = get_openai_client(async_mode=False)
 MODELO_A_USAR = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
-
-# Construimos la URL autenticada (Basic Auth en URL para evitar problemas de cabeceras)
-AUTH_URL = BASE_URL
-if LLM_USER and LLM_PASSWORD:
-    if "://" in BASE_URL:
-        protocol, rest = BASE_URL.split("://", 1)
-        AUTH_URL = f"{protocol}://{LLM_USER}:{LLM_PASSWORD}@{rest}"
-    else:
-        AUTH_URL = f"http://{LLM_USER}:{LLM_PASSWORD}@{BASE_URL}"
-
-# Cliente HTTP para saltar verificación SSL si es necesario
-http_client = httpx.Client(verify=False)
-
-# Cliente compatible con OpenAI para conectar con LM Studio
-client = OpenAI(base_url=AUTH_URL, api_key="lm-studio", http_client=http_client)
 
 neo4j = Neo4jGraphStore()
 
@@ -85,11 +68,17 @@ def clasificar_paper(titulo, abstract):
         
         respuesta_raw = completion.choices[0].message.content
         respuesta_limpia = limpiar_json(respuesta_raw)
-        
-        datos_ods = json.loads(respuesta_limpia)
-        return datos_ods
+        try:
+            datos_ods = json.loads(respuesta_limpia)
+            return datos_ods
+        except json.JSONDecodeError:
+            print(f"\n⚠️ Error decodificando JSON del LLM para {titulo[:30]}...")
+            print(f"   Respuesta RAW: {respuesta_raw[:200]}...")
+            return None
         
     except Exception as e:
+        # Usar el manejador centralizado para detectar caídas del servidor
+        handle_llm_exception(e)
         print(f"\nError procesando paper: {e}")
         return None
 
@@ -222,20 +211,32 @@ def run(entity_filter=None, academic_filter=None, force=False):
         return
 
     print(f"Procesando {len(papers)} papers...")
+    consecutive_errors = 0
+    max_consecutive = 5
+
     for p in papers:
             doi = p['doi']
             titulo = p['title']
             abstract = p['abstract']
             
-            # TODO: Add logic to flag paper as 'processed_sdg: true' even if it returns null, 
-            # to avoid picking it up again in fetch_unclassified_papers.
-            
-            res = clasificar_paper(titulo, abstract)
-            
-            # Marco documento como procesado garantizado, para no volver a intentarlo
-            query_mark = "MATCH (p:Paper {doi: $doi}) SET p.sdg_processed = true"
-            with neo4j.driver.session() as session:
-                session.run(query_mark, doi=doi)
+            try:
+                res = clasificar_paper(titulo, abstract)
+                consecutive_errors = 0 
+                
+                # Marco documento como procesado garantizado solo si el LLM respondió correctamente
+                query_mark = "MATCH (p:Paper {doi: $doi}) SET p.sdg_processed = true"
+                with neo4j.driver.session() as session:
+                    session.run(query_mark, doi=doi)
+            except ConnectionError as ce:
+                print(f"\n❌ Deteniendo proceso por fallo en LLM: {ce}")
+                break
+            except Exception as e:
+                consecutive_errors += 1
+                res = None
+                print(f"\n⚠️ Error inesperado ({consecutive_errors}/{max_consecutive}): {e}")
+                if consecutive_errors >= max_consecutive:
+                    print("❌ Demasiados errores consecutivos. Abortando.")
+                    break
                 
             if res:
                 assign_sdg_to_neo4j(doi, res)

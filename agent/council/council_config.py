@@ -8,27 +8,14 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 from autogen_ext.models.openai import OpenAIChatCompletionClient
+from lib.llm_utils import LLMConfig
 
 load_dotenv()
 
 # ── Conexión LM Studio ────────────────────────────────────────────────────────
-_user     = os.getenv("LLM_USER")
-_password = os.getenv("LLM_PASSWORD")
-_base_url = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1")
-_model    = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
-
-if not _base_url.endswith("/"):
-    _base_url += "/"
-
-# Basic Auth en la URL si se proporcionó
-if _user and _password:
-    if "://" in _base_url:
-        proto, rest = _base_url.split("://", 1)
-        _auth_url = f"{proto}://{_user}:{_password}@{rest}"
-    else:
-        _auth_url = f"http://{_user}:{_password}@{_base_url}"
-else:
-    _auth_url = _base_url
+# Usamos la configuración centralizada para obtener la URL autenticada
+_auth_url = LLMConfig.get_auth_url()
+_model    = LLMConfig.get_model_name()
 
 
 def make_model_client() -> OpenAIChatCompletionClient:
@@ -36,7 +23,7 @@ def make_model_client() -> OpenAIChatCompletionClient:
     return OpenAIChatCompletionClient(
         model=_model,
         base_url=_auth_url,
-        api_key=os.getenv("LLM_API_KEY", "lm-studio"),
+        api_key=LLMConfig.get_api_key(),
         model_info={
             "vision": False,
             "function_calling": True,
