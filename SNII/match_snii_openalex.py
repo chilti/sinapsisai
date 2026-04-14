@@ -254,7 +254,7 @@ def run_openalex_matching(limit=50, min_score=0.75):
 
         # 5. Juicio del LLM
         if potential_candidates:
-            print(f"   -> {len(potential_candidates)} potenciales. Juicio LLM...")
+            print(f"   -> {len(potential_candidates)} potenciales. Juicio LLM... {potential_candidates}")
             judgment = challenge_openalex_id_with_llm(snii_info, potential_candidates)
             
             if judgment and judgment.get('match'):
