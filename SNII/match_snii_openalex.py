@@ -223,46 +223,53 @@ def run_openalex_matching(limit=50, min_score=0.75):
         raw_candidates = []
         found_source = None
         
-        # 2. Estrategia A: API Local con variantes
+        # 2. Estrategia A: API Local con TODAS las variantes
+        candidates_map = {} # Usar mapa para deduplicar por ID
+        
         for variant in search_variants:
             print(f"   -> Buscando variante local: '{variant}'...")
             local_results = search_authors_local(variant)
-            if local_results:
-                raw_candidates = local_results
-                found_source = "Local"
-                break
+            for cand in local_results:
+                cid = cand.get('id') or cand.get('openalex_id')
+                if cid and cid not in candidates_map:
+                    cand['found_source'] = "Local"
+                    candidates_map[cid] = cand
         
-        # 3. Estrategia B: API Oficial Fallback (si local no devolvió nada)
-        if not raw_candidates:
-            print(f"   [!] Local falló. Intentando API Oficial con variantes...")
+        # 3. Estrategia B: API Oficial Fallback (si la local no devolvió nada tras probar todas)
+        if not candidates_map:
+            print(f"   [!] Local no devolvió resultados. Intentando API Oficial con variantes...")
             for variant in search_variants:
                 print(f"      -> Buscando variante oficial: '{variant}'...")
                 official_results = search_authors_official(variant)
-                if official_results:
-                    raw_candidates = official_results
-                    found_source = "Official"
-                    break
+                for cand in official_results:
+                    cid = cand.get('id') or cand.get('openalex_id')
+                    if cid and cid not in candidates_map:
+                        cand['found_source'] = "Official"
+                        candidates_map[cid] = cand
                     
-        # 4. Filtrar y puntuar candidatos encontrados
+        # 4. Filtrar y puntuar candidatos acumulados
         potential_candidates = []
-        if raw_candidates:
-            for cand in raw_candidates:
-                cand_name = cand.get('name') or cand.get('display_name')
-                # Normalizar si viene de API Local (dict) o de Official (ya normalizado parcialmente)
-                is_recent, recent_inst, active_years = filter_by_recent_affiliation(cand)
-                cand_sorted = get_token_sorted_name(cand_name)
-                score = jaro_winkler(snii_sorted, cand_sorted)
-                
-                print(f"      - [{found_source}] Candidato: {cand_name[:30]}... | Score: {score:.3f}")
-                
-                if score >= min_score:
-                    potential_candidates.append({
-                        "name": cand_name,
-                        "openalex_id": cand.get('id') or cand.get('openalex_id'),
-                        "institution": recent_inst or cand.get('last_known_institution', {}).get('display_name', 'Unknown'),
-                        "years": active_years[-5:] if active_years else [],
-                        "score": score
-                    })
+        for cid, cand in candidates_map.items():
+            cand_name = cand.get('name') or cand.get('display_name')
+            is_recent, recent_inst, active_years = filter_by_recent_affiliation(cand)
+            cand_sorted = get_token_sorted_name(cand_name)
+            score = jaro_winkler(snii_sorted, cand_sorted)
+            source = cand.get('found_source', 'Unknown')
+            
+            # Log detallado solicitado para revisión
+            inst_log = recent_inst or cand.get('last_known_institution', {}).get('display_name', 'Unknown')
+            id_short = str(cid).split('/')[-1]
+            print(f"      - [{source}] {cand_name[:25]}... | {id_short} | Inst: {inst_log[:30]} | Score: {score:.3f}")
+            
+            if score >= min_score:
+                potential_candidates.append({
+                    "name": cand_name,
+                    "openalex_id": cid,
+                    "institution": inst_log,
+                    "years": active_years[-5:] if active_years else [],
+                    "score": score,
+                    "source": source
+                })
 
         # 5. Juicio del LLM
         if potential_candidates:
