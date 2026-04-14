@@ -207,7 +207,7 @@ def obtener_metadatos_de_orcid(orcid_url):
 
 # --- Lógica principal de ingesta SNII ---
 
-def process_and_ingest_snii(json_path, force=False, force_local=False, target_name=None, limit_acads=None, confirmed_only=False):
+def process_and_ingest_snii(json_path, force=False, force_local=False, target_name=None, limit_acads=None, confirmed_only=False, offset=0):
     if not os.path.exists(json_path):
         print(f"No se encontró el archivo: {json_path}")
         return
@@ -232,6 +232,10 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
     else:
         registros_to_process = registros
         print(f"✅ Registros totales para procesar: {len(registros_to_process)} (Priorizando confirmados)")
+
+    if offset > 0:
+        print(f"⏭️ Aplicando offset de {offset} registros.")
+        registros_to_process = registros_to_process[offset:]
 
     count = 0
     for data in registros_to_process:
@@ -428,6 +432,7 @@ if __name__ == "__main__":
     parser.add_argument("--force", action="store_true", help="Forzar")
     parser.add_argument("--local", action="store_true", help="Usar recursos locales (OpenAlex y Embeddings) para evitar límites de API")
     parser.add_argument("--confirmed-only", action="store_true", help="Procesar solo los auditados como CONFIRMED")
+    parser.add_argument("--offset", type=int, default=0, help="Empezar desde el registro N")
     args = parser.parse_args()
     
     try:
@@ -437,7 +442,8 @@ if __name__ == "__main__":
             force_local=args.local, 
             target_name=args.name, 
             limit_acads=args.limit,
-            confirmed_only=args.confirmed_only
+            confirmed_only=args.confirmed_only,
+            offset=args.offset
         )
     finally:
         graph_store.close()
