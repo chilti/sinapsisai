@@ -149,7 +149,7 @@ def search_authors_local(name):
 def search_authors_official(name):
     """Búsqueda por nombre en API Oficial."""
     try:
-        results = pyalex.Authors().search(name).limit(5).get()
+        results = pyalex.Authors().search(name).get(per_page=5)
         return [map_author_data(r, "OfficialName") for r in results]
     except Exception as e:
         print(f"      [WARN] Error en API Oficial: {e}")
