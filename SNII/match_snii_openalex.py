@@ -248,7 +248,7 @@ def process_single_entry(entry, total, results, min_score=0.75):
     
     candidates_map = {}
     
-    # --- PASO 0: Búsqueda por ORCID (Prioridad Máxima) ---
+    # --- PASO 0: Búsqueda por ORCID (Prioridad Máxima / Fast Path) ---
     if snii_orcid:
         print(f"   -> [{snii_name[:20]}] Buscando por ORCID '{snii_orcid}' en Local...")
         orcid_results = search_author_by_orcid_local(snii_orcid)
@@ -256,8 +256,26 @@ def process_single_entry(entry, total, results, min_score=0.75):
             print(f"   -> [{snii_name[:20]}] Buscando por ORCID '{snii_orcid}' en Oficial...")
             orcid_results = search_author_by_orcid_official(snii_orcid)
         
-        for cand in orcid_results:
-            candidates_map[cand['openalex_id']] = cand
+        if orcid_results:
+            # Fast path: ORCID es identificador único, no necesitamos buscar por nombre
+            match_data = orcid_results[0]
+            print(f"   [OK] [{snii_name[:20]}] ORCID MATCH DIRECTO: {match_data['openalex_id']} ({match_data['name']})")
+            entry["matched_openalex_id"] = match_data['openalex_id']
+            
+            discov_orcid = match_data.get('orcid')
+            if discov_orcid and discov_orcid != snii_orcid:
+                print(f"   [WARN] [{snii_name[:20]}] Conflicto ORCID: SNII({snii_orcid}) vs OA({discov_orcid})")
+            
+            entry["oa_audit"] = {
+                "reason": f"Match directo por ORCID {snii_orcid}",
+                "source": match_data.get('found_source'),
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+            }
+            
+            if current % 20 == 0:
+                _atomic_save(results)
+                print(f"   [SAVE] Progreso guardado ({current}/{total})")
+            return current
     
     # --- PASO 1: Búsqueda por Variantes de Nombre (Local) ---
     search_variants = generate_search_variants(snii_name)
