@@ -22,7 +22,7 @@ MODELO_A_USAR = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
 neo4j = Neo4jGraphStore()
 
 # --- CONFIGURACIÓN BATCH ---
-BATCH_SIZE = 10 # Procesamos de 10 en 10 para máxima eficiencia
+BATCH_SIZE = 5 # Procesamos de 5 en 5 para mayor estabilidad
 
 # --- SYSTEM PROMPT BATCH ---
 SYSTEM_PROMPT_BATCH = """
