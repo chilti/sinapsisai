@@ -351,6 +351,60 @@ class Neo4jGraphStore:
             except Exception as e:
                 print(f"Error Neo4j en add_api_paper {params['doi']}: {e}")
 
+    def add_api_papers_batch(self, batch_data: List[Dict[str, Any]]):
+        """
+        Inserta un lote de artículos de APIs vinculando autores y papers en una sola transacción.
+        batch_data: Lista de diccionarios con la estructura requerida por params.
+        """
+        if not batch_data:
+            return
+
+        query = """
+        UNWIND $batch AS item
+        MERGE (a:Author {id: item.system_id})
+        SET a:Academic, a.name = item.academic_name
+        
+        WITH a, item
+        CALL (a, item) {
+            WITH a, item WHERE item.orcid IS NOT NULL
+            SET a.orcid = item.orcid
+        }
+        CALL (a, item) {
+            WITH a, item WHERE item.scopus_id IS NOT NULL
+            SET a.scopus_id = item.scopus_id
+        }
+        CALL (a, item) {
+            WITH a, item WHERE item.audit_verdict IS NOT NULL
+            SET a.audit_verdict = item.audit_verdict,
+                a.audit_reason = item.audit_reason,
+                a.audit_confidence = item.audit_confidence,
+                a.audit_timestamp = item.audit_timestamp
+        }
+        
+        WITH a, item
+        MERGE (p:Paper {id: item.doi})
+        SET p.doi = item.doi, p.title = item.title, p.year = item.year, 
+            p.citations = item.citations, p.raw_metadata = item.raw_metadata
+        
+        MERGE (a)-[:AUTHORED]->(p)
+        
+        WITH p, item
+        FOREACH (funder IN item.funders | 
+            MERGE (f:Funder {name: funder.name})
+            SET f.openalex_id = funder.openalex_id
+            MERGE (p)-[:FUNDED_BY]->(f)
+        )
+        FOREACH (award_id IN item.awards | 
+            MERGE (aw:Award {id: award_id})
+            MERGE (p)-[:HAS_AWARD]->(aw)
+        )
+        """
+        with self.driver.session() as session:
+            try:
+                session.run(query, batch=batch_data)
+            except Exception as e:
+                print(f"Error Neo4j en lote de {len(batch_data)} artículos: {e}")
+
     def mark_paper_as_indexed(self, doi: str, source: str):
         """
         Agrega una etiqueta de indización (ej: IndexedOpenAlex) y una propiedad booleana al artículo.

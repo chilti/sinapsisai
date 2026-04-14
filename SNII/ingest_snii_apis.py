@@ -298,51 +298,60 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
             
         print(f"  -> {len(meta_unificada)} artículos únicos. Enriqueciendo...")
 
+        # --- OPT: Batch processing DOIs ---
+        dois_to_fetch = [doi for doi in meta_unificada.keys() if not doi.startswith('orcid-work:')]
+        non_doi_works = {doi: rec for doi, rec in meta_unificada.items() if doi.startswith('orcid-work:')}
+        
+        # 1. Fetch OpenAlex data in batches if possible
+        openalex_blocked = force_local or getattr(openalex_utils, 'OFFICIAL_API_BLOCKED', False)
+        batch_results = {}
+        if dois_to_fetch:
+            print(f"      📡 Consultando lote de {len(dois_to_fetch)} DOIs...")
+            batch_results = openalex_utils.get_works_batch(dois_to_fetch, local_only=openalex_blocked)
+        
+        neo4j_batch = []
         batch_payloads = []
         batch_texts = []
-        # Determinar si usamos OpenAlex local o oficial
-        openalex_blocked = force_local or getattr(openalex_utils, 'OFFICIAL_API_BLOCKED', False)
-        for doi, record in meta_unificada.items():
-            text_for_embedding = f"Title: {record.get('Title')}\n"
-            paper_exists = False
-            
-            # OpenAlex enrichment (con fallback local)
-            try:
-                _doi_clean = doi if not doi.startswith('orcid-work:') else None
-                
-                # OPT: Si el paper ya existe en Neo4j, saltamos el enriquecimiento API costoso.
-                if _doi_clean and graph_store.check_paper_exists(_doi_clean):
-                    print(f"      📍 Paper {_doi_clean} ya existe en el grafo. Saltando OpenAlex para ahorrar API, pero se agregará a Qdrant si falta.")
-                    paper_exists = True
-                    work = None
-                else:
-                    work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'), local_only=openalex_blocked)
-                    if not openalex_blocked and getattr(openalex_utils, 'OFFICIAL_API_BLOCKED', False):
-                        openalex_blocked = True
 
-                if work:
-                    authorships = work.get('authorships', [])
-                    record['Authors'] = "; ".join([au['author']['display_name'] for au in authorships])
-                    record['Keywords_oa'] = "; ".join([kw['display_name'] for kw in work.get('keywords', [])])
-                    record['Abstract_oa'] = deconstruct_abstract(work.get('abstract_inverted_index'))
-                    record['openalex_url'] = work.get('id')
-                    if record['Abstract_oa']: record['Abstract'] = record['Abstract_oa']
-                    record['Cited_by'] = work.get('cited_by_count', record.get('Cited_by', 0))
-                    record['Source'] += ' + OpenAlex'
-            except Exception:
-                pass
+        # 2. Process combined results (Batch + Single Fallbacks)
+        all_processing_tasks = list(meta_unificada.items())
+        
+        for doi, record in all_processing_tasks:
+            text_for_embedding = f"Title: {record.get('Title')}\n"
+            work = None
             
-            # Procesar Qdrant para todos (existan o no en Neo4j, ya que UUID previene duplicados en Qdrant)
+            # Recuperar trabajo de OpenAlex (de batch o búsqueda individual si falla)
+            _doi_clean = doi if not doi.startswith('orcid-work:') else None
+            _doi_key = _doi_clean.lower() if _doi_clean else None
+            
+            if _doi_key and _doi_key in batch_results:
+                work = batch_results[_doi_key]
+            elif not _doi_clean or _doi_key not in batch_results:
+                # Si no tiene DOI o no se encontró en el lote (posible título), intentar búsqueda individual
+                try:
+                    work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'), local_only=openalex_blocked)
+                except Exception:
+                    work = None
+
+            if work:
+                authorships = work.get('authorships', [])
+                record['Authors'] = "; ".join([au['author']['display_name'] for au in authorships])
+                record['Keywords_oa'] = "; ".join([kw['display_name'] for kw in work.get('keywords', [])])
+                record['Abstract_oa'] = deconstruct_abstract(work.get('abstract_inverted_index'))
+                record['openalex_url'] = work.get('id')
+                if record['Abstract_oa']: record['Abstract'] = record['Abstract_oa']
+                record['Cited_by'] = work.get('cited_by_count', record.get('Cited_by', 0))
+                record['Source'] += ' + OpenAlex'
+
+            # --- Qdrant logic ---
             qdrant_exists = False
             if hasattr(vector_store, 'check_document_exists'):
                 qdrant_exists = vector_store.check_document_exists(doi=doi, title=record.get("Title"))
                 
-            if qdrant_exists:
-                pass # Ya está en Qdrant de una corrida anterior
-            else:
+            if not qdrant_exists:
                 if record.get('Abstract'):
                     text_for_embedding += f"Abstract: {record['Abstract']}"
-                    
+                
                 payload_qdrant = {
                     "academic_name": academic_name,
                     "doi":           doi,
@@ -354,25 +363,46 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
                 }
                 batch_texts.append(text_for_embedding)
                 batch_payloads.append(payload_qdrant)
+
+            # --- Prepare Neo4j Batch Data ---
+            # Determinar system_id (igual que en add_api_paper)
+            if orcid:
+                system_id = orcid
+            else:
+                system_id = academic_name # Simplified for batch
             
-            neo4j_data = {
-                "doi": doi, "title": record.get("Title", "No Title"), "year": record.get("Year", 0),
-                "citations": record.get("Cited_by", 0), "raw_metadata": record
-            }
-            # Pasar auditoría y razonamiento
+            # Funders/Awards extraction
+            funders_list = []
+            awards_list = []
+            grants = work.get("grants", []) if work else []
+            for g in grants:
+                if g.get("funder_display_name"):
+                    funders_list.append({"name": g.get("funder_display_name"), "openalex_id": g.get("funder") or ""})
+                if g.get("award_id"):
+                    awards_list.append(g.get("award_id"))
+
             audit = data.get('audit', {})
-            graph_store.add_api_paper(
-                neo4j_data, 
-                academic_name=academic_name, 
-                orcid=orcid,
-                audit_verdict=audit.get('verdict'),
-                audit_reason=audit.get('reason'),
-                audit_confidence=audit.get('confidence'),
-                audit_timestamp=audit.get('timestamp'),
-                match_reason=data.get('reason'),
-                discarded_candidates=data.get('discarded_candidates'),
-                entity_name=sub_name if sub_name != "SIN INFORMACIÓN" else inst_name
-            )
+            neo4j_batch.append({
+                "system_id": system_id,
+                "academic_name": academic_name,
+                "orcid": orcid,
+                "doi": doi,
+                "title": record.get("Title", "No Title"),
+                "year": int(record.get("Year", 0)) if record.get("Year") else 0,
+                "citations": int(record.get("Cited_by", 0)) if record.get("Cited_by") else 0,
+                "raw_metadata": json.dumps(record, ensure_ascii=False),
+                "audit_verdict": audit.get('verdict'),
+                "audit_reason": audit.get('reason'),
+                "audit_confidence": audit.get('confidence'),
+                "audit_timestamp": audit.get('timestamp'),
+                "funders": funders_list,
+                "awards": list(set(awards_list))
+            })
+
+        # --- Final Batch Ingestion ---
+        if neo4j_batch:
+            print(f"      🗄️ Insertando lote de {len(neo4j_batch)} artículos en Neo4j...")
+            graph_store.add_api_papers_batch(neo4j_batch)
             
         # Afiliación Jerárquica
         graph_store.add_academic_full_affiliation(academic_name, inst_name, sub_name)

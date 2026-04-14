@@ -287,12 +287,12 @@ tab_inst, tab_inv, tab_chat, tab_council, tab_coauthra, tab_about = st.tabs([
 ])
 
 # =======================================================
-# TAB: Consejo Estratégico Virtual (Multi-Agente AutoGen)
+# TAB: Consejo Estratégico Virtual
 # =======================================================
 with tab_council:
     st.header("🏛️ Consejo Estratégico Virtual")
     st.markdown(
-        "Sistema multi-agente que orquesta un comité plural y diverso para diseñar y ejecutar estudios bibliométricos de forma autónoma."
+        "Sistema multi-agente que orquesta un comité plural y diverso para diseñar estudios bibliométricos de forma autónoma."
     )
 
     # ── Inicialización del estado de sesión del Consejo ──
@@ -300,26 +300,19 @@ with tab_council:
         st.session_state.council_phase = "idle"   # idle | running | done
     if "council_log" not in st.session_state:
         st.session_state.council_log = []          # [(agente, texto), ...] — log completo
+    
     # Logs por fase para mostrar resultados persistentes organizados
     for _ph in ["ph1", "ph2", "ph3", "ph4"]:
         if f"council_log_{_ph}" not in st.session_state:
             st.session_state[f"council_log_{_ph}"] = []
-    if "council_script" not in st.session_state:
-        st.session_state.council_script = None
-    if "council_script_path" not in st.session_state:
-        st.session_state.council_script_path = None
-    if "council_report" not in st.session_state:
-        st.session_state.council_report = None
+            
+    if "council_plan" not in st.session_state:
+        st.session_state.council_plan = None
+    if "council_plan_path" not in st.session_state:
+        st.session_state.council_plan_path = None
 
     # ── Panel de control ───────────────────────────────
-    col_mode, col_entity = st.columns([2, 2])
-
-    with col_mode:
-        mode = st.radio(
-            "Modo",
-            ["🆕 Nueva sesión", "♻️ Re-ejecutar script existente"],
-            horizontal=True,
-        )
+    col_entity, col_info = st.columns([2, 2])
 
     with col_entity:
         council_entity = st.selectbox(
@@ -329,169 +322,63 @@ with tab_council:
             key="council_entity_select",
         )
 
-    # ── Configuración según modo ───────────────────────
-    council_objective = ""
-    selected_script_path = None
+    with col_info:
+        st.info("🎯 El Consejo Estratégico diseñará un plan de estudio bibliométrico detallado para la entidad seleccionada.")
 
-    if mode == "🆕 Nueva sesión":
-        council_objective = st.text_area(
-            "Objetivo del estudio",
-            placeholder="Ej: Analiza las redes de colaboración y los temas emergentes del ICN entre 2019-2024...",
-            height=100,
-        )
-    else:
-        # Cargar scripts guardados
-        try:
-            from agent.council.technical_mesa import list_saved_scripts
-            saved_scripts = list_saved_scripts()
-        except Exception:
-            saved_scripts = []
-
-        if saved_scripts:
-            script_options = {s["filename"]: s["path"] for s in saved_scripts}
-            selected_script_name = st.selectbox("Script guardado", list(script_options.keys()))
-            selected_script_path = script_options[selected_script_name]
-            st.caption(f"📁 `{selected_script_path}`")
-        else:
-            st.warning("No hay scripts guardados aún. Ejecuta una Nueva sesión primero.")
-
-    # ── Botón de inicio ────────────────────────────────
-    can_run = (
-        (mode == "🆕 Nueva sesión" and council_objective.strip()) or
-        (mode == "♻️ Re-ejecutar script existente" and selected_script_path)
+    # ── Configuración ──────────────────────────────────
+    council_objective = st.text_area(
+        "Objetivo del estudio bibliométrico",
+        placeholder="Ej: Diseña un estudio para analizar las redes de colaboración y los temas emergentes del ICN entre 2019-2024...",
+        height=100,
     )
 
-    if st.button("▶ Iniciar", disabled=not can_run, type="primary"):
+    # ── Botón de inicio ────────────────────────────────
+    can_run = bool(council_objective.strip())
+
+    if st.button("▶ Diseñar Plan de Estudio", disabled=not can_run, type="primary"):
         st.session_state.council_phase = "running"
         st.session_state.council_log = []
         for _ph in ["ph1", "ph2", "ph3", "ph4"]:
             st.session_state[f"council_log_{_ph}"] = []
-        st.session_state.council_script = None
-        st.session_state.council_report = None
+        st.session_state.council_plan = None
+        st.session_state.council_plan_path = None
         st.rerun()
 
     # ── Ejecución ──────────────────────────────────────
     if st.session_state.council_phase == "running":
         try:
             from agent.council.strategic_council import run_strategic_council
-            from agent.council.technical_mesa import run_technical_mesa, load_execution_script
-            from agent.council.autonomous_executor import run_autonomous_executor
-
-            AGENT_ICONS = {
-                "Rectora": "👩🏾‍🎓",
-                "Investigador_Campo": "🔬",
-                "Bibliometra": "📊",
-                "Politica_Cientifica": "🏛️",
-                "Evaluadora_Ciencia": "⚖️",
-                "Consejera_Social": "🤝",
-                "Estudiante_Posgrado": "🎓",
-                "Arquitecto_de_Datos": "🏗️",
-                "SINAPSIS_Tecnico": "🤖",
-                "SINAPSIS_Ejecutor": "⚙️",
-                "Corrector_Python": "🐍",
-                "Sistema": "💡",
-            }
-
-            # Clasificador de mensajes por fase basado en el agente
-            _PHASE1_AGENTS = {"Rectora", "Investigador_Campo", "Bibliometra",
-                               "Politica_Cientifica", "Evaluadora_Ciencia",
-                               "Consejera_Social", "Estudiante_Posgrado"}
-            _PHASE2_AGENTS = {"Arquitecto_de_Datos", "SINAPSIS_Tecnico"}
-            _PHASE3_AGENTS = {"SINAPSIS_Ejecutor"}
 
             def _on_message(agent_name: str, content: str):
                 if not content or not content.strip():
                     return
                 st.session_state.council_log.append((agent_name, content))
-                # Clasificar en el log de la fase correspondiente
-                if agent_name in _PHASE1_AGENTS and not st.session_state.council_log_ph3:
-                    # Si ya hay datos en ph3/ph4 es porque la Rectora está redactando (Fase 4)
-                    st.session_state.council_log_ph1.append((agent_name, content))
-                elif agent_name in _PHASE2_AGENTS:
-                    st.session_state.council_log_ph2.append((agent_name, content))
-                elif agent_name == "SINAPSIS_Ejecutor":
-                    st.session_state.council_log_ph3.append((agent_name, content))
-                elif agent_name == "Sistema":
-                    # Mensajes del sistema: clasificar según fase activa
-                    if "Fase 4" in content or "TERMINAR_REPORTE" in content:
-                        st.session_state.council_log_ph4.append((agent_name, content))
-                    elif "Fase 3" in content:
-                        st.session_state.council_log_ph3.append((agent_name, content))
-                    elif "Fase 2" in content:
-                        st.session_state.council_log_ph2.append((agent_name, content))
-                    else:
-                        st.session_state.council_log_ph1.append((agent_name, content))
-                else:
-                    # Agentes del consejo durante la fase 4 (redacción)
-                    if st.session_state.council_log_ph3:  # Si ya terminó fase 3
-                        st.session_state.council_log_ph4.append((agent_name, content))
-                    else:
-                        st.session_state.council_log_ph1.append((agent_name, content))
+                # Todo se clasifica en el log de la fase 1 (Diseño)
+                st.session_state.council_log_ph1.append((agent_name, content))
 
-            # ── Fase 1: Solo para nueva sesión ──
-            consensus_plan = ""
-            if mode == "🆕 Nueva sesión":
-                with st.status("🎓 Fase 1: Deliberación del Consejo Estratégico...", expanded=True):
-                    consensus_plan, plan_path = run_strategic_council(
-                        entity=council_entity,
-                        objective=council_objective,
-                        on_message=_on_message,
-                    )
-                    st.session_state.council_plan = consensus_plan
-                    st.session_state.council_plan_path = str(plan_path)
-                    st.success(f"✅ Plan aprobado · guardado en `{plan_path.name}`")
-
-            # ── Fase 2: Solo para nueva sesión ──
-            execution_script = ""
-            if mode == "🆕 Nueva sesión":
-                with st.status("🏗️ Fase 2: Mesa Técnica...", expanded=True):
-                    execution_script, script_path = run_technical_mesa(
-                        entity=council_entity,
-                        consensus_plan=consensus_plan,
-                        on_message=_on_message,
-                    )
-                    st.session_state.council_script = execution_script
-                    st.session_state.council_script_path = str(script_path)
-                    st.success(f"💾 Script guardado: `{script_path.name}`")
-            else:
-                # Cargar script existente
-                execution_script = load_execution_script(selected_script_path)
-                st.session_state.council_script = execution_script
-
-            # ── Fase 3: Recopilación de datos (Ejecutor autónomo) ──
-            with st.status("⚙️ Fase 3: Recopilación de datos autónoma...", expanded=True):
-                report_text, md_path, pdf_path = run_autonomous_executor(
+            # ── Fase 1: Deliberación y Diseño ──
+            with st.status("🎓 Generando Plan de Estudio Bibliométrico...", expanded=True):
+                consensus_plan, plan_path = run_strategic_council(
                     entity=council_entity,
-                    execution_script=execution_script,
+                    objective=council_objective,
                     on_message=_on_message,
                 )
-
-            # ── Fase 4: Redacción del informe por el Consejo ──
-            with st.status("✍️ Fase 4: Redacción del informe por el Consejo...", expanded=False):
-                # La redacción es parte de run_autonomous_executor; aquí consolidamos el resultado
-                st.session_state.council_report = report_text
-                st.session_state.council_pdf_path = str(pdf_path) if pdf_path else None
-                pdf_label = f"PDF: `{pdf_path.name}`" if pdf_path else "PDF no generado"
-                st.success(f"� Informe redactado · {pdf_label}")
-
-            # ── Fase 5: Publicación y descarga ──
-            with st.status("📤 Fase 5: Publicación del informe...", expanded=False):
+                st.session_state.council_plan = consensus_plan
+                st.session_state.council_plan_path = str(plan_path)
                 st.session_state.council_phase = "done"
-                st.success(f"✅ Informe listo · {pdf_label}")
-                st.rerun()
+                st.success(f"✅ Plan de estudio diseñado y guardado en `{plan_path.name}`")
+            
+            st.rerun()
 
-        except ImportError as e:
-            st.error(f"❌ AutoGen no está instalado. Ejecuta: `pip install pyautogen`\n\n{e}")
-            st.session_state.council_phase = "idle"
         except Exception as e:
-            st.error(f"❌ Error durante la ejecución: {e}")
+            st.error(f"❌ Error durante la deliberación: {e}")
             import traceback
             st.code(traceback.format_exc())
             st.session_state.council_phase = "idle"
 
     # ── Vista de resultados por fase (persistente) ───────────────────────────────
     AGENT_ICONS = {
-        "Rectora": "👩�‍🎓",
+        "Rectora": "👩🏾‍🎓",
         "Investigador_Campo": "🔬",
         "Bibliometra": "📊",
         "Politica_Cientifica": "🏛️",
@@ -505,81 +392,39 @@ with tab_council:
         "Sistema": "💡",
     }
 
-    def _render_phase_log(title: str, phase_key: str, expanded: bool = False):
-        """Muestra los mensajes de una fase como un expander persistente."""
-        log = st.session_state.get(phase_key, [])
-        if not log:
-            return
-        with st.expander(title, expanded=expanded):
-            for agent_name, content in log:
+    if st.session_state.council_log_ph1:
+        with st.expander("🏛️ Fase 1 — Deliberación y Diseño del Estudio", expanded=True):
+            for agent_name, content in st.session_state.council_log_ph1:
                 icon = AGENT_ICONS.get(agent_name, "💬")
                 st.markdown(f"**{icon} {agent_name}**")
                 st.markdown(content)
                 st.divider()
 
-    if st.session_state.council_log_ph1:
-        _render_phase_log("🏛️ Fase 1 — Deliberación del Consejo Estratégico", "council_log_ph1")
-    if st.session_state.council_log_ph2:
-        _render_phase_log("🏗️ Fase 2 — Mesa Técnica (Script)", "council_log_ph2")
-    if st.session_state.council_log_ph3:
-        _render_phase_log("⚙️ Fase 3 — Recolección de datos", "council_log_ph3")
-    if st.session_state.council_log_ph4:
-        _render_phase_log("✍️ Fase 4 — Redacción del Informe", "council_log_ph4")
-
-    # ── Informe final + descargas (solo cuando está completo) ────────────────
-    if st.session_state.council_phase == "done" and st.session_state.council_report:
+    # ── Plan final y Descarga ────────────────
+    if st.session_state.council_phase == "done" and st.session_state.council_plan:
         st.markdown("---")
-        st.subheader("📊 Fase 5 — Informe Bibliométrico Final")
+        st.subheader("📑 Plan de Estudio Bibliométrico Generado")
+        st.markdown(st.session_state.council_plan)
 
-        if "council_pdf_path" not in st.session_state:
-            st.session_state.council_pdf_path = None
-
-        col_pdf, col_md, col_reset = st.columns([2, 2, 1])
-        with col_pdf:
-            pdf_path_str = st.session_state.get("council_pdf_path")
-            if pdf_path_str and Path(pdf_path_str).exists():
-                with open(pdf_path_str, "rb") as f:
+        col_plan, col_reset = st.columns([4, 1])
+        with col_plan:
+            plan_path_str = st.session_state.council_plan_path
+            if plan_path_str and os.path.exists(plan_path_str):
+                with open(plan_path_str, "rb") as f:
                     st.download_button(
-                        label="📄 Descargar Informe (PDF)",
+                        label="📥 Descargar Plan de Estudio (Markdown)",
                         data=f.read(),
-                        file_name=Path(pdf_path_str).name,
-                        mime="application/pdf",
+                        file_name=os.path.basename(plan_path_str),
+                        mime="text/markdown",
                         type="primary",
                     )
-            else:
-                st.info("PDF no disponible (instala `weasyprint` o `fpdf2` en el servidor)")
-
-        with col_md:
-            st.download_button(
-                label="📥 Descargar Informe (Markdown)",
-                data=st.session_state.council_report.encode("utf-8"),
-                file_name=f"informe_{council_entity.lower().replace(' ', '_')}.md",
-                mime="text/markdown",
-            )
-
         with col_reset:
-            if st.button("🔄 Nueva Sesión"):
-                keys_to_clear = [
-                    "council_phase", "council_log", "council_script", "council_report",
-                    "council_pdf_path", "council_plan", "council_plan_path",
-                    "council_log_ph1", "council_log_ph2", "council_log_ph3", "council_log_ph4",
-                ]
-                for key in keys_to_clear:
-                    st.session_state.pop(key, None)
+            if st.button("🗑️ Nueva Sesión"):
+                for k in ["council_phase", "council_log", "council_plan", "council_plan_path", "council_log_ph1", "council_log_ph2", "council_log_ph3", "council_log_ph4"]:
+                    if k in st.session_state: del st.session_state[k]
                 st.rerun()
 
-        # Mostrar imágenes generadas
-        from pathlib import Path as _Path
-        output_imgs = sorted(_Path(".").glob("output_*.png")) + sorted(_Path(".").glob("interpreter_output*.png"))
-        if output_imgs:
-            cols = st.columns(min(len(output_imgs), 3))
-            for i, img in enumerate(output_imgs):
-                with cols[i % 3]:
-                    st.image(str(img), caption=img.stem)
 
-        # Informe en expander (único, sin duplicar)
-        with st.expander("📝 Ver Informe Completo", expanded=True):
-            st.markdown(st.session_state.council_report)
 
 
 # =======================================================

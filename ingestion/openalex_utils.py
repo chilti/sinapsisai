@@ -48,9 +48,25 @@ def _clean_title(t: str) -> str:
     if not t: return ""
     return "".join(c for c in str(t).lower() if c.isalnum())
 
-def _backoff_get(client: httpx.Client, url: str, params: dict = None,
+# --- Persistent Client Management ---
+_PERSISTENT_CLIENT = None
+
+def _get_client():
+    global _PERSISTENT_CLIENT
+    if _PERSISTENT_CLIENT is None or _PERSISTENT_CLIENT.is_closed:
+        _PERSISTENT_CLIENT = httpx.Client(verify=False, timeout=20, follow_redirects=True)
+    return _PERSISTENT_CLIENT
+
+def close_client():
+    global _PERSISTENT_CLIENT
+    if _PERSISTENT_CLIENT is not None:
+        _PERSISTENT_CLIENT.close()
+        _PERSISTENT_CLIENT = None
+
+def _backoff_get(url: str, params: dict = None,
                  retries: int = 3, base_wait: float = 1.0) -> httpx.Response | None:
     """GET con reintentos y backoff exponencial en 429/403."""
+    client = _get_client()
     for attempt in range(retries):
         try:
             resp = client.get(url, params=params,
@@ -83,77 +99,75 @@ def get_work(doi: str = None, title: str = None,
     """
     global OFFICIAL_API_BLOCKED
 
-    with httpx.Client(verify=False, timeout=20) as client:
-
-        # ── 1. API LOCAL ─────────────────────────────────────────
-        if doi:
-            clean_doi = doi.replace("https://doi.org/", "").strip()
-            # Nuevo path directo: /works/doi:10.xxx
-            url = f"{LOCAL_BASE}/works/doi:{clean_doi}"
-            resp = _backoff_get(client, url)
-            if resp and resp.status_code == 200:
-                data = resp.json()
-                # Respuesta directa (single work) o lista
-                if isinstance(data, dict) and data.get("id"):
-                    print(f"      ✅ [Local] Encontrado por DOI directo: {clean_doi}")
-                    return data
-                # Fallback con filtro (por si el servidor local usa otro estilo)
-                resp2 = _backoff_get(client, f"{LOCAL_BASE}/works",
-                                     {"filter": f"doi:https://doi.org/{clean_doi}", "per_page": 1})
-                if resp2 and resp2.status_code == 200:
-                    results = resp2.json().get("results", [])
-                    if results:
-                        print(f"      ✅ [Local] Encontrado por filtro DOI: {clean_doi}")
-                        return results[0]
-
-        if title and len(title) > 10:
-            resp = _backoff_get(client, f"{LOCAL_BASE}/works",
-                                {"search": title, "per_page": 1})
-            if resp and resp.status_code == 200:
-                results = resp.json().get("results", [])
+    # ── 1. API LOCAL ─────────────────────────────────────────
+    if doi:
+        clean_doi = doi.replace("https://doi.org/", "").strip()
+        # Nuevo path directo: /works/doi:10.xxx
+        url = f"{LOCAL_BASE}/works/doi:{clean_doi}"
+        resp = _backoff_get(url)
+        if resp and resp.status_code == 200:
+            data = resp.json()
+            # Respuesta directa (single work) o lista
+            if isinstance(data, dict) and data.get("id"):
+                print(f"      ✅ [Local] Encontrado por DOI directo: {clean_doi}")
+                return data
+            # Fallback con filtro (por si el servidor local usa otro estilo)
+            resp2 = _backoff_get(f"{LOCAL_BASE}/works",
+                                 {"filter": f"doi:https://doi.org/{clean_doi}", "per_page": 1})
+            if resp2 and resp2.status_code == 200:
+                results = resp2.json().get("results", [])
                 if results:
-                    ratio = difflib.SequenceMatcher(
-                        None, _clean_title(title), _clean_title(results[0].get("title"))
-                    ).ratio()
-                    if ratio > 0.95:
-                        print(f"      ✅ [Local] Encontrado por título (sim={ratio:.2f}): {title[:60]}")
-                        return results[0]
+                    print(f"      ✅ [Local] Encontrado por filtro DOI: {clean_doi}")
+                    return results[0]
 
-        if local_only:
+    if title and len(title) > 10:
+        resp = _backoff_get(f"{LOCAL_BASE}/works",
+                            {"search": title, "per_page": 1})
+        if resp and resp.status_code == 200:
+            results = resp.json().get("results", [])
+            if results:
+                ratio = difflib.SequenceMatcher(
+                    None, _clean_title(title), _clean_title(results[0].get("title"))
+                ).ratio()
+                if ratio > 0.95:
+                    print(f"      ✅ [Local] Encontrado por título (sim={ratio:.2f}): {title[:60]}")
+                    return results[0]
+
+    if local_only:
+        return None
+
+    # ── 2. API OFICIAL ───────────────────────────────────────
+    if OFFICIAL_API_BLOCKED:
+        return None
+
+    auth = _auth_params()
+
+    if doi:
+        clean_doi = doi.replace("https://doi.org/", "").strip()
+        # Nuevo path directo documentado: GET /works/doi:10.xxx
+        url = f"{OFFICIAL_BASE}/works/doi:{clean_doi}"
+        resp = _backoff_get(url, auth)
+        if resp and resp.status_code == 200:
+            print(f"      ✅ [Oficial] Encontrado por DOI: {clean_doi}")
+            return resp.json()
+        if resp and resp.status_code in (403, 429):
+            OFFICIAL_API_BLOCKED = True
             return None
 
-        # ── 2. API OFICIAL ───────────────────────────────────────
-        if OFFICIAL_API_BLOCKED:
-            return None
-
-        auth = _auth_params()
-
-        if doi:
-            clean_doi = doi.replace("https://doi.org/", "").strip()
-            # Nuevo path directo documentado: GET /works/doi:10.xxx
-            url = f"{OFFICIAL_BASE}/works/doi:{clean_doi}"
-            resp = _backoff_get(client, url, auth)
-            if resp and resp.status_code == 200:
-                print(f"      ✅ [Oficial] Encontrado por DOI: {clean_doi}")
-                return resp.json()
-            if resp and resp.status_code in (403, 429):
-                OFFICIAL_API_BLOCKED = True
-                return None
-
-        if title and len(title) > 10:
-            params = {**auth, "search": title, "per_page": 5}
-            resp = _backoff_get(client, f"{OFFICIAL_BASE}/works", params)
-            if resp and resp.status_code == 200:
-                results = resp.json().get("results", [])
-                if results:
-                    ratio = difflib.SequenceMatcher(
-                        None, _clean_title(title), _clean_title(results[0].get("title"))
-                    ).ratio()
-                    if ratio > 0.95:
-                        print(f"      ✅ [Oficial] Encontrado por título (sim={ratio:.2f}): {title[:60]}")
-                        return results[0]
-            if resp and resp.status_code in (403, 429):
-                OFFICIAL_API_BLOCKED = True
+    if title and len(title) > 10:
+        params = {**auth, "search": title, "per_page": 5}
+        resp = _backoff_get(f"{OFFICIAL_BASE}/works", params)
+        if resp and resp.status_code == 200:
+            results = resp.json().get("results", [])
+            if results:
+                ratio = difflib.SequenceMatcher(
+                    None, _clean_title(title), _clean_title(results[0].get("title"))
+                ).ratio()
+                if ratio > 0.95:
+                    print(f"      ✅ [Oficial] Encontrado por título (sim={ratio:.2f}): {title[:60]}")
+                    return results[0]
+        if resp and resp.status_code in (403, 429):
+            OFFICIAL_API_BLOCKED = True
 
     return None
 
@@ -179,10 +193,9 @@ def get_works_batch(dois: list, email: str = None,
         params = {"filter": f"doi:{doi_filter}", "per_page": len(clean_dois)}
         if extra_params:
             params.update(extra_params)
-        with httpx.Client(verify=False, timeout=30) as client:
-            resp = _backoff_get(client, f"{base_url}/works", params)
-            if resp and resp.status_code == 200:
-                return resp.json().get("results", [])
+        resp = _backoff_get(f"{base_url}/works", params)
+        if resp and resp.status_code == 200:
+            return resp.json().get("results", [])
         return []
 
     # 1. Local
@@ -287,22 +300,21 @@ def get_works_by_ror(ror_id: str, per_page: int = 100, local_only: bool = False)
 
     auth = _auth_params()
     try:
-        with httpx.Client(verify=False, timeout=30) as client:
-            url = f"{OFFICIAL_BASE}/works"
-            # Pagination loop (usando cursor o offset, pero para ROR simple el offset/page suele bastar)
-            page = 1
-            while True:
-                p = {**auth, "filter": f"institutions.ror:{ror_id}", "per_page": per_page, "page": page}
-                r = _backoff_get(client, url, p)
-                if not r or r.status_code != 200:
-                    if r and r.status_code in (403, 429):
-                        OFFICIAL_API_BLOCKED = True
-                    break
-                data = r.json()
-                results = data.get("results", [])
-                if not results: break
-                yield results
-                if len(results) < per_page: break
-                page += 1
+        url = f"{OFFICIAL_BASE}/works"
+        # Pagination loop (usando cursor o offset, pero para ROR simple el offset/page suele bastar)
+        page = 1
+        while True:
+            p = {**auth, "filter": f"institutions.ror:{ror_id}", "per_page": per_page, "page": page}
+            r = _backoff_get(url, p)
+            if not r or r.status_code != 200:
+                if r and r.status_code in (403, 429):
+                    OFFICIAL_API_BLOCKED = True
+                break
+            data = r.json()
+            results = data.get("results", [])
+            if not results: break
+            yield results
+            if len(results) < per_page: break
+            page += 1
     except Exception as e:
         print(f"      ❌ [Oficial] Error recuperando ROR {ror_id_clean}: {e}")
