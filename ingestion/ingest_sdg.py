@@ -12,13 +12,28 @@ from database.knowledge_graph import Neo4jGraphStore
 
 load_dotenv()
 
+import httpx
 # --- CONFIGURACIÓN ---
-URL_LM_STUDIO = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1/")
+LLM_USER = os.getenv("LLM_USER")
+LLM_PASSWORD = os.getenv("LLM_PASSWORD")
+BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1/")
 MODELO_A_USAR = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
 
+# Construimos la URL autenticada (Basic Auth en URL para evitar problemas de cabeceras)
+AUTH_URL = BASE_URL
+if LLM_USER and LLM_PASSWORD:
+    if "://" in BASE_URL:
+        protocol, rest = BASE_URL.split("://", 1)
+        AUTH_URL = f"{protocol}://{LLM_USER}:{LLM_PASSWORD}@{rest}"
+    else:
+        AUTH_URL = f"http://{LLM_USER}:{LLM_PASSWORD}@{BASE_URL}"
+
+# Cliente HTTP para saltar verificación SSL si es necesario
+http_client = httpx.Client(verify=False)
+
 # Cliente compatible con OpenAI para conectar con LM Studio
-client = OpenAI(base_url=URL_LM_STUDIO, api_key="lm-studio")
+client = OpenAI(base_url=AUTH_URL, api_key="lm-studio", http_client=http_client)
 
 neo4j = Neo4jGraphStore()
 
