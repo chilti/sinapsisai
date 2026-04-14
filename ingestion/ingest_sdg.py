@@ -3,6 +3,7 @@ import json
 import uuid
 import sys
 import argparse
+import time
 from dotenv import load_dotenv
 
 # Asegurar que el directorio raíz esté en el path para importar lib.llm_utils
@@ -81,6 +82,30 @@ def clasificar_paper(titulo, abstract):
         handle_llm_exception(e)
         print(f"\nError procesando paper: {e}")
         return None
+
+def esperar_recuperacion_llm(max_intentos=5, delay_segundos=300):
+    """
+    Entra en un bucle de espera activa si el servidor LLM falla.
+    Retorna True si el servidor se recupera, False en caso contrario.
+    """
+    print(f"\n[!] INICIANDO MODO RECUPERACION. El servidor LLM no responde o el modelo crasheo.")
+    print(f"    Se realizaran hasta {max_intentos} intentos de reconexion cada {delay_segundos//60} minutos.")
+    
+    for i in range(1, max_intentos + 1):
+        print(f"\n[Intento {i}/{max_intentos}] Esperando {delay_segundos//60} minutos...")
+        time.sleep(delay_segundos)
+        
+        try:
+            print(f"    Verificando estado del servidor...")
+            # Un simple 'ping' listando modelos para ver si el server esta vivo
+            client.models.list()
+            print(f"    [OK] El servidor LLM ha respondido. Reanudando proceso...")
+            return True
+        except Exception as e:
+            print(f"    [Error] El servidor sigue caido: {e}")
+            
+    print("\n[CRITICAL] No se pudo recuperar la conexion con el LLM tras varios intentos.")
+    return False
 
 def fetch_unclassified_papers(entity_filter=None, academic_filter=None, force=False):
     """Obtiene los papers de Neo4j que aún no tienen clasificación SDG."""
@@ -228,8 +253,17 @@ def run(entity_filter=None, academic_filter=None, force=False):
                 with neo4j.driver.session() as session:
                     session.run(query_mark, doi=doi)
             except ConnectionError as ce:
-                print(f"\n❌ Deteniendo proceso por fallo en LLM: {ce}")
-                break
+                print(f"\n❌ Fallo critico en LLM: {ce}")
+                if esperar_recuperacion_llm():
+                    # Si se recupero, volvemos a intentar el MISMO paper
+                    try:
+                        res = clasificar_paper(titulo, abstract)
+                    except Exception as e2:
+                        print(f"Error tras recuperacion: {e2}")
+                        res = None
+                else:
+                    print("❌ Finalizando proceso por falta de respuesta del LLM.")
+                    break
             except Exception as e:
                 consecutive_errors += 1
                 res = None
