@@ -920,6 +920,53 @@ def render_investigador_view(entity_name, institution_name=None):
             
     
 
+    # ── WordCloud de Keywords ─────────────────────────────────────────────────────
+    df_kw_inv = get_cached_data("keywords_investigador.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
+    if df_kw_inv is not None and not df_kw_inv.empty:
+        st.markdown("---")
+        st.subheader("🔑 Vocabulario Científico")
+        _render_keywords_section(df_kw_inv, "academic_name", selected_inv,
+                                 title="", key_suffix=f"inv_{selected_inv}")
+
+
+
+    # 3.5 Sunburst Temático
+    if df_topics is not None:
+        conc_data = df_topics[df_topics['academic_name'] == selected_inv]
+        if not conc_data.empty:
+            st.markdown("---")
+            st.subheader("Concentración Temática (Sunburst)")
+            top_topics_inv = conc_data.sort_values('value', ascending=False).head(100)
+            
+            fig_sun_inv = px.sunburst(
+                top_topics_inv, 
+                path=['domain', 'field', 'subfield', 'topic'], 
+                values='value',
+                color='value', 
+                color_continuous_scale='Blues',
+            )
+            fig_sun_inv.update_layout(margin=dict(t=10, l=0, r=0, b=10), height=600)
+            st.plotly_chart(fig_sun_inv, width="stretch")
+
+            # --- Evolución Histórica Investigador ---
+            df_evol_inv = get_cached_data("thematic_evolution_investigador.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
+            _render_thematic_evolution(df_evol_inv, 'academic_name', selected_inv, key_suffix=f"inv_{selected_inv}")
+
+
+
+        st.markdown("---")
+        st.header("🌍 Panorama General de Sostenibilidad (ODS)")
+        st.write("Distribución de la producción científica en base a Objetivos de Desarrollo Sostenible (Asignados por LLM).")
+        html_code = viz_ods.render_sdg_matrix(df_prof, col_ods='ODS_ID')
+        st.markdown(html_code, unsafe_allow_html=True)
+        
+
+
+        st.markdown("---")
+        mostrar_banners_destacados(df_prof)
+        
+
+
     # 1. KPIs del Investigador
     st.markdown("---")
     
@@ -993,6 +1040,7 @@ def render_investigador_view(entity_name, institution_name=None):
         """)
 
 
+
     colizq, colder = st.columns([1, 1])
 
     
@@ -1023,121 +1071,8 @@ def render_investigador_view(entity_name, institution_name=None):
         else:
             st.info("No hay caché temático.")
 
-    # 3.5 Sunburst Temático
-    if df_topics is not None:
-        conc_data = df_topics[df_topics['academic_name'] == selected_inv]
-        if not conc_data.empty:
-            st.markdown("---")
-            st.subheader("Concentración Temática (Sunburst)")
-            top_topics_inv = conc_data.sort_values('value', ascending=False).head(100)
-            
-            fig_sun_inv = px.sunburst(
-                top_topics_inv, 
-                path=['domain', 'field', 'subfield', 'topic'], 
-                values='value',
-                color='value', 
-                color_continuous_scale='Blues',
-            )
-            fig_sun_inv.update_layout(margin=dict(t=10, l=0, r=0, b=10), height=600)
-            st.plotly_chart(fig_sun_inv, width="stretch")
 
-            # --- Evolución Histórica Investigador ---
-            df_evol_inv = get_cached_data("thematic_evolution_investigador.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
-            _render_thematic_evolution(df_evol_inv, 'academic_name', selected_inv, key_suffix=f"inv_{selected_inv}")
 
-    # ── WordCloud de Keywords ─────────────────────────────────────────────────────
-    df_kw_inv = get_cached_data("keywords_investigador.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
-    if df_kw_inv is not None and not df_kw_inv.empty:
-        st.markdown("---")
-        st.subheader("🔑 Vocabulario Científico")
-        _render_keywords_section(df_kw_inv, "academic_name", selected_inv,
-                                 title="", key_suffix=f"inv_{selected_inv}")
-
-    # ── Colaboración Internacional (Choropleth) ───────────────────────────────────
-    df_profesores_papers = load_cached_data("papers_profesor.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
-    if df_profesores_papers is not None and not df_profesores_papers.empty:
-        df_prof = df_profesores_papers
-
-        if not df_prof.empty and "countries" in df_prof.columns:
-            st.markdown("---")
-            st.subheader("🌍 Colaboración Internacional")
-            # Sparkline de citas
-            _render_velocity_sparkline(df_prof, 'academic_name', selected_inv,
-                                       key_suffix=f"inv_{selected_inv}")
-            _render_choropleth_collab(df_prof, 'academic_name', selected_inv,
-                                      title="Países colaboradores",
-                                      key_suffix=f"inv_{selected_inv}")
-
-        # ── Indexación y Visibilidad ──────────────────────────────────────────────
-        vis_cols_inv = ['pct_pubmed','pct_doaj_indexed','pct_core_journal',
-                        'pct_repository','pct_english','pct_cc_by']
-        has_vis_inv = any(inv_data.get(c, 0) != 0 for c in vis_cols_inv)
-        if has_vis_inv:
-            st.markdown("---")
-            with st.expander("🔭 Visibilidad e Indexación", expanded=False):
-                col_r, col_t = st.columns([1, 1])
-                with col_r:
-                    _render_radar_visibilidad(inv_data, title="Perfil de Visibilidad",
-                                             key_suffix=f"inv_{selected_inv}")
-                with col_t:
-                    st.markdown("")
-                    st.markdown(f"""
-| Indicador | Valor |
-|---|---|
-| % en PubMed | `{inv_data.get('pct_pubmed',0):.1f}%` |
-| % en DOAJ | `{inv_data.get('pct_doaj_indexed',0):.1f}%` |
-| % en revista Core | `{inv_data.get('pct_core_journal',0):.1f}%` |
-| % en repositorio | `{inv_data.get('pct_repository',0):.1f}%` |
-| % en inglés | `{inv_data.get('pct_english',0):.1f}%` |
-| % con licencia CC-BY | `{inv_data.get('pct_cc_by',0):.1f}%` |
-                    """.strip())
-
-        st.markdown("---")
-        mostrar_banners_destacados(df_prof)
-        
-        st.markdown("---")
-        st.header("🌍 Panorama General de Sostenibilidad (ODS)")
-        st.write("Distribución de la producción científica en base a Objetivos de Desarrollo Sostenible (Asignados por LLM).")
-        html_code = viz_ods.render_sdg_matrix(df_prof, col_ods='ODS_ID')
-        st.markdown(html_code, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        st.subheader("📜 Lista Completa de Publicaciones")
-        
-        col_fil_prof1, col_fil_prof2 = st.columns(2)
-        with col_fil_prof1:
-            years_prof = np.flip(np.unique(df_prof['year'].dropna()))
-            s_year_prof = st.selectbox("Filtrar por año:", options=["Todos"] + list(years_prof), key="prof_year")
-        with col_fil_prof2:
-            ods_options_prof = sorted([str(ods) for ods in df_prof['ODS_Nombre'].dropna().unique() if str(ods).lower() != "null" and "x" not in str(ods).lower()])
-            s_ods_prof = st.selectbox("Filtrar por ODS:", options=["Todos"] + ods_options_prof, key="prof_ods")
-        
-        df_display_prof = df_prof.copy()
-        if s_year_prof != "Todos":
-            df_display_prof = df_display_prof[df_display_prof['year'] == s_year_prof]
-        if s_ods_prof != "Todos":
-            df_display_prof = df_display_prof[df_display_prof['ODS_Nombre'] == s_ods_prof]
-            
-        if "openalex_url" not in df_display_prof.columns:
-            df_display_prof["openalex_url"] = None
-            
-        df_display_prof = df_display_prof[[
-            "year", "Title", "Source", "citations", "DOI", "openalex_url", "ODS_Nombre"
-        ]].rename(columns={
-            "year": "Año",
-            "Title": "Título",
-            "Source": "Revista/Publicación",
-            "citations": "Citas",
-            "DOI": "DOI",
-            "openalex_url": "OpenAlex",
-            "ODS_Nombre": "ODS"
-        }).sort_values(by="Año", ascending=False)
-        
-        st.dataframe(df_display_prof, width="stretch", hide_index=True, column_config={
-            "DOI": st.column_config.LinkColumn("Enlace DOI", display_text="Ver Link"),
-            "OpenAlex": st.column_config.LinkColumn("OpenAlex", display_text="Ver en OpenAlex")
-        })
-    
     # 5. Mapa UMAP
     st.markdown("---")
     st.subheader("Mapa de Desempeño Institucional (UMAP)")
@@ -1184,6 +1119,90 @@ def render_investigador_view(entity_name, institution_name=None):
     else:
         st.info("El mapa UMAP no está disponible o faltan datos base calculados.")
 
+
+
+    # ── Colaboración Internacional (Choropleth) ───────────────────────────────────
+    df_profesores_papers = load_cached_data("papers_profesor.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
+    if df_profesores_papers is not None and not df_profesores_papers.empty:
+        df_prof = df_profesores_papers
+
+        if not df_prof.empty and "countries" in df_prof.columns:
+            st.markdown("---")
+            st.subheader("🌍 Colaboración Internacional")
+            # Sparkline de citas
+            _render_velocity_sparkline(df_prof, 'academic_name', selected_inv,
+                                       key_suffix=f"inv_{selected_inv}")
+            _render_choropleth_collab(df_prof, 'academic_name', selected_inv,
+                                      title="Países colaboradores",
+                                      key_suffix=f"inv_{selected_inv}")
+
+
+
+        # ── Indexación y Visibilidad ──────────────────────────────────────────────
+        vis_cols_inv = ['pct_pubmed','pct_doaj_indexed','pct_core_journal',
+                        'pct_repository','pct_english','pct_cc_by']
+        has_vis_inv = any(inv_data.get(c, 0) != 0 for c in vis_cols_inv)
+        if has_vis_inv:
+            st.markdown("---")
+            with st.expander("🔭 Visibilidad e Indexación", expanded=False):
+                col_r, col_t = st.columns([1, 1])
+                with col_r:
+                    _render_radar_visibilidad(inv_data, title="Perfil de Visibilidad",
+                                             key_suffix=f"inv_{selected_inv}")
+                with col_t:
+                    st.markdown("")
+                    st.markdown(f"""
+| Indicador | Valor |
+|---|---|
+| % en PubMed | `{inv_data.get('pct_pubmed',0):.1f}%` |
+| % en DOAJ | `{inv_data.get('pct_doaj_indexed',0):.1f}%` |
+| % en revista Core | `{inv_data.get('pct_core_journal',0):.1f}%` |
+| % en repositorio | `{inv_data.get('pct_repository',0):.1f}%` |
+| % en inglés | `{inv_data.get('pct_english',0):.1f}%` |
+| % con licencia CC-BY | `{inv_data.get('pct_cc_by',0):.1f}%` |
+                    """.strip())
+
+
+
+        st.markdown("---")
+        st.subheader("📜 Lista Completa de Publicaciones")
+        
+        col_fil_prof1, col_fil_prof2 = st.columns(2)
+        with col_fil_prof1:
+            years_prof = np.flip(np.unique(df_prof['year'].dropna()))
+            s_year_prof = st.selectbox("Filtrar por año:", options=["Todos"] + list(years_prof), key="prof_year")
+        with col_fil_prof2:
+            ods_options_prof = sorted([str(ods) for ods in df_prof['ODS_Nombre'].dropna().unique() if str(ods).lower() != "null" and "x" not in str(ods).lower()])
+            s_ods_prof = st.selectbox("Filtrar por ODS:", options=["Todos"] + ods_options_prof, key="prof_ods")
+        
+        df_display_prof = df_prof.copy()
+        if s_year_prof != "Todos":
+            df_display_prof = df_display_prof[df_display_prof['year'] == s_year_prof]
+        if s_ods_prof != "Todos":
+            df_display_prof = df_display_prof[df_display_prof['ODS_Nombre'] == s_ods_prof]
+            
+        if "openalex_url" not in df_display_prof.columns:
+            df_display_prof["openalex_url"] = None
+            
+        df_display_prof = df_display_prof[[
+            "year", "Title", "Source", "citations", "DOI", "openalex_url", "ODS_Nombre"
+        ]].rename(columns={
+            "year": "Año",
+            "Title": "Título",
+            "Source": "Revista/Publicación",
+            "citations": "Citas",
+            "DOI": "DOI",
+            "openalex_url": "OpenAlex",
+            "ODS_Nombre": "ODS"
+        }).sort_values(by="Año", ascending=False)
+        
+        st.dataframe(df_display_prof, width="stretch", hide_index=True, column_config={
+            "DOI": st.column_config.LinkColumn("Enlace DOI", display_text="Ver Link"),
+            "OpenAlex": st.column_config.LinkColumn("OpenAlex", display_text="Ver en OpenAlex")
+        })
+    
+
+
     # ── Reporte Bibliométrico IA ──────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("📄 Reporte Bibliométrico con Inteligencia Artificial")
@@ -1212,3 +1231,5 @@ def render_investigador_view(entity_name, institution_name=None):
                 import subprocess
                 subprocess.run([sys.executable, "report_generator.py", "--type", "inv", "--name", selected_inv, "--entity", entity_name])
             st.rerun()
+
+

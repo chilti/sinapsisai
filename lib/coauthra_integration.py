@@ -17,7 +17,7 @@ def render_coauthra(author_id=None, height=900):
         <div style="background-color: #f8f9fa; padding: 15px; border-radius: 10px; border-left: 5px solid #002B5C; margin-bottom: 20px;">
             <h4 style="margin: 0; color: #002B5C;">🕸️ Red de Colaboración Científica</h4>
             <p style="margin: 10px 0; font-size: 14px; color: #475569;">
-                Esta visualización interactiva es proporcionada por la tecnología <b>CoAuthra (ScholarNet)</b>. 
+                Esta visualización interactiva es proporcionada por <b>CoAuthra</b>.
                 Sinapsis AI integra esta herramienta para potenciar el análisis de grafos de colaboración en la UNAM.
             </p>
             <p style="margin: 0; font-size: 12px; color: #64748b;">
