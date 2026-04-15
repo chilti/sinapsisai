@@ -827,6 +827,14 @@ def render_investigador_view(entity_name, institution_name=None):
     df_inv_ann = get_cached_data("investigador_annual.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
     df_topics  = get_cached_data("topics_investigador.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
     df_umap    = get_cached_data("umap_investigadores.parquet", institution_name=institution_name) # UMAP si se mantiene global o por inst
+    
+    # Cargar papers globales del investigador y preinicializar df_prof
+    df_profesores_papers = load_cached_data("papers_profesor.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
+    if df_profesores_papers is not None and not df_profesores_papers.empty:
+        df_prof = df_profesores_papers
+    else:
+        import pandas as pd
+        df_prof = pd.DataFrame()
 
     # 4. Enlaces de Perfil Externo
     if df_inv_tot is None or df_inv_tot.empty:
@@ -1122,32 +1130,27 @@ def render_investigador_view(entity_name, institution_name=None):
 
 
     # ── Colaboración Internacional (Choropleth) ───────────────────────────────────
-    df_profesores_papers = load_cached_data("papers_profesor.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
-    if df_profesores_papers is not None and not df_profesores_papers.empty:
-        df_prof = df_profesores_papers
+    if not df_prof.empty and "countries" in df_prof.columns:
+        st.markdown("---")
+        st.subheader("🌍 Colaboración Internacional")
+        # Sparkline de citas
+        _render_velocity_sparkline(df_prof, 'academic_name', selected_inv,
+                                   key_suffix=f"inv_{selected_inv}")
+        _render_choropleth_collab(df_prof, 'academic_name', selected_inv,
+                                  title="Países colaboradores",
+                                  key_suffix=f"inv_{selected_inv}")
 
-        if not df_prof.empty and "countries" in df_prof.columns:
-            st.markdown("---")
-            st.subheader("🌍 Colaboración Internacional")
-            # Sparkline de citas
-            _render_velocity_sparkline(df_prof, 'academic_name', selected_inv,
-                                       key_suffix=f"inv_{selected_inv}")
-            _render_choropleth_collab(df_prof, 'academic_name', selected_inv,
-                                      title="Países colaboradores",
-                                      key_suffix=f"inv_{selected_inv}")
+    # ── Indexación y Visibilidad ──────────────────────────────────────────────
+    vis_cols_inv = ['pct_pubmed','pct_doaj_indexed','pct_core_journal',
+                    'pct_repository','pct_english','pct_cc_by']
+    has_vis_inv = any(inv_data.get(c, 0) != 0 for c in vis_cols_inv)
+    if has_vis_inv:
+        st.markdown("---")
+        with st.expander("🔭 Visibilidad e Indexación", expanded=False):
+            col_r, col_t = st.columns([1, 1])
+            with col_r:
+                _render_radar_visibilidad(inv_data, title="Perfil de Visibilidad",
 
-
-
-        # ── Indexación y Visibilidad ──────────────────────────────────────────────
-        vis_cols_inv = ['pct_pubmed','pct_doaj_indexed','pct_core_journal',
-                        'pct_repository','pct_english','pct_cc_by']
-        has_vis_inv = any(inv_data.get(c, 0) != 0 for c in vis_cols_inv)
-        if has_vis_inv:
-            st.markdown("---")
-            with st.expander("🔭 Visibilidad e Indexación", expanded=False):
-                col_r, col_t = st.columns([1, 1])
-                with col_r:
-                    _render_radar_visibilidad(inv_data, title="Perfil de Visibilidad",
                                              key_suffix=f"inv_{selected_inv}")
                 with col_t:
                     st.markdown("")
