@@ -263,7 +263,7 @@ def obtener_metadatos_de_orcid(orcid_url):
 
 # --- Lógica principal de ingesta ---
 
-def process_and_ingest_academics(json_path, force=False, force_local=False, target_name=None, is_snii=False, limit_acads=None):
+def process_and_ingest_academics(json_path, force=False, force_local=False, target_name=None, is_snii=False, limit_acads=None, override_entity=None, institution_name="UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)"):
     if not os.path.exists(json_path):
         print(f"No se encontró el archivo: {json_path}")
         return
@@ -282,19 +282,19 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
             
         count += 1
         original_name = data.get('original_name', academic_name)
-        entity_name = data.get('entity', 'UNAM')
+        entity_name = override_entity or data.get('entity', 'UNAM')
         
         # 1. Checar flag previas
         if data.get('already_in_db', False) and not force:
             mapped_name = data.get('mapped_name', academic_name)
             print(f"\n[{academic_name}] Ya existe como '{mapped_name}' (cached en excel). Saltar recoleccion.")
-            graph_store.add_academic_full_affiliation(mapped_name, "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", entity_name)
+            graph_store.add_academic_full_affiliation(mapped_name, institution_name, entity_name)
             continue
             
         # 2. Checar base de datos directo (por si se interrumpió y se vuelve a correr)
         if hasattr(graph_store, 'check_academic_exists') and graph_store.check_academic_exists(academic_name) and not force:
             print(f"\n[{academic_name}] Ya existe en Neo4j. Saltando recopilación API y agregando afiliación a '{entity_name}'.")
-            graph_store.add_academic_full_affiliation(academic_name, "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", entity_name)
+            graph_store.add_academic_full_affiliation(academic_name, institution_name, entity_name)
             if is_snii:
                 graph_store.set_academic_snii(academic_name, True)
             continue
@@ -518,7 +518,7 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
             time.sleep(0.05)
             
         # Afiliación del académico a su Entidad e Institución
-        graph_store.add_academic_full_affiliation(academic_name, "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", entity_name)
+        graph_store.add_academic_full_affiliation(academic_name, institution_name, entity_name)
             
         # Ingesta en Qdrant por lotes de este académico para no saturar al LLM
         if batch_texts:
@@ -548,6 +548,8 @@ if __name__ == "__main__":
     parser.add_argument("--name", type=str, help="Filtrar por un académico específico")
     parser.add_argument("--force", action="store_true", help="Re-ingestar académicos existentes")
     parser.add_argument("--local", action="store_true", help="Usar SDK nativa de lmstudio para embeddings")
+    parser.add_argument("--entity", type=str, help="Nombre de la entidad/subdependencia para forzar en el grafo")
+    parser.add_argument("--institution", type=str, default="UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", help="Nombre de la institución para forzar en el grafo")
     
     args = parser.parse_args()
     
@@ -594,7 +596,9 @@ if __name__ == "__main__":
                 force_local=args.local, 
                 target_name=args.name,
                 is_snii=is_snii_file,
-                limit_acads=args.limit_acads
+                limit_acads=args.limit_acads,
+                override_entity=args.entity,
+                institution_name=args.institution
             )
             
     except KeyboardInterrupt:
