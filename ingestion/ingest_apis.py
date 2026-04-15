@@ -284,6 +284,17 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
         original_name = data.get('original_name', academic_name)
         entity_name = override_entity or data.get('entity', 'UNAM')
         
+        # Lógica de Integridad SNII
+        node_exists = hasattr(graph_store, 'check_academic_node_exists') and graph_store.check_academic_node_exists(academic_name)
+        
+        if is_snii:
+            print(f"🧬 [{academic_name}] Marcando/confirmando como SNII: true...")
+            graph_store.set_academic_snii(academic_name, True)
+        elif not node_exists:
+            print(f"📝 [{academic_name}] Nuevo ingreso no-SNII. Marcando explícitamente SNII: false...")
+            graph_store.set_academic_snii(academic_name, False)
+        # Si NO es SNII pero YA EXISTE, no tocamos la propiedad (preservar estatus previo)
+
         # 1. Checar flag previas
         if data.get('already_in_db', False) and not force:
             mapped_name = data.get('mapped_name', academic_name)
@@ -293,15 +304,9 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
             
         # 2. Checar base de datos directo (por si se interrumpió y se vuelve a correr)
         if hasattr(graph_store, 'check_academic_exists') and graph_store.check_academic_exists(academic_name) and not force:
-            print(f"\n[{academic_name}] Ya existe en Neo4j. Saltando recopilación API y agregando afiliación a '{entity_name}'.")
+            print(f"\n[{academic_name}] Ya existe en Neo4j con papers. Saltando recopilación API y agregando afiliación a '{entity_name}'.")
             graph_store.add_academic_full_affiliation(academic_name, institution_name, entity_name)
-            if is_snii:
-                graph_store.set_academic_snii(academic_name, True)
             continue
-
-        if is_snii:
-            print(f"🧬 [{academic_name}] Marcando como SNII...")
-            graph_store.set_academic_snii(academic_name, True)
 
         scopus_id = data.get('scopus', [])
         orcid = data.get('orcid', '')

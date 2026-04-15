@@ -555,6 +555,21 @@ class Neo4jGraphStore:
             except Exception as e:
                 return False
 
+    def check_academic_node_exists(self, academic_name: str) -> bool:
+        """
+        Verifica si un académico existe como nodo en Neo4j,
+        independientemente de si tiene papers vinculados o no.
+        """
+        query = "MATCH (a:Author {id: $academic_name}) RETURN count(a) > 0 as exists"
+        with self.driver.session() as session:
+            try:
+                result = session.run(query, academic_name=academic_name)
+                record = result.single()
+                return record["exists"] if record else False
+            except Exception as e:
+                return False
+
+
     def set_academic_snii(self, academic_name: str, is_snii: bool = True):
         """
         Establece o remueve la etiqueta SNII a un académico.
