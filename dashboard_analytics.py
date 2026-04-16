@@ -8,6 +8,7 @@ import sys
 import json
 import numpy as np
 from lib import viz_ods  # Nuevo módulo para pintar la matriz de ODS
+from lib.coauthra_integration import render_coauthra
 
 try:
     from lib import wordcloud_helper as _wc_helper
@@ -853,36 +854,26 @@ def render_investigador_view(entity_name, institution_name=None):
     st.markdown("---")
     
     # --- Enlaces y Acciones Principales ---
+    # --- Enlaces de Perfiles Externos ---
     if inv_siia or inv_orcid or inv_scopus:
-        col_links1, col_links2 = st.columns([3, 1])
-        with col_links1:
-            if inv_siia and "http" in str(inv_siia) and "No encont" not in str(inv_siia):
-                st.markdown(f"- **SIIA-UNAM:** [Ver Perfil de {selected_inv}]({inv_siia})")
-                if "unam.mx" in str(inv_siia):
-                    st.caption("ℹ️ Extraímos ORCID y Scopus IDs de la página web del SIIA.")
-            
-            if inv_orcid:
-                orcid_link = inv_orcid if "http" in inv_orcid else f"https://orcid.org/{inv_orcid}"
-                st.markdown(f"- **ORCID:** [Ver Perfil]({orcid_link})")
-            
-            if inv_scopus:
-                import re
-                all_ids = re.findall(r'\d+', str(inv_scopus))
-                if all_ids:
-                    for sid in all_ids:
-                        scopus_link = f"https://www.scopus.com/authid/detail.uri?authorId={sid}"
-                        st.markdown(f"- **Scopus ({sid}):** [Ver Perfil]({scopus_link})")
-                elif "http" in str(inv_scopus):
-                    st.markdown(f"- **Scopus:** [Ver Perfil]({inv_scopus})")
+        if inv_siia and "http" in str(inv_siia) and "No encont" not in str(inv_siia):
+            st.markdown(f"- **SIIA-UNAM:** [Ver Perfil de {selected_inv}]({inv_siia})")
+            if "unam.mx" in str(inv_siia):
+                st.caption("ℹ️ Extraímos ORCID y Scopus IDs de la página web del SIIA.")
         
-        with col_links2:
-            # --- Integración CoAuthra ---
-            coauthra_id = inv_orcid
-            btn_help = "Se requiere un ORCID vinculado para visualizar la red de colaboración" if not coauthra_id else "Ver mapa interactivo de colaboradores en CoAuthra"
-            if st.button("🕸️ Ver Red", use_container_width=True, disabled=not coauthra_id, help=btn_help):
-                st.session_state.coauthra_author_id = coauthra_id
-                st.session_state.switch_to_coauthra = True
-                st.toast(f"Red de {selected_inv} preparada. Redirigiendo...", icon="🕸️")
+        if inv_orcid:
+            orcid_link = inv_orcid if "http" in inv_orcid else f"https://orcid.org/{inv_orcid}"
+            st.markdown(f"- **ORCID:** [Ver Perfil]({orcid_link})")
+        
+        if inv_scopus:
+            import re
+            all_ids = re.findall(r'\d+', str(inv_scopus))
+            if all_ids:
+                for sid in all_ids:
+                    scopus_link = f"https://www.scopus.com/authid/detail.uri?authorId={sid}"
+                    st.markdown(f"- **Scopus ({sid}):** [Ver Perfil]({scopus_link})")
+            elif "http" in str(inv_scopus):
+                st.markdown(f"- **Scopus:** [Ver Perfil]({inv_scopus})")
 
     # --- Detalles Técnicos y Auditoría (LLM) ---
     with st.expander("🔍 Ver detalles de los perfiles académicos", expanded=False):
@@ -1204,6 +1195,35 @@ def render_investigador_view(entity_name, institution_name=None):
             "OpenAlex": st.column_config.LinkColumn("OpenAlex", display_text="Ver en OpenAlex")
         })
     
+
+    # ── Red de Colaboración Científica ───────────────────────────────────────────
+    # Detectar IDs habilitantes (OpenAlex ID o ORCID)
+    coauthra_id_final = inv_data.get('id') or inv_data.get('openalex_id') or inv_orcid
+    
+    if coauthra_id_final:
+        st.markdown("---")
+        st.subheader("🕸️ Red de Colaboración Científica")
+        st.markdown(f"Explora el mapa interactivo de coautorías y redes académicas de **{selected_inv}**.")
+        st.caption("Esta visualización es proporcionada por CoAuthra y permite identificar patrones de colaboración, investigadores sugeridos y proximidad temática.")
+        
+        # Usar un estado para evitar carga automática pesada en cada renderizado
+        safe_name_inv = "".join([c if c.isalnum() else "_" for c in selected_inv])
+        collab_key = f"load_collab_{safe_name_inv}"
+        
+        if collab_key not in st.session_state:
+            st.session_state[collab_key] = False
+            
+        if not st.session_state[collab_key]:
+            if st.button("🕸️ Cargar Red de Colaboración", use_container_width=True, key=f"btn_load_{safe_name_inv}", help="Desplegar visualización interactiva de grafos"):
+                st.session_state[collab_key] = True
+                st.rerun()
+        else:
+            if st.button("🚫 Ocultar Red de Colaboración", use_container_width=True, key=f"btn_hide_{safe_name_inv}"):
+                st.session_state[collab_key] = False
+                st.rerun()
+            
+            # Renderizar el componente directamente aquí
+            render_coauthra(coauthra_id_final, height=1100)
 
 
     # ── Reporte Bibliométrico IA ──────────────────────────────────────────────────

@@ -184,7 +184,78 @@ def obtener_metadatos_de_orcid(orcid_url):
         print(f"    [ORCID] ID {orcid_id}: {len(metadatos)} documentos encontrados.")
     return metadatos
 
-# --- Lógica principal de ingesta SNII ---
+def obtener_metadatos_de_openalex_autor(openalex_author_id, force_local=False):
+    """Obtiene los trabajos de un autor directamente desde su OpenAlex Author ID.
+    Soporta tanto la API local como la API oficial de pyalex.
+    """
+    if not openalex_author_id:
+        return {}
+    
+    # Normalizar el ID: aceptar URL completa o solo el código (A123456)
+    oa_id_clean = str(openalex_author_id).split('/')[-1].strip()
+    
+    metadatos = {}
+    env_path_local = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
+    load_dotenv(env_path_local)
+    local_api = os.getenv("OPENALEX_LOCAL_API", "http://localhost:5012")
+    
+    # --- Intento 1: API Local ---
+    if not force_local:
+        try:
+            url = f"{local_api}/works"
+            params = {"filter": f"author.id:{oa_id_clean}", "per_page": 200}
+            with httpx.Client(verify=False, timeout=30) as client:
+                resp = client.get(url, params=params)
+                if resp.status_code == 200:
+                    works = resp.json().get('results', [])
+                    for w in works:
+                        doi = w.get('doi') or w.get('id')
+                        if doi:
+                            doi_clean = str(doi).replace('https://doi.org/', '').replace('http://doi.org/', '').strip('/')
+                            if doi_clean and doi_clean not in metadatos:
+                                metadatos[doi_clean] = {
+                                    'Title': w.get('title', 'Sin Título'),
+                                    'Year': w.get('publication_year', 0),
+                                    'DOI': doi_clean,
+                                    'Source': 'OpenAlex_AuthorID_Local',
+                                    'Authors': None,
+                                    'Cited_by': w.get('cited_by_count', 0),
+                                    'Abstract': None,
+                                    '_raw_oa': w  # Conservar raw para enriquecimiento posterior
+                                }
+                    if metadatos:
+                        print(f"    [OpenAlex Local] Author {oa_id_clean}: {len(metadatos)} trabajos.")
+                        return metadatos
+        except Exception as e:
+            print(f"    [WARN] Error API Local OpenAlex Author: {e}")
+    
+    # --- Intento 2: API Oficial (pyalex) ---
+    try:
+        from pyalex import Works
+        results = Works().filter(authorships={"author": {"id": oa_id_clean}}).paginate(per_page=200)
+        for page in results:
+            for w in page:
+                doi = w.get('doi') or w.get('id')
+                if doi:
+                    doi_clean = str(doi).replace('https://doi.org/', '').replace('http://doi.org/', '').strip('/')
+                    if doi_clean and doi_clean not in metadatos:
+                        metadatos[doi_clean] = {
+                            'Title': w.get('title', 'Sin Título'),
+                            'Year': w.get('publication_year', 0),
+                            'DOI': doi_clean,
+                            'Source': 'OpenAlex_AuthorID_Oficial',
+                            'Authors': None,
+                            'Cited_by': w.get('cited_by_count', 0),
+                            'Abstract': deconstruct_abstract(w.get('abstract_inverted_index'))
+                        }
+        if metadatos:
+            print(f"    [OpenAlex Oficial] Author {oa_id_clean}: {len(metadatos)} trabajos.")
+    except Exception as e:
+        print(f"    [WARN] Error API Oficial OpenAlex Author: {e}")
+    
+    return metadatos
+
+
 
 def process_and_ingest_snii(json_path, force=False, force_local=False, target_name=None, limit_acads=None, confirmed_only=False, offset=0):
     if not os.path.exists(json_path):
@@ -258,11 +329,19 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
         graph_store.add_academic_full_affiliation(academic_name, inst_name, sub_name)
 
         # 3. Determinar si es seguro recolectar publicaciones
-        # NO recolectar si: no hay orcid, o es match=false, o es veredicto FALSE_POSITIVE
-        is_safe_match = data.get('match') is True and orcid and audit.get('verdict') != 'FALSE_POSITIVE'
+        # Caso A: Tiene ORCID y match confirmado (máxima confianza)
+        # Caso B: Solo tiene OpenAlex ID (sin ORCID, pero con match validado por LLM o por búsqueda)
+        openalex_id = data.get('matched_openalex_id')
+        has_openalex_id = openalex_id and openalex_id is not False
+        
+        is_false_positive = audit.get('verdict') == 'FALSE_POSITIVE'
+        is_valid_match = data.get('match') is True and not is_false_positive
+        
+        # Permitir ingesta si hay match válido + (ORCID o OpenAlex ID)
+        is_safe_match = is_valid_match and (orcid or has_openalex_id)
         
         if not is_safe_match:
-            print(f"  ℹ️ Saltando recolección de publicaciones (Match: {data.get('match')}, Veredicto: {audit.get('verdict')})")
+            print(f"  ℹ️ Saltando recolección de publicaciones (Match: {data.get('match')}, Veredicto: {audit.get('verdict')}, ORCID: {orcid}, OA_ID: {openalex_id})")
             continue
 
         # 4. Verificar existencia de publicaciones (evitar procesar de nuevo si no se fuerza)
@@ -270,13 +349,21 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
             print(f"  📍 Publicaciones ya existen en Neo4j. Saltando recolección API...")
             continue
 
-        print(f"  🧬 Iniciando recopilación API para {orcid}...")
+        # 5. Recolectar publicaciones según el caso disponible
+        meta_unificada = {}
         
-        # 1. Recolección de ORCID
-        meta_unificada = obtener_metadatos_de_orcid(orcid)
+        if orcid:
+            # Caso A: ORCID disponible — fuente más fiable
+            print(f"  🧬 Iniciando recopilación por ORCID: {orcid}...")
+            meta_unificada = obtener_metadatos_de_orcid(orcid)
         
+        if not meta_unificada and has_openalex_id:
+            # Caso B: Sin ORCID o ORCID sin resultados — usar OpenAlex Author ID
+            print(f"  🔍 Sin resultados por ORCID. Recopilando por OpenAlex ID: {openalex_id}...")
+            meta_unificada = obtener_metadatos_de_openalex_autor(openalex_id, force_local=force_local)
+
         if not meta_unificada:
-            print("  -> Sin publicaciones rastreables.")
+            print("  -> Sin publicaciones rastreables por ninguna fuente.")
             continue
             
         print(f"  -> {len(meta_unificada)} artículos únicos. Enriqueciendo...")

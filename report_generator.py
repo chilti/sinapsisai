@@ -136,7 +136,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     p_hist = f"El {entity_type} ({entity_name}) produjo {m_docs} documentos históricos. Redacta un párrafo formal observando la importancia de mantener una producción sostenida."
     llm_hist = markdown.markdown(get_llm_analysis(p_hist))
     
-    sections_html += f"<h2>2. Trayectoria Histórica de Producción</h2><div class='markdown-text'>{llm_hist}</div>{html_hist_fig}"
+    sections_html += f"<h2>2. Producción Anual</h2><div class='markdown-text'>{llm_hist}</div>{html_hist_fig}"
 
     # -------------------------------------------------------------------------
     # SECCIÓN 3: Excelencia e Impacto
@@ -438,7 +438,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     </head>
     <body>
         <div style="text-align: right; color: #666; font-size: 12px;">Generado por Inteligencia Artificial (SINAPSIS)</div>
-        <h1>Informe Integral Bibliométrico y Analítico</h1>
+        <h1>Informe Bibliométrico</h1>
         <p style="background:none; border:none; padding:0; font-size:18px;"><strong>Perfil Analizado:</strong> {entity_name} ({'Institución' if entity_type == 'inst' else 'Investigador'})</p>
 
         {sections_html}
