@@ -53,7 +53,8 @@ def get_embeddings(texts: list, batch_size: int = 5, force_local: bool = False) 
     if force_local:
         try:
             import lmstudio as lms
-            model = lms.embedding_model(model_name)
+            _local_model_name = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+            model = lms.embedding_model(_local_model_name)
             for text in texts:
                 clean_t = str(text) if text else " "
                 emb = model.embed(clean_t)
