@@ -329,12 +329,18 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
         # 2. Asegurar afiliación jerárquica
         graph_store.add_academic_full_affiliation(academic_name, inst_name, sub_name)
 
-        # 3. Determinar si es seguro recolectar publicaciones
-        # Caso A: Tiene ORCID y match confirmado (máxima confianza)
-        # Caso B: Solo tiene OpenAlex ID (sin ORCID, pero con match validado por LLM o por búsqueda)
-        openalex_id = data.get('matched_openalex_id')
-        has_openalex_id = openalex_id and openalex_id is not False
+        # --- Enriquecer con IDs desde Neo4j ---
+        neo4j_ids = {"orcid": None, "openalex_id": None}
+        if hasattr(graph_store, 'get_academic_ids'):
+            neo4j_ids = graph_store.get_academic_ids(academic_name)
         
+        # Prioridad: JSON > Neo4j
+        orcid = orcid or neo4j_ids.get('orcid')
+        openalex_id = openalex_id or neo4j_ids.get('openalex_id')
+        scopus_ids = data.get('scopus_ids') # Dejar abierta la posibilidad de scopus_ids en Neo4j si se añade después
+
+        # 3. Determinar si es seguro recolectar publicaciones
+        has_openalex_id = openalex_id and openalex_id is not False
         is_false_positive = audit.get('verdict') == 'FALSE_POSITIVE'
         is_valid_match = data.get('match') is True and not is_false_positive
         
@@ -350,24 +356,34 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
             print(f"  📍 Publicaciones ya existen en Neo4j. Saltando recolección API...")
             continue
 
-        # 5. Recolectar publicaciones según el caso disponible
-        meta_unificada = {}
+        # 5. Recolectar publicaciones según el caso disponible (Scopus > ORCID > OpenAlex)
+        meta_scopus = obtener_metadatos_de_scopus(scopus_ids) if scopus_ids else {}
+        meta_orcid = obtener_metadatos_de_orcid(orcid) if orcid else {}
+        meta_oa_author = obtener_metadatos_de_openalex_autor(openalex_id, force_local=force_local) if openalex_id else {}
+
+        # Fusionar con deduplicación por título
+        scopus_titles = {_clean_t(d.get('Title', '')) for d in meta_scopus.values() if d.get('Title')}
+        orcid_titles  = {_clean_t(d.get('Title', '')) for d in meta_orcid.values() if d.get('Title')}
         
-        if orcid:
-            # Caso A: ORCID disponible — fuente más fiable
-            print(f"  🧬 Iniciando recopilación por ORCID: {orcid}...")
-            meta_unificada = obtener_metadatos_de_orcid(orcid)
-        
-        if not meta_unificada and has_openalex_id:
-            # Caso B: Sin ORCID o ORCID sin resultados — usar OpenAlex Author ID
-            print(f"  🔍 Sin resultados por ORCID. Recopilando por OpenAlex ID: {openalex_id}...")
-            meta_unificada = obtener_metadatos_de_openalex_autor(openalex_id, force_local=force_local)
+        meta_unificada = meta_scopus.copy()
+        for d, m_data in meta_orcid.items():
+            if d in meta_unificada: continue
+            c_title = _clean_t(m_data.get('Title', ''))
+            if c_title in scopus_titles and c_title != "": continue
+            meta_unificada[d] = m_data
+            
+        all_titles_so_far = scopus_titles | orcid_titles
+        for d, m_data in meta_oa_author.items():
+            if d in meta_unificada: continue
+            c_title = _clean_t(m_data.get('Title', ''))
+            if c_title in all_titles_so_far and c_title != "": continue
+            meta_unificada[d] = m_data
 
         if not meta_unificada:
             print("  -> Sin publicaciones rastreables por ninguna fuente.")
             continue
             
-        print(f"  -> {len(meta_unificada)} artículos únicos. Enriqueciendo...")
+        print(f"  -> {len(meta_unificada)} artículos únicos encontrados. Enriqueciendo...")
 
         # --- OPT: Batch processing DOIs ---
         dois_to_fetch = [doi for doi in meta_unificada.keys() if not doi.startswith('orcid-work:')]
@@ -456,7 +472,8 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
             neo4j_batch.append({
                 "system_id": system_id,
                 "academic_name": academic_name,
-                "orcid": orcid,
+                "orcid": orcid or None,
+                "openalex_id": openalex_id or None, # Persistencia del ID descubierto
                 "doi": doi,
                 "title": record.get("Title", "No Title"),
                 "year": int(record.get("Year", 0)) if record.get("Year") else 0,

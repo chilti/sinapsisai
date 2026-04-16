@@ -41,7 +41,9 @@ pyalex.config.email = os.getenv("EMAIL_ADDRESS", "sin_correo@ciencias.unam.mx")
 if os.getenv("OPENALEX_API_KEY"):
     pyalex.config.api_key = os.getenv("OPENALEX_API_KEY")
 
-LOCAL_API_URL    = "http://127.0.0.1:5009/works"
+# Puerto dinámico desde .env o fallback a 5012 (puerto estándar en este proyecto)
+LOCAL_API_BASE   = os.getenv("OPENALEX_LOCAL_API", "http://127.0.0.1:5012").rstrip('/')
+LOCAL_API_URL    = f"{LOCAL_API_BASE}/works"
 OFFICIAL_API_URL = "https://api.openalex.org/works"
 
 # Retraso entre requests oficiales (s). 0.2s = 5 req/s.
@@ -136,14 +138,24 @@ def _fetch_from_local_api_bulk(client: httpx.Client, dois: list[str]) -> dict:
     try:
         resp = client.get(LOCAL_API_URL, params=params, timeout=30)
         if resp.status_code == 200:
-            results = resp.json().get('results', [])
-            out = {}
-            for w in results:
-                d_val = (w.get('doi') or "").replace("https://doi.org/", "").strip().lower()
-                if d_val: out[d_val] = w
-            return out
+            content = resp.text.strip()
+            if not content:
+                print(f"      [!] Step 3 (API Local): Respuesta 200 pero cuerpo vacío.")
+                return {}
+            
+            try:
+                results = json.loads(content).get('results', [])
+                out = {}
+                for w in results:
+                    d_val = (w.get('doi') or "").replace("https://doi.org/", "").strip().lower()
+                    if d_val: out[d_val] = w
+                return out
+            except json.JSONDecodeError as je:
+                print(f"      [!] Step 3 (API Local): Error decodificando JSON: {je}")
+                print(f"          Snippet de la respuesta (primeros 100 caracteres): {content[:100]}")
+                return {}
     except Exception as e:
-        print(f"      [!] Error en Step 3 (API Local): {e}")
+        print(f"      [!] Error de conexión en Step 3 (API Local): {e}")
     return {}
 
 def extract_new_fields(work: dict) -> dict:

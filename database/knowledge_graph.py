@@ -307,6 +307,10 @@ class Neo4jGraphStore:
             SET a.orcid = $orcid
         }
         CALL (a) {
+            WITH a WHERE $openalex_id IS NOT NULL
+            SET a.openalex_id = $openalex_id
+        }
+        CALL (a) {
             WITH a WHERE $scopus_id IS NOT NULL
             SET a.scopus_id = $scopus_id
         }
@@ -366,6 +370,10 @@ class Neo4jGraphStore:
         
         WITH a, item
         CALL (a, item) {
+            WITH a, item WHERE item.openalex_id IS NOT NULL
+            SET a.openalex_id = item.openalex_id
+        }
+        CALL (a, item) {
             WITH a, item WHERE item.orcid IS NOT NULL
             SET a.orcid = item.orcid
         }
@@ -404,6 +412,29 @@ class Neo4jGraphStore:
                 session.run(query, batch=batch_data)
             except Exception as e:
                 print(f"Error Neo4j en lote de {len(batch_data)} artículos: {e}")
+
+    def get_academic_ids(self, academic_name: str) -> dict:
+        """
+        Recupera los identificadores externos (orcid, openalex_id) de un nodo Academic.
+        Útil para enriquecer la ingesta cuando el JSON local no tiene estos datos
+        pero ya fueron persistidos desde el pipeline SNII de matching.
+        Retorna dict con claves 'orcid' y 'openalex_id' (pueden ser None).
+        """
+        query = """
+        MATCH (a:Academic)
+        WHERE a.name = $name OR a.id = $name
+        RETURN a.orcid AS orcid, a.openalex_id AS openalex_id
+        LIMIT 1
+        """
+        with self.driver.session() as session:
+            try:
+                result = session.run(query, name=academic_name)
+                record = result.single()
+                if record:
+                    return {"orcid": record["orcid"], "openalex_id": record["openalex_id"]}
+            except Exception as e:
+                print(f"[WARN] get_academic_ids para {academic_name}: {e}")
+        return {"orcid": None, "openalex_id": None}
 
     def mark_paper_as_indexed(self, doi: str, source: str):
         """

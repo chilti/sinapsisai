@@ -75,17 +75,26 @@ def get_embeddings(texts: list, batch_size: int = 5, force_local: bool = False) 
     if force_local:
         try:
             import lmstudio as lms
-            # Usar la SDK nativa para forzar la carga en memoria si no lo está
-            model = lms.embedding_model(model_name)
+            # Tomar modelo desde env para evitar variable indefinida
+            _local_model_name = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+            model = lms.embedding_model(_local_model_name)
             
-            # El SDK de lms suele soportar batches o iteraciones directas
             for text in texts:
                 clean_t = str(text) if text else " "
                 emb = model.embed(clean_t)
-                all_embeddings.append(emb)
+                # Normalizar el objeto retornado por lmstudio (puede ser objeto, lista o array)
+                if hasattr(emb, "embedding"):
+                    val = emb.embedding
+                elif hasattr(emb, "tolist"):
+                    val = emb.tolist()
+                elif isinstance(emb, list):
+                    val = emb
+                else:
+                    val = list(emb)
+                all_embeddings.append(val)
             return all_embeddings
-        except ImportError:
-            print("⚠️ Error: La librería 'lmstudio' no está instalada. Ejecuta 'pip install lmstudio'. Cayendo a LangChain...")
+        except Exception as e:
+            print(f"⚠️ Error con librería 'lmstudio': {e}. Cayendo a LangChain...")
 
     # Fallback / Modo servidor estándar (LangChain OpenAI)
     for i in range(0, len(texts), batch_size):
@@ -261,6 +270,72 @@ def obtener_metadatos_de_orcid(orcid_url):
         
     return metadatos
 
+def obtener_metadatos_de_openalex_autor(openalex_author_id: str, force_local: bool = False) -> dict:
+    """Obtiene los trabajos de un autor directamente desde su OpenAlex Author ID.
+    Soporta tanto la API local (--local) como la API oficial de pyalex.
+    """
+    if not openalex_author_id:
+        return {}
+    
+    oa_id_clean = str(openalex_author_id).split('/')[-1].strip()
+    metadatos = {}
+    local_api = os.getenv("OPENALEX_LOCAL_API", "http://localhost:5012")
+    
+    # --- Intento 1: API Local ---
+    if not force_local:
+        try:
+            url = f"{local_api}/works"
+            params = {"filter": f"author.id:{oa_id_clean}", "per_page": 200}
+            with httpx.Client(verify=False, timeout=30) as client:
+                resp = client.get(url, params=params)
+                if resp.status_code == 200:
+                    works = resp.json().get('results', [])
+                    for w in works:
+                        doi = w.get('doi') or w.get('id')
+                        if doi:
+                            doi_clean = str(doi).replace('https://doi.org/', '').replace('http://doi.org/', '').strip('/')
+                            if doi_clean and doi_clean not in metadatos:
+                                metadatos[doi_clean] = {
+                                    'Title': w.get('title', 'Sin Título'),
+                                    'Year': w.get('publication_year', 0),
+                                    'DOI': doi_clean,
+                                    'Source': 'OpenAlex_AuthorID_Local',
+                                    'Authors': None,
+                                    'Cited_by': w.get('cited_by_count', 0),
+                                    'Abstract': None,
+                                }
+                    if metadatos:
+                        print(f"    [OpenAlex Local] Author {oa_id_clean}: {len(metadatos)} trabajos.")
+                        return metadatos
+        except Exception as e:
+            print(f"    [WARN] Error API Local OpenAlex Author: {e}")
+    
+    # --- Intento 2: API Oficial (pyalex) ---
+    try:
+        from pyalex import Works
+        results = Works().filter(authorships={"author": {"id": oa_id_clean}}).paginate(per_page=200)
+        for page in results:
+            for w in page:
+                doi = w.get('doi') or w.get('id')
+                if doi:
+                    doi_clean = str(doi).replace('https://doi.org/', '').replace('http://doi.org/', '').strip('/')
+                    if doi_clean and doi_clean not in metadatos:
+                        metadatos[doi_clean] = {
+                            'Title': w.get('title', 'Sin Título'),
+                            'Year': w.get('publication_year', 0),
+                            'DOI': doi_clean,
+                            'Source': 'OpenAlex_AuthorID_Oficial',
+                            'Authors': None,
+                            'Cited_by': w.get('cited_by_count', 0),
+                            'Abstract': deconstruct_abstract(w.get('abstract_inverted_index'))
+                        }
+        if metadatos:
+            print(f"    [OpenAlex Oficial] Author {oa_id_clean}: {len(metadatos)} trabajos.")
+    except Exception as e:
+        print(f"    [WARN] Error API Oficial OpenAlex Author: {e}")
+    
+    return metadatos
+
 # --- Lógica principal de ingesta ---
 
 def process_and_ingest_academics(json_path, force=False, force_local=False, target_name=None, is_snii=False, limit_acads=None, override_entity=None, institution_name="UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)"):
@@ -309,34 +384,51 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
             continue
 
         scopus_id = data.get('scopus', [])
-        orcid = data.get('orcid', '')
+        orcid = data.get('orcid', '') or ''
         siia_url = data.get('siia', '')
         
-        print(f"\n[{academic_name}] Iniciando recopilación API...")
+        # --- Enriquecer con IDs guardados en Neo4j (por pipeline SNII) ---
+        # El matching SNII puede haber descubierto ORCID o OpenAlex IDs que no están en el JSON
+        neo4j_ids = {"orcid": None, "openalex_id": None}
+        if hasattr(graph_store, 'get_academic_ids'):
+            neo4j_ids = graph_store.get_academic_ids(academic_name)
+        orcid = orcid or neo4j_ids.get('orcid') or ''
+        openalex_author_id = data.get('openalex_id') or neo4j_ids.get('openalex_id')
         
-        # 1. Traemos la lista de DOIs que ha publicado
+        print(f"\n[{academic_name}] Iniciando recopilación API... ORCID={orcid or 'N/A'} | OA_ID={openalex_author_id or 'N/A'}")
+        
+        # 1. Scopus (si tiene ID)
         meta_scopus = obtener_metadatos_de_scopus(scopus_id)
-        meta_orcid = obtener_metadatos_de_orcid(orcid)
         
-        # Combinar priorizando Scopus
+        # 2. ORCID (si tiene ID)
+        meta_orcid = obtener_metadatos_de_orcid(orcid) if orcid else {}
+        
+        # 3. OpenAlex Author ID (respeta --local)
+        meta_oa_author = {}
+        if openalex_author_id:
+            meta_oa_author = obtener_metadatos_de_openalex_autor(openalex_author_id, force_local=force_local)
+        
+        # Combinar priorizando Scopus > ORCID > OpenAlex Author ID (de mayor a menor confianza)
         def _clean_t(t): return "".join(c for c in str(t).lower() if c.isalnum())
         scopus_titles = {_clean_t(d.get('Title', '')) for d in meta_scopus.values() if d.get('Title')}
+        orcid_titles  = {_clean_t(d.get('Title', '')) for d in meta_orcid.values() if d.get('Title')}
         
         meta_unificada = meta_scopus.copy()
+        
+        # Fusionar ORCID
         for doi, m_data in meta_orcid.items():
-            if doi in meta_unificada:
-                continue
-                
+            if doi in meta_unificada: continue
             c_title = _clean_t(m_data.get('Title', ''))
-            # Si el paper viene de ORCID como 'orcid-work:' y su título ya estaba en los extraídos de Scopus,
-            # lo saltamos para no duplicar el registro que ya trae un DOI válido de Scopus.
-            if doi.startswith('orcid-work') and c_title in scopus_titles and c_title != "":
-                continue
-                
-            # A priorizar que el título no esté duplicado en general para evitar papers fantasmas
-            if c_title in scopus_titles and c_title != "":
-                continue
-                
+            if doi.startswith('orcid-work') and c_title in scopus_titles and c_title != "": continue
+            if c_title in scopus_titles and c_title != "": continue
+            meta_unificada[doi] = m_data
+        
+        # Fusionar OpenAlex Author ID (evitar duplicados por título)
+        all_titles_so_far = scopus_titles | orcid_titles
+        for doi, m_data in meta_oa_author.items():
+            if doi in meta_unificada: continue
+            c_title = _clean_t(m_data.get('Title', ''))
+            if c_title in all_titles_so_far and c_title != "": continue
             meta_unificada[doi] = m_data
 
         
@@ -347,144 +439,144 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
             
         print(f"  -> {len(meta_unificada)} artículos únicos encontrados. Enriqueciendo...")
 
+        # --- OPT: Batch OpenAlex fetching (una sola llamada para todos los DOIs) ---
+        dois_to_fetch = [doi for doi in meta_unificada.keys() if not doi.startswith('orcid-work:')]
+        openalex_blocked = force_local or getattr(openalex_utils, 'OFFICIAL_API_BLOCKED', False)
+        batch_results = {}
+        if dois_to_fetch:
+            print(f"      📡 Consultando lote de {len(dois_to_fetch)} DOIs en OpenAlex...")
+            batch_results = openalex_utils.get_works_batch(dois_to_fetch, local_only=openalex_blocked)
+
+        neo4j_batch = []
         batch_payloads = []
         batch_texts = []
-        openalex_blocked = getattr(openalex_utils, 'OFFICIAL_API_BLOCKED', False)
-        #print('api_key: '+str(pyalex.config.api_key))
-        #print('api:     '+str(os.getenv("OPENALEX_API_KEY")))
+
         for doi, base_metadata in meta_unificada.items():
             record = base_metadata.copy()
             text_for_embedding = f"Title: {record.get('Title')}\n"
             paper_exists = False
-            
-            # Enriquecemos con OpenAlex (normaliza DOI, guarda orcid-work: papers sin lookup) usando fallback local
-            try:
-                _doi_clean = (doi.replace('https://doi.org/', '')
-                                 .replace('http://doi.org/',   '')
-                                 .replace('https://dx.doi.org/', '')
-                                 .strip('/') if doi and not doi.startswith('orcid-work:') else None)
-                
-                # OPT: Si el paper ya existe en Neo4j, saltamos el enriquecimiento API costoso. 
-                # Solo queremos asegurar la relación con el nuevo académico.
-                if _doi_clean and graph_store.check_paper_exists(_doi_clean):
-                    print(f"      📍 Paper {_doi_clean} ya existe en el grafo. Saltando OpenAlex y Qdrant...")
+
+            # Recuperar el trabajo de OpenAlex desde el lote o con fallback individual
+            _doi_clean = (doi.replace('https://doi.org/', '')
+                             .replace('http://doi.org/', '')
+                             .replace('https://dx.doi.org/', '')
+                             .strip('/') if doi and not doi.startswith('orcid-work:') else None)
+            _doi_key = _doi_clean.lower() if _doi_clean else None
+            work = None
+
+            if _doi_key and _doi_key in batch_results:
+                work = batch_results[_doi_key]
+            elif _doi_clean:
+                # Fallback: paper ya en grafo → saltar enriquecimiento
+                if graph_store.check_paper_exists(_doi_clean):
+                    print(f"      📍 Paper {_doi_clean} ya existe en el grafo. Saltando OpenAlex...")
                     paper_exists = True
-                    work = None
                 else:
-                    work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'), local_only=openalex_blocked)
-                    if not openalex_blocked and getattr(openalex_utils, 'OFFICIAL_API_BLOCKED', False):
-                        openalex_blocked = True
+                    try:
+                        work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'), local_only=openalex_blocked)
+                        if not openalex_blocked and getattr(openalex_utils, 'OFFICIAL_API_BLOCKED', False):
+                            openalex_blocked = True
+                    except Exception as e:
+                        print(f"    Advertencia en OpenAlex para {doi}: {e}")
+
+            if work:
+                authorships = work.get('authorships', [])
+                record['Authors'] = "; ".join([au['author']['display_name'] for au in authorships])
+                record['Keywords_oa'] = "; ".join([kw['display_name'] for kw in work.get('keywords', [])])
+                record['Abstract_oa'] = deconstruct_abstract(work.get('abstract_inverted_index'))
+                record['openalex_url'] = work.get('id')
+                record['Title'] = work.get('title') or record.get('Title')
+                
+                if record['Abstract_oa']:
+                    record['Abstract'] = record['Abstract_oa']
                     
-                if not work and not (_doi_clean and graph_store.check_paper_exists(_doi_clean)):
-                    raise ValueError("No encontrado ni en API Oficial ni en API Local")
+                record['Cited_by'] = work.get('cited_by_count', record.get('Cited_by', 0))
+                record['fwci'] = work.get('fwci', None)
+                record['open_access'] = work.get('open_access', {})
 
-                if work:
-                    authorships = work.get('authorships', [])
-                    record['Authors'] = "; ".join([au['author']['display_name'] for au in authorships])
-                    record['Keywords_oa'] = "; ".join([kw['display_name'] for kw in work.get('keywords', [])])
-                    record['Abstract_oa'] = deconstruct_abstract(work.get('abstract_inverted_index'))
-                    record['openalex_url'] = work.get('id')
-                    record['Title'] = work.get('title')
-                    
-                    if record['Abstract_oa']:
-                        record['Abstract'] = record['Abstract_oa']
-                        
-                    record['Cited_by'] = work.get('cited_by_count', record.get('Cited_by', 0))
-                    
-                    record['fwci'] = work.get('fwci', None)
-                    record['open_access'] = work.get('open_access', {})
-                    if work.get('citation_normalized_percentile'):
-                        perc_data = work['citation_normalized_percentile']
-                        record['citation_normalized_percentile'] = perc_data.get('value', 0.0)
-                        record['is_in_top_1_percent']  = perc_data.get('is_in_top_1_percent', False)
-                        record['is_in_top_10_percent'] = perc_data.get('is_in_top_10_percent', False)
-                    cyp = work.get('cited_by_percentile_year') or {}
-                    record['cited_by_percentile_year_min'] = cyp.get('min')
-                    record['cited_by_percentile_year_max'] = cyp.get('max')
+                if work.get('citation_normalized_percentile'):
+                    perc_data = work['citation_normalized_percentile']
+                    record['citation_normalized_percentile'] = perc_data.get('value', 0.0)
+                    record['is_in_top_1_percent']  = perc_data.get('is_in_top_1_percent', False)
+                    record['is_in_top_10_percent'] = perc_data.get('is_in_top_10_percent', False)
 
-                    record['counts_by_year']       = work.get('counts_by_year', [])
-                    record['referenced_works_count'] = work.get('referenced_works_count', 0)
-                    record['referenced_works']     = work.get('referenced_works', [])
+                cyp = work.get('cited_by_percentile_year') or {}
+                record['cited_by_percentile_year_min'] = cyp.get('min')
+                record['cited_by_percentile_year_max'] = cyp.get('max')
+                record['counts_by_year']          = work.get('counts_by_year', [])
+                record['referenced_works_count']  = work.get('referenced_works_count', 0)
+                record['referenced_works']        = work.get('referenced_works', [])
+                record['apc_paid_usd'] = (work.get('apc_paid') or {}).get('value_usd', 0) or 0
+                record['apc_list_usd'] = (work.get('apc_list') or {}).get('value_usd', 0) or 0
 
-                    record['apc_paid_usd'] = (work.get('apc_paid') or {}).get('value_usd', 0) or 0
-                    record['apc_list_usd'] = (work.get('apc_list') or {}).get('value_usd', 0) or 0
+                _auths = work.get('authorships', [])
+                record['author_count']               = len(_auths)
+                record['countries_distinct_count']   = work.get('countries_distinct_count', 0)
+                record['institutions_distinct_count']= work.get('institutions_distinct_count', 0)
+                record['countries'] = list({c for a in _auths for c in a.get('countries', [])})
+                record['coauthor_institutions'] = [
+                    {
+                        'author': (a.get('author') or {}).get('display_name'),
+                        'orcid':  (a.get('author') or {}).get('orcid'),
+                        'position': a.get('author_position'),
+                        'is_corresponding': a.get('is_corresponding', False),
+                        'countries': a.get('countries', []),
+                        'institutions': [
+                            {'name': i.get('display_name'), 'ror': i.get('ror'),
+                             'country': i.get('country_code'), 'type': i.get('type')}
+                            for i in a.get('institutions', [])
+                        ]
+                    }
+                    for a in _auths
+                ]
 
-                    _auths = work.get('authorships', [])
-                    record['author_count']            = len(_auths)
-                    record['countries_distinct_count'] = work.get('countries_distinct_count', 0)
-                    record['institutions_distinct_count'] = work.get('institutions_distinct_count', 0)
-                    record['countries'] = list({c for a in _auths for c in a.get('countries', [])})
-                    record['coauthor_institutions'] = [
-                        {
-                            'author': (a.get('author') or {}).get('display_name'),
-                            'orcid':  (a.get('author') or {}).get('orcid'),
-                            'position': a.get('author_position'),
-                            'is_corresponding': a.get('is_corresponding', False),
-                            'countries': a.get('countries', []),
-                            'institutions': [
-                                {'name': i.get('display_name'), 'ror': i.get('ror'),
-                                 'country': i.get('country_code'), 'type': i.get('type')}
-                                for i in a.get('institutions', [])
-                            ]
-                        }
-                        for a in _auths
-                    ]
+                _loc = work.get('primary_location') or {}
+                record['license']                    = _loc.get('license')
+                record['any_repository_has_fulltext']= (work.get('open_access') or {}).get('any_repository_has_fulltext', False)
+                record['oa_url']                     = (work.get('open_access') or {}).get('oa_url')
+                record['locations_count']            = work.get('locations_count', 0)
+                record['indexed_in']   = work.get('indexed_in', [])
+                record['is_retracted'] = work.get('is_retracted', False)
+                record['language']     = work.get('language', 'en')
+                record['type']         = work.get('type', 'article')
 
-                    _loc = work.get('primary_location') or {}
-                    record['license']                  = _loc.get('license')
-                    record['any_repository_has_fulltext'] = (work.get('open_access') or {}).get('any_repository_has_fulltext', False)
-                    record['oa_url']                   = (work.get('open_access') or {}).get('oa_url')
-                    record['locations_count']          = work.get('locations_count', 0)
+                _src = _loc.get('source') or {}
+                record['journal_is_oa']      = _src.get('is_oa', False)
+                record['journal_is_in_doaj'] = _src.get('is_in_doaj', False)
+                record['journal_is_core']    = _src.get('is_core', False)
+                record['issn']               = _src.get('issn_l')
+                record['journal_type']       = _src.get('type')
 
-                    record['indexed_in']   = work.get('indexed_in', [])
-                    record['is_retracted'] = work.get('is_retracted', False)
-                    record['language']     = work.get('language', 'en')
-                    record['type']         = work.get('type', 'article')
+                pt = work.get('primary_topic') or {}
+                record['primary_topic_name']     = pt.get('display_name')
+                record['primary_topic_score']    = pt.get('score')
+                record['primary_topic_field']    = (pt.get('field') or {}).get('display_name')
+                record['primary_topic_subfield'] = (pt.get('subfield') or {}).get('display_name')
+                record['primary_topic_domain']   = (pt.get('domain') or {}).get('display_name')
 
-                    _src = _loc.get('source') or {}
-                    record['journal_is_oa']      = _src.get('is_oa', False)
-                    record['journal_is_in_doaj'] = _src.get('is_in_doaj', False)
-                    record['journal_is_core']    = _src.get('is_core', False)
-                    record['issn']               = _src.get('issn_l')
-                    record['journal_type']       = _src.get('type')
+                topics = []
+                for t in work.get('topics', []):
+                    try:
+                        topics.append({
+                            'domain':   (t.get('domain') or {}).get('display_name'),
+                            'field':    (t.get('field') or {}).get('display_name'),
+                            'subfield': (t.get('subfield') or {}).get('display_name'),
+                            'topic':    t.get('display_name'),
+                            'score':    t.get('score'),
+                        })
+                    except Exception:
+                        pass
+                record['OpenAlex_Topics'] = topics
+                record['keywords'] = [k.get('display_name') for k in work.get('keywords', [])[:15]]
+                record['sustainable_development_goals'] = [
+                    {'id': s.get('id', '').rstrip('/').split('/')[-1],
+                     'display_name': s.get('display_name'),
+                     'score': s.get('score')}
+                    for s in work.get('sustainable_development_goals', [])
+                ]
+                record['Source'] += ' + OpenAlex'
 
-                    pt = work.get('primary_topic') or {}
-                    record['primary_topic_name']     = pt.get('display_name')
-                    record['primary_topic_score']    = pt.get('score')
-                    record['primary_topic_field']    = (pt.get('field') or {}).get('display_name')
-                    record['primary_topic_subfield'] = (pt.get('subfield') or {}).get('display_name')
-                    record['primary_topic_domain']   = (pt.get('domain') or {}).get('display_name')
-
-                    topics = []
-                    for t in work.get('topics', []):
-                        try:
-                            topics.append({
-                                'domain':   (t.get('domain') or {}).get('display_name'),
-                                'field':    (t.get('field') or {}).get('display_name'),
-                                'subfield': (t.get('subfield') or {}).get('display_name'),
-                                'topic':    t.get('display_name'),
-                                'score':    t.get('score'),
-                            })
-                        except Exception:
-                            pass
-                    record['OpenAlex_Topics'] = topics
-
-                    record['keywords'] = [k.get('display_name') for k in work.get('keywords', [])[:15]]
-                    record['sustainable_development_goals'] = [
-                        {'id': s.get('id', '').rstrip('/').split('/')[-1],
-                         'display_name': s.get('display_name'),
-                         'score': s.get('score')}
-                        for s in work.get('sustainable_development_goals', [])
-                    ]
-                    record['Source'] += ' + OpenAlex'
-            except Exception as e:
-                if str(doi).startswith('orcid-work:'):
-                    print(f"    Advertencia en OpenAlex (búsqueda por título fallida) para {doi}: {e}")
-                else:
-                    print(f"    Advertencia en OpenAlex para {doi}: {e}")
-                pass
-            
-            # Qdrant solo necesita un texto para el embedding y un payload
+            # --- Qdrant ---
             if not paper_exists:
                 if record.get('Abstract'):
                     text_for_embedding += f"Abstract: {record['Abstract']}"
@@ -497,7 +589,6 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                     "source":        record.get("Source"),
                     "entity":        entity_name,
                     "text":          text_for_embedding,
-                    # Nuevos campos filtrables en búsqueda semántica
                     "is_oa":         (record.get("open_access") or {}).get("is_oa", False),
                     "oa_status":     (record.get("open_access") or {}).get("oa_status", "closed"),
                     "language":      record.get("language", "en"),
@@ -508,28 +599,57 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                 }
                 batch_texts.append(text_for_embedding)
                 batch_payloads.append(payload_qdrant)
-                
-            # Formatear paramétros para Neo4j (usa raw_metadata para guardar TODOS los campos en json)
-            neo4j_data = {
-                "doi": doi,
-                "title": record.get("Title", "No Title"),
-                "year": record.get("Year", 0),
-                "citations": record.get("Cited_by", 0),
-                "raw_metadata": record # TODO EL JSON
-            }
-            # Guardamos la relación en el grafo incluyendo metadatos del autor
-            scopus_str = "; ".join(scopus_id) if isinstance(scopus_id, list) else scopus_id
-            graph_store.add_api_paper(neo4j_data, academic_name=academic_name, orcid=orcid, scopus_id=scopus_str, siia_url=siia_url, entity_name=entity_name)
-            time.sleep(0.05)
-            
+
+            # --- Acumular para Neo4j batch ---
+            if not paper_exists:
+                grants = work.get("grants", []) if work else []
+                funders_list = []
+                awards_list = []
+                for g in grants:
+                    if g.get("funder_display_name"):
+                        funders_list.append({"name": g.get("funder_display_name"), "openalex_id": g.get("funder") or ""})
+                    if g.get("award_id"):
+                        awards_list.append(g.get("award_id"))
+
+                scopus_str = "; ".join(scopus_id) if isinstance(scopus_id, list) else scopus_id
+                neo4j_batch.append({
+                    "system_id":    orcid or academic_name,
+                    "academic_name": academic_name,
+                    "orcid":        orcid or None,
+                    "openalex_id":  openalex_author_id or None,
+                    "scopus_id":    scopus_str,
+                    "siia_url":     siia_url,
+                    "entity_name":  entity_name,
+                    "doi":          doi,
+                    "title":        record.get("Title", "No Title"),
+                    "year":         int(record.get("Year", 0)) if record.get("Year") else 0,
+                    "citations":    int(record.get("Cited_by", 0)) if record.get("Cited_by") else 0,
+                    "raw_metadata": json.dumps(record, ensure_ascii=False),
+                    "funders":      funders_list,
+                    "awards":       list(set(awards_list)),
+                })
+
+        # --- Inserción en lote en Neo4j ---
+        if neo4j_batch:
+            if hasattr(graph_store, 'add_api_papers_batch'):
+                print(f"      🗄️ Insertando lote de {len(neo4j_batch)} artículos en Neo4j...")
+                graph_store.add_api_papers_batch(neo4j_batch)
+            else:
+                # Fallback al método individual si el grafo no soporta batch
+                for item in neo4j_batch:
+                    neo4j_data = {"doi": item["doi"], "title": item["title"], "year": item["year"],
+                                  "citations": item["citations"], "raw_metadata": json.loads(item["raw_metadata"])}
+                    graph_store.add_api_paper(neo4j_data, academic_name=item["academic_name"],
+                                              orcid=item["orcid"], scopus_id=item["scopus_id"],
+                                              siia_url=item["siia_url"], entity_name=item["entity_name"])
+
         # Afiliación del académico a su Entidad e Institución
         graph_store.add_academic_full_affiliation(academic_name, institution_name, entity_name)
             
-        # Ingesta en Qdrant por lotes de este académico para no saturar al LLM
+        # Vectorización e inserción en Qdrant
         if batch_texts:
             print(f"  -> Vectorizando {len(batch_texts)} textos de artículos e insertando en 'api_papers'...")
             try:
-                # Por limitaciones de tamaño del LLM embebedor, vamos de 32 en 32
                 embeddings = []
                 for i in range(0, len(batch_texts), 32):
                     batch_subset = batch_texts[i:i+32]
@@ -541,6 +661,7 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                 print(f"  ❌ Error generando vectores para {academic_name}: {e}")
         else:
             print(f"  📍 Vectorización omitida (0 artículos nuevos). Guardado en Neo4j OK para {academic_name}.")
+
 
 
 if __name__ == "__main__":
