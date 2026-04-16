@@ -151,11 +151,11 @@ def _fetch_from_local_api_bulk(client: httpx.Client, dois: list[str]) -> dict:
                     if d_val: out[d_val] = w
                 return out
             except json.JSONDecodeError as je:
-                print(f"      [!] Step 3 (API Local): Error decodificando JSON: {je}")
+                print(f"\n      [!] Step 3 (API Local): Error decodificando JSON: {je}")
                 print(f"          Snippet de la respuesta (primeros 100 caracteres): {content[:100]}")
                 return {}
     except Exception as e:
-        print(f"      [!] Error de conexión en Step 3 (API Local): {e}")
+        print(f"\n      [!] Error de conexión en Step 3 (API Local): {e}")
     return {}
 
 def extract_new_fields(work: dict) -> dict:
@@ -338,7 +338,7 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
             if not to_patch: continue
             if dry_run:
                 updated += len(to_patch)
-                print(f"  [DRY] Parchearía batch de {len(to_patch)}", end="\r")
+                print(f"  [DRY] Parchearía batch de {len(to_patch)}...                ", end="\r")
                 continue
 
             # API FETCH (Hierarchy: Official Lookup -> ClickHouse -> Local API)
@@ -357,7 +357,6 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
                     for raw, clean in doi_papers:
                         if clean in official_results:
                             oa_data[raw] = official_results[clean]
-                            print(f"  🌐 [Oficial] Encontrado: {clean}", end="\r")
 
                 # --- STEP 2: ClickHouse (Bulk Fallback) ---
                 remaining = [p for p in doi_papers if p[0] not in oa_data]
@@ -366,16 +365,14 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
                     for raw, clean in remaining:
                         if clean in ch_results:
                             oa_data[raw] = ch_results[clean]
-                            print(f"  🏠 [CH] Encontrado: {clean}", end="\r")
 
-                # --- STEP 3: Local API 5009 (Final Fallback) ---
+                # --- STEP 3: Local API (Final Fallback) ---
                 missing = [p for p in doi_papers if p[0] not in oa_data]
                 if missing and LOCAL_API_AVAILABLE:
                     api_results = _fetch_from_local_api_bulk(client, [m[1] for m in missing])
                     for raw, clean in missing:
                         if clean in api_results:
                             oa_data[raw] = api_results[clean]
-                            print(f"  🏠 [Local API] Encontrado: {clean}", end="\r")
 
             # DB UPDATE
             updates_normal = []
@@ -431,7 +428,9 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
                         """, batch=updates_with_doi)
 
             processed += len(batch)
-            print(f"  📊 {skip+i+len(batch)}/{total_papers} | OK: {updated} | Skip: {skipped} | Err: {errors}", end="\r")
+            progress_msg = f"  📊 {skip+i+len(batch)}/{total_papers} | OK: {updated} | Skip: {skipped} | Err: {errors}"
+            # Rellenar con espacios al final para limpiar restos de líneas anteriores
+            print(f"{progress_msg.ljust(80)}", end="\r")
 
     print(f"\n\n✨ Finalizado. {updated} actualizados, {skipped} omitidos, {errors} errores.")
     graph_store.close()
