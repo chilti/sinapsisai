@@ -336,6 +336,7 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
         
         # Prioridad: JSON > Neo4j
         orcid = orcid or neo4j_ids.get('orcid')
+        openalex_id = data.get('matched_openalex_id')
         openalex_id = openalex_id or neo4j_ids.get('openalex_id')
         scopus_ids = data.get('scopus_ids') # Dejar abierta la posibilidad de scopus_ids en Neo4j si se añade después
 
