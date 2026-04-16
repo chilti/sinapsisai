@@ -222,6 +222,7 @@ def obtener_metadatos_de_openalex_autor(openalex_author_id, force_local=False):
                                     'Authors': None,
                                     'Cited_by': w.get('cited_by_count', 0),
                                     'Abstract': None,
+                                    'openalex_url': w.get('id'), # Persistir ID de OpenAlex
                                     '_raw_oa': w  # Conservar raw para enriquecimiento posterior
                                 }
                     if metadatos:
@@ -247,7 +248,8 @@ def obtener_metadatos_de_openalex_autor(openalex_author_id, force_local=False):
                             'Source': 'OpenAlex_AuthorID_Oficial',
                             'Authors': None,
                             'Cited_by': w.get('cited_by_count', 0),
-                            'Abstract': deconstruct_abstract(w.get('abstract_inverted_index'))
+                            'Abstract': deconstruct_abstract(w.get('abstract_inverted_index')),
+                            'openalex_url': w.get('id') # Persistir ID de OpenAlex
                         }
         if metadatos:
             print(f"    [OpenAlex Oficial] Author {oa_id_clean}: {len(metadatos)} trabajos.")
@@ -474,8 +476,9 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
                 "system_id": system_id,
                 "academic_name": academic_name,
                 "orcid": orcid or None,
-                "openalex_id": openalex_id or None, # Persistencia del ID descubierto
+                "openalex_id": openalex_id or None, # Persistencia del ID descubierto del autor
                 "doi": doi,
+                "paper_openalex_id": record.get("openalex_url"), # ID de OpenAlex del PAPER para vinculación de citas
                 "title": record.get("Title", "No Title"),
                 "year": int(record.get("Year", 0)) if record.get("Year") else 0,
                 "citations": int(record.get("Cited_by", 0)) if record.get("Cited_by") else 0,

@@ -621,6 +621,7 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                     "siia_url":     siia_url,
                     "entity_name":  entity_name,
                     "doi":          doi,
+                    "paper_openalex_id": record.get("openalex_url"), # ID de OpenAlex para vincular citas
                     "title":        record.get("Title", "No Title"),
                     "year":         int(record.get("Year", 0)) if record.get("Year") else 0,
                     "citations":    int(record.get("Cited_by", 0)) if record.get("Cited_by") else 0,

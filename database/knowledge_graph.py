@@ -18,6 +18,7 @@ class Neo4jGraphStore:
         queries = [
             "CREATE CONSTRAINT paper_id IF NOT EXISTS FOR (p:Paper) REQUIRE p.id IS UNIQUE",
             "CREATE INDEX paper_doi_idx IF NOT EXISTS FOR (p:Paper) ON (p.doi)",
+            "CREATE INDEX paper_oa_idx IF NOT EXISTS FOR (p:Paper) ON (p.openalex_id)",
             "CREATE CONSTRAINT author_id IF NOT EXISTS FOR (a:Author) REQUIRE a.id IS UNIQUE",
             "CREATE CONSTRAINT institution_id IF NOT EXISTS FOR (i:Institution) REQUIRE i.id IS UNIQUE",
             "CREATE CONSTRAINT concept_id IF NOT EXISTS FOR (c:Concept) REQUIRE c.id IS UNIQUE",
@@ -333,7 +334,8 @@ class Neo4jGraphStore:
         WITH a
         MERGE (p:Paper {id: $doi})
         SET p.doi = $doi, p.title = $title, p.year = $year, p.citations = $citations,
-            p.raw_metadata = $raw_metadata
+            p.raw_metadata = $raw_metadata,
+            p.openalex_id = $paper_openalex_id
 
         MERGE (a)-[:AUTHORED]->(p)
         
@@ -392,7 +394,8 @@ class Neo4jGraphStore:
         WITH a, item
         MERGE (p:Paper {id: item.doi})
         SET p.doi = item.doi, p.title = item.title, p.year = item.year, 
-            p.citations = item.citations, p.raw_metadata = item.raw_metadata
+            p.citations = item.citations, p.raw_metadata = item.raw_metadata,
+            p.openalex_id = item.paper_openalex_id
         
         MERGE (a)-[:AUTHORED]->(p)
         
