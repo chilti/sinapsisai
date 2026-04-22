@@ -152,14 +152,14 @@ class UNAMIngestor:
         SET src.name = work.primary_location.source.display_name,
             src.issn_l = work.primary_location.source.issn_l,
             src.type = work.primary_location.source.type
-        MERGE (p)-[:PUBLISHED_IN]->(src)
+        MERGE (w)-[:PUBLISHED_IN]->(src)
         
-        // Financiadores (Funders)
-        WITH p, work
+        // Financiadores        // 8. Grants
+        WITH w, work
         UNWIND (CASE WHEN work.grants IS NOT NULL THEN work.grants ELSE [] END) AS grant
         MERGE (f:Funder {id: grant.funder})
         SET f.name = grant.funder_display_name
-        MERGE (p)-[:FUNDED_BY]->(f)
+        MERGE (w)-[:FUNDED_BY]->(f)
         """
         
         with self.neo4j_driver.session() as session:
