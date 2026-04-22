@@ -85,7 +85,7 @@ services:
       bash -c "pip install mcp-neo4j-cypher && 
                mcp-neo4j-cypher --transport http --port 8000"
     ports:
-      - "127.0.0.1:8001:8000"
+      - "127.0.0.1:8005:8000"
     depends_on:
       - neo4j_mexico
     restart: unless-stopped
