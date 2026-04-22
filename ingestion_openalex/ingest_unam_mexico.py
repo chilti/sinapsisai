@@ -87,6 +87,7 @@ class UNAMIngestor:
     def ingest_batch(self, batch):
         cypher = """
         UNWIND $batch AS work
+        WHERE work.id IS NOT NULL
         MERGE (w:Work {id: work.id})
         SET w.title = work.title,
             w.doi = work.doi,
@@ -98,6 +99,7 @@ class UNAMIngestor:
         
         WITH w, work
         UNWIND work.authorships AS auth
+        WHERE auth.author IS NOT NULL AND auth.author.id IS NOT NULL
         MERGE (a:Author {id: auth.author.id})
         SET a.name = auth.author.display_name,
             a.orcid = auth.author.orcid
@@ -105,6 +107,7 @@ class UNAMIngestor:
         
         WITH w, work, auth, a
         UNWIND (CASE WHEN auth.institutions IS NOT NULL THEN auth.institutions ELSE [] END) AS inst
+        WHERE inst.id IS NOT NULL
         MERGE (i:Institution {id: inst.id})
         SET i.name = inst.display_name,
             i.ror = inst.ror,
@@ -112,7 +115,7 @@ class UNAMIngestor:
             i.type = inst.type
         MERGE (a)-[:AFFILIATED_TO]->(i)
         
-        // Relación con País (pasamos w y work para que no se pierdan)
+        // Relación con País
         WITH w, work, i, inst
         WHERE inst.country_code IS NOT NULL
         MERGE (c:Country {name: inst.country_code})
@@ -121,6 +124,7 @@ class UNAMIngestor:
         // Conceptos
         WITH w, work
         UNWIND (CASE WHEN work.concepts IS NOT NULL THEN work.concepts ELSE [] END) AS concept
+        WHERE concept.id IS NOT NULL
         MERGE (con:Concept {id: concept.id})
         SET con.name = concept.display_name,
             con.level = concept.level
@@ -129,6 +133,7 @@ class UNAMIngestor:
         // Tópicos
         WITH w, work
         UNWIND (CASE WHEN work.topics IS NOT NULL THEN work.topics ELSE [] END) AS topic
+        WHERE topic.id IS NOT NULL
         MERGE (t:Topic {id: topic.id})
         SET t.name = topic.display_name,
             t.subfield = topic.subfield.display_name,
@@ -139,6 +144,7 @@ class UNAMIngestor:
         // SDGs
         WITH w, work
         UNWIND (CASE WHEN work.sustainable_development_goals IS NOT NULL THEN work.sustainable_development_goals ELSE [] END) AS sdg
+        WHERE sdg.id IS NOT NULL
         MERGE (s:SDG {id: sdg.id})
         SET s.name = sdg.display_name
         MERGE (w)-[:ADDRESSES]->(s)
@@ -157,6 +163,7 @@ class UNAMIngestor:
         // Financiadores
         WITH w, work
         UNWIND (CASE WHEN work.grants IS NOT NULL THEN work.grants ELSE [] END) AS grant
+        WHERE grant.funder IS NOT NULL
         MERGE (f:Funder {id: grant.funder})
         SET f.name = grant.funder_display_name
         MERGE (w)-[:FUNDED_BY]->(f)
