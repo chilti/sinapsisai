@@ -27,9 +27,9 @@ class MexicoEmbeddingsManager:
     def close(self):
         self.driver.close()
 
-    def compute_specter_embeddings(self, label, text_fields, embedding_property="embedding"):
+    def compute_specter_embeddings(self, label, text_fields, embedding_property="embedding", batch_size=2000):
         """
-        Calcula embeddings SPECTER2 para una etiqueta y campos específicos.
+        Calcula embeddings SPECTER2 para una etiqueta y campos específicos usando procesamiento por lotes optimizado.
         """
         query = f"MATCH (n:{label}) WHERE n.{embedding_property} IS NULL RETURN n.id as id, " + \
                 ", ".join([f"n.{f} as {f}" for f in text_fields])
@@ -41,17 +41,17 @@ class MexicoEmbeddingsManager:
             print(f"✅ No hay nodos de tipo {label} pendientes de embedding SPECTER2.")
             return
 
-        print(f"🚀 Procesando {len(records)} nodos de tipo {label}...")
+        total = len(records)
+        print(f"🚀 Procesando {total:,} nodos de tipo {label} (Batch Size: {batch_size})...")
         
-        batch_size = 32
-        for i in range(0, len(records), batch_size):
-            batch = records[i:i+batch_size]
+        start_time = time.time()
+        for i in range(0, total, batch_size):
+            batch = records[i:i + batch_size]
             ids = []
             texts = []
             for r in batch:
                 ids.append(r['id'])
                 # Formato SPECTER2: Title: [title] [SEP] Abstract: [abstract]
-                # Si solo hay un campo (ej para Concept/Topic), usamos solo ese
                 if len(text_fields) > 1:
                     title = r.get('title', '') or ''
                     abstract = r.get('abstract', '') or ''
@@ -59,19 +59,25 @@ class MexicoEmbeddingsManager:
                 else:
                     texts.append(r.get(text_fields[0], '') or '')
             
+            # Calcular embeddings (la 4090 brillará aquí)
             embeddings = self.model.encode(texts, convert_to_numpy=True).tolist()
             
+            # Guardar en Neo4j usando la función optimizada para vectores de v5.x
             update_query = f"""
             UNWIND $data AS row
             MATCH (n:{label} {{id: row.id}})
-            SET n.{embedding_property} = row.embedding
+            CALL db.create.setNodeVectorProperty(n, '{embedding_property}', row.embedding)
             """
             data = [{"id": id_val, "embedding": emb} for id_val, emb in zip(ids, embeddings)]
             
             with self.driver.session() as session:
                 session.run(update_query, data=data)
             
-            print(f"  -> {i + len(batch)}/{len(records)} completados...", end="\r")
+            elapsed = time.time() - start_time
+            processed = i + len(batch)
+            rate = processed / elapsed
+            eta = (total - processed) / rate / 60
+            print(f"  -> {processed:,}/{total:,} | Velocidad: {rate:.1f} nodes/s | ETA: {eta:.1f} min", end="\r")
         print(f"\n✅ Embeddings SPECTER2 para {label} finalizados.")
 
     def run_fastrp(self):
