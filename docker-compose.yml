@@ -44,24 +44,22 @@ services:
     restart: unless-stopped
 
   # Grafo de Conocimiento (México): Neo4j Nueva Instancia
-    neo4j_mexico:
+  neo4j_mexico:
     image: neo4j:5.23
     container_name: neo4j_mexico
-    # QUITAMOS user y userns_mode
     ports:
-      - "127.0.0.1:7475:7474"
-      - "127.0.0.1:7688:7687"
+      - "127.0.0.1:7475:7474" # Browser GUI
+      - "127.0.0.1:7688:7687" # Bolt connection
     volumes:
       - /mnt/expansion/dockers_drives/neo4j_mexico_data:/data
       - /mnt/expansion/dockers_drives/neo4j_mexico_logs:/logs
-      - /mnt/expansion/dockers_drives/neo4j_mexico_import:/import # Simplificado
+      - /mnt/expansion/dockers_drives/neo4j_mexico_import:/import
       - /mnt/expansion/dockers_drives/neo4j_mexico_plugins:/plugins
     environment:
       - NEO4J_AUTH=neo4j/password123
       - NEO4J_PLUGINS=["apoc", "gds"]
-      - NEO4J_CHOWN_DIRECTORIES=false
       - NEO4J_dbms_security_procedures_unrestricted=apoc.*,gds.*
-      # ... resto de variables ...
+      - NEO4J_dbms_security_procedures_allowlist=apoc.*,gds.*
       - NEO4J_server_memory_heap_initial__size=8G
       - NEO4J_server_memory_heap_max__size=16G
       - NEO4J_server_memory_pagecache_size=32G
