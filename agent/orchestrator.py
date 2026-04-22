@@ -20,7 +20,7 @@ from .tools_interpreter import open_interpreter_tool
 from .tools_hybrid import hybrid_tools
 
 class RAGOrchestrator:
-    def __init__(self, tools_list=[], model_name=None, base_url=None, api_key="lm-studio", use_defaults=True, system_prompt=None):
+    def __init__(self, tools_list=None, model_name=None, base_url=None, api_key="lm-studio", use_defaults=True, system_prompt=None):
         """
         Inicializa el orquestador que conecta LLMs, Herramientas, Memoria y Open Interpreter.
         """
