@@ -167,62 +167,94 @@ class UNAMIngestor:
 
     def run(self, batch_size=500, limit=None):
         start_time = time.time()
-        rows, cols = self.fetch_unam_works(limit=limit)
-        total = len(rows)
-        print(f"📦 Se recuperaron {total} trabajos. Iniciando ingesta en lotes de {batch_size}...")
         
+        # Query optimizada para producción UNAM usando columna ROR
+        query = f"""
+        SELECT 
+            id, doi, title, publication_year, type, cited_by_count, language,
+            raw_data
+        FROM works
+        WHERE has(institution_rors, '{UNAM_ROR}')
+        """
+        if limit:
+            query += f" LIMIT {limit}"
+        
+        # Ajustes de seguridad para el servidor
+        query += " SETTINGS use_skip_indexes = 0, max_threads = 4"
+        
+        print(f"🚀 Iniciando ingesta por streaming desde ClickHouse...")
+        
+        # Usamos query_column_batches para no cargar 350k registros en RAM simultáneamente
         batch = []
         count = 0
-        for row in rows:
-            # Convertir fila (tuple) a dict usando nombres de columnas
-            row_dict = dict(zip(cols, row))
-            
-            # El campo raw_data contiene el JSON completo original de OpenAlex
-            try:
-                work_dict = json.loads(row_dict['raw_data'])
-            except Exception as e:
-                print(f"Error parseando raw_data para {row_dict.get('id')}: {e}")
-                continue
-            
-            # Asegurar campos básicos (pueden venir de la columna o del JSON)
-            work_dict['publication_year'] = row_dict.get('publication_year') or work_dict.get('publication_year')
-            work_dict['cited_by_count'] = row_dict.get('cited_by_count') or work_dict.get('cited_by_count')
-            
-            # Reconstruir abstract
-            abstract = ""
-            if 'abstract_inverted_index' in work_dict:
-                abstract = self.reconstruct_abstract(work_dict['abstract_inverted_index'])
-            elif isinstance(work_dict.get('abstract'), str):
-                abstract = work_dict['abstract']
-            
-            work_dict['abstract'] = abstract
-            
-            # Manejar Grants (en OpenAlex se llaman grants, en mi Cypher usé work.grants)
-            # El script de ingesta espera work.grants
-            work_dict['grants'] = work_dict.get('grants', [])
-            
-            batch.append(work_dict)
-            
-            if len(batch) >= batch_size:
+        
+        try:
+            # result_rows de query_column_batches nos da bloques de datos
+            with self.ch_client.query_column_batches(query) as batches:
+                for columns in batches:
+                    # columns es una lista de columnas, necesitamos trasponerla a filas
+                    # o usar dict(zip) si preferimos. 
+                    # query_column_batches es muy eficiente en memoria.
+                    
+                    # Convertir el batch de columnas a lista de dicts
+                    col_names = ['id', 'doi', 'title', 'publication_year', 'type', 'cited_by_count', 'language', 'raw_data']
+                    num_rows = len(columns[0])
+                    
+                    for i in range(num_rows):
+                        row_dict = {name: columns[j][i] for j, name in enumerate(col_names)}
+                        
+                        try:
+                            work_dict = json.loads(row_dict['raw_data'])
+                        except:
+                            continue
+                        
+                        # Metadata básica
+                        work_dict['publication_year'] = row_dict.get('publication_year') or work_dict.get('publication_year')
+                        work_dict['cited_by_count'] = row_dict.get('cited_by_count') or work_dict.get('cited_by_count')
+                        
+                        # Reconstruir abstract
+                        abstract = ""
+                        if 'abstract_inverted_index' in work_dict:
+                            abstract = self.reconstruct_abstract(work_dict['abstract_inverted_index'])
+                        elif isinstance(work_dict.get('abstract'), str):
+                            abstract = work_dict['abstract']
+                        work_dict['abstract'] = abstract
+                        
+                        work_dict['grants'] = work_dict.get('grants', [])
+                        
+                        batch.append(work_dict)
+                        
+                        if len(batch) >= batch_size:
+                            self.ingest_batch(batch)
+                            count += len(batch)
+                            elapsed = time.time() - start_time
+                            rate = count / elapsed if elapsed > 0 else 0
+                            print(f"  -> Ingestados {count:,} | Velocidad: {rate:.1f} doc/s", end="\r")
+                            batch = []
+
+            if batch:
                 self.ingest_batch(batch)
                 count += len(batch)
-                print(f"  -> Ingestados {count}/{total}...")
-                batch = []
-        
-        if batch:
-            self.ingest_batch(batch)
-            count += len(batch)
+                
+            print(f"\n✅ Ingesta completada. Total: {count:,} trabajos en {time.time() - start_time:.2f}s.")
             
-        end_time = time.time()
-        print(f"✅ Ingesta completada. Total: {count} trabajos en {end_time - start_time:.2f}s.")
+        except Exception as e:
+            print(f"\n❌ Error durante la ingesta: {e}")
 
     def close(self):
         self.neo4j_driver.close()
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Ingesta de producción UNAM desde ClickHouse a Neo4j.")
+    parser.add_argument("--limit", type=int, default=None, help="Límite de registros a procesar (para pruebas).")
+    parser.add_argument("--batch", type=int, default=500, help="Tamaño del lote para Neo4j (default 500).")
+    args = parser.parse_args()
+
     ingestor = UNAMIngestor()
     try:
-        # Se puede pasar un límite para pruebas, ej: limit=1000
-        ingestor.run(batch_size=500)
+        if args.limit:
+            print(f"🧪 Modo prueba activado: Límite de {args.limit} registros.")
+        ingestor.run(batch_size=args.batch, limit=args.limit)
     finally:
         ingestor.close()
