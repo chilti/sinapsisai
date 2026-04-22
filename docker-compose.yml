@@ -54,7 +54,7 @@ services:
       - /mnt/expansion/dockers_drives/neo4j_mexico_data:/data
       - /mnt/expansion/dockers_drives/neo4j_mexico_logs:/logs
       - /mnt/expansion/dockers_drives/neo4j_mexico_import:/import
-      - /mnt/expansion/dockers_drives/neo4j_mexico_plugins:/plugins
+      - neo4j_mexico_plugins:/plugins
     environment:
       - NEO4J_AUTH=neo4j/password123
       - NEO4J_PLUGINS=["apoc", "graph-data-science"]
@@ -82,7 +82,7 @@ services:
       - NEO4J_PASSWORD=password123
     command: >
       bash -c "pip install mcp-neo4j-cypher && 
-               mcp-neo4j-cypher --transport http --port 8000"
+               python -m mcp_neo4j_cypher"
     ports:
       - "127.0.0.1:8005:8000"
     depends_on:
@@ -125,3 +125,6 @@ services:
         soft: 262144
         hard: 262144
     restart: unless-stopped
+
+volumes:
+  neo4j_mexico_plugins:
