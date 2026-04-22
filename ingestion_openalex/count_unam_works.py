@@ -31,20 +31,6 @@ def count_works():
         total = result.result_rows[0][0]
         
         print(f"\nTotal de trabajos encontrados: {total:,}")
-        
-        # Opcional: Conteo por año
-        print("\nDistribucion por año (Top 10 recientes):")
-        query_years = f"""
-        SELECT publication_year, count() as count 
-        FROM works 
-        WHERE has(openalex_institution_ids, '{UNAM_ID}') 
-        GROUP BY publication_year 
-        ORDER BY publication_year DESC 
-        LIMIT 10
-        """
-        result_years = client.query(query_years)
-        for row in result_years.result_rows:
-            print(f"   - {row[0]}: {row[1]:,}")
             
     except Exception as e:
         print(f"❌ Error: {e}")
