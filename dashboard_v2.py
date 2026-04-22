@@ -189,7 +189,7 @@ if "test_orchestrator" not in st.session_state:
     with st.spinner("Inicializando Asistente de Prueba (MCP)..."):
         try:
             # Cargamos herramientas desde el servidor MCP
-            mcp_tools = get_mcp_tools_sync("http://localhost:8001/sse")
+            mcp_tools = get_mcp_tools_sync("http://localhost:8005/sse")
             
             test_sys_prompt = """
 Eres SINAPSIS-PRUEBA, un asistente especializado exclusivamente en consultar el Grafo de Conocimiento de México a través de un servidor MCP.

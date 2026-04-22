@@ -1,7 +1,7 @@
 import asyncio
 from langchain_mcp_adapters.tools import load_mcp_tools
 
-async def get_mcp_tools(url: str = "http://localhost:8001/sse"):
+async def get_mcp_tools(url: str = "http://localhost:8005/sse"):
     """
     Carga dinámicamente las herramientas desde un servidor MCP vía SSE.
     """
@@ -13,7 +13,7 @@ async def get_mcp_tools(url: str = "http://localhost:8001/sse"):
         print(f"Error cargando herramientas MCP desde {url}: {e}")
         return []
 
-def get_mcp_tools_sync(url: str = "http://localhost:8001/sse"):
+def get_mcp_tools_sync(url: str = "http://localhost:8005/sse"):
     """
     Versión síncrona para inicialización (usa un loop temporal).
     """
