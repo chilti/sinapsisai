@@ -24,13 +24,20 @@ def count_works():
             database=CH_DATABASE
         )
         
-        # Query optimizada para conteo usando columnas materializadas (CORREGIDA)
-        query = f"SELECT count() as total FROM works WHERE has(openalex_institution_ids, '{UNAM_ID}')"
+        # Query directa al JSON (ignora si la materialización no ha terminado)
+        # Usamos SETTINGS use_skip_indexes = 0 para evitar saturar el servidor con índices incompletos
+        query = f"""
+        SELECT count() as total 
+        FROM works 
+        WHERE has(arrayMap(x -> JSONExtractString(x, 'id'), JSONExtractArrayRaw(raw_data, 'institutions')), '{UNAM_ID}')
+        SETTINGS use_skip_indexes = 0, max_threads = 4
+        """
         
+        print("Ejecutando conteo directo (esto puede tardar unos segundos)...")
         result = client.query(query)
         total = result.result_rows[0][0]
         
-        print(f"\nTotal de trabajos encontrados: {total:,}")
+        print(f"\nTotal de trabajos encontrados (vía JSON): {total:,}")
             
     except Exception as e:
         print(f"❌ Error: {e}")
