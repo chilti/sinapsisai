@@ -87,23 +87,23 @@ class UNAMIngestor:
     def ingest_batch(self, batch):
         cypher = """
         UNWIND $batch AS work
-        MERGE (p:Work {id: work.id})
-        SET p.title = work.title,
-            p.doi = work.doi,
-            p.year = work.publication_year,
-            p.citations = work.cited_by_count,
-            p.type = work.type,
-            p.language = work.language,
-            p.abstract = work.abstract
+        MERGE (w:Work {id: work.id})
+        SET w.title = work.title,
+            w.doi = work.doi,
+            w.year = work.publication_year,
+            w.citations = work.cited_by_count,
+            w.type = work.type,
+            w.language = work.language,
+            w.abstract = work.abstract
         
-        WITH p, work
+        WITH w, work
         UNWIND work.authorships AS auth
         MERGE (a:Author {id: auth.author.id})
         SET a.name = auth.author.display_name,
             a.orcid = auth.author.orcid
-        MERGE (a)-[:AUTHORED]->(p)
+        MERGE (a)-[:AUTHORED]->(w)
         
-        WITH p, auth, a
+        WITH w, auth, a
         UNWIND (CASE WHEN auth.institutions IS NOT NULL THEN auth.institutions ELSE [] END) AS inst
         MERGE (i:Institution {id: inst.id})
         SET i.name = inst.display_name,
@@ -119,32 +119,32 @@ class UNAMIngestor:
         MERGE (i)-[:LOCATED_IN]->(c)
         
         // Conceptos
-        WITH p, work
+        WITH w, work
         UNWIND (CASE WHEN work.concepts IS NOT NULL THEN work.concepts ELSE [] END) AS concept
         MERGE (con:Concept {id: concept.id})
         SET con.name = concept.display_name,
             con.level = concept.level
-        MERGE (p)-[:HAS_CONCEPT]->(con)
+        MERGE (w)-[:HAS_CONCEPT]->(con)
         
         // Tópicos
-        WITH p, work
+        WITH w, work
         UNWIND (CASE WHEN work.topics IS NOT NULL THEN work.topics ELSE [] END) AS topic
         MERGE (t:Topic {id: topic.id})
         SET t.name = topic.display_name,
             t.subfield = topic.subfield.display_name,
             t.field = topic.field.display_name,
             t.domain = topic.domain.display_name
-        MERGE (p)-[:HAS_TOPIC]->(t)
+        MERGE (w)-[:HAS_TOPIC]->(t)
         
         // SDGs
-        WITH p, work
+        WITH w, work
         UNWIND (CASE WHEN work.sustainable_development_goals IS NOT NULL THEN work.sustainable_development_goals ELSE [] END) AS sdg
         MERGE (s:SDG {id: sdg.id})
         SET s.name = sdg.display_name
-        MERGE (p)-[:ADDRESSES]->(s)
+        MERGE (w)-[:ADDRESSES]->(s)
         
         // Fuente (Source)
-        WITH p, work
+        WITH w, work
         WHERE work.primary_location IS NOT NULL 
           AND work.primary_location.source IS NOT NULL 
           AND work.primary_location.source.id IS NOT NULL
@@ -154,7 +154,7 @@ class UNAMIngestor:
             src.type = work.primary_location.source.type
         MERGE (w)-[:PUBLISHED_IN]->(src)
         
-        // Financiadores        // 8. Grants
+        // Financiadores
         WITH w, work
         UNWIND (CASE WHEN work.grants IS NOT NULL THEN work.grants ELSE [] END) AS grant
         MERGE (f:Funder {id: grant.funder})
