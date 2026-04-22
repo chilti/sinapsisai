@@ -58,20 +58,18 @@ class UNAMIngestor:
         print("✅ Restricciones de unicidad inicializadas.")
 
     def fetch_unam_works(self, limit=None):
-        # Query exhaustiva para producción UNAM
-        # Nota: Ajustamos los nombres de columnas según el estándar de OpenAlex en CH
+        # Query exhaustiva para producción UNAM usando columnas materializadas
         query = f"""
         SELECT 
             id, doi, title, publication_year, type, cited_by_count, language,
-            authorships, concepts, topics, sustainable_development_goals, grants, primary_location
+            raw_data
         FROM works
-        WHERE has(authorships.institutions.id, '{UNAM_ID}')
+        WHERE has(institution_ids, '{UNAM_ID}')
         """
         if limit:
             query += f" LIMIT {limit}"
         
-        print(f"🔍 Ejecutando consulta en ClickHouse...")
-        # Usamos query_json_batches si el volumen es muy grande, o un simple query para empezar
+        print(f"Connecting to ClickHouse and fetching works...")
         result = self.ch_client.query(query)
         return result.result_rows, result.column_names
 
@@ -177,25 +175,31 @@ class UNAMIngestor:
         count = 0
         for row in rows:
             # Convertir fila (tuple) a dict usando nombres de columnas
-            work_dict = dict(zip(cols, row))
+            row_dict = dict(zip(cols, row))
             
-            # Asegurar que los campos JSON/Array se manejen correctamente si vienen como strings
-            for field in ['authorships', 'concepts', 'topics', 'sustainable_development_goals', 'grants', 'primary_location']:
-                if isinstance(work_dict.get(field), str):
-                    try:
-                        work_dict[field] = json.loads(work_dict[field])
-                    except:
-                        pass
+            # El campo raw_data contiene el JSON completo original de OpenAlex
+            try:
+                work_dict = json.loads(row_dict['raw_data'])
+            except Exception as e:
+                print(f"Error parseando raw_data para {row_dict.get('id')}: {e}")
+                continue
+            
+            # Asegurar campos básicos (pueden venir de la columna o del JSON)
+            work_dict['publication_year'] = row_dict.get('publication_year') or work_dict.get('publication_year')
+            work_dict['cited_by_count'] = row_dict.get('cited_by_count') or work_dict.get('cited_by_count')
             
             # Reconstruir abstract
-            meta = work_dict
             abstract = ""
-            if 'abstract_inverted_index' in meta:
-                abstract = self.reconstruct_abstract(meta['abstract_inverted_index'])
-            elif isinstance(meta.get('abstract'), str):
-                abstract = meta['abstract']
+            if 'abstract_inverted_index' in work_dict:
+                abstract = self.reconstruct_abstract(work_dict['abstract_inverted_index'])
+            elif isinstance(work_dict.get('abstract'), str):
+                abstract = work_dict['abstract']
             
             work_dict['abstract'] = abstract
+            
+            # Manejar Grants (en OpenAlex se llaman grants, en mi Cypher usé work.grants)
+            # El script de ingesta espera work.grants
+            work_dict['grants'] = work_dict.get('grants', [])
             
             batch.append(work_dict)
             

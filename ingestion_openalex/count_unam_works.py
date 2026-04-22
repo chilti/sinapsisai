@@ -24,22 +24,20 @@ def count_works():
             database=CH_DATABASE
         )
         
-        print(f"📊 Contando trabajos para UNAM ({UNAM_ID})...")
-        
-        # Query optimizada para conteo
-        query = f"SELECT count() as total FROM works WHERE has(authorships.institutions.id, '{UNAM_ID}')"
+        # Query optimizada para conteo usando columnas materializadas
+        query = f"SELECT count() as total FROM works WHERE has(institution_ids, '{UNAM_ID}')"
         
         result = client.query(query)
         total = result.result_rows[0][0]
         
-        print(f"\n✅ Total de trabajos encontrados: {total:,}")
+        print(f"\nTotal de trabajos encontrados: {total:,}")
         
         # Opcional: Conteo por año
-        print("\n📈 Distribución por año (Top 10 recientes):")
+        print("\nDistribucion por año (Top 10 recientes):")
         query_years = f"""
         SELECT publication_year, count() as count 
         FROM works 
-        WHERE has(authorships.institutions.id, '{UNAM_ID}') 
+        WHERE has(institution_ids, '{UNAM_ID}') 
         GROUP BY publication_year 
         ORDER BY publication_year DESC 
         LIMIT 10
