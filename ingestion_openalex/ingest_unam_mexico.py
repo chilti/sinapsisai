@@ -184,24 +184,19 @@ class UNAMIngestor:
         
         print(f"🚀 Iniciando ingesta por streaming desde ClickHouse...")
         
-        # Usamos query_column_batches para no cargar 350k registros en RAM simultáneamente
+        # Usamos query_row_block_stream para procesar por bloques sin saturar la RAM
         batch = []
         count = 0
         
         try:
-            # result_rows de query_column_batches nos da bloques de datos
-            with self.ch_client.query_column_batches(query) as batches:
-                for columns in batches:
-                    # columns es una lista de columnas, necesitamos trasponerla a filas
-                    # o usar dict(zip) si preferimos. 
-                    # query_column_batches es muy eficiente en memoria.
-                    
-                    # Convertir el batch de columnas a lista de dicts
+            # query_row_block_stream devuelve bloques de filas
+            with self.ch_client.query_row_block_stream(query) as stream:
+                for block in stream:
                     col_names = ['id', 'doi', 'title', 'publication_year', 'type', 'cited_by_count', 'language', 'raw_data']
-                    num_rows = len(columns[0])
                     
-                    for i in range(num_rows):
-                        row_dict = {name: columns[j][i] for j, name in enumerate(col_names)}
+                    for row in block:
+                        # row es una tupla, la convertimos a dict
+                        row_dict = dict(zip(col_names, row))
                         
                         try:
                             work_dict = json.loads(row_dict['raw_data'])
@@ -228,7 +223,7 @@ class UNAMIngestor:
                             self.ingest_batch(batch)
                             count += len(batch)
                             elapsed = time.time() - start_time
-                            rate = count / elapsed if elapsed > 0 else 0
+                            rate = count / elapsed if elapsed > 0 else 1
                             print(f"  -> Ingestados {count:,} | Velocidad: {rate:.1f} doc/s", end="\r")
                             batch = []
 
