@@ -71,6 +71,7 @@ services:
       - NEO4J_apoc_export_file_enabled=true
       - NEO4J_apoc_import_file_enabled=true
       - NEO4J_apoc_import_file_use__neo4j__config=true
+      - NEO4J_CHOWN_DIRECTORIES=false
     restart: unless-stopped
 
   # Servidor MCP para Neo4j (México)
