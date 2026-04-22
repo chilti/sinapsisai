@@ -47,19 +47,20 @@ services:
   neo4j_mexico:
     image: neo4j:5.23
     container_name: neo4j_mexico
+    user: "${UID:-1000}:${GID:-1000}"
     ports:
       - "127.0.0.1:7475:7474" # Browser GUI
       - "127.0.0.1:7688:7687" # Bolt connection
     volumes:
       - /mnt/expansion/dockers_drives/neo4j_mexico_data:/data
       - /mnt/expansion/dockers_drives/neo4j_mexico_logs:/logs
-      - /mnt/expansion/dockers_drives/neo4j_mexico_import:/import
-      - neo4j_mexico_plugins:/plugins
+      - /mnt/expansion/dockers_drives/neo4j_mexico_import:/var/lib/neo4j/import
+      - /mnt/expansion/dockers_drives/neo4j_mexico_plugins:/plugins
     environment:
       - NEO4J_AUTH=neo4j/password123
       - NEO4J_PLUGINS=["apoc", "graph-data-science"]
-      - NEO4J_dbms_security_procedures_unrestricted=apoc.*,gds.*
-      - NEO4J_dbms_security_procedures_allowlist=apoc.*,gds.*
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*,graph_data_science.*
+      - NEO4J_dbms_security_procedures_allowlist=apoc.*,graph_data_science.*
       - NEO4J_server_memory_heap_initial__size=8G
       - NEO4J_server_memory_heap_max__size=16G
       - NEO4J_server_memory_pagecache_size=32G
@@ -125,6 +126,3 @@ services:
         soft: 262144
         hard: 262144
     restart: unless-stopped
-
-volumes:
-  neo4j_mexico_plugins:
