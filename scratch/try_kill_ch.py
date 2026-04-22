@@ -21,7 +21,7 @@ def try_kill():
     # Intento 2: rag_user (aunque ya vimos que falló el SELECT)
     print("\nTrying KILL as rag_user...")
     try:
-        client = clickhouse_connect.get_client(host=CH_HOST, port=CH_PORT, username='rag_user', password='$B3tt3r-R4g-3veR-d0N3++', database='rag')
+        client = clickhouse_connect.get_client(host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASS, database=CH_DATABASE)
         client.command("KILL MUTATION WHERE table = 'works' AND is_done = 0")
         print("Success as rag_user!")
         return

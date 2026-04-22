@@ -15,13 +15,13 @@ load_dotenv()
 CH_HOST = os.getenv("CH_HOST", "10.90.0.87")
 CH_PORT = int(os.getenv("CH_PORT", 8124))
 CH_USER = os.getenv("CH_USER", "rag_user")
-CH_PASS = os.getenv("CH_PASSWORD", "$B3tt3r-R4g-3veR-d0N3++")
+CH_PASS = os.getenv("CH_PASSWORD")
 CH_DB   = os.getenv("CH_DATABASE", "rag")
 
 # Configuración Neo4j (Nueva instancia México)
-NEO4J_URI = "bolt://localhost:7688"
-NEO4J_USER = "neo4j"
-NEO4J_PASS = "password123"
+NEO4J_URI = os.getenv("NEO4J_URI_MEXICO", "bolt://localhost:7688")
+NEO4J_USER = os.getenv("NEO4J_USER_MEXICO", "neo4j")
+NEO4J_PASS = os.getenv("NEO4J_PASSWORD_MEXICO", "password123")
 
 UNAM_ROR = "https://ror.org/01tmp8f25"
 

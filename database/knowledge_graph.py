@@ -6,7 +6,10 @@ class Neo4jGraphStore:
     Gestor de la base de datos de grafos Neo4j para almacenar 
     relaciones complejas (citas, coautorías, afiliaciones).
     """
-    def __init__(self, uri="bolt://127.0.0.1:7687", user="neo4j", password="password123"):
+    def __init__(self, uri="bolt://127.0.0.1:7687", user="neo4j", password=None):
+        # Intentar obtener password de env si no se proporciona
+        if not password:
+            password = os.getenv("NEO4J_PASS", "password")
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
         self._init_constraints()
 

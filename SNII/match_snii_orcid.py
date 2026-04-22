@@ -37,7 +37,7 @@ CH_DB_ORCID   = os.getenv("CH_ORCID_DATABASE", "orcid")
 # Configuración Neo4j (Bolt)
 NEO4J_URI  = os.getenv("NEO4J_URI", "bolt://127.0.0.1:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-NEO4J_PASS = os.getenv("NEO4J_PASS", "password123")
+NEO4J_PASS = os.getenv("NEO4J_PASS")
 
 # Definir rutas absolutas basadas en la ubicación del script
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))

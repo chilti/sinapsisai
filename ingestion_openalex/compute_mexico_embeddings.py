@@ -11,7 +11,7 @@ load_dotenv()
 # Configuración Neo4j (Nueva instancia México)
 NEO4J_URI = "bolt://localhost:7688"
 NEO4J_USER = "neo4j"
-NEO4J_PASS = "password123"
+NEO4J_PASS = os.getenv("NEO4J_PASSWORD_MEXICO", "password123")
 
 # Modelo SPECTER2
 #allenai/specter2_base es el modelo base recomendado para papers cientificos

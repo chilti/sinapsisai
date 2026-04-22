@@ -8,7 +8,7 @@ load_dotenv()
 CH_HOST = os.getenv("CH_HOST", "10.90.0.87")
 CH_PORT = int(os.getenv("CH_PORT", 8124))
 CH_USER = os.getenv("CH_USER", "rag_user")
-CH_PASS = os.getenv("CH_PASSWORD", "$B3tt3r-R4g-3veR-d0N3++")
+CH_PASS = os.getenv("CH_PASSWORD")
 CH_DATABASE = os.getenv("CH_DATABASE", "rag")
 
 def check_schema():
