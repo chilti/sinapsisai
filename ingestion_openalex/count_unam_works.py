@@ -24,8 +24,8 @@ def count_works():
             database=CH_DATABASE
         )
         
-        # Query optimizada para conteo usando columnas materializadas
-        query = f"SELECT count() as total FROM works WHERE has(institution_ids, '{UNAM_ID}')"
+        # Query optimizada para conteo usando columnas materializadas (CORREGIDA)
+        query = f"SELECT count() as total FROM works WHERE has(openalex_institution_ids, '{UNAM_ID}')"
         
         result = client.query(query)
         total = result.result_rows[0][0]
@@ -37,7 +37,7 @@ def count_works():
         query_years = f"""
         SELECT publication_year, count() as count 
         FROM works 
-        WHERE has(institution_ids, '{UNAM_ID}') 
+        WHERE has(openalex_institution_ids, '{UNAM_ID}') 
         GROUP BY publication_year 
         ORDER BY publication_year DESC 
         LIMIT 10

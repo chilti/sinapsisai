@@ -64,7 +64,7 @@ class UNAMIngestor:
             id, doi, title, publication_year, type, cited_by_count, language,
             raw_data
         FROM works
-        WHERE has(institution_ids, '{UNAM_ID}')
+        WHERE has(openalex_institution_ids, '{UNAM_ID}')
         """
         if limit:
             query += f" LIMIT {limit}"
