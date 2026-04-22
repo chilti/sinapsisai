@@ -103,7 +103,7 @@ class UNAMIngestor:
             a.orcid = auth.author.orcid
         MERGE (a)-[:AUTHORED]->(w)
         
-        WITH w, auth, a
+        WITH w, work, auth, a
         UNWIND (CASE WHEN auth.institutions IS NOT NULL THEN auth.institutions ELSE [] END) AS inst
         MERGE (i:Institution {id: inst.id})
         SET i.name = inst.display_name,
@@ -112,8 +112,8 @@ class UNAMIngestor:
             i.type = inst.type
         MERGE (a)-[:AFFILIATED_TO]->(i)
         
-        // Relación con País
-        WITH i, inst
+        // Relación con País (pasamos w y work para que no se pierdan)
+        WITH w, work, i, inst
         WHERE inst.country_code IS NOT NULL
         MERGE (c:Country {name: inst.country_code})
         MERGE (i)-[:LOCATED_IN]->(c)
