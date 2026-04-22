@@ -11,10 +11,10 @@ CH_USER = os.getenv("CH_USER", "rag_user")
 CH_PASS = os.getenv("CH_PASSWORD", "$B3tt3r-R4g-3veR-d0N3++")
 CH_DATABASE = os.getenv("CH_DATABASE", "rag")
 
-UNAM_ID = "https://openalex.org/I8961855"
+UNAM_ROR = "https://ror.org/01tmp8f25"
 
 def count_works():
-    print(f"🔗 Conectando a ClickHouse {CH_HOST}...")
+    print(f"Connecting to ClickHouse {CH_HOST}...")
     try:
         client = clickhouse_connect.get_client(
             host=CH_HOST,
@@ -24,20 +24,19 @@ def count_works():
             database=CH_DATABASE
         )
         
-        # Query directa al JSON (ignora si la materialización no ha terminado)
-        # Usamos SETTINGS use_skip_indexes = 0 para evitar saturar el servidor con índices incompletos
+        # Query usando la columna ROR que ya está materializada y es rápida
         query = f"""
         SELECT count() as total 
         FROM works 
-        WHERE has(arrayMap(x -> JSONExtractString(x, 'id'), JSONExtractArrayRaw(raw_data, 'institutions')), '{UNAM_ID}')
-        SETTINGS use_skip_indexes = 0, max_threads = 4
+        WHERE has(institution_rors, '{UNAM_ROR}')
+        SETTINGS use_skip_indexes = 0
         """
         
-        print("Ejecutando conteo directo (esto puede tardar unos segundos)...")
+        print(f"Contando trabajos para UNAM via ROR {UNAM_ROR}...")
         result = client.query(query)
         total = result.result_rows[0][0]
         
-        print(f"\nTotal de trabajos encontrados (vía JSON): {total:,}")
+        print(f"\nTotal de trabajos encontrados (vía ROR): {total:,}")
             
     except Exception as e:
         print(f"❌ Error: {e}")

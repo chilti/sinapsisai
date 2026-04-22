@@ -23,7 +23,7 @@ NEO4J_URI = "bolt://localhost:7688"
 NEO4J_USER = "neo4j"
 NEO4J_PASS = "password123"
 
-UNAM_ID = "https://openalex.org/I8961855"
+UNAM_ROR = "https://ror.org/01tmp8f25"
 
 class UNAMIngestor:
     def __init__(self):
@@ -58,13 +58,13 @@ class UNAMIngestor:
         print("✅ Restricciones de unicidad inicializadas.")
 
     def fetch_unam_works(self, limit=None):
-        # Query exhaustiva para producción UNAM usando columnas materializadas
+        # Query exhaustiva para producción UNAM usando columna ROR (mucho más rápido)
         query = f"""
         SELECT 
             id, doi, title, publication_year, type, cited_by_count, language,
             raw_data
         FROM works
-        WHERE has(openalex_institution_ids, '{UNAM_ID}')
+        WHERE has(institution_rors, '{UNAM_ROR}')
         """
         if limit:
             query += f" LIMIT {limit}"
