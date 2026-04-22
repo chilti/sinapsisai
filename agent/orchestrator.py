@@ -20,7 +20,7 @@ from .tools_interpreter import open_interpreter_tool
 from .tools_hybrid import hybrid_tools
 
 class RAGOrchestrator:
-    def __init__(self, tools_list=[], model_name=None, base_url=None, api_key="lm-studio"):
+    def __init__(self, tools_list=[], model_name=None, base_url=None, api_key="lm-studio", use_defaults=True, system_prompt=None):
         """
         Inicializa el orquestador que conecta LLMs, Herramientas, Memoria y Open Interpreter.
         """
@@ -38,28 +38,19 @@ class RAGOrchestrator:
         elif tools_list is not None:
             print(f"Advertencia: tools_list no es una lista ({type(tools_list)}). Ignorando.")
             
-        self.tools = final_tools_list + hybrid_tools + [open_interpreter_tool]
+        if use_defaults:
+            self.tools = final_tools_list + hybrid_tools + [open_interpreter_tool]
+        else:
+            self.tools = final_tools_list
         
         # SQLite para historial limpio (solo mensajes humano/asistente, sin ruido de herramientas)
         self.memory_manager = SessionMemoryManager()
         
-        # --- PROMPT ASISTENTE REACTIVO (MCP) ---
-        # Nota: El prompt original (Híbrido) se conserva abajo como respaldo (No borrar nada).
-        
-        # LEGACY SYSTEM PROMPT (Híbrido: Neo4j + Qdrant + Parquets)
-        # Eres SINAPSIS, un analista experto en bibliometría y producción científica de la UNAM. 
-        # Respondes con precisión y síntesis sobre investigadores, publicaciones, métricas y redes 
-        # de colaboración de las entidades académicas de la UNAM.
-
-        # ## ESTRATEGIA DE DECISIÓN
-        # Paso 1 — ¿Requiere datos? (Conocimiento general vs específico)
-        # Paso 2 — Búsqueda dual OBLIGATORIA (usar EN PARALELO Cypher y Semantic)
-        # Paso 3 — Reglas críticas de Cypher (CONTAINS para nombres, OR para tópicos)
-        # Paso 4 — Información bibliométrica detallada (recoverFromOpenAlex con DOI)
-        # Paso 5 — Análisis y gráficas (Python_CodeExecutor en data/cache/)
-
-        # Prompt estructurado en 3 capas: Rol → Estrategia → Formato
-        self.system_prompt = """
+        # --- PROMPT ASISTENTE ---
+        if system_prompt:
+            self.system_prompt = system_prompt
+        else:
+            self.system_prompt = """
 Eres SINAPSIS, un analista experto en bibliometría de la UNAM. Tu misión es proporcionar respuestas precisas sobre investigadores, publicaciones y métricas utilizando una estrategia de datos híbrida donde **EL ACCESO LOCAL ES PRIORITARIO**.
 
 ## ESTRATEGIA DE DECISIÓN PRIORITARIA

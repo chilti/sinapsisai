@@ -35,8 +35,8 @@ def load_cached_data(filename, entity_name=None, academic_name=None, institution
     
     # 1. Intentar estructura jerárquica (Nacional)
     if institution_name:
-        if institution_name == "México" or institution_name == "Mexico":
-            safe_inst = "Mexico"
+        if str(institution_name).upper() in ["MEXICO", "MÉXICO"]:
+            safe_inst = "MEXICO"
         else:
             safe_inst = str(institution_name).replace('/', '_').replace('\\', '_')
 
@@ -75,7 +75,11 @@ def get_cached_data(filename, entity_name=None, academic_name=None, institution_
     
     # Lógica de detección de path para mtime (debe coincidir con la de load_cached_data)
     if institution_name:
-        safe_inst = str(institution_name).replace('/', '_').replace('\\', '_')
+        if str(institution_name).upper() in ["MEXICO", "MÉXICO"]:
+            safe_inst = "MEXICO"
+        else:
+            safe_inst = str(institution_name).replace('/', '_').replace('\\', '_')
+        
         if entity_name and academic_name:
             safe_ent = str(entity_name).replace('/', '_').replace('\\', '_')
             safe_ac = str(academic_name).replace('/', '_').replace('\\', '_')

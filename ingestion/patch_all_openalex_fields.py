@@ -231,10 +231,10 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
         LOCAL_API_AVAILABLE = False
         import SNII.match_snii_orcid # need to ensure CH_API_BLOCKED works globally
         CH_API_BLOCKED = True
-        print("🌍 Modo --official activado. Se usarán únicamente los datos de OpenAlex oficial.")
+        print("[World] Modo --official activado. Se usarán únicamente los datos de OpenAlex oficial.")
         
     if LOCAL_API_AVAILABLE:
-        print(f"✅ API local de OpenAlex detectada en {LOCAL_API_URL} — se usará como fuente principal.")
+        print(f"[OK] API local de OpenAlex detectada en {LOCAL_API_URL} — se usará como fuente principal.")
     else:
         if not official_only:
             print(f"⚠️  API local de OpenAlex NO disponible en {LOCAL_API_URL}.")
@@ -269,7 +269,7 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
             total_papers = session.run("MATCH (p:Paper) RETURN count(p) AS total").single()['total']
 
     if limit: total_papers = min(total_papers, limit)
-    print(f"🚀 Iniciando parche para {total_papers} papers...")
+    print(f"[Start] Iniciando parche para {total_papers} papers...")
 
     processed = 0
     updated = 0

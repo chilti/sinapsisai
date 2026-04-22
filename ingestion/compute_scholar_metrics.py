@@ -549,7 +549,7 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
             
             # Promoción de "Mexico" a Institución de primer nivel
             if not insts and e_name.lower() in ["mexico", "méxico"]:
-                p_inst = "MÉXICO"
+                p_inst = "MEXICO"
             else:
                 p_inst = insts[0] if insts else "SIN INSTITUCIÓN"
             
@@ -1154,7 +1154,7 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
                     ent = a['ent']
                     inst = a.get('inst')
                     if not inst and ent.lower() in ["mexico", "méxico"]:
-                        inst = "MÉXICO"
+                        inst = "MEXICO"
                     valid_affils.append((ent, inst))
         
         if ac_name not in academics_map:

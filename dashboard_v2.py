@@ -22,6 +22,7 @@ from agent.orchestrator import RAGOrchestrator
 from agent.interpreter_agent import InterpreterOrchestrator
 from dashboard_analytics import render_institucion_view, render_investigador_view, load_cached_data, get_institution_hierarchy
 from lib.coauthra_integration import render_coauthra
+from agent.tools_mcp import get_mcp_tools_sync
 
 load_dotenv()
 
@@ -183,6 +184,29 @@ if "orchestrator" not in st.session_state:
             st.code(traceback.format_exc())
             st.stop()
 
+# ---- Inicialización del Asistente de Prueba (MCP Solo) ----
+if "test_orchestrator" not in st.session_state:
+    with st.spinner("Inicializando Asistente de Prueba (MCP)..."):
+        try:
+            # Cargamos herramientas desde el servidor MCP
+            mcp_tools = get_mcp_tools_sync("http://localhost:8001/sse")
+            
+            test_sys_prompt = """
+Eres SINAPSIS-PRUEBA, un asistente especializado exclusivamente en consultar el Grafo de Conocimiento de México a través de un servidor MCP.
+Tu única fuente de información son las herramientas proporcionadas por el servidor MCP. 
+Si el usuario pregunta algo que no puedes responder con las herramientas MCP, indícalo claramente.
+"""
+            st.session_state.test_orchestrator = RAGOrchestrator(
+                tools_list=mcp_tools, 
+                use_defaults=False,
+                system_prompt=test_sys_prompt
+            )
+            st.session_state.test_chat_history = []
+        except Exception as e:
+            st.warning(f"No se pudo conectar al servidor MCP de prueba: {e}")
+            st.session_state.test_orchestrator = RAGOrchestrator(tools_list=[], use_defaults=False)
+            st.session_state.test_chat_history = []
+
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
@@ -277,10 +301,11 @@ st.title("Sinapsis AI: Hub de Ciencia Abierta")
 st.info("🚀 **Nota:** El sistema se encuentra en fase de desarrollo. Los datos se están cargando y procesando.")
 st.markdown("Inteligencia Bibliométrica Híbrida")
 
-tab_inst, tab_inv, tab_chat, tab_council, tab_about = st.tabs([
+tab_inst, tab_inv, tab_chat, tab_test, tab_council, tab_about = st.tabs([
     "🏢 Panorama Institucional",
     "👤 Perfil Académico",
     "🤖 Asistente",
+    "🧪 Asistente-Prueba (MCP)",
     "🏛️ Consejo Estratégico",
     "ℹ️ Acerca de..."
 ])
@@ -590,6 +615,77 @@ with tab_chat:
                         "reasoning": intermediate_steps if 'intermediate_steps' in locals() else []
                     })
                     st.rerun()
+
+# =======================================================
+# TAB: Asistente-Prueba (MCP Neo4j Solo)
+# =======================================================
+with tab_test:
+    st.header("🧪 Asistente de Prueba (MCP-Only)")
+    st.info("Este asistente utiliza exclusivamente el servidor MCP del nuevo Neo4j como herramienta.")
+    
+    col_clear_test, _ = st.columns([1, 4])
+    with col_clear_test:
+        if st.button("🗑️ Limpiar Conversación Prueba"):
+            st.session_state.test_chat_history = []
+            st.session_state.test_orchestrator.clear_session(st.session_state.session_id + "-test")
+            st.rerun()
+
+    test_chat_container = st.container()
+
+    with test_chat_container:
+        for message in st.session_state.test_chat_history:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+                if message.get("reasoning"):
+                    with st.expander("🧠 Ver Razonamiento", expanded=False):
+                        for step in message["reasoning"]:
+                            if step["type"] == "tool_call":
+                                st.code(f"🛠️ {step['name']}({json.dumps(step['args'], ensure_ascii=False)})")
+                            elif step["type"] == "tool_result":
+                                st.caption(f"📥 Resultado de {step['name']}:")
+                                st.code(step["content"][:2000], language="json")
+
+    # ---- Input del usuario ----
+    if test_prompt := st.chat_input("Consulta al grafo de México via MCP...", key="test_chat_input"):
+        st.session_state.test_chat_history.append({"role": "user", "content": test_prompt})
+        with test_chat_container:
+            with st.chat_message("user"):
+                st.markdown(test_prompt)
+
+        with test_chat_container:
+            with st.chat_message("assistant"):
+                placeholder = st.empty()
+                placeholder.markdown("🔍 *Consultando servidor MCP...*")
+
+                try:
+                    session_id = st.session_state.session_id + "-test"
+                    orchestrator = st.session_state.test_orchestrator
+
+                    async def ask_test_agent():
+                        return await orchestrator.ask(session_id, test_prompt)
+
+                    response_data = _run_async_in_thread(ask_test_agent())
+                    
+                    if isinstance(response_data, dict):
+                        response = response_data.get("answer", "")
+                        intermediate_steps = response_data.get("intermediate_steps", [])
+                    else:
+                        response = response_data
+                        intermediate_steps = []
+                    
+                    placeholder.markdown(response)
+
+                except Exception as e:
+                    placeholder.error(f"Error en orquestación MCP: {e}")
+                    response = f"Error: {e}"
+                    intermediate_steps = []
+
+                st.session_state.test_chat_history.append({
+                    "role": "assistant",
+                    "content": response,
+                    "reasoning": intermediate_steps
+                })
+                st.rerun()
 
 # =======================================================
 # TAB 2: Vista de la Institución
