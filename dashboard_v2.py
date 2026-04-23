@@ -123,11 +123,12 @@ def fetch_snii_ror_stats():
     BASE = Path(os.path.dirname(os.path.abspath(__file__)))
     stats = {
         "snii_total": 0, "snii_with_ror": 0, "snii_with_orcid": 0,
-        "institutions_total": 0, "institutions_with_ror": 0,
+        "snii_with_oa": 0, "institutions_total": 0, "institutions_with_ror": 0,
         "ror_high_confidence": 0, "ror_coverage_pct": 0.0,
         "last_error": None
     }
     try:
+        # 1. Estadísticas de ROR (Mapeo de Instituciones)
         mapping_path = BASE / 'ROR' / 'snii_ror_mapping.json'
         if mapping_path.exists():
             with open(mapping_path, 'r', encoding='utf-8') as f:
@@ -143,29 +144,34 @@ def fetch_snii_ror_stats():
             if stats["institutions_total"] > 0:
                 stats["ror_coverage_pct"] = 100.0 * stats["institutions_with_ror"] / stats["institutions_total"]
     except Exception as e:
-        stats["last_error"] = str(e)
+        stats["last_error"] = f"Error ROR: {str(e)}"
+
     try:
-        verified_path = BASE / 'ingestion' / 'snii_llm_verified_matches.json'
+        # 2. Estadísticas de Investigadores SNII (Mapeo a OpenAlex/ORCID)
+        # Nota: El archivo real está en data/ no en ingestion/
+        verified_path = BASE / 'data' / 'snii_llm_verified_matches.json'
         if verified_path.exists():
             with open(verified_path, 'r', encoding='utf-8') as f:
                 verified = json.load(f)
+            
+            # El archivo es una LISTA de dicts
             stats["snii_total"] = len(verified)
+            # Contamos los que tienen orcid (en matched_orcid o dentro de snii.orcid)
             stats["snii_with_orcid"] = sum(
-                1 for v in verified.values() if v.get('orcid')
+                1 for x in verified 
+                if isinstance(x, dict) and (x.get('matched_orcid') or x.get('snii', {}).get('orcid'))
             )
-    except Exception:
-        pass
-    try:
-        # Contar investigadores con SNII en el caché de parquets
-        cache_dir = BASE / 'data' / 'cache'
-        investigador_total_path = cache_dir / 'investigador_total.parquet'
-        if investigador_total_path.exists():
-            import pandas as pd
-            df_it = pd.read_parquet(investigador_total_path)
-            if 'is_snii' in df_it.columns:
-                stats["snii_total"] = int(df_it['is_snii'].sum())
-    except Exception:
-        pass
+            # Contamos los que tienen OpenAlex ID
+            stats["snii_with_oa"] = sum(
+                1 for x in verified 
+                if isinstance(x, dict) and x.get('matched_openalex_id')
+            )
+    except Exception as e:
+        if stats["last_error"]:
+            stats["last_error"] += f" | Error SNII: {str(e)}"
+        else:
+            stats["last_error"] = f"Error SNII: {str(e)}"
+
     return stats
 
 
@@ -750,34 +756,39 @@ with tab_about:
     snii_ror = fetch_snii_ror_stats()
     if snii_ror.get("last_error"):
         st.warning(f"Advertencia al cargar estadísticas: {snii_ror['last_error']}")
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric(
         "🔬 Investigadores SNII",
         f"{snii_ror.get('snii_total', 0):,}",
         help="Total de académicos del SNII cargados en el sistema."
     )
     c2.metric(
-        "🆔 Con ORCID vinculado",
+        "🆔 Con ORCID",
         f"{snii_ror.get('snii_with_orcid', 0):,}",
         help="Número de investigadores con ORCID verificado."
     )
     c3.metric(
-        "🏛️ Entidades institucionales mapeadas",
+        "🌐 Con OpenAlex ID",
+        f"{snii_ror.get('snii_with_oa', 0):,}",
+        help="Investigadores vinculados exitosamente a un ID de OpenAlex."
+    )
+    c4.metric(
+        "🏛️ Entidades",
         f"{snii_ror.get('institutions_total', 0):,}",
         help="Combinaciones Institución|Subdependencia en el mapeo SNII-ROR."
     )
-    c4, c5, c6 = st.columns(3)
-    c4.metric(
+    c5, c6, c7 = st.columns(3)
+    c5.metric(
         "✅ Con ROR asignado",
         f"{snii_ror.get('institutions_with_ror', 0):,}",
         help="Entidades con un ROR ID identificado (cualquier confianza)."
     )
-    c5.metric(
-        "🎯 Con ROR confianza ≥ 70%",
-        f"{snii_ror.get('ror_high_confidence', 0):,}",
-        help="Entidades con ROR validado con nivel de confianza ≥ 70 (umbral para ingesta automática)."
-    )
     c6.metric(
+        "🎯 ROR Confianza ≥ 70%",
+        f"{snii_ror.get('ror_high_confidence', 0):,}",
+        help="Entidades con ROR validado con nivel de confianza ≥ 70."
+    )
+    c7.metric(
         "📈 Cobertura ROR (%)",
         f"{snii_ror.get('ror_coverage_pct', 0.0):.1f}%",
         help="Porcentaje de entidades institucionales con al menos un ROR asignado."

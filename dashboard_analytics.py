@@ -110,6 +110,21 @@ def cargar_lista_academicos(ruta_json="ingestion/profesores_Instituto_de_Ciencia
     except Exception:
         return {}
 
+@st.cache_data(ttl=3600)
+def load_snii_matches():
+    """Carga el mapeo verificado por LLM de SNII a OpenAlex."""
+    path = os.path.join(BASE_PATH, 'data', 'snii_llm_verified_matches.json')
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            # Indexar por nombre para búsqueda rápida
+            return {x['snii_author']: x for x in data if 'snii_author' in x}
+    except Exception as e:
+        print(f"Error cargando SNII matches: {e}")
+        return {}
+
 @st.cache_data(show_spinner=False, ttl=3600)
 def load_hierarchy():
     """Carga jerarquía instituciones -> entidades desde hierarchy.json o fallback a Grafo"""
@@ -854,6 +869,12 @@ def render_investigador_view(entity_name, institution_name=None):
     inv_orcid = inv_data.get('orcid') or academico_info.get("orcid")
     inv_scopus = inv_data.get('scopus_id') or academico_info.get("scopus")
     inv_siia = inv_data.get('siia_url') or academico_info.get("siia")
+    
+    # Cargar info de SNII Verificado (IA)
+    snii_matches = load_snii_matches()
+    snii_info = snii_matches.get(selected_inv, {})
+    inv_oa = inv_data.get('openalex_id') or snii_info.get('matched_openalex_id')
+    inv_reason = inv_data.get('match_reason') or snii_info.get('reason')
 
     st.markdown("---")
     
@@ -878,13 +899,17 @@ def render_investigador_view(entity_name, institution_name=None):
                     st.markdown(f"- **Scopus ({sid}):** [Ver Perfil]({scopus_link})")
             elif "http" in str(inv_scopus):
                 st.markdown(f"- **Scopus:** [Ver Perfil]({inv_scopus})")
+        
+        if inv_oa:
+            oa_link = inv_oa if "http" in str(inv_oa) else f"https://openalex.org/{inv_oa}"
+            st.markdown(f"- **OpenAlex ID:** [{inv_oa}]({oa_link})")
 
     # --- Detalles Técnicos y Auditoría (LLM) ---
     with st.expander("🔍 Ver detalles de los perfiles académicos", expanded=False):
         # Mostrar Auditoría y Razonamiento IA
         audit_verdict = inv_data.get('audit_verdict')
-        match_reason = inv_data.get('match_reason')
-        is_snii = inv_data.get('is_snii', False)
+        match_reason = inv_reason
+        is_snii = inv_data.get('is_snii', False) or bool(snii_info)
         
         if is_snii and match_reason:
             st.info(f"🤖 **Buscado usando IA**\n\n**Argumento de la IA:** {match_reason}")
