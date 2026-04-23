@@ -82,46 +82,64 @@ class MexicoEmbeddingsManager:
 
     def run_fastrp(self):
         """
-        Ejecuta FastRP para Author, Institution, Source y Funder.
+        Ejecuta FastRP para Author, Institution, Source y Funder de forma dinámica.
         """
         print("🛠️ Preparando FastRP en Neo4j (GDS)...")
         
-        projection_queries = [
-            # Borrar si existe
-            "CALL gds.graph.drop('mexico_graph', false)",
-            # Crear proyección
-            """
-            CALL gds.graph.project(
-              'mexico_graph',
-              ['Author', 'Work', 'Institution', 'Source', 'Funder'],
-              {
-                AUTHORED: {orientation: 'UNDIRECTED'},
-                AFFILIATED_TO: {orientation: 'UNDIRECTED'},
-                PUBLISHED_IN: {orientation: 'UNDIRECTED'},
-                FUNDED_BY: {orientation: 'UNDIRECTED'}
-              }
-            )
-            """
-        ]
+        # 1. Identificar qué etiquetas y relaciones existen realmente
+        check_labels = ["Author", "Work", "Institution", "Source", "Funder"]
+        check_rels = ["AUTHORED", "AFFILIATED_TO", "PUBLISHED_IN", "FUNDED_BY"]
         
-        fastrp_query = """
-        CALL gds.fastRP.write(
-          'mexico_graph',
-          {
-            embeddingDimension: 128,
-            writeProperty: 'embedding_fastrp'
-          }
-        )
-        """
+        existing_labels = []
+        existing_rels = []
         
         with self.driver.session() as session:
-            for q in projection_queries:
-                session.run(q)
-            print("  -> Proyección 'mexico_graph' creada.")
+            # Verificar nodos
+            for label in check_labels:
+                res = session.run(f"MATCH (n:{label}) RETURN count(n) as count").single()
+                if res['count'] > 0:
+                    existing_labels.append(label)
+            
+            # Verificar relaciones
+            for rel in check_rels:
+                res = session.run(f"MATCH ()-[r:{rel}]->() RETURN count(r) as count").single()
+                if res['count'] > 0:
+                    existing_rels.append(rel)
+        
+        if not existing_rels:
+            print("⚠️ No hay relaciones suficientes para ejecutar FastRP.")
+            return
+
+        print(f"  -> Nodos encontrados: {', '.join(existing_labels)}")
+        print(f"  -> Relaciones encontradas: {', '.join(existing_rels)}")
+
+        # 2. Crear proyección dinámica
+        rel_config = {rel: {"orientation": "UNDIRECTED"} for rel in existing_rels}
+        
+        with self.driver.session() as session:
+            session.run("CALL gds.graph.drop('mexico_graph', false)")
+            
+            print("  -> Creando proyección 'mexico_graph'...")
+            session.run("""
+                CALL gds.graph.project(
+                    'mexico_graph',
+                    $labels,
+                    $rels
+                )
+            """, labels=existing_labels, rels=rel_config)
             
             print("  -> Ejecutando FastRP...")
-            session.run(fastrp_query)
-            print("✅ FastRP completado y guardado en la propiedad 'embedding_fastrp'.")
+            session.run("""
+                CALL gds.fastRP.write(
+                  'mexico_graph',
+                  {
+                    embeddingDimension: 128,
+                    writeProperty: 'embedding_fastrp'
+                  }
+                )
+            """)
+        
+        print("✅ FastRP finalizado y guardado en 'embedding_fastrp'.")
 
     def aggregate_country_embeddings(self):
         """
