@@ -190,7 +190,7 @@ def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list
         return []
 
 
-def resolve_snii_identities(limit_test=None, target_name=None):
+def resolve_snii_identities(limit_test=None, target_name=None, force=False):
     """Pipeline principal: SNII → candidatos multi-fuente → verificación LLM → JSON de resultados.
 
     Args:
@@ -198,6 +198,7 @@ def resolve_snii_identities(limit_test=None, target_name=None):
         target_name:  Si se indica, filtra el padrón por nombre (búsqueda parcial,
                       insensible a mayúsculas). Permite pasar un apellido, nombre parcial
                       o cualquier fragmento del nombre completo del investigador.
+        force:        Si es True, fuerza la validación aunque ya exista un match previo.
     """
     print("\n🚀 Resolviendo identidades SNII con LLM (búsqueda semántica + reranking)...")
 
@@ -267,8 +268,8 @@ def resolve_snii_identities(limit_test=None, target_name=None):
         if key in processed_in_this_run:
             continue
 
-        # Si ya existe match confirmado, saltar
-        if key in lookup:
+        # Si ya existe match confirmado y no forzamos, saltar
+        if key in lookup and not force:
             existing_record = verified_results[lookup[key]]
             if existing_record.get("match") is True:
                 processed_in_this_run.add(key)
@@ -550,6 +551,11 @@ if __name__ == "__main__":
             "insensible a mayúsculas). Ejemplo: --name 'GARCIA' o --name 'Maria Elena'."
         )
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Fuerza la re-verificación del investigador aunque ya exista un match confirmado previo."
+    )
     args = parser.parse_args()
 
-    resolve_snii_identities(limit_test=args.limit, target_name=args.name)
+    resolve_snii_identities(limit_test=args.limit, target_name=args.name, force=args.force)
