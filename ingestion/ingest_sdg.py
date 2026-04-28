@@ -58,37 +58,49 @@ def limpiar_json(texto_respuesta):
          texto_respuesta = texto_respuesta.split("```")[-1].split("```")[0]
     return texto_respuesta.strip()
     
-def get_sdgs_from_local_api(doi):
-    """Consulta la API local de OpenAlex para obtener los ODS de un paper."""
+def get_sdgs_from_local_api_batch(dois):
+    """Consulta la API local de OpenAlex para obtener los ODS de un lote de papers."""
+    if not dois:
+        return {}
+        
     local_api = os.getenv("OPENALEX_LOCAL_API", "http://localhost:5012")
     url = f"{local_api}/works"
-    params = {"filter": f"doi:{doi}"}
+    # El filtro DOI soporta el operador | para múltiples valores
+    # Limpiar DOIs por si acaso traen la URL completa
+    clean_dois = [d.replace("https://doi.org/", "").replace("http://doi.org/", "").strip() for d in dois]
+    filter_val = "|".join(clean_dois)
+    params = {"filter": f"doi:{filter_val}", "per_page": len(dois)}
     
+    results_map = {}
     try:
-        with httpx.Client(timeout=10) as client:
+        with httpx.Client(timeout=20) as client:
             resp = client.get(url, params=params)
             if resp.status_code == 200:
                 data = resp.json()
                 results = data.get("results", [])
-                if results:
-                    sdgs = results[0].get("sustainable_development_goals", [])
+                for r in results:
+                    doi_full = r.get("doi")
+                    if not doi_full:
+                        continue
+                    doi_clean = doi_full.replace("https://doi.org/", "").replace("http://doi.org/", "").strip()
+                    
+                    sdgs = r.get("sustainable_development_goals", [])
                     if sdgs:
                         # Retornamos el de mayor puntuación
                         best_sdg = sorted(sdgs, key=lambda x: x.get('score', 0), reverse=True)[0]
-                        # Mapear URL a ID interno (ej: https://metadata.un.org/sdg/7 -> SDG 7)
                         sdg_url = best_sdg.get('id', '')
                         sdg_num = sdg_url.split('/')[-1]
                         
-                        return {
+                        results_map[doi_clean] = {
                             "sdg_id": f"SDG {sdg_num}",
                             "sdg_name": best_sdg.get('display_name'),
                             "confidence": f"{int(best_sdg.get('score', 0) * 100)}%",
                             "reasoning": "Retrieved from OpenAlex Local API"
                         }
     except Exception as e:
-        print(f"  ⚠️ Error consultando API local para {doi}: {e}")
+        print(f"  ⚠️ Error consultando API local para lote: {e}")
     
-    return None
+    return results_map
 
 def clasificar_papers_batch(lista_papers):
     """Envía un lote de papers al LLM para clasificación conjunta."""
@@ -261,23 +273,32 @@ def run(entity_filter=None, academic_filter=None, force=False):
 
     papers_to_classify_llm = []
     procesados_api = 0
+    API_BATCH_SIZE = 25
     
-    print(f"Paso 1: Consultando API Local de OpenAlex...")
-    for idx, p in enumerate(all_papers):
-        doi = p['doi']
-        sdg_from_api = get_sdgs_from_local_api(doi)
+    print(f"Paso 1: Consultando API Local de OpenAlex (Lotes de {API_BATCH_SIZE})...")
+    for i in range(0, len(all_papers), API_BATCH_SIZE):
+        batch_papers = all_papers[i:i + API_BATCH_SIZE]
+        batch_dois = [p['doi'] for p in batch_papers]
         
-        if sdg_from_api:
-            assign_sdg_to_neo4j(doi, sdg_from_api)
-            # Marco documento como procesado
-            query_mark = "MATCH (p:Paper {doi: $doi}) SET p.sdg_processed = true"
-            with neo4j.driver.session() as session:
-                session.run(query_mark, doi=doi)
+        results_api = get_sdgs_from_local_api_batch(batch_dois)
+        
+        for p in batch_papers:
+            doi = p['doi']
+            # Normalizar para el matching
+            doi_clean = doi.replace("https://doi.org/", "").replace("http://doi.org/", "").strip()
+            sdg_from_api = results_api.get(doi_clean)
             
-            procesados_api += 1
-            print(f"  [{idx+1}/{total_total}] {doi} -> ✅ Encontrado en API Local ({sdg_from_api['sdg_id']})")
-        else:
-            papers_to_classify_llm.append(p)
+            if sdg_from_api:
+                assign_sdg_to_neo4j(doi, sdg_from_api)
+                # Marco documento como procesado
+                query_mark = "MATCH (p:Paper {doi: $doi}) SET p.sdg_processed = true"
+                with neo4j.driver.session() as session:
+                    session.run(query_mark, doi=doi)
+                
+                procesados_api += 1
+                print(f"  [{procesados_api + len(papers_to_classify_llm)}/{total_total}] {doi} -> ✅ En API Local ({sdg_from_api['sdg_id']})")
+            else:
+                papers_to_classify_llm.append(p)
             
     print(f"\n[OK] {procesados_api} papers clasificados vía API Local.")
     
