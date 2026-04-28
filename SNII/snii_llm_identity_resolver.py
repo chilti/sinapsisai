@@ -299,8 +299,8 @@ def resolve_snii_identities(limit_test=None, target_name=None):
                 "score_vec": c['score']
             })
 
-        # Saltamos Qdrant si ya tenemos suficientes candidatos de calidad de OpenAlex
-        high_quality_oa = [c for c in openalex_candidates if c['score'] >= 0.95]
+        # Saltamos Qdrant si ya tenemos suficientes candidatos de calidad de OpenAlex (nombre exacto + metadata útil)
+        high_quality_oa = [c for c in openalex_candidates if c['score'] >= 0.95 and (c.get('orcid') or c.get('inst'))]
 
         if is_unam and not high_quality_oa:
             # UNAM: Priorizar local via Qdrant (ahí está SIIA)
