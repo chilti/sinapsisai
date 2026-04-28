@@ -57,6 +57,38 @@ def limpiar_json(texto_respuesta):
     elif "```" in texto_respuesta:
          texto_respuesta = texto_respuesta.split("```")[-1].split("```")[0]
     return texto_respuesta.strip()
+    
+def get_sdgs_from_local_api(doi):
+    """Consulta la API local de OpenAlex para obtener los ODS de un paper."""
+    local_api = os.getenv("OPENALEX_LOCAL_API", "http://localhost:5012")
+    url = f"{local_api}/works"
+    params = {"filter": f"doi:{doi}"}
+    
+    try:
+        with httpx.Client(timeout=10) as client:
+            resp = client.get(url, params=params)
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("results", [])
+                if results:
+                    sdgs = results[0].get("sustainable_development_goals", [])
+                    if sdgs:
+                        # Retornamos el de mayor puntuación
+                        best_sdg = sorted(sdgs, key=lambda x: x.get('score', 0), reverse=True)[0]
+                        # Mapear URL a ID interno (ej: https://metadata.un.org/sdg/7 -> SDG 7)
+                        sdg_url = best_sdg.get('id', '')
+                        sdg_num = sdg_url.split('/')[-1]
+                        
+                        return {
+                            "sdg_id": f"SDG {sdg_num}",
+                            "sdg_name": best_sdg.get('display_name'),
+                            "confidence": f"{int(best_sdg.get('score', 0) * 100)}%",
+                            "reasoning": "Retrieved from OpenAlex Local API"
+                        }
+    except Exception as e:
+        print(f"  ⚠️ Error consultando API local para {doi}: {e}")
+    
+    return None
 
 def clasificar_papers_batch(lista_papers):
     """Envía un lote de papers al LLM para clasificación conjunta."""
@@ -215,25 +247,50 @@ def assign_sdg_to_neo4j(doi, sdg_data):
         session.run(query, doi=doi, sdg_id=sdg_id, sdg_name=sdg_name, confidence=confidence, reasoning=reasoning)
 
 def run(entity_filter=None, academic_filter=None, force=False):
-    print("Iniciando clasificación ODS (Batch Mode 10) con LLM...")
+    print("Iniciando clasificación ODS...")
     if force:
         print("  -> MODO FORZADO ACTIVADO (Re-procesando clasificados)")
         
     total_total = count_unclassified_papers(entity_filter=entity_filter, academic_filter=academic_filter, force=force)
-    print(f"[OK] Se encontraron {total_total} papers para clasificar por ODS.")
+    print(f"[OK] Se encontraron {total_total} papers para clasificar.")
     
-    papers = fetch_unclassified_papers(entity_filter=entity_filter, academic_filter=academic_filter, force=force)
-    if not papers:
+    all_papers = fetch_unclassified_papers(entity_filter=entity_filter, academic_filter=academic_filter, force=force)
+    if not all_papers:
         print("No hay papers pendientes por clasificar.")
         return
 
-    print(f"Procesando {len(papers)} papers en lotes de {BATCH_SIZE}...")
-    procesados = 0
+    papers_to_classify_llm = []
+    procesados_api = 0
+    
+    print(f"Paso 1: Consultando API Local de OpenAlex...")
+    for idx, p in enumerate(all_papers):
+        doi = p['doi']
+        sdg_from_api = get_sdgs_from_local_api(doi)
+        
+        if sdg_from_api:
+            assign_sdg_to_neo4j(doi, sdg_from_api)
+            # Marco documento como procesado
+            query_mark = "MATCH (p:Paper {doi: $doi}) SET p.sdg_processed = true"
+            with neo4j.driver.session() as session:
+                session.run(query_mark, doi=doi)
+            
+            procesados_api += 1
+            print(f"  [{idx+1}/{total_total}] {doi} -> ✅ Encontrado en API Local ({sdg_from_api['sdg_id']})")
+        else:
+            papers_to_classify_llm.append(p)
+            
+    print(f"\n[OK] {procesados_api} papers clasificados vía API Local.")
+    
+    if not papers_to_classify_llm:
+        print("Todos los papers fueron clasificados vía API. Fin.")
+        return
+
+    print(f"\nPaso 2: Clasificando {len(papers_to_classify_llm)} papers restantes vía LLM (Lotes de {BATCH_SIZE})...")
+    procesados_llm = 0
     
     # Procesamos en lotes
-    for i in range(0, len(papers), BATCH_SIZE):
-        lote = papers[i:i + BATCH_SIZE]
-        lote_dois = [p['doi'] for p in lote]
+    for i in range(0, len(papers_to_classify_llm), BATCH_SIZE):
+        lote = papers_to_classify_llm[i:i + BATCH_SIZE]
         
         resultados_batch = []
         try:
@@ -255,7 +312,6 @@ def run(entity_filter=None, academic_filter=None, force=False):
 
         # Procesamos los resultados que hayamos obtenido del lote
         if resultados_batch:
-            # Mapeamos resultados por DOI para fácil acceso
             res_map = {str(r.get('doi')): r for r in resultados_batch if 'doi' in r}
             
             for p in lote:
@@ -264,21 +320,19 @@ def run(entity_filter=None, academic_filter=None, force=False):
                 
                 if res:
                     assign_sdg_to_neo4j(doi, res)
-                    # Marco documento como procesado garantizado solo si el LLM respondió para este DOI
                     query_mark = "MATCH (p:Paper {doi: $doi}) SET p.sdg_processed = true"
                     with neo4j.driver.session() as session:
                         session.run(query_mark, doi=doi)
                     
                     sdg_result = res.get('sdg_id')
-                    title_short = (p['title'][:40] + '...') if len(p['title']) > 40 else p['title']
-                    print(f"  [{procesados+1}/{total_total}] {doi} ({title_short}) -> {sdg_result}")
+                    print(f"  [LLM {procesados_llm+1}/{len(papers_to_classify_llm)}] {doi} -> {sdg_result}")
                 else:
-                    print(f"  [{procesados+1}/{total_total}] {doi} -> ❌ No se encontro resultado en el lote")
+                    print(f"  [LLM {procesados_llm+1}/{len(papers_to_classify_llm)}] {doi} -> ❌ No se encontro en el lote LLM")
                 
-                procesados += 1
+                procesados_llm += 1
         else:
-            print(f"❌ El lote que empezaba en {lote[0]['doi']} fallo completamente.")
-            procesados += len(lote)
+            print(f"❌ El lote que empezaba en {lote[0]['doi']} fallo completamente en LLM.")
+            procesados_llm += len(lote)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Clasifica papers en ODS usando LLM en modo BATCH.")
