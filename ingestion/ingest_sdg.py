@@ -160,21 +160,21 @@ def fetch_unclassified_papers(entity_filter=None, academic_filter=None, force=Fa
         WITH collect(p1) + collect(p2) AS all_p
         UNWIND all_p AS p
         {where_clause}
-        RETURN DISTINCT p.doi AS doi, p.title AS title, p.raw_metadata AS metadata
+        RETURN DISTINCT p.doi AS doi, p.title AS title, p.raw_metadata AS metadata, COALESCE(p.sdg_processed, false) AS processed
         """
         params = {"entity": entity_filter}
     elif academic_filter:
         query = f"""
         MATCH (a:Academic {{name: $academic}})-[:AUTHORED]->(p:Paper)
         {where_clause}
-        RETURN DISTINCT p.doi AS doi, p.title AS title, p.raw_metadata AS metadata
+        RETURN DISTINCT p.doi AS doi, p.title AS title, p.raw_metadata AS metadata, COALESCE(p.sdg_processed, false) AS processed
         """
         params = {"academic": academic_filter}
     else:
         query = f"""
         MATCH (p:Paper)
         {where_clause}
-        RETURN p.doi AS doi, p.title AS title, p.raw_metadata AS metadata
+        RETURN p.doi AS doi, p.title AS title, p.raw_metadata AS metadata, COALESCE(p.sdg_processed, false) AS processed
         """
         params = {}
     
@@ -194,7 +194,12 @@ def fetch_unclassified_papers(entity_filter=None, academic_filter=None, force=Fa
                         abstract = Abstract
                 except:
                     pass
-            records.append({'doi': doi, 'title': title, 'abstract': abstract})
+            records.append({
+                'doi': doi, 
+                'title': title, 
+                'abstract': abstract, 
+                'processed': r.get('processed', False)
+            })
     return records
 
 def count_unclassified_papers(entity_filter=None, academic_filter=None, force=False):
@@ -298,7 +303,13 @@ def run(entity_filter=None, academic_filter=None, force=False):
                 procesados_api += 1
                 print(f"  [{procesados_api + len(papers_to_classify_llm)}/{total_total}] {doi} -> ✅ En API Local ({sdg_from_api['sdg_id']})")
             else:
-                papers_to_classify_llm.append(p)
+                # REGLA: Si ya tenia SDG y el api local devuelve null, NO recalcular con LLM
+                if p.get('processed') is True:
+                    print(f"  [{procesados_api + len(papers_to_classify_llm) + 1}/{total_total}] {doi} -> ⏭️  Saltando LLM (Ya tenia SDG y API devolvio null)")
+                    # Incrementamos algo para que el conteo de progreso no se desfase visualmente si queremos
+                    # pero lo importante es NO añadirlo a papers_to_classify_llm
+                else:
+                    papers_to_classify_llm.append(p)
             
     print(f"\n[OK] {procesados_api} papers clasificados vía API Local.")
     
