@@ -67,7 +67,7 @@ def generate_search_variants(full_name):
 def filter_by_recent_affiliation(author_data, start_year=2018, end_year=2025):
     """Verifica actividad reciente y retorna mejor institución."""
     # Soportar dict (API Local) o Author object (Pyalex)
-    affiliations = author_data.get('affiliations', [])
+    affiliations = author_data.get('affiliations') or []
     sorted_affs = sorted(affiliations, key=lambda x: max(x.get('years', [0])) if x.get('years') else 0, reverse=True)
     
     recent_match = False
@@ -75,12 +75,12 @@ def filter_by_recent_affiliation(author_data, start_year=2018, end_year=2025):
     all_years = []
     
     for aff in sorted_affs:
-        years = aff.get('years', [])
+        years = aff.get('years') or []
         all_years.extend(years)
         if any(start_year <= y <= end_year for y in years):
             recent_match = True
             if not best_inst:
-                inst_obj = aff.get('institution', {})
+                inst_obj = aff.get('institution') or {}
                 best_inst = inst_obj.get('display_name', '') if isinstance(inst_obj, dict) else str(inst_obj)
                 
     return recent_match, best_inst, sorted(list(set(all_years)))
@@ -99,11 +99,28 @@ def map_author_data(author, source="Unknown"):
     if not raw_orcid and 'ids' in author:
         raw_orcid = author['ids'].get('orcid')
         
+    # Obtener institución
+    inst_name = recent_inst
+    if not inst_name:
+        # Fallback a last_known_institutions (lista, OpenAlex moderno)
+        lki_list = author.get('last_known_institutions')
+        if lki_list and isinstance(lki_list, list) and len(lki_list) > 0:
+            inst_name = lki_list[0].get('display_name')
+            
+        # Fallback a last_known_institution (dict, OpenAlex antiguo)
+        if not inst_name:
+            lki_dict = author.get('last_known_institution')
+            if lki_dict and isinstance(lki_dict, dict):
+                inst_name = lki_dict.get('display_name')
+                
+    if not inst_name:
+        inst_name = "Unknown"
+        
     return {
         "name": author.get('display_name') or author.get('name'),
         "openalex_id": author.get('id') or author.get('openalex_id'),
         "orcid": clean_orcid(raw_orcid),
-        "institution": recent_inst or author.get('last_known_institution', {}).get('display_name', 'Unknown'),
+        "institution": inst_name,
         "years": active_years[-5:] if active_years else [],
         "found_source": source
     }

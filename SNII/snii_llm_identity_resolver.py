@@ -411,8 +411,26 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False):
                     oa_id = r.get('id')
                     disp_name = r.get('display_name', '')
                     orc = r.get('orcid')
-                    affils = r.get('affiliations', [])
-                    inst_name = affils[0]['institution']['display_name'] if affils and 'institution' in affils[0] else ""
+                    # Extracción robusta de afiliación
+                    inst_name = ""
+                    affils = r.get('affiliations') or []
+                    if affils and isinstance(affils, list) and len(affils) > 0:
+                        inst_info = affils[0].get('institution')
+                        if inst_info and isinstance(inst_info, dict):
+                            inst_name = inst_info.get('display_name')
+                            
+                    if not inst_name:
+                        lki_list = r.get('last_known_institutions')
+                        if lki_list and isinstance(lki_list, list) and len(lki_list) > 0:
+                            inst_name = lki_list[0].get('display_name')
+                            
+                    if not inst_name:
+                        lki_dict = r.get('last_known_institution')
+                        if lki_dict and isinstance(lki_dict, dict):
+                            inst_name = lki_dict.get('display_name')
+                            
+                    if not inst_name:
+                        inst_name = "Unknown"
                     
                     if not any(a.get('openalex_id') == oa_id for a in all_candidates):
                         all_candidates.append({
