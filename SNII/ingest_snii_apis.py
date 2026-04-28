@@ -489,7 +489,7 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
                 "system_id": system_id,
                 "academic_name": academic_name,
                 "orcid": orcid or None,
-                "openalex_id": openalex_id or None, # Persistencia del ID descubierto del autor
+                "openalex_id": ",".join(oa_ids) if oa_ids else None, # Persistencia del ID(s) descubierto del autor
                 "doi": doi,
                 "paper_openalex_id": record.get("openalex_url"), # ID de OpenAlex del PAPER para vinculación de citas
                 "title": record.get("Title", "No Title"),
