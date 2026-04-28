@@ -263,7 +263,7 @@ def assign_sdg_to_neo4j(doi, sdg_data):
     with neo4j.driver.session() as session:
         session.run(query, doi=doi, sdg_id=sdg_id, sdg_name=sdg_name, confidence=confidence, reasoning=reasoning)
 
-def run(entity_filter=None, academic_filter=None, force=False):
+def run(entity_filter=None, academic_filter=None, force=False, openalex_only=False):
     print("Iniciando clasificación ODS...")
     if force:
         print("  -> MODO FORZADO ACTIVADO (Re-procesando clasificados)")
@@ -315,6 +315,10 @@ def run(entity_filter=None, academic_filter=None, force=False):
     
     if not papers_to_classify_llm:
         print("Todos los papers fueron clasificados vía API. Fin.")
+        return
+        
+    if openalex_only:
+        print(f"\n[INFO] Modo --openalex activo. Omitiendo clasificación de {len(papers_to_classify_llm)} papers vía LLM.")
         return
 
     print(f"\nPaso 2: Clasificando {len(papers_to_classify_llm)} papers restantes vía LLM (Lotes de {BATCH_SIZE})...")
@@ -371,6 +375,7 @@ if __name__ == "__main__":
     parser.add_argument("--entity", type=str, help="Nombre de la entidad para filtrar")
     parser.add_argument("--academic", type=str, help="Nombre del académico para filtrar")
     parser.add_argument("--force", action="store_true", help="Forzar re-clasificación")
+    parser.add_argument("--openalex", action="store_true", help="Solo usar API local de OpenAlex (sin LLM)")
     args = parser.parse_args()
     
-    run(entity_filter=args.entity, academic_filter=args.academic, force=args.force)
+    run(entity_filter=args.entity, academic_filter=args.academic, force=args.force, openalex_only=args.openalex)
