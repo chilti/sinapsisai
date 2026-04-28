@@ -25,6 +25,7 @@ import httpx
 from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_core.messages import HumanMessage
+from ingest_snii_apis import ingest_researcher_data
 
 # Añadir path raíz
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -116,13 +117,72 @@ def get_embeddings(texts: list, batch_size: int = 10) -> list:
     return all_embeddings
 
 
+def get_author_works_titles(openalex_id, limit=3):
+    """Obtiene títulos de obras recientes de un autor en OpenAlex."""
+    if not openalex_id:
+        return []
+    oa_id_clean = str(openalex_id).split('/')[-1].strip()
+    titles = []
+    
+    # Intentar API Local primero
+    local_api = os.getenv("OPENALEX_LOCAL_API", "http://localhost:5012")
+    try:
+        url = f"{local_api}/works"
+        params = {"filter": f"author.id:{oa_id_clean}", "per_page": limit, "sort": "publication_year:desc"}
+        with httpx.Client(timeout=10) as client:
+            resp = client.get(url, params=params)
+            if resp.status_code == 200:
+                results = resp.json().get('results', [])
+                titles = [w.get('title') for w in results if w.get('title')]
+    except:
+        pass
+
+    # Si no hay títulos y no está bloqueada, intentar API Oficial (pyalex)
+    if not titles:
+        try:
+            import pyalex
+            results = pyalex.Works().filter(authorships={"author": {"id": oa_id_clean}}).sort(publication_year="desc").get(per_page=limit)
+            titles = [w.get('title') for w in results if w.get('title')]
+        except:
+            pass
+            
+    return titles[:limit]
+
+
+def get_orcid_works_titles(orcid_url, limit=3):
+    """Obtiene títulos de obras recientes de un perfil ORCID."""
+    if not orcid_url:
+        return []
+    orcid_id = str(orcid_url).rstrip('/').split('/')[-1]
+    import requests
+    url = f"https://pub.orcid.org/v3.0/{orcid_id}/works"
+    headers = {"Accept": "application/json"}
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            works_data = response.json().get('group', [])
+            titles = []
+            for work_group in works_data[:limit*2]: # Pedir un poco más por si hay nulos
+                summary = work_group.get('work-summary', [{}])[0]
+                title_node = summary.get('title', {}) or {}
+                t = title_node.get('title', {}).get('value')
+                if t:
+                    titles.append(t)
+                if len(titles) >= limit:
+                    break
+            return titles
+    except:
+        pass
+    return []
+
+
 def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list:
     """Busca candidatos en la tabla de autores de OpenAlex en ClickHouse local.
     Retorna hasta `limit` autores con nombre, orcid, last_known_institution y scopus ids.
     """
     try:
         ch = get_ch_client()
-        # Extraer palabras clave fuertes (una del apellido y otra del nombre)
+        # Extraer palabras clave fuertes
         parts = [p.strip() for p in normalize_text(name).replace(',', ' ').split() if len(p) > 2]
         if len(parts) < 2:
             search_term1 = parts[0] if parts else normalize_text(name)
@@ -150,7 +210,7 @@ def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list
         FROM {CH_DB}.authors
         WHERE lower(display_name) LIKE '%{k1.lower()}%'
           AND lower(display_name) LIKE '%{k2.lower()}%'
-        LIMIT {limit * 25}
+        LIMIT {limit * 15}
         """
         rows = ch.query(query).result_rows
 
@@ -161,7 +221,7 @@ def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list
         for r in rows:
             openalex_id, disp_name, orcid_val, raw_data_str, ids_json = r[0], r[1], r[2], r[3], r[4]
             
-            # Extracción robusta de afiliación desde raw_data
+            # Extracción robusta de afiliación
             inst_name = ""
             try:
                 if raw_data_str:
@@ -171,62 +231,50 @@ def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list
                         inst_info = affils[0].get('institution')
                         if inst_info and isinstance(inst_info, dict):
                             inst_name = inst_info.get('display_name')
-                            
                     if not inst_name:
                         lki_list = raw_data.get('last_known_institutions')
                         if lki_list and isinstance(lki_list, list) and len(lki_list) > 0:
                             inst_name = lki_list[0].get('display_name')
-                            
                     if not inst_name:
                         lki_dict = raw_data.get('last_known_institution')
                         if lki_dict and isinstance(lki_dict, dict):
                             inst_name = lki_dict.get('display_name')
-            except Exception as e:
+            except:
                 pass
-                
-            if not inst_name:
-                inst_name = ""
                 
             cand_norm = " ".join(sorted([t for t in normalize_text(str(disp_name)).replace(',', ' ').split() if len(t) > 1]))
             ns = jaro_winkler(sorted_seed, cand_norm)
             if ns > 0.75:
-                # Extraer Scopus IDs del campo ids (JSON) si están disponibles
                 scopus_ids = []
                 try:
                     ids_data = json.loads(ids_json) if isinstance(ids_json, str) else (ids_json or {})
                     scopus_raw = ids_data.get('scopus') or []
-                    if isinstance(scopus_raw, str):
-                        scopus_ids = [scopus_raw]
-                    elif isinstance(scopus_raw, list):
-                        scopus_ids = scopus_raw
-                except Exception:
+                    scopus_ids = [scopus_raw] if isinstance(scopus_raw, str) else scopus_raw
+                except:
                     pass
+                
+                # Obtener obras recientes para el prompt
+                works = get_author_works_titles(openalex_id)
+
                 scored.append({
                     "openalex_id": openalex_id,
                     "name": disp_name,
                     "orcid": orcid_val or None,
                     "inst": inst_name or "",
                     "scopus_ids": scopus_ids,
+                    "works": works,
                     "score": ns
                 })
 
         scored.sort(key=lambda x: x['score'], reverse=True)
         return scored[:limit]
     except Exception as e:
-        print(f"      ⚠️ Error buscando en OpenAlex authors ClickHouse: {e}")
+        print(f"      ⚠️ Error buscando en OpenAlex authors: {e}")
         return []
 
 
-def resolve_snii_identities(limit_test=None, target_name=None, force=False):
-    """Pipeline principal: SNII → candidatos multi-fuente → verificación LLM → JSON de resultados.
-
-    Args:
-        limit_test:   Si se indica, procesa solo los primeros N registros del padrón.
-        target_name:  Si se indica, filtra el padrón por nombre (búsqueda parcial,
-                      insensible a mayúsculas). Permite pasar un apellido, nombre parcial
-                      o cualquier fragmento del nombre completo del investigador.
-        force:        Si es True, fuerza la validación aunque ya exista un match previo.
-    """
+def resolve_snii_identities(limit_test=None, target_name=None, force=False, ingest=False, force_ingest=False):
+    """Pipeline principal: SNII → candidatos multi-fuente → verificación LLM → JSON de resultados."""
     print("\n🚀 Resolviendo identidades SNII con LLM (búsqueda semántica + reranking)...")
 
     # Flag global para evitar trabarnos si la API oficial nos bloquea
@@ -327,6 +375,7 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False):
                 "orcid": c['orcid'],
                 "affiliation": c['inst'],
                 "scopus_ids": c.get('scopus_ids', []),
+                "works": c.get('works', []),
                 "score_vec": c['score']
             })
 
@@ -338,19 +387,24 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False):
             local_candidates = local_store.search(emb, limit=5)
             orcid_candidates = orcid_store.search(emb, limit=2)
             for c in local_candidates:
+                # Intentar buscar obras por ORCID si lo tiene
+                works = get_orcid_works_titles(c.get("orcid")) if c.get("orcid") else []
                 all_candidates.append({
                     "source": "Local (Neo4j/SIIA)",
                     "name": c.get("name"),
                     "orcid": c.get("orcid"),
                     "affiliation": c.get("affiliation"),
+                    "works": works,
                     "score_vec": c.get("score")
                 })
             for c in orcid_candidates:
+                orcid_works = get_orcid_works_titles(c.get("orcid"))
                 all_candidates.append({
                     "source": "ORCID Dump (Qdrant)",
                     "name": c.get("name"),
                     "orcid": c.get("orcid"),
                     "affiliation": c.get("affiliation"),
+                    "works": orcid_works,
                     "score_vec": c.get("score")
                 })
         elif not high_quality_oa:
@@ -358,11 +412,13 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False):
             # Resto del país: ORCID Qdrant + ClickHouse SQL Directo
             orcid_candidates = orcid_store.search(emb, limit=5)
             for c in orcid_candidates:
+                orcid_works = get_orcid_works_titles(c.get("orcid"))
                 all_candidates.append({
                     "source": "ORCID Dump (Qdrant)",
                     "name": c.get("name"),
                     "orcid": c.get("orcid"),
                     "affiliation": c.get("affiliation"),
+                    "works": orcid_works,
                     "score_vec": c.get("score")
                 })
 
@@ -419,7 +475,15 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False):
                     scored_cands.sort(key=lambda x: x['score'], reverse=True)
                     for c in scored_cands[:4]:
                         if not any(a['orcid'] == c['orcid'] for a in all_candidates):
-                            all_candidates.append({"source": "ClickHouse Text Search", "name": c['name'], "orcid": c['orcid'], "affiliation": c['aff'], "score_vec": c['score']})
+                            ch_works = get_orcid_works_titles(c.get("orcid"))
+                            all_candidates.append({
+                                "source": "ClickHouse Text Search", 
+                                "name": c['name'], 
+                                "orcid": c['orcid'], 
+                                "affiliation": c['aff'], 
+                                "works": ch_works,
+                                "score_vec": c['score']
+                            })
             except Exception as e:
                 print(f"      ⚠️ Error consultando ClickHouse text search: {e}")
 
@@ -460,12 +524,14 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False):
                         inst_name = "Unknown"
                     
                     if not any(a.get('openalex_id') == oa_id for a in all_candidates):
+                        oa_works = get_author_works_titles(oa_id)
                         all_candidates.append({
                             "source": "OpenAlex Oficial (API)",
                             "openalex_id": oa_id,
                             "name": disp_name,
                             "orcid": orc,
                             "affiliation": inst_name,
+                            "works": oa_works,
                             "score_vec": 0.0
                         })
             except ImportError:
@@ -483,7 +549,8 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False):
         else:
             print(f"      🔎 {len(all_candidates)} candidato(s) encontrado(s):")
             for i, cand in enumerate(all_candidates):
-                cand_info = f"[{cand['source']}] {cand['name']} | ORCID: {cand['orcid']} | Afiliación: {cand['affiliation']}"
+                works_str = f" | Obras: {', '.join(cand['works'])}" if cand.get('works') else ""
+                cand_info = f"[{cand['source']}] {cand['name']} | ORCID: {cand['orcid']} | Afiliación: {cand['affiliation']}{works_str}"
                 print(f"         {i+1}. {cand_info}")
                 candidates_str += f"{i+1}. {cand_info}\n"
 
@@ -513,14 +580,27 @@ Instrucciones vitales:
 
 Respuesta:"""
 
+        max_retries = 3
         try:
-            response = llm.invoke([HumanMessage(content=prompt)])
-            res_text = response.content.strip()
-            # Limpiar posibles bloques de código
-            if "```json" in res_text:
-                res_text = res_text.split("```json")[1].split("```")[0].strip()
+            for attempt in range(max_retries):
+                try:
+                    response = llm.invoke([HumanMessage(content=prompt)])
+                    res_text = response.content.strip()
+                    # Limpiar posibles bloques de código
+                    if "```json" in res_text:
+                        res_text = res_text.split("```json")[1].split("```")[0].strip()
+                    elif "```" in res_text:
+                        res_text = res_text.split("```")[1].split("```")[0].strip()
 
-            res_json = json.loads(res_text)
+                    res_json = json.loads(res_text)
+                    break # Éxito
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        wait_time = (attempt + 1) * 10
+                        print(f"      ⚠️ Error LLM/JSON (intento {attempt+1}/{max_retries}): {e}. Reintentando en {wait_time}s...")
+                        time.sleep(wait_time)
+                    else:
+                        raise e
 
             result_entry = {
                 "snii_author": snii_name,
@@ -600,6 +680,13 @@ Respuesta:"""
             else:
                 lookup[key] = len(verified_results)
                 verified_results.append(result_entry)
+                
+            if result_entry.get("match") is True and ingest:
+                print(f"      🚀 [Auto-Ingest] Iniciando carga de trabajos para {snii_name}...")
+                try:
+                    ingest_researcher_data(result_entry, force=force_ingest, force_local=True)
+                except Exception as e:
+                    print(f"      ❌ Error en Auto-Ingest: {e}")
 
             processed_in_this_run.add(key)
 
@@ -665,6 +752,8 @@ if __name__ == "__main__":
         action="store_true",
         help="Fuerza la re-verificación del investigador aunque ya exista un match confirmado previo."
     )
+    parser.add_argument("--ingest", action="store_true", help="Cargar automáticamente los trabajos del investigador al confirmar match")
+    parser.add_argument("--force-ingest", action="store_true", help="Forzar carga de trabajos incluso si ya existen en Neo4j")
     args = parser.parse_args()
 
-    resolve_snii_identities(limit_test=args.limit, target_name=args.name, force=args.force)
+    resolve_snii_identities(limit_test=args.limit, target_name=args.name, force=args.force, ingest=args.ingest, force_ingest=args.force_ingest)

@@ -260,6 +260,210 @@ def obtener_metadatos_de_openalex_autor(openalex_author_id, force_local=False):
 
 
 
+def ingest_researcher_data(data, force=False, force_local=False):
+    """Procesa e ingesta los datos de un único investigador."""
+    academic_name = data.get('snii_author')
+    if not academic_name: return
+    
+    inst_name = data.get('snii_institution', 'INSTITUCIÓN DESCONOCIDA')
+    sub_name = data.get('snii_subdependency', 'SIN INFORMACIÓN')
+    orcid = data.get('matched_orcid')
+    
+    # 1. Actualizar metadatos básicos y auditoría directamente
+    audit = data.get('audit', {})
+    print(f"\n🏷️ [{academic_name}] Actualizando metadatos y afiliación...")
+    
+    if hasattr(graph_store, 'update_academic_metadata'):
+        graph_store.update_academic_metadata(
+            academic_name=academic_name,
+            orcid=orcid if data.get('match') is True and audit.get('verdict') != 'FALSE_POSITIVE' else None,
+            scopus_id=data.get('scopus_ids'),
+            audit_verdict=audit.get('verdict'),
+            audit_reason=audit.get('reason'),
+            audit_confidence=audit.get('confidence'),
+            audit_timestamp=audit.get('timestamp'),
+            match_reason=data.get('reason'),
+            discarded_candidates=data.get('discarded_candidates'),
+            is_snii=True
+        )
+    else:
+        graph_store.set_academic_snii(academic_name, True)
+
+    # 2. Asegurar afiliación jerárquica
+    graph_store.add_academic_full_affiliation(academic_name, inst_name, sub_name)
+
+    # --- Enriquecer con IDs desde Neo4j ---
+    neo4j_ids = {"orcid": None, "openalex_id": None}
+    if hasattr(graph_store, 'get_academic_ids'):
+        neo4j_ids = graph_store.get_academic_ids(academic_name)
+    
+    # Prioridad: data > Neo4j
+    orcid = orcid or neo4j_ids.get('orcid')
+    
+    oa_ids = data.get('openalex_ids') or []
+    legacy_oa_id = data.get('matched_openalex_id')
+    if legacy_oa_id and legacy_oa_id not in oa_ids:
+        oa_ids.append(legacy_oa_id)
+    if not oa_ids and neo4j_ids.get('openalex_id'):
+        oa_ids.append(neo4j_ids.get('openalex_id'))
+    scopus_ids = data.get('scopus_ids')
+
+    # 3. Determinar si es seguro recolectar publicaciones
+    has_openalex_ids = len(oa_ids) > 0
+    is_false_positive = audit.get('verdict') == 'FALSE_POSITIVE'
+    is_valid_match = data.get('match') is True and not is_false_positive
+    is_safe_match = is_valid_match and (orcid or has_openalex_ids)
+    
+    if not is_safe_match:
+        print(f"  ℹ️ Saltando recolección de publicaciones (Match: {data.get('match')}, Veredicto: {audit.get('verdict')}, ORCID: {orcid}, OA_IDs: {oa_ids})")
+        return
+
+    # 4. Verificar existencia de publicaciones
+    if hasattr(graph_store, 'check_academic_exists') and graph_store.check_academic_exists(academic_name) and not force:
+        print(f"  📍 Publicaciones ya existen en Neo4j. Saltando recolección API...")
+        return
+
+    # 5. Recolectar publicaciones
+    meta_scopus = obtener_metadatos_de_scopus(scopus_ids) if scopus_ids else {}
+    meta_orcid = obtener_metadatos_de_orcid(orcid) if orcid else {}
+    
+    meta_oa_author = {}
+    for oa_id in oa_ids:
+        if oa_id and oa_id is not False:
+            oa_works = obtener_metadatos_de_openalex_autor(oa_id, force_local=force_local)
+            if oa_works:
+                meta_oa_author.update(oa_works)
+
+    # Fusionar con deduplicación por título
+    scopus_titles = {_clean_t(d.get('Title', '')) for d in meta_scopus.values() if d.get('Title')}
+    orcid_titles  = {_clean_t(d.get('Title', '')) for d in meta_orcid.values() if d.get('Title')}
+    
+    meta_unificada = meta_scopus.copy()
+    for d, m_data in meta_orcid.items():
+        if d in meta_unificada: continue
+        c_title = _clean_t(m_data.get('Title', ''))
+        if c_title in scopus_titles and c_title != "": continue
+        meta_unificada[d] = m_data
+        
+    all_titles_so_far = scopus_titles | orcid_titles
+    for d, m_data in meta_oa_author.items():
+        if d in meta_unificada: continue
+        c_title = _clean_t(m_data.get('Title', ''))
+        if c_title in all_titles_so_far and c_title != "": continue
+        meta_unificada[d] = m_data
+
+    if not meta_unificada:
+        print("  -> Sin publicaciones rastreables por ninguna fuente.")
+        return
+        
+    print(f"  -> {len(meta_unificada)} artículos únicos encontrados. Enriqueciendo...")
+
+    # Batch processing DOIs
+    dois_to_fetch = [doi for doi in meta_unificada.keys() if not doi.startswith('orcid-work:')]
+    
+    openalex_blocked = force_local or getattr(openalex_utils, 'OFFICIAL_API_BLOCKED', False)
+    batch_results = {}
+    if dois_to_fetch:
+        print(f"      📡 Consultando lote de {len(dois_to_fetch)} DOIs...")
+        batch_results = openalex_utils.get_works_batch(dois_to_fetch, local_only=openalex_blocked)
+    
+    neo4j_batch = []
+    batch_payloads = []
+    batch_texts = []
+
+    for doi, record in meta_unificada.items():
+        text_for_embedding = f"Title: {record.get('Title')}\n"
+        work = None
+        
+        _doi_clean = doi if not doi.startswith('orcid-work:') else None
+        _doi_key = _doi_clean.lower() if _doi_clean else None
+        
+        if _doi_key and _doi_key in batch_results:
+            work = batch_results[_doi_key]
+        elif not _doi_clean or _doi_key not in batch_results:
+            try:
+                work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'), local_only=openalex_blocked)
+            except:
+                work = None
+
+        if work:
+            authorships = work.get('authorships', [])
+            record['Authors'] = "; ".join([au['author']['display_name'] for au in authorships])
+            record['Keywords_oa'] = "; ".join([kw['display_name'] for kw in work.get('keywords', [])])
+            record['Abstract_oa'] = deconstruct_abstract(work.get('abstract_inverted_index'))
+            record['openalex_url'] = work.get('id')
+            if record['Abstract_oa']: record['Abstract'] = record['Abstract_oa']
+            record['Cited_by'] = work.get('cited_by_count', record.get('Cited_by', 0))
+            record['Source'] += ' + OpenAlex'
+
+        qdrant_exists = False
+        if hasattr(vector_store, 'check_document_exists'):
+            qdrant_exists = vector_store.check_document_exists(doi=doi, title=record.get("Title"))
+            
+        if not qdrant_exists:
+            if record.get('Abstract'):
+                text_for_embedding += f"Abstract: {record['Abstract']}"
+            
+            payload_qdrant = {
+                "academic_name": academic_name,
+                "doi":           doi,
+                "title":         record.get("Title"),
+                "year":          record.get("Year"),
+                "source":        record.get("Source"),
+                "entity":        sub_name if sub_name != "SIN INFORMACIÓN" else inst_name,
+                "text":          text_for_embedding
+            }
+            batch_texts.append(text_for_embedding)
+            batch_payloads.append(payload_qdrant)
+
+        system_id = orcid if orcid else academic_name
+        funders_list = []
+        awards_list = []
+        grants = work.get("grants", []) if work else []
+        for g in grants:
+            if g.get("funder_display_name"):
+                funders_list.append({"name": g.get("funder_display_name"), "openalex_id": g.get("funder") or ""})
+            if g.get("award_id"):
+                awards_list.append(g.get("award_id"))
+
+        neo4j_batch.append({
+            "system_id": system_id,
+            "academic_name": academic_name,
+            "orcid": orcid or None,
+            "openalex_id": ",".join(oa_ids) if oa_ids else None,
+            "doi": doi,
+            "paper_openalex_id": record.get("openalex_url"),
+            "title": record.get("Title", "No Title"),
+            "year": int(record.get("Year", 0)) if record.get("Year") else 0,
+            "citations": int(record.get("Cited_by", 0)) if record.get("Cited_by") else 0,
+            "raw_metadata": json.dumps(record, ensure_ascii=False),
+            "audit_verdict": audit.get('verdict'),
+            "audit_reason": audit.get('reason'),
+            "audit_confidence": audit.get('confidence'),
+            "audit_timestamp": audit.get('timestamp'),
+            "funders": funders_list,
+            "awards": list(set(awards_list))
+        })
+
+    if neo4j_batch:
+        print(f"      🗄️ Insertando lote de {len(neo4j_batch)} artículos en Neo4j...")
+        graph_store.add_api_papers_batch(neo4j_batch)
+        
+    graph_store.add_academic_full_affiliation(academic_name, inst_name, sub_name)
+        
+    if batch_texts:
+        print(f"  -> Vectorizando {len(batch_texts)} artículos...")
+        try:
+            embeddings = []
+            for i in range(0, len(batch_texts), 32):
+                batch_subset = batch_texts[i:i+32]
+                embeddings.extend(get_embeddings(batch_subset, force_local=force_local))
+            vector_store.add_documents(batch_payloads, embeddings)
+            print(f"  ✅ Completado para {academic_name}.")
+        except Exception as e:
+            print(f"  ❌ Error en vectores: {e}")
+
+
 def process_and_ingest_snii(json_path, force=False, force_local=False, target_name=None, limit_acads=None, confirmed_only=False, offset=0):
     if not os.path.exists(json_path):
         print(f"No se encontró el archivo: {json_path}")
@@ -303,226 +507,7 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
             continue
             
         count += 1
-        inst_name = data.get('snii_institution', 'INSTITUCIÓN DESCONOCIDA')
-        sub_name = data.get('snii_subdependency', 'SIN INFORMACIÓN')
-        orcid = data.get('matched_orcid')
-        
-        # 1. Actualizar metadatos básicos y auditoría directamente (Independiente de si tiene papers)
-        audit = data.get('audit', {})
-        print(f"\n🏷️ [{academic_name}] Actualizando metadatos y afiliación...")
-        
-        # Usar el nuevo método para persistir auditoría incluso sin papers
-        if hasattr(graph_store, 'update_academic_metadata'):
-            graph_store.update_academic_metadata(
-                academic_name=academic_name,
-                orcid=orcid if data.get('match') is True and audit.get('verdict') != 'FALSE_POSITIVE' else None,
-                scopus_id=data.get('scopus_ids'),
-                audit_verdict=audit.get('verdict'),
-                audit_reason=audit.get('reason'),
-                audit_confidence=audit.get('confidence'),
-                audit_timestamp=audit.get('timestamp'),
-                match_reason=data.get('reason'),
-                discarded_candidates=data.get('discarded_candidates'),
-                is_snii=True
-            )
-        else:
-            graph_store.set_academic_snii(academic_name, True)
-
-        # 2. Asegurar afiliación jerárquica
-        graph_store.add_academic_full_affiliation(academic_name, inst_name, sub_name)
-
-        # --- Enriquecer con IDs desde Neo4j ---
-        neo4j_ids = {"orcid": None, "openalex_id": None}
-        if hasattr(graph_store, 'get_academic_ids'):
-            neo4j_ids = graph_store.get_academic_ids(academic_name)
-        
-        # Prioridad: JSON > Neo4j
-        orcid = orcid or neo4j_ids.get('orcid')
-        
-        # Soportar múltiples IDs de OpenAlex
-        oa_ids = data.get('openalex_ids') or []
-        legacy_oa_id = data.get('matched_openalex_id')
-        if legacy_oa_id and legacy_oa_id not in oa_ids:
-            oa_ids.append(legacy_oa_id)
-        if not oa_ids and neo4j_ids.get('openalex_id'):
-            oa_ids.append(neo4j_ids.get('openalex_id'))
-        scopus_ids = data.get('scopus_ids') # Dejar abierta la posibilidad de scopus_ids en Neo4j si se añade después
-
-        # 3. Determinar si es seguro recolectar publicaciones
-        has_openalex_ids = len(oa_ids) > 0
-        is_false_positive = audit.get('verdict') == 'FALSE_POSITIVE'
-        is_valid_match = data.get('match') is True and not is_false_positive
-        
-        # Permitir ingesta si hay match válido + (ORCID o OpenAlex ID)
-        is_safe_match = is_valid_match and (orcid or has_openalex_ids)
-        
-        if not is_safe_match:
-            print(f"  ℹ️ Saltando recolección de publicaciones (Match: {data.get('match')}, Veredicto: {audit.get('verdict')}, ORCID: {orcid}, OA_IDs: {oa_ids})")
-            continue
-
-        # 4. Verificar existencia de publicaciones (evitar procesar de nuevo si no se fuerza)
-        if hasattr(graph_store, 'check_academic_exists') and graph_store.check_academic_exists(academic_name) and not force:
-            print(f"  📍 Publicaciones ya existen en Neo4j. Saltando recolección API...")
-            continue
-
-        # 5. Recolectar publicaciones según el caso disponible (Scopus > ORCID > OpenAlex)
-        meta_scopus = obtener_metadatos_de_scopus(scopus_ids) if scopus_ids else {}
-        meta_orcid = obtener_metadatos_de_orcid(orcid) if orcid else {}
-        
-        meta_oa_author = {}
-        for oa_id in oa_ids:
-            if oa_id and oa_id is not False:
-                oa_works = obtener_metadatos_de_openalex_autor(oa_id, force_local=force_local)
-                if oa_works:
-                    # Fusionar works de este OpenAlex ID al diccionario maestro
-                    meta_oa_author.update(oa_works)
-
-        # Fusionar con deduplicación por título
-        scopus_titles = {_clean_t(d.get('Title', '')) for d in meta_scopus.values() if d.get('Title')}
-        orcid_titles  = {_clean_t(d.get('Title', '')) for d in meta_orcid.values() if d.get('Title')}
-        
-        meta_unificada = meta_scopus.copy()
-        for d, m_data in meta_orcid.items():
-            if d in meta_unificada: continue
-            c_title = _clean_t(m_data.get('Title', ''))
-            if c_title in scopus_titles and c_title != "": continue
-            meta_unificada[d] = m_data
-            
-        all_titles_so_far = scopus_titles | orcid_titles
-        for d, m_data in meta_oa_author.items():
-            if d in meta_unificada: continue
-            c_title = _clean_t(m_data.get('Title', ''))
-            if c_title in all_titles_so_far and c_title != "": continue
-            meta_unificada[d] = m_data
-
-        if not meta_unificada:
-            print("  -> Sin publicaciones rastreables por ninguna fuente.")
-            continue
-            
-        print(f"  -> {len(meta_unificada)} artículos únicos encontrados. Enriqueciendo...")
-
-        # --- OPT: Batch processing DOIs ---
-        dois_to_fetch = [doi for doi in meta_unificada.keys() if not doi.startswith('orcid-work:')]
-        non_doi_works = {doi: rec for doi, rec in meta_unificada.items() if doi.startswith('orcid-work:')}
-        
-        # 1. Fetch OpenAlex data in batches if possible
-        openalex_blocked = force_local or getattr(openalex_utils, 'OFFICIAL_API_BLOCKED', False)
-        batch_results = {}
-        if dois_to_fetch:
-            print(f"      📡 Consultando lote de {len(dois_to_fetch)} DOIs...")
-            batch_results = openalex_utils.get_works_batch(dois_to_fetch, local_only=openalex_blocked)
-        
-        neo4j_batch = []
-        batch_payloads = []
-        batch_texts = []
-
-        # 2. Process combined results (Batch + Single Fallbacks)
-        all_processing_tasks = list(meta_unificada.items())
-        
-        for doi, record in all_processing_tasks:
-            text_for_embedding = f"Title: {record.get('Title')}\n"
-            work = None
-            
-            # Recuperar trabajo de OpenAlex (de batch o búsqueda individual si falla)
-            _doi_clean = doi if not doi.startswith('orcid-work:') else None
-            _doi_key = _doi_clean.lower() if _doi_clean else None
-            
-            if _doi_key and _doi_key in batch_results:
-                work = batch_results[_doi_key]
-            elif not _doi_clean or _doi_key not in batch_results:
-                # Si no tiene DOI o no se encontró en el lote (posible título), intentar búsqueda individual
-                try:
-                    work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'), local_only=openalex_blocked)
-                except Exception:
-                    work = None
-
-            if work:
-                authorships = work.get('authorships', [])
-                record['Authors'] = "; ".join([au['author']['display_name'] for au in authorships])
-                record['Keywords_oa'] = "; ".join([kw['display_name'] for kw in work.get('keywords', [])])
-                record['Abstract_oa'] = deconstruct_abstract(work.get('abstract_inverted_index'))
-                record['openalex_url'] = work.get('id')
-                if record['Abstract_oa']: record['Abstract'] = record['Abstract_oa']
-                record['Cited_by'] = work.get('cited_by_count', record.get('Cited_by', 0))
-                record['Source'] += ' + OpenAlex'
-
-            # --- Qdrant logic ---
-            qdrant_exists = False
-            if hasattr(vector_store, 'check_document_exists'):
-                qdrant_exists = vector_store.check_document_exists(doi=doi, title=record.get("Title"))
-                
-            if not qdrant_exists:
-                if record.get('Abstract'):
-                    text_for_embedding += f"Abstract: {record['Abstract']}"
-                
-                payload_qdrant = {
-                    "academic_name": academic_name,
-                    "doi":           doi,
-                    "title":         record.get("Title"),
-                    "year":          record.get("Year"),
-                    "source":        record.get("Source"),
-                    "entity":        sub_name if sub_name != "SIN INFORMACIÓN" else inst_name,
-                    "text":          text_for_embedding
-                }
-                batch_texts.append(text_for_embedding)
-                batch_payloads.append(payload_qdrant)
-
-            # --- Prepare Neo4j Batch Data ---
-            # Determinar system_id (igual que en add_api_paper)
-            if orcid:
-                system_id = orcid
-            else:
-                system_id = academic_name # Simplified for batch
-            
-            # Funders/Awards extraction
-            funders_list = []
-            awards_list = []
-            grants = work.get("grants", []) if work else []
-            for g in grants:
-                if g.get("funder_display_name"):
-                    funders_list.append({"name": g.get("funder_display_name"), "openalex_id": g.get("funder") or ""})
-                if g.get("award_id"):
-                    awards_list.append(g.get("award_id"))
-
-            audit = data.get('audit', {})
-            neo4j_batch.append({
-                "system_id": system_id,
-                "academic_name": academic_name,
-                "orcid": orcid or None,
-                "openalex_id": ",".join(oa_ids) if oa_ids else None, # Persistencia del ID(s) descubierto del autor
-                "doi": doi,
-                "paper_openalex_id": record.get("openalex_url"), # ID de OpenAlex del PAPER para vinculación de citas
-                "title": record.get("Title", "No Title"),
-                "year": int(record.get("Year", 0)) if record.get("Year") else 0,
-                "citations": int(record.get("Cited_by", 0)) if record.get("Cited_by") else 0,
-                "raw_metadata": json.dumps(record, ensure_ascii=False),
-                "audit_verdict": audit.get('verdict'),
-                "audit_reason": audit.get('reason'),
-                "audit_confidence": audit.get('confidence'),
-                "audit_timestamp": audit.get('timestamp'),
-                "funders": funders_list,
-                "awards": list(set(awards_list))
-            })
-
-        # --- Final Batch Ingestion ---
-        if neo4j_batch:
-            print(f"      🗄️ Insertando lote de {len(neo4j_batch)} artículos en Neo4j...")
-            graph_store.add_api_papers_batch(neo4j_batch)
-            
-        # Afiliación Jerárquica
-        graph_store.add_academic_full_affiliation(academic_name, inst_name, sub_name)
-            
-        if batch_texts:
-            print(f"  -> Vectorizando {len(batch_texts)} artículos...")
-            try:
-                embeddings = []
-                for i in range(0, len(batch_texts), 32):
-                    batch_subset = batch_texts[i:i+32]
-                    embeddings.extend(get_embeddings(batch_subset, force_local=force_local))
-                vector_store.add_documents(batch_payloads, embeddings)
-                print(f"  ✅ Completado para {academic_name}.")
-            except Exception as e:
-                print(f"  ❌ Error en vectores: {e}")
+        ingest_researcher_data(data, force=force, force_local=force_local)
 
 if __name__ == "__main__":
     import argparse
