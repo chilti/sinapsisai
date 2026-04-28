@@ -350,6 +350,12 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
         if key in lookup and not force:
             existing_record = verified_results[lookup[key]]
             if existing_record.get("match") is True:
+                if ingest:
+                    print(f"      🚀 [Auto-Ingest] Usando match previo para {snii_name}...")
+                    try:
+                        ingest_researcher_data(existing_record, force=force_ingest, force_local=True)
+                    except Exception as e:
+                        print(f"      ❌ Error en Auto-Ingest previo: {e}")
                 processed_in_this_run.add(key)
                 continue
 
@@ -674,8 +680,13 @@ Respuesta:"""
             else:
                 print(f"      ❌ NINGUNO: No se encontró match para {snii_name}")
 
-            # Actualizar o Añadir
+            # Actualizar o Añadir (con Red de Seguridad)
             if key in lookup:
+                if result_entry.get("match") is False:
+                    old_rec = verified_results[lookup[key]]
+                    if old_rec.get("match") is True:
+                        print(f"      ⚠️ [Safety] El LLM no confirmó match esta vez, pero existía uno previo. Preservando datos anteriores.")
+                        result_entry = old_rec
                 verified_results[lookup[key]] = result_entry
             else:
                 lookup[key] = len(verified_results)
@@ -709,10 +720,22 @@ Respuesta:"""
                 "source": None
             }
             if key in lookup:
+                old_rec = verified_results[lookup[key]]
+                if old_rec.get("match") is True:
+                    print(f"      ⚠️ [Safety] Error en LLM, pero existía un match previo. Preservando datos anteriores.")
+                    error_entry = old_rec
                 verified_results[lookup[key]] = error_entry
             else:
                 lookup[key] = len(verified_results)
                 verified_results.append(error_entry)
+
+            # Si logramos recuperar un match previo, permitir ingesta
+            if error_entry.get("match") is True and ingest:
+                print(f"      🚀 [Auto-Ingest] Iniciando carga de trabajos (vía Safety Match) para {snii_name}...")
+                try:
+                    ingest_researcher_data(error_entry, force=force_ingest, force_local=True)
+                except Exception as ie:
+                    print(f"      ❌ Error en Auto-Ingest safety: {ie}")
 
             processed_in_this_run.add(key)
 
