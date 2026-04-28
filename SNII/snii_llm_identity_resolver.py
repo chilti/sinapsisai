@@ -122,10 +122,23 @@ def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list
     """
     try:
         ch = get_ch_client()
-        # Tomamos la primera palabra del apellido (antes de la coma) como llave de búsqueda
-        search_term = normalize_text(name.split(',')[0].split()[0]).replace("'", "").replace("'", "")
-        if len(search_term) < 3:
-            return []
+        # Extraer palabras clave fuertes (una del apellido y otra del nombre)
+        parts = [p.strip() for p in normalize_text(name).replace(',', ' ').split() if len(p) > 2]
+        if len(parts) < 2:
+            search_term1 = parts[0] if parts else normalize_text(name)
+            search_term2 = search_term1
+        else:
+            if ',' in name:
+                apellidos = [p for p in normalize_text(name.split(',')[0]).split() if len(p) > 2]
+                nombres = [p for p in normalize_text(name.split(',')[1]).split() if len(p) > 2]
+                search_term1 = apellidos[0] if apellidos else parts[0]
+                search_term2 = nombres[0] if nombres else parts[-1]
+            else:
+                search_term1 = parts[0]
+                search_term2 = parts[-1]
+
+        k1 = search_term1.replace("'", "").replace("''", "")
+        k2 = search_term2.replace("'", "").replace("''", "")
 
         query = f"""
         SELECT
@@ -135,7 +148,8 @@ def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list
             last_known_institution_name,
             ids
         FROM {CH_DB}.authors
-        WHERE lower(display_name) LIKE '%{search_term.lower()}%'
+        WHERE lower(display_name) LIKE '%{k1.lower()}%'
+          AND lower(display_name) LIKE '%{k2.lower()}%'
         LIMIT {limit * 25}
         """
         rows = ch.query(query).result_rows
@@ -324,22 +338,35 @@ def resolve_snii_identities(limit_test=None, target_name=None):
             # ClickHouse SQL Fuzzy Fallback
             try:
                 ch_client = get_orcid_client()
-                parts = snii_name.replace(',', ' ').strip().split()
-                if ',' in snii_name:
-                    search_term = normalize_text(snii_name.split(',')[0].split()[0])
-                elif not high_quality_oa:
-                    search_term = parts[0]
-                    common_names = ['juan', 'jose', 'maria', 'ana', 'luis', 'carlos', 'martha', 'rosa', 'pedro', 'jesus']
-                    if search_term in common_names and len(parts) > 1:
-                        search_term = parts[-1]
+                
+                parts = [p.strip() for p in normalize_text(snii_name).replace(',', ' ').split() if len(p) > 2]
+                if len(parts) < 2:
+                    k1 = parts[0] if parts else normalize_text(snii_name)
+                    k2 = k1
+                else:
+                    if ',' in snii_name:
+                        apellidos = [p for p in normalize_text(snii_name.split(',')[0]).split() if len(p) > 2]
+                        nombres = [p for p in normalize_text(snii_name.split(',')[1]).split() if len(p) > 2]
+                        k1 = apellidos[0] if apellidos else parts[0]
+                        k2 = nombres[0] if nombres else parts[-1]
+                    else:
+                        k1 = parts[0]
+                        k2 = parts[-1]
 
-                t_esc = search_term.strip().replace("'", "").lower().replace("'", "''")
+                t1_esc = k1.replace("'", "").lower().replace("'", "''")
+                t2_esc = k2.replace("'", "").lower().replace("'", "''")
 
-                if len(t_esc) >= 3:
+                if len(t1_esc) >= 3:
                     # Verificar si la base de datos de ORCID existe en este servidor
                     db_exists = ch_client.query(f"SELECT count() FROM system.databases WHERE name = '{CH_DB_ORCID}'").result_rows[0][0]
                     if db_exists:
-                        query = f"SELECT orcid, given_names, family_name, credit_name, last_affiliation FROM {CH_DB_ORCID}.orcid_records WHERE (lower(family_name) LIKE '%{t_esc}%' OR lower(credit_name) LIKE '%{t_esc}%') LIMIT 20"
+                        query = f"""
+                        SELECT orcid, given_names, family_name, credit_name, last_affiliation 
+                        FROM {CH_DB_ORCID}.orcid_records 
+                        WHERE (lower(family_name) LIKE '%{t1_esc}%' OR lower(credit_name) LIKE '%{t1_esc}%')
+                          AND (lower(given_names) LIKE '%{t2_esc}%' OR lower(credit_name) LIKE '%{t2_esc}%')
+                        LIMIT 40
+                        """
                         res = ch_client.query(query).result_rows
                     else:
                         print(f"      ℹ️  Base de datos {CH_DB_ORCID} no encontrada en este servidor. Saltando búsqueda fuzzy de ORCID.")
