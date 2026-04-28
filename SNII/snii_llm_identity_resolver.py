@@ -639,7 +639,9 @@ Respuesta:"""
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(verified_results, f, ensure_ascii=False, indent=2)
 
-    print(f"\n✨ Resolución de identidades completada. {len(verified_results)} registros guardados en {output_path}")
+    num_matches = sum(1 for r in verified_results if r.get('match') is True)
+    print(f"\n✨ Resolución de identidades completada. {len(verified_results)} registros evaluados y guardados en {output_path}")
+    print(f"📊 Total de investigadores con match confirmado: {num_matches} ({num_matches / max(1, len(verified_results)) * 100:.1f}%)")
 
 
 if __name__ == "__main__":
