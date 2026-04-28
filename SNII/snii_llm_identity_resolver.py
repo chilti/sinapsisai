@@ -176,101 +176,191 @@ def get_orcid_works_titles(orcid_url, limit=3):
     return []
 
 
-def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list:
-    """Busca candidatos en la tabla de autores de OpenAlex en ClickHouse local.
-    Retorna hasta `limit` autores con nombre, orcid, last_known_institution y scopus ids.
+def get_search_keys(name: str):
+    """Extrae k1 y k2 (apellidos/nombres) para búsqueda en ClickHouse."""
+    parts = [p.strip() for p in normalize_text(name).replace(',', ' ').split() if len(p) > 2]
+    if len(parts) < 2:
+        k1 = parts[0] if parts else normalize_text(name)
+        k2 = k1
+    else:
+        if ',' in name:
+            apellidos = [p for p in normalize_text(name.split(',')[0]).split() if len(p) > 2]
+            nombres = [p for p in normalize_text(name.split(',')[1]).split() if len(p) > 2]
+            k1 = apellidos[0] if apellidos else parts[0]
+            k2 = nombres[0] if nombres else parts[-1]
+        else:
+            k1, k2 = parts[0], parts[-1]
+    return k1, k2
+
+
+def search_openalex_authors_batch(names_info: list, limit_per_name: int = 5) -> dict:
+    """Busca candidatos en ClickHouse para un lote de investigadores.
+    names_info: lista de diccionarios {snii_name, k1, k2}
+    Retorna: {snii_name: [candidatos]}
     """
+    if not names_info:
+        return {}
+    
     try:
         ch = get_ch_client()
-        # Extraer palabras clave fuertes
-        parts = [p.strip() for p in normalize_text(name).replace(',', ' ').split() if len(p) > 2]
-        if len(parts) < 2:
-            search_term1 = parts[0] if parts else normalize_text(name)
-            search_term2 = search_term1
-        else:
-            if ',' in name:
-                apellidos = [p for p in normalize_text(name.split(',')[0]).split() if len(p) > 2]
-                nombres = [p for p in normalize_text(name.split(',')[1]).split() if len(p) > 2]
-                search_term1 = apellidos[0] if apellidos else parts[0]
-                search_term2 = nombres[0] if nombres else parts[-1]
-            else:
-                search_term1 = parts[0]
-                search_term2 = parts[-1]
-
-        k1 = search_term1.replace("'", "").replace("''", "")
-        k2 = search_term2.replace("'", "").replace("''", "")
-
+        clauses = []
+        for info in names_info:
+            k1 = info['k1'].replace("'", "''")
+            k2 = info['k2'].replace("'", "''")
+            clauses.append(f"(lower(display_name) LIKE '%{k1.lower()}%' AND lower(display_name) LIKE '%{k2.lower()}%')")
+        
+        where_clause = " OR ".join(clauses)
+        
+        # Límite proporcional al lote
+        query_limit = min(len(names_info) * limit_per_name * 10, 2000)
+        
         query = f"""
-        SELECT
-            id,
-            display_name,
-            orcid,
-            raw_data,
-            ids
+        SELECT id, display_name, orcid, raw_data, ids
         FROM {CH_DB}.authors
-        WHERE lower(display_name) LIKE '%{k1.lower()}%'
-          AND lower(display_name) LIKE '%{k2.lower()}%'
-        LIMIT {limit * 15}
+        WHERE {where_clause}
+        LIMIT {query_limit}
         """
         rows = ch.query(query).result_rows
-
+        
         from Levenshtein import jaro_winkler
-        sorted_seed = " ".join(sorted([t for t in normalize_text(name).replace(',', ' ').split() if len(t) > 1]))
+        results_map = {info['snii_name']: [] for info in names_info}
+        
+        # Cache de nombres normalizados para el batch
+        batch_normalized = {}
+        for info in names_info:
+            name = info['snii_name']
+            batch_normalized[name] = " ".join(sorted([t for t in normalize_text(name).replace(',', ' ').split() if len(t) > 1]))
 
-        scored = []
         for r in rows:
             openalex_id, disp_name, orcid_val, raw_data_str, ids_json = r[0], r[1], r[2], r[3], r[4]
             
-            # Extracción robusta de afiliación
+            # Extraer afiliación una sola vez por candidato
             inst_name = ""
             try:
-                if raw_data_str:
-                    raw_data = json.loads(raw_data_str) if isinstance(raw_data_str, str) else raw_data_str
-                    affils = raw_data.get('affiliations') or []
-                    if affils and isinstance(affils, list) and len(affils) > 0:
-                        inst_info = affils[0].get('institution')
-                        if inst_info and isinstance(inst_info, dict):
-                            inst_name = inst_info.get('display_name')
-                    if not inst_name:
-                        lki_list = raw_data.get('last_known_institutions')
-                        if lki_list and isinstance(lki_list, list) and len(lki_list) > 0:
-                            inst_name = lki_list[0].get('display_name')
-                    if not inst_name:
-                        lki_dict = raw_data.get('last_known_institution')
-                        if lki_dict and isinstance(lki_dict, dict):
-                            inst_name = lki_dict.get('display_name')
-            except:
-                pass
-                
+                raw_data = json.loads(raw_data_str) if isinstance(raw_data_str, str) else raw_data_str
+                affils = raw_data.get('affiliations') or []
+                if affils and isinstance(affils, list) and len(affils) > 0:
+                    inst_info = affils[0].get('institution')
+                    if inst_info and isinstance(inst_info, dict):
+                        inst_name = inst_info.get('display_name')
+                if not inst_name:
+                    lki_list = raw_data.get('last_known_institutions')
+                    if lki_list and isinstance(lki_list, list) and len(lki_list) > 0:
+                        inst_name = lki_list[0].get('display_name')
+                if not inst_name:
+                    lki_dict = raw_data.get('last_known_institution')
+                    if lki_dict and isinstance(lki_dict, dict):
+                        inst_name = lki_dict.get('display_name')
+            except: pass
+            
             cand_norm = " ".join(sorted([t for t in normalize_text(str(disp_name)).replace(',', ' ').split() if len(t) > 1]))
-            ns = jaro_winkler(sorted_seed, cand_norm)
-            if ns > 0.75:
-                scopus_ids = []
-                try:
-                    ids_data = json.loads(ids_json) if isinstance(ids_json, str) else (ids_json or {})
-                    scopus_raw = ids_data.get('scopus') or []
-                    scopus_ids = [scopus_raw] if isinstance(scopus_raw, str) else scopus_raw
-                except:
-                    pass
+            
+            # Comparar este candidato contra CADA investigador del batch
+            for snii_name, sorted_seed in batch_normalized.items():
+                ns = jaro_winkler(sorted_seed, cand_norm)
+                if ns > 0.75:
+                    scopus_ids = []
+                    try:
+                        ids_data = json.loads(ids_json) if isinstance(ids_json, str) else (ids_json or {})
+                        scopus_raw = ids_data.get('scopus') or []
+                        scopus_ids = [scopus_raw] if isinstance(scopus_raw, str) else scopus_raw
+                    except: pass
+                    
+                    results_map[snii_name].append({
+                        "openalex_id": openalex_id,
+                        "name": disp_name,
+                        "orcid": orcid_val or None,
+                        "inst": inst_name or "",
+                        "scopus_ids": scopus_ids,
+                        "score": ns
+                    })
+        
+        # Sort, limit and fetch works for each name
+        for name in results_map:
+            results_map[name].sort(key=lambda x: x['score'], reverse=True)
+            results_map[name] = results_map[name][:limit_per_name]
+            for cand in results_map[name]:
+                # Solo fetch si el score es alto o tiene orcid/inst (candidato prometedor)
+                if cand['score'] > 0.85 or cand['orcid'] or cand['inst']:
+                    cand['works'] = get_author_works_titles(cand['openalex_id'])
+                else:
+                    cand['works'] = []
                 
-                # Obtener obras recientes para el prompt
-                works = get_author_works_titles(openalex_id)
-
-                scored.append({
-                    "openalex_id": openalex_id,
-                    "name": disp_name,
-                    "orcid": orcid_val or None,
-                    "inst": inst_name or "",
-                    "scopus_ids": scopus_ids,
-                    "works": works,
-                    "score": ns
-                })
-
-        scored.sort(key=lambda x: x['score'], reverse=True)
-        return scored[:limit]
+        return results_map
     except Exception as e:
-        print(f"      ⚠️ Error buscando en OpenAlex authors: {e}")
-        return []
+        print(f"      ⚠️ Error en búsqueda batch OpenAlex: {e}")
+        return {info['snii_name']: [] for info in names_info}
+
+
+def search_orcid_records_batch(names_info: list, limit_per_name: int = 5) -> dict:
+    """Busca candidatos en el dump de ORCID (ClickHouse) para un lote de investigadores."""
+    if not names_info:
+        return {}
+    
+    try:
+        ch = get_orcid_client()
+        # Verificar si la base de datos de ORCID existe en este servidor
+        db_exists = ch.query(f"SELECT count() FROM system.databases WHERE name = '{CH_DB_ORCID}'").result_rows[0][0]
+        if not db_exists:
+            print(f"      ℹ️  Base de datos {CH_DB_ORCID} no encontrada. Saltando búsqueda batch de ORCID.")
+            return {info['snii_name']: [] for info in names_info}
+
+        clauses = []
+        for info in names_info:
+            k1 = info['k1'].replace("'", "''").lower()
+            k2 = info['k2'].replace("'", "''").lower()
+            clauses.append(f"( (lower(family_name) LIKE '%{k1}%' OR lower(credit_name) LIKE '%{k1}%') AND (lower(given_names) LIKE '%{k2}%' OR lower(credit_name) LIKE '%{k2}%') )")
+        
+        where_clause = " OR ".join(clauses)
+        
+        query = f"""
+        SELECT orcid, given_names, family_name, credit_name, last_affiliation 
+        FROM {CH_DB_ORCID}.orcid_records 
+        WHERE {where_clause}
+        LIMIT {len(names_info) * limit_per_name * 10}
+        """
+        rows = ch.query(query).result_rows
+        
+        from Levenshtein import jaro_winkler
+        results_map = {info['snii_name']: [] for info in names_info}
+        
+        # Cache de nombres normalizados para el batch
+        batch_normalized = {}
+        for info in names_info:
+            name = info['snii_name']
+            batch_normalized[name] = " ".join(sorted([t for t in normalize_text(name).replace(',', ' ').split() if len(t) > 1]))
+
+        for r in rows:
+            orc, gn, fn, cn, aff = r[0], str(r[1] or ''), str(r[2] or ''), str(r[3] or ''), str(r[4] or '')
+            cand_name = f"{gn} {fn}".strip() if not cn else cn
+            cand_norm = " ".join(sorted([t for t in normalize_text(cand_name).replace(',', ' ').split() if len(t) > 1]))
+            
+            for snii_name, sorted_seed in batch_normalized.items():
+                ns = jaro_winkler(sorted_seed, cand_norm)
+                if ns > 0.8:
+                    results_map[snii_name].append({
+                        "score": ns,
+                        "name": cand_name,
+                        "orcid": orc,
+                        "aff": aff
+                    })
+        
+        # Sort and limit for each name
+        for name in results_map:
+            results_map[name].sort(key=lambda x: x['score'], reverse=True)
+            results_map[name] = results_map[name][:limit_per_name]
+            
+        return results_map
+    except Exception as e:
+        print(f"      ⚠️ Error en búsqueda batch ORCID: {e}")
+        return {info['snii_name']: [] for info in names_info}
+
+
+def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list:
+    """Fallback individual si es necesario (usa la lógica batch para un solo nombre)."""
+    k1, k2 = get_search_keys(name)
+    res = search_openalex_authors_batch([{'snii_name': name, 'k1': k1, 'k2': k2}], limit_per_name=limit)
+    return res.get(name, [])
 
 
 def resolve_snii_identities(limit_test=None, target_name=None, force=False, ingest=False, force_ingest=False):
@@ -323,244 +413,180 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
         except Exception as e:
             print(f"   ⚠️ No se pudo cargar progreso previo: {e}")
 
-    for idx, row in df.iterrows():
-        snii_name = str(row[name_col]).strip()
+    # ── Bucle Principal por Lotes ──────────────────────────────────────────
+    batch_size = 50
+    rows_list = list(df.iterrows())
+    
+    for b_idx in range(0, len(rows_list), batch_size):
+        chunk = rows_list[b_idx : b_idx + batch_size]
+        
+        # 1. Búsqueda Batch de candidatos (OpenAlex + ORCID)
+        batch_query_info = []
+        for _, row in chunk:
+            s_name = str(row[name_col]).strip()
+            k1, k2 = get_search_keys(s_name)
+            batch_query_info.append({'snii_name': s_name, 'k1': k1, 'k2': k2})
+        
+        print(f"\n📦 Consultando lote de {len(batch_query_info)} investigadores en ClickHouse (OpenAlex + ORCID)...")
+        batch_oa_map = search_openalex_authors_batch(batch_query_info, limit_per_name=5)
+        batch_orcid_map = search_orcid_records_batch(batch_query_info, limit_per_name=4)
 
-        raw_inst = str(row[inst_col]).strip() if pd.notna(row[inst_col]) else ""
-        raw_dep = str(row[dep_inst_col]).strip() if pd.notna(row[dep_inst_col]) else ""
-        raw_sub = str(row[sub_inst_col]).strip() if pd.notna(row[sub_inst_col]) else ""
-
-        if raw_inst.upper() in ["SIN INSTITUCIÓN", "SIN INSTITUCION"]:
-            final_inst = "SIN INSTITUCIÓN"
-            final_sub = "NO APLICA"
-        elif raw_sub.upper() in ["SIN INFORMACION", "SIN INFORMACIÓN", ""]:
-            final_inst = raw_inst
-            final_sub = raw_dep if raw_dep else raw_sub
-        else:
-            final_inst = raw_inst
-            final_sub = raw_sub
-
-        key = (snii_name, final_inst, final_sub)
-
-        # Evitar procesar lo mismo dos veces en la misma corrida (duplicados en Excel)
-        if key in processed_in_this_run:
-            continue
-
-        # Si ya existe match confirmado y no forzamos, saltar
-        if key in lookup and not force:
-            existing_record = verified_results[lookup[key]]
-            if existing_record.get("match") is True:
-                if ingest:
-                    print(f"      🚀 [Auto-Ingest] Usando match previo para {snii_name}...")
-                    try:
-                        ingest_researcher_data(existing_record, force=force_ingest, force_local=True)
-                    except Exception as e:
-                        print(f"      ❌ Error en Auto-Ingest previo: {e}")
-                processed_in_this_run.add(key)
-                continue
-
-        snii_info = f"Nombre: {snii_name} | Institución: {final_inst} | Subdependencia: {final_sub}"
-
-        print(f"   [{idx+1}/{len(df)}] Verificando: {snii_name}...")
-
-        # Obtener embedding del autor SNII
-        emb = get_embeddings([snii_info])[0]
-
-        all_candidates = []
-        is_unam = any(k in final_inst.lower() for k in ['unam', 'nacional autonoma de mexico', 'nacional autónoma de méxico'])
-
-        # ── OpenAlex Authors (Prioridad Alta) ─────────────────────────────────
-        openalex_candidates = search_openalex_authors(snii_name, final_inst, limit=5)
-        oa_scopus_map = {}  # openalex_id -> scopus_ids (para usar después si hay match)
-        for c in openalex_candidates:
-            oa_scopus_map[c['openalex_id']] = c.get('scopus_ids', [])
-            all_candidates.append({
-                "source": "OpenAlex DB Local",
-                "openalex_id": c['openalex_id'],
-                "name": c['name'],
-                "orcid": c['orcid'],
-                "affiliation": c['inst'],
-                "scopus_ids": c.get('scopus_ids', []),
-                "works": c.get('works', []),
-                "score_vec": c['score']
-            })
-
-        # Saltamos Qdrant si ya tenemos suficientes candidatos de calidad de OpenAlex (nombre exacto + metadata útil)
-        high_quality_oa = [c for c in openalex_candidates if c['score'] >= 0.95 and (c.get('orcid') or c.get('inst'))]
-
-        if is_unam and not high_quality_oa:
-            # UNAM: Priorizar local via Qdrant (ahí está SIIA)
-            local_candidates = local_store.search(emb, limit=5)
-            orcid_candidates = orcid_store.search(emb, limit=2)
-            for c in local_candidates:
-                # Intentar buscar obras por ORCID si lo tiene
-                works = get_orcid_works_titles(c.get("orcid")) if c.get("orcid") else []
-                all_candidates.append({
-                    "source": "Local (Neo4j/SIIA)",
-                    "name": c.get("name"),
-                    "orcid": c.get("orcid"),
-                    "affiliation": c.get("affiliation"),
-                    "works": works,
-                    "score_vec": c.get("score")
-                })
-            for c in orcid_candidates:
-                orcid_works = get_orcid_works_titles(c.get("orcid"))
-                all_candidates.append({
-                    "source": "ORCID Dump (Qdrant)",
-                    "name": c.get("name"),
-                    "orcid": c.get("orcid"),
-                    "affiliation": c.get("affiliation"),
-                    "works": orcid_works,
-                    "score_vec": c.get("score")
-                })
-        elif not high_quality_oa:
-
-            # Resto del país: ORCID Qdrant + ClickHouse SQL Directo
-            orcid_candidates = orcid_store.search(emb, limit=5)
-            for c in orcid_candidates:
-                orcid_works = get_orcid_works_titles(c.get("orcid"))
-                all_candidates.append({
-                    "source": "ORCID Dump (Qdrant)",
-                    "name": c.get("name"),
-                    "orcid": c.get("orcid"),
-                    "affiliation": c.get("affiliation"),
-                    "works": orcid_works,
-                    "score_vec": c.get("score")
-                })
-
-            # ClickHouse SQL Fuzzy Fallback
+        for idx, row in chunk:
             try:
-                ch_client = get_orcid_client()
-                
-                parts = [p.strip() for p in normalize_text(snii_name).replace(',', ' ').split() if len(p) > 2]
-                if len(parts) < 2:
-                    k1 = parts[0] if parts else normalize_text(snii_name)
-                    k2 = k1
+                snii_name = str(row[name_col]).strip()
+
+                raw_inst = str(row[inst_col]).strip() if pd.notna(row[inst_col]) else ""
+                raw_dep = str(row[dep_inst_col]).strip() if pd.notna(row[dep_inst_col]) else ""
+                raw_sub = str(row[sub_inst_col]).strip() if pd.notna(row[sub_inst_col]) else ""
+
+                if raw_inst.upper() in ["SIN INSTITUCIÓN", "SIN INSTITUCION"]:
+                    final_inst = "SIN INSTITUCIÓN"
+                    final_sub = "NO APLICA"
+                elif raw_sub.upper() in ["SIN INFORMACION", "SIN INFORMACIÓN", ""]:
+                    final_inst = raw_inst
+                    final_sub = raw_dep if raw_dep else raw_sub
                 else:
-                    if ',' in snii_name:
-                        apellidos = [p for p in normalize_text(snii_name.split(',')[0]).split() if len(p) > 2]
-                        nombres = [p for p in normalize_text(snii_name.split(',')[1]).split() if len(p) > 2]
-                        k1 = apellidos[0] if apellidos else parts[0]
-                        k2 = nombres[0] if nombres else parts[-1]
-                    else:
-                        k1 = parts[0]
-                        k2 = parts[-1]
+                    final_inst = raw_inst
+                    final_sub = raw_sub
 
-                t1_esc = k1.replace("'", "").lower().replace("'", "''")
-                t2_esc = k2.replace("'", "").lower().replace("'", "''")
+                key = (snii_name, final_inst, final_sub)
 
-                if len(t1_esc) >= 3:
-                    # Verificar si la base de datos de ORCID existe en este servidor
-                    db_exists = ch_client.query(f"SELECT count() FROM system.databases WHERE name = '{CH_DB_ORCID}'").result_rows[0][0]
-                    if db_exists:
-                        query = f"""
-                        SELECT orcid, given_names, family_name, credit_name, last_affiliation 
-                        FROM {CH_DB_ORCID}.orcid_records 
-                        WHERE (lower(family_name) LIKE '%{t1_esc}%' OR lower(credit_name) LIKE '%{t1_esc}%')
-                          AND (lower(given_names) LIKE '%{t2_esc}%' OR lower(credit_name) LIKE '%{t2_esc}%')
-                        LIMIT 40
-                        """
-                        res = ch_client.query(query).result_rows
-                    else:
-                        print(f"      ℹ️  Base de datos {CH_DB_ORCID} no encontrada en este servidor. Saltando búsqueda fuzzy de ORCID.")
-                        res = []
+                # Evitar procesar lo mismo dos veces en la misma corrida (duplicados en Excel)
+                if key in processed_in_this_run:
+                    continue
 
-                    from Levenshtein import jaro_winkler
-                    sorted_seed = " ".join(sorted([t for t in normalize_text(snii_name).replace(',', ' ').split() if len(t) > 1]))
+                # Si ya existe match confirmado y no forzamos, saltar
+                if key in lookup and not force:
+                    existing_record = verified_results[lookup[key]]
+                    if existing_record.get("match") is True:
+                        if ingest:
+                            print(f"      🚀 [Auto-Ingest] Usando match previo para {snii_name}...")
+                            try:
+                                ingest_researcher_data(existing_record, force=force_ingest, force_local=True)
+                            except Exception as e:
+                                print(f"      ❌ Error en Auto-Ingest previo: {e}")
+                        processed_in_this_run.add(key)
+                        continue
 
-                    scored_cands = []
-                    for r in res:
-                        fn, gn, cn, aff, orc = str(r[2] or ''), str(r[1] or ''), str(r[3] or ''), str(r[4] or ''), r[0]
-                        sorted_ch = " ".join(sorted([t for t in normalize_text(f"{gn} {fn}").replace(',', ' ').split() if len(t) > 1]))
-                        ns = jaro_winkler(sorted_seed, sorted_ch)
-                        if cn:
-                            ns = max(ns, jaro_winkler(sorted_seed, " ".join(sorted([t for t in normalize_text(cn).replace(',', ' ').split() if len(t) > 1]))))
-                        if ns > 0.8:
-                            scored_cands.append({"score": ns, "name": f"{gn} {fn}".strip() if not cn else cn, "orcid": orc, "aff": aff})
+                snii_info = f"Nombre: {snii_name} | Institución: {final_inst} | Subdependencia: {final_sub}"
 
-                    scored_cands.sort(key=lambda x: x['score'], reverse=True)
-                    for c in scored_cands[:4]:
-                        if not any(a['orcid'] == c['orcid'] for a in all_candidates):
+                print(f"   [{idx+1}/{len(df)}] Verificando: {snii_name}...")
+
+                # Obtener embedding del autor SNII
+                emb = get_embeddings([snii_info])[0]
+
+                all_candidates = []
+                is_unam = any(k in final_inst.lower() for k in ['unam', 'nacional autonoma de mexico', 'nacional autónoma de méxico'])
+
+                # ── OpenAlex Authors (Ya pre-cargados en Batch) ────────────────────────
+                openalex_candidates = batch_oa_map.get(snii_name, [])
+                for c in openalex_candidates:
+                    all_candidates.append({
+                        "source": "OpenAlex DB Local",
+                        "openalex_id": c['openalex_id'],
+                        "name": c['name'],
+                        "orcid": c['orcid'],
+                        "affiliation": c['inst'],
+                        "scopus_ids": c.get('scopus_ids', []),
+                        "works": c.get('works', []),
+                        "score_vec": c['score']
+                    })
+
+                # Saltamos Qdrant si ya tenemos suficientes candidatos de calidad de OpenAlex
+                high_quality_oa = [c for c in openalex_candidates if c['score'] >= 0.95 and (c.get('orcid') or c.get('inst'))]
+
+                if is_unam and not high_quality_oa:
+                    # UNAM: Priorizar local via Qdrant (ahí está SIIA)
+                    local_candidates = local_store.search(emb, limit=5)
+                    orcid_candidates = orcid_store.search(emb, limit=2)
+                    for c in local_candidates:
+                        works = get_orcid_works_titles(c.get("orcid")) if c.get("orcid") else []
+                        all_candidates.append({
+                            "source": "Local (Neo4j/SIIA)",
+                            "name": c.get("name"), "orcid": c.get("orcid"), "affiliation": c.get("affiliation"),
+                            "works": works, "score_vec": c.get("score")
+                        })
+                    for c in orcid_candidates:
+                        orcid_works = get_orcid_works_titles(c.get("orcid"))
+                        all_candidates.append({
+                            "source": "ORCID Dump (Qdrant)",
+                            "name": c.get("name"), "orcid": c.get("orcid"), "affiliation": c.get("affiliation"),
+                            "works": orcid_works, "score_vec": c.get("score")
+                        })
+                elif not high_quality_oa:
+                    # Resto del país: ORCID Qdrant + ClickHouse Batch Match
+                    orcid_vec_candidates = orcid_store.search(emb, limit=5)
+                    for c in orcid_vec_candidates:
+                        orcid_works = get_orcid_works_titles(c.get("orcid"))
+                        all_candidates.append({
+                            "source": "ORCID Dump (Qdrant)",
+                            "name": c.get("name"), "orcid": c.get("orcid"), "affiliation": c.get("affiliation"),
+                            "works": orcid_works, "score_vec": c.get("score")
+                        })
+
+                    # ORCID ClickHouse Batch (ya pre-cargado)
+                    orcid_ch_candidates = batch_orcid_map.get(snii_name, [])
+                    for c in orcid_ch_candidates:
+                        if not any(a.get('orcid') == c['orcid'] for a in all_candidates):
                             ch_works = get_orcid_works_titles(c.get("orcid"))
                             all_candidates.append({
-                                "source": "ClickHouse Text Search", 
-                                "name": c['name'], 
-                                "orcid": c['orcid'], 
-                                "affiliation": c['aff'], 
-                                "works": ch_works,
-                                "score_vec": c['score']
+                                "source": "ClickHouse ORCID Dump",
+                                "name": c['name'], "orcid": c['orcid'], "affiliation": c['aff'],
+                                "works": ch_works, "score_vec": c['score']
                             })
-            except Exception as e:
-                print(f"      ⚠️ Error consultando ClickHouse text search: {e}")
 
-        # --- Fallback Oficial de OpenAlex (Último recurso) ---
-        if not high_quality_oa and not api_oficial_bloqueada:
-            try:
-                import pyalex
-                pyalex.config.max_retries = 0  # Fail fast para no trabar el pipeline
-                pyalex.config.email = os.getenv("EMAIL_ADDRESS", "sin_correo@ciencias.unam.mx")
-                if os.getenv("OPENALEX_API_KEY"):
-                    pyalex.config.api_key = os.getenv("OPENALEX_API_KEY")
-                
-                print("      📡 Consultando API Oficial de OpenAlex como último recurso...")
-                results = pyalex.Authors().search(snii_name).get(per_page=3)
-                for r in results:
-                    oa_id = r.get('id')
-                    disp_name = r.get('display_name', '')
-                    orc = r.get('orcid')
-                    # Extracción robusta de afiliación
-                    inst_name = ""
-                    affils = r.get('affiliations') or []
-                    if affils and isinstance(affils, list) and len(affils) > 0:
-                        inst_info = affils[0].get('institution')
-                        if inst_info and isinstance(inst_info, dict):
-                            inst_name = inst_info.get('display_name')
+                # --- Fallback Oficial de OpenAlex (Último recurso) ---
+                if not high_quality_oa and not api_oficial_bloqueada:
+                    try:
+                        import pyalex
+                        pyalex.config.max_retries = 0
+                        pyalex.config.email = os.getenv("EMAIL_ADDRESS", "sin_correo@ciencias.unam.mx")
+                        if os.getenv("OPENALEX_API_KEY"): pyalex.config.api_key = os.getenv("OPENALEX_API_KEY")
+                        
+                        print("      📡 Consultando API Oficial de OpenAlex como último recurso...")
+                        results = pyalex.Authors().search(snii_name).get(per_page=3)
+                        for r in results:
+                            oa_id = r.get('id')
+                            disp_name = r.get('display_name', '')
+                            orc = r.get('orcid')
                             
-                    if not inst_name:
-                        lki_list = r.get('last_known_institutions')
-                        if lki_list and isinstance(lki_list, list) and len(lki_list) > 0:
-                            inst_name = lki_list[0].get('display_name')
+                            # Extracción robusta de afiliación
+                            inst_name = ""
+                            affils = r.get('affiliations') or []
+                            if affils and isinstance(affils, list) and len(affils) > 0:
+                                inst_info = affils[0].get('institution')
+                                if inst_info and isinstance(inst_info, dict): inst_name = inst_info.get('display_name')
+                            if not inst_name:
+                                lki_list = r.get('last_known_institutions')
+                                if lki_list and isinstance(lki_list, list) and len(lki_list) > 0:
+                                    inst_name = lki_list[0].get('display_name')
+                            if not inst_name:
+                                inst_name = "Unknown"
                             
-                    if not inst_name:
-                        lki_dict = r.get('last_known_institution')
-                        if lki_dict and isinstance(lki_dict, dict):
-                            inst_name = lki_dict.get('display_name')
-                            
-                    if not inst_name:
-                        inst_name = "Unknown"
-                    
-                    if not any(a.get('openalex_id') == oa_id for a in all_candidates):
-                        oa_works = get_author_works_titles(oa_id)
-                        all_candidates.append({
-                            "source": "OpenAlex Oficial (API)",
-                            "openalex_id": oa_id,
-                            "name": disp_name,
-                            "orcid": orc,
-                            "affiliation": inst_name,
-                            "works": oa_works,
-                            "score_vec": 0.0
-                        })
-            except ImportError:
-                print("      ⚠️ Módulo 'pyalex' no encontrado. Saltando fallback de la API oficial.")
-                api_oficial_bloqueada = True
-            except Exception as e:
-                print(f"      ⛔ Error consultando API Oficial de OpenAlex: {e}")
-                print("      🛑 Desactivando consultas a la API oficial para el resto del padrón para evitar bloqueos prolongados.")
-                api_oficial_bloqueada = True
+                            if not any(a.get('openalex_id') == oa_id for a in all_candidates):
+                                oa_works = get_author_works_titles(oa_id)
+                                all_candidates.append({
+                                    "source": "OpenAlex Oficial (API)",
+                                    "openalex_id": oa_id, "name": disp_name, "orcid": orc, "affiliation": inst_name,
+                                    "works": oa_works, "score_vec": 0.0
+                                })
+                    except Exception as e:
+                        print(f"      ⛔ Error consultando API Oficial de OpenAlex: {e}")
+                        api_oficial_bloqueada = True
 
-        # Preparar Prompt para el LLM y mostrar candidatos
-        candidates_str = ""
-        if not all_candidates:
-            print("      ⚠️ No se encontraron candidatos en ninguna fuente.")
-        else:
-            print(f"      🔎 {len(all_candidates)} candidato(s) encontrado(s):")
-            for i, cand in enumerate(all_candidates):
-                works_str = f" | Obras: {', '.join(cand['works'])}" if cand.get('works') else ""
-                cand_info = f"[{cand['source']}] {cand['name']} | ORCID: {cand['orcid']} | Afiliación: {cand['affiliation']}{works_str}"
-                print(f"         {i+1}. {cand_info}")
-                candidates_str += f"{i+1}. {cand_info}\n"
+                # Preparar Prompt para el LLM y mostrar candidatos
+                candidates_str = ""
+                if not all_candidates:
+                    print("      ⚠️ No se encontraron candidatos en ninguna fuente.")
+                else:
+                    print(f"      🔎 {len(all_candidates)} candidato(s) encontrado(s):")
+                    for i, cand in enumerate(all_candidates):
+                        works_str = f" | Obras: {', '.join(cand['works'])}" if cand.get('works') else ""
+                        cand_info = f"[{cand['source']}] {cand['name']} | ORCID: {cand['orcid']} | Afiliación: {cand['affiliation']}{works_str}"
+                        print(f"         {i+1}. {cand_info}")
+                        candidates_str += f"{i+1}. {cand_info}\n"
 
-        prompt = f"""Eres un experto investigador bibliográfico. Tu tarea es identificar si alguno de los candidatos recuperados coincide exactamente con el investigador del SNII.
+                prompt = f"""Eres un experto investigador bibliográfico. Tu tarea es identificar si alguno de los candidatos recuperados coincide exactamente con el investigador del SNII.
 
 Investigador SNII buscado:
 {snii_info}
@@ -586,76 +612,68 @@ Instrucciones vitales:
 
 Respuesta:"""
 
-        max_retries = 3
-        try:
-            for attempt in range(max_retries):
-                try:
-                    response = llm.invoke([HumanMessage(content=prompt)])
-                    res_text = response.content.strip()
-                    # Limpiar posibles bloques de código
-                    if "```json" in res_text:
-                        res_text = res_text.split("```json")[1].split("```")[0].strip()
-                    elif "```" in res_text:
-                        res_text = res_text.split("```")[1].split("```")[0].strip()
+                max_retries = 3
+                res_json = {}
+                for attempt in range(max_retries):
+                    try:
+                        response = llm.invoke([HumanMessage(content=prompt)])
+                        res_text = response.content.strip()
+                        # Limpiar posibles bloques de código
+                        if "```json" in res_text:
+                            res_text = res_text.split("```json")[1].split("```")[0].strip()
+                        elif "```" in res_text:
+                            res_text = res_text.split("```")[1].split("```")[0].strip()
 
-                    res_json = json.loads(res_text)
-                    break # Éxito
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        wait_time = (attempt + 1) * 10
-                        print(f"      ⚠️ Error LLM/JSON (intento {attempt+1}/{max_retries}): {e}. Reintentando en {wait_time}s...")
-                        time.sleep(wait_time)
-                    else:
-                        raise e
+                        res_json = json.loads(res_text)
+                        break # Éxito
+                    except Exception as e:
+                        if attempt < max_retries - 1:
+                            wait_time = (attempt + 1) * 10
+                            print(f"      ⚠️ Error LLM/JSON (intento {attempt+1}/{max_retries}): {e}. Reintentando en {wait_time}s...")
+                            time.sleep(wait_time)
+                        else:
+                            raise e
 
-            result_entry = {
-                "snii_author": snii_name,
-                "snii_institution": final_inst,
-                "snii_subdependency": final_sub,
-                "match": False,
-                "matched_author": None,
-                "matched_orcid": None,
-                "reason": res_json.get("reason", "No match"),
-                "discarded_candidates": res_json.get("discarded_candidates", []),
-                "source": None
-            }
+                result_entry = {
+                    "snii_author": snii_name,
+                    "snii_institution": final_inst,
+                    "snii_subdependency": final_sub,
+                    "match": False,
+                    "matched_author": None,
+                    "matched_orcid": None,
+                    "reason": res_json.get("reason", "No match"),
+                    "discarded_candidates": res_json.get("discarded_candidates", []),
+                    "source": None
+                }
 
-            if res_json.get("match"):
-                m_indices = res_json.get("matched_candidate_indices") or []
-                # Fallback por si el LLM aún usa el formato viejo
-                if not m_indices and res_json.get("candidate_index"):
-                    m_indices = [res_json.get("candidate_index")]
+                if res_json.get("match"):
+                    m_indices = res_json.get("matched_candidate_indices") or []
+                    if not m_indices and res_json.get("candidate_index"):
+                        m_indices = [res_json.get("candidate_index")]
+                        
+                    valid_matches = []
+                    for m_idx in m_indices:
+                        if m_idx and 1 <= m_idx <= len(all_candidates):
+                            valid_matches.append(all_candidates[m_idx - 1])
                     
-                valid_matches = []
-                for m_idx in m_indices:
-                    if m_idx and 1 <= m_idx <= len(all_candidates):
-                        valid_matches.append(all_candidates[m_idx - 1])
-                
-                if valid_matches:
-                    # Extraer el ORCID (usar el que provea el LLM o el primero disponible)
-                    confirmed_orcid = res_json.get("orcid")
-                    if not confirmed_orcid or str(confirmed_orcid).lower() == 'none':
-                        confirmed_orcid = next((m.get('orcid') for m in valid_matches if m.get('orcid') and str(m.get('orcid')).lower() != 'none'), None)
+                    if valid_matches:
+                        confirmed_orcid = res_json.get("orcid")
+                        if not confirmed_orcid or str(confirmed_orcid).lower() == 'none':
+                            confirmed_orcid = next((m.get('orcid') for m in valid_matches if m.get('orcid') and str(m.get('orcid')).lower() != 'none'), None)
 
-                    # Extraer Scopus IDs de todos los perfiles matched
-                    scopus_ids = []
-                    for m in valid_matches:
-                        if m.get('scopus_ids'):
-                            scopus_ids.extend(m.get('scopus_ids'))
-                            
-                    # Extraer OpenAlex IDs de todos los perfiles matched
-                    openalex_ids = [m.get('openalex_id') for m in valid_matches if m.get('openalex_id')]
-                    
-                    # Consolidar nombres de fuentes
-                    source_names = list(set(m['source'] for m in valid_matches))
+                        scopus_ids = []
+                        for m in valid_matches:
+                            if m.get('scopus_ids'):
+                                scopus_ids.extend(m.get('scopus_ids'))
+                                
+                        openalex_ids = [m.get('openalex_id') for m in valid_matches if m.get('openalex_id')]
+                        source_names = list(set(m['source'] for m in valid_matches))
 
-                    if not scopus_ids and confirmed_orcid and str(confirmed_orcid).lower() != 'none':
-                        clean_orcid = str(confirmed_orcid).replace('https://orcid.org/', '').strip()
-                        if not scopus_ids:
+                        if not scopus_ids and confirmed_orcid and str(confirmed_orcid).lower() != 'none':
+                            clean_orcid = str(confirmed_orcid).replace('https://orcid.org/', '').strip()
                             try:
                                 ch_remote = get_ch_client()
-                                col_to_get = "ids"
-                                q_remote = f"SELECT {col_to_get} FROM {CH_DB}.authors WHERE orcid = '{clean_orcid}' LIMIT 1"
+                                q_remote = f"SELECT ids FROM {CH_DB}.authors WHERE orcid = '{clean_orcid}' LIMIT 1"
                                 rows = ch_remote.query(q_remote).result_rows
                                 if rows and rows[0][0]:
                                     ext = json.loads(rows[0][0]) if isinstance(rows[0][0], str) else rows[0][0]
@@ -664,85 +682,82 @@ Respuesta:"""
                             except Exception as se:
                                 print(f"      ⚠️ No se pudieron extraer Scopus IDs de Remote: {se}")
 
-                    names_str = " + ".join([m['name'] for m in valid_matches])
-                    print(f"      ✅ MATCH CONFIRMADO por LLM: [SNII] {snii_name} ≈ [Match] {names_str} ({confirmed_orcid})")
-                    result_entry.update({
-                        "match": True,
-                        "matched_author": valid_matches[0]['name'],
-                        "matched_orcid": confirmed_orcid,
-                        "openalex_ids": openalex_ids,
-                        "matched_openalex_id": openalex_ids[0] if openalex_ids else None, # Compatibilidad hacia atrás
-                        "scopus_ids": list(set(scopus_ids)),
-                        "source": ", ".join(source_names)
-                    })
+                        names_str = " + ".join([m['name'] for m in valid_matches])
+                        print(f"      ✅ MATCH CONFIRMADO por LLM: [SNII] {snii_name} ≈ [Match] {names_str} ({confirmed_orcid})")
+                        result_entry.update({
+                            "match": True,
+                            "matched_author": valid_matches[0]['name'],
+                            "matched_orcid": confirmed_orcid,
+                            "openalex_ids": openalex_ids,
+                            "matched_openalex_id": openalex_ids[0] if openalex_ids else None,
+                            "scopus_ids": list(set(scopus_ids)),
+                            "source": ", ".join(source_names)
+                        })
+                    else:
+                        print(f"      ❌ NINGUNO: El LLM devolvió índices inválidos para {snii_name}")
                 else:
-                    print(f"      ❌ NINGUNO: El LLM devolvió índices inválidos para {snii_name}")
-            else:
-                print(f"      ❌ NINGUNO: No se encontró match para {snii_name}")
+                    print(f"      ❌ NINGUNO: No se encontró match para {snii_name}")
 
-            # Actualizar o Añadir (con Red de Seguridad)
-            if key in lookup:
-                if result_entry.get("match") is False:
+                # Actualizar o Añadir (con Red de Seguridad)
+                if key in lookup:
+                    if result_entry.get("match") is False:
+                        old_rec = verified_results[lookup[key]]
+                        if old_rec.get("match") is True:
+                            print(f"      ⚠️ [Safety] El LLM no confirmó match esta vez, pero existía uno previo. Preservando datos anteriores.")
+                            result_entry = old_rec
+                    verified_results[lookup[key]] = result_entry
+                else:
+                    lookup[key] = len(verified_results)
+                    verified_results.append(result_entry)
+                    
+                if result_entry.get("match") is True and ingest:
+                    print(f"      🚀 [Auto-Ingest] Iniciando carga de trabajos para {snii_name}...")
+                    try:
+                        ingest_researcher_data(result_entry, force=force_ingest, force_local=True)
+                    except Exception as e:
+                        print(f"      ❌ Error en Auto-Ingest: {e}")
+
+                processed_in_this_run.add(key)
+
+                # Guardado incremental cada 10 registros
+                if (idx + 1) % 10 == 0:
+                    os.makedirs("data", exist_ok=True)
+                    with open(output_path, "w", encoding="utf-8") as f:
+                        json.dump(verified_results, f, ensure_ascii=False, indent=2)
+
+            except Exception as e:
+                print(f"      ⚠️ Error procesando {snii_name}: {e}")
+                # Manejo de error con red de seguridad
+                error_entry = {
+                    "snii_author": snii_name,
+                    "snii_institution": final_inst,
+                    "snii_subdependency": final_sub,
+                    "match": False,
+                    "matched_author": None,
+                    "matched_orcid": None,
+                    "reason": f"Error en procesamiento: {e}",
+                    "source": None
+                }
+                if key in lookup:
                     old_rec = verified_results[lookup[key]]
                     if old_rec.get("match") is True:
-                        print(f"      ⚠️ [Safety] El LLM no confirmó match esta vez, pero existía uno previo. Preservando datos anteriores.")
-                        result_entry = old_rec
-                verified_results[lookup[key]] = result_entry
-            else:
-                lookup[key] = len(verified_results)
-                verified_results.append(result_entry)
-                
-            if result_entry.get("match") is True and ingest:
-                print(f"      🚀 [Auto-Ingest] Iniciando carga de trabajos para {snii_name}...")
-                try:
-                    ingest_researcher_data(result_entry, force=force_ingest, force_local=True)
-                except Exception as e:
-                    print(f"      ❌ Error en Auto-Ingest: {e}")
+                        print(f"      ⚠️ [Safety] Error, pero existía un match previo. Preservando datos anteriores.")
+                        error_entry = old_rec
+                    verified_results[lookup[key]] = error_entry
+                else:
+                    lookup[key] = len(verified_results)
+                    verified_results.append(error_entry)
 
-            processed_in_this_run.add(key)
+                if error_entry.get("match") is True and ingest:
+                    print(f"      🚀 [Auto-Ingest] Iniciando carga (vía Safety Match) para {snii_name}...")
+                    try:
+                        ingest_researcher_data(error_entry, force=force_ingest, force_local=True)
+                    except: pass
 
-            # Guardado incremental cada 10 registros
-            if (idx + 1) % 10 == 0:
-                os.makedirs("data", exist_ok=True)
+                processed_in_this_run.add(key)
+                # Guardar progreso
                 with open(output_path, "w", encoding="utf-8") as f:
                     json.dump(verified_results, f, ensure_ascii=False, indent=2)
-
-        except Exception as e:
-            print(f"      ⚠️ Error consultando LLM para {snii_name}: {e}")
-            error_entry = {
-                "snii_author": snii_name,
-                "snii_institution": final_inst,
-                "snii_subdependency": final_sub,
-                "match": False,
-                "matched_author": None,
-                "matched_orcid": None,
-                "reason": f"Error en LLM: {e}",
-                "source": None
-            }
-            if key in lookup:
-                old_rec = verified_results[lookup[key]]
-                if old_rec.get("match") is True:
-                    print(f"      ⚠️ [Safety] Error en LLM, pero existía un match previo. Preservando datos anteriores.")
-                    error_entry = old_rec
-                verified_results[lookup[key]] = error_entry
-            else:
-                lookup[key] = len(verified_results)
-                verified_results.append(error_entry)
-
-            # Si logramos recuperar un match previo, permitir ingesta
-            if error_entry.get("match") is True and ingest:
-                print(f"      🚀 [Auto-Ingest] Iniciando carga de trabajos (vía Safety Match) para {snii_name}...")
-                try:
-                    ingest_researcher_data(error_entry, force=force_ingest, force_local=True)
-                except Exception as ie:
-                    print(f"      ❌ Error en Auto-Ingest safety: {ie}")
-
-            processed_in_this_run.add(key)
-
-            # Guardado inmediato para no perder progreso ante interrupciones
-            os.makedirs("data", exist_ok=True)
-            with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(verified_results, f, ensure_ascii=False, indent=2)
 
     # Guardado final
     os.makedirs("data", exist_ok=True)
@@ -757,26 +772,11 @@ Respuesta:"""
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Resuelve identidades SNII contra OpenAlex/ORCID usando LLM.")
-    parser.add_argument(
-        "--limit",
-        type=int,
-        help="Límite de registros del padrón completo para pruebas (opcional)."
-    )
-    parser.add_argument(
-        "--name",
-        type=str,
-        help=(
-            "Filtra el padrón SNII por nombre de investigador (búsqueda parcial, "
-            "insensible a mayúsculas). Ejemplo: --name 'GARCIA' o --name 'Maria Elena'."
-        )
-    )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Fuerza la re-verificación del investigador aunque ya exista un match confirmado previo."
-    )
-    parser.add_argument("--ingest", action="store_true", help="Cargar automáticamente los trabajos del investigador al confirmar match")
-    parser.add_argument("--force-ingest", action="store_true", help="Forzar carga de trabajos incluso si ya existen en Neo4j")
+    parser.add_argument("--limit", type=int, help="Límite de registros del padrón completo para pruebas (opcional).")
+    parser.add_argument("--name", type=str, help="Filtra el padrón SNII por nombre de investigador.")
+    parser.add_argument("--force", action="store_true", help="Fuerza la re-verificación incluso si ya existe match.")
+    parser.add_argument("--ingest", action="store_true", help="Cargar automáticamente los trabajos al confirmar match")
+    parser.add_argument("--force-ingest", action="store_true", help="Forzar carga de trabajos incluso si ya existen")
     args = parser.parse_args()
 
     resolve_snii_identities(limit_test=args.limit, target_name=args.name, force=args.force, ingest=args.ingest, force_ingest=args.force_ingest)
