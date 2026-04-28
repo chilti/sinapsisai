@@ -145,7 +145,7 @@ def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list
             id,
             display_name,
             orcid,
-            last_known_institution_name,
+            raw_data,
             ids
         FROM {CH_DB}.authors
         WHERE lower(display_name) LIKE '%{k1.lower()}%'
@@ -159,7 +159,34 @@ def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list
 
         scored = []
         for r in rows:
-            openalex_id, disp_name, orcid_val, inst_name, ids_json = r[0], r[1], r[2], r[3], r[4]
+            openalex_id, disp_name, orcid_val, raw_data_str, ids_json = r[0], r[1], r[2], r[3], r[4]
+            
+            # Extracción robusta de afiliación desde raw_data
+            inst_name = ""
+            try:
+                if raw_data_str:
+                    raw_data = json.loads(raw_data_str) if isinstance(raw_data_str, str) else raw_data_str
+                    affils = raw_data.get('affiliations') or []
+                    if affils and isinstance(affils, list) and len(affils) > 0:
+                        inst_info = affils[0].get('institution')
+                        if inst_info and isinstance(inst_info, dict):
+                            inst_name = inst_info.get('display_name')
+                            
+                    if not inst_name:
+                        lki_list = raw_data.get('last_known_institutions')
+                        if lki_list and isinstance(lki_list, list) and len(lki_list) > 0:
+                            inst_name = lki_list[0].get('display_name')
+                            
+                    if not inst_name:
+                        lki_dict = raw_data.get('last_known_institution')
+                        if lki_dict and isinstance(lki_dict, dict):
+                            inst_name = lki_dict.get('display_name')
+            except Exception as e:
+                pass
+                
+            if not inst_name:
+                inst_name = ""
+                
             cand_norm = " ".join(sorted([t for t in normalize_text(str(disp_name)).replace(',', ' ').split() if len(t) > 1]))
             ns = jaro_winkler(sorted_seed, cand_norm)
             if ns > 0.75:
