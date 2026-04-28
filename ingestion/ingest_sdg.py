@@ -287,11 +287,13 @@ def run(entity_filter=None, academic_filter=None, force=False, openalex_only=Fal
         
         results_api = get_sdgs_from_local_api_batch(batch_dois)
         
-        for p in batch_papers:
+        for idx_in_batch, p in enumerate(batch_papers):
             doi = p['doi']
             # Normalizar para el matching
             doi_clean = doi.replace("https://doi.org/", "").replace("http://doi.org/", "").strip()
             sdg_from_api = results_api.get(doi_clean)
+            
+            global_idx = i + idx_in_batch + 1
             
             if sdg_from_api:
                 assign_sdg_to_neo4j(doi, sdg_from_api)
@@ -301,13 +303,11 @@ def run(entity_filter=None, academic_filter=None, force=False, openalex_only=Fal
                     session.run(query_mark, doi=doi)
                 
                 procesados_api += 1
-                print(f"  [{procesados_api + len(papers_to_classify_llm)}/{total_total}] {doi} -> ✅ En API Local ({sdg_from_api['sdg_id']})")
+                print(f"  [{global_idx}/{total_total}] {doi} -> ✅ En API Local ({sdg_from_api['sdg_id']})")
             else:
                 # REGLA: Si ya tenia SDG y el api local devuelve null, NO recalcular con LLM
                 if p.get('processed') is True:
-                    print(f"  [{procesados_api + len(papers_to_classify_llm) + 1}/{total_total}] {doi} -> ⏭️  Saltando LLM (Ya tenia SDG y API devolvio null)")
-                    # Incrementamos algo para que el conteo de progreso no se desfase visualmente si queremos
-                    # pero lo importante es NO añadirlo a papers_to_classify_llm
+                    print(f"  [{global_idx}/{total_total}] {doi} -> ⏭️  Saltando LLM (Ya tenia SDG y API devolvio null)")
                 else:
                     papers_to_classify_llm.append(p)
             
