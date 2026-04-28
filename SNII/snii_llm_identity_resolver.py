@@ -393,6 +393,37 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False):
             except Exception as e:
                 print(f"      ⚠️ Error consultando ClickHouse text search: {e}")
 
+        # --- Fallback Oficial de OpenAlex (Último recurso) ---
+        if not high_quality_oa:
+            try:
+                import pyalex
+                pyalex.config.email = os.getenv("EMAIL_ADDRESS", "sin_correo@ciencias.unam.mx")
+                if os.getenv("OPENALEX_API_KEY"):
+                    pyalex.config.api_key = os.getenv("OPENALEX_API_KEY")
+                
+                print("      📡 Consultando API Oficial de OpenAlex como último recurso...")
+                results = pyalex.Authors().search(snii_name).get(per_page=3)
+                for r in results:
+                    oa_id = r.get('id')
+                    disp_name = r.get('display_name', '')
+                    orc = r.get('orcid')
+                    affils = r.get('affiliations', [])
+                    inst_name = affils[0]['institution']['display_name'] if affils and 'institution' in affils[0] else ""
+                    
+                    if not any(a.get('openalex_id') == oa_id for a in all_candidates):
+                        all_candidates.append({
+                            "source": "OpenAlex Oficial (API)",
+                            "openalex_id": oa_id,
+                            "name": disp_name,
+                            "orcid": orc,
+                            "affiliation": inst_name,
+                            "score_vec": 0.0
+                        })
+            except ImportError:
+                print("      ⚠️ Módulo 'pyalex' no encontrado. Saltando fallback de la API oficial.")
+            except Exception as e:
+                print(f"      ⚠️ Error consultando API Oficial de OpenAlex: {e}")
+
         # Preparar Prompt para el LLM y mostrar candidatos
         candidates_str = ""
         if not all_candidates:
