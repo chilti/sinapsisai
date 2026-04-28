@@ -6,19 +6,19 @@ El Sistema Nacional de Investigadores e Investigadoras (SNII) de México publica
 
 > 📥 **Archivo de datos:** [Investigadores_vigentes_2025.xlsx](https://secihti.mx/wp-content/uploads/snii/archivo_historico/Investigadores_vigentes_2025.xlsx)
 
-ORCID (_Open Researcher and Contributor ID_) es el estándar internacional para identificar de manera inequívoca a autores científicos, evitando la ambigüedad que generan los homónimos, cambios de nombre, variaciones en la transcripción y trasliteración de apellidos. Contar con el ORCID de cada investigador del SNII es el primer paso para poder vincular su producción científica con bases de datos abiertas como OpenAlex, Crossref o ORCID pública.
+ORCID (_Open Researcher and Contributor ID_) es el estándar internacional para identificar de manera inequívoca a autores científicos, evitando la ambigüedad que generan los homónimos, cambios de nombre, variaciones en la transcripción y trasliteración de apellidos. Contar con el ORCID de cada investigador del SNII es el primer paso para vincular su producción científica con bases de datos abiertas como OpenAlex, Crossref o ORCID pública.
 
 ## El Problema
 
-Dada la lista de investigadores vigentes del SNII (archivo `Investigadores_vigentes_2025.xlsx`), **¿cómo identificar automáticamente el ORCID que corresponde a cada investigador con la mayor precisión y cobertura posible?**
+Dada la lista de investigadores vigentes del SNII, **¿cómo identificar automáticamente el ORCID que corresponde a cada investigador con la mayor precisión y cobertura posible?**
 
-El problema presenta los siguientes retos inherentes:
+Retos inherentes:
 
-1. **Ambigüedad de nombres**: Múltiples investigadores pueden compartir nombre y apellidos; las variaciones de puntuación, acentuación y orden de apellidos son frecuentes.
-2. **Datos de entrada limitados**: El padrón solo asegura el nombre completo y la institución de adscripción. Otros campos como área de conocimiento o disciplina pueden estar incompletos.
-3. **Escala**: El padrón comprende decenas de miles de registros activos, por lo que cualquier solución debe ser eficiente y paralizable.
-4. **Verificación cruzada**: Un ORCID candidato encontrado por alguna heurística debe ser *validado*: es necesario confirmar que sus trabajos registrados en ORCID.org son coherentes con la institución y área de conocimiento reportadas en el padrón, y no simplemente que el nombre sea similar.
-5. **Cobertura parcial**: Una fracción de investigadores simplemente no tienen un perfil ORCID público, o su perfil está vacío. El sistema debe distinguir "no ORCID encontrado" de "ORCID incorrecto asignado".
+1. **Ambigüedad de nombres**: Múltiples investigadores pueden compartir nombre y apellidos; las variaciones de puntuación, acentuación y orden son frecuentes.
+2. **Datos de entrada limitados**: El padrón solo asegura el nombre completo y la institución. Otros campos pueden estar incompletos.
+3. **Escala**: El padrón comprende decenas de miles de registros activos.
+4. **Verificación cruzada**: Un ORCID candidato debe ser *validado* confirmando que sus trabajos son coherentes con la institución y área del padrón.
+5. **Cobertura parcial**: Una fracción de investigadores no tienen perfil ORCID público, o su perfil está vacío.
 
 ## Entradas Disponibles
 
@@ -32,39 +32,172 @@ El problema presenta los siguientes retos inherentes:
 | `ÁREA DEL CONOCIMIENTO` | Área general (Física, Biología, etc.) |
 | `DISCIPLINA` | Disciplina específica dentro del área |
 
-## Salida Esperada
+---
 
-Un archivo (CSV, JSON, Parquet o similar) que extienda el padrón original con al menos:
+## Pipeline Implementado
 
-- `orcid`: El identificador ORCID en formato `XXXX-XXXX-XXXX-XXXX`, o vacío si no se encontró.
-- `orcid_confidence`: Puntuación o nivel de confianza del match (numérico o categórico: alto/medio/bajo).
-- `orcid_source`: Método o fuente que proveyó el ORCID (p. ej. API ORCID, OpenAlex, búsqueda semántica, LLM, manual).
-- `orcid_validated`: Booleano indicando si el ORCID fue validado cruzando publicaciones con institución/disciplina del padrón.
+El proceso se divide en dos etapas ejecutadas por scripts independientes.
 
-## Enfoques Posibles a Explorar
+### Arquitectura general
 
-El problema es abierto y admite el uso de diversas herramientas y técnicas. A continuación se enumeran algunas sin preferencia de orden ni de enfoque:
+```
+Investigadores_vigentes_2025.xlsx
+        │
+        ▼
+┌──────────────────────────────────┐
+│  snii_llm_identity_resolver.py   │  ← Paso 1: Resolución de identidad
+└────────────┬─────────────────────┘
+             │ data/snii_llm_verified_matches.json
+             ▼
+┌──────────────────────────────────┐
+│  ingest_snii_apis.py             │  ← Paso 2: Ingesta de publicaciones
+└────────────┬─────────────────────┘
+             │
+      ┌──────┴───────┐
+      ▼              ▼
+   Neo4j          Qdrant
+ (APIPaper)    (api_papers)
+```
 
-- **APIs abiertas**: Consulta directa a la API pública de [ORCID](https://pub.orcid.org/), [OpenAlex](https://docs.openalex.org/) o [Crossref](https://api.crossref.org/) usando el nombre e institución como query.
-- **Búsqueda semántica / embeddings**: Representar el perfil textual del investigador (nombre + institución + área) como vector y buscar similitudes contra registros de ORCID u OpenAlex vectorizados.
-- **LLMs como agentes de verificación**: Usar modelos de lenguaje (GPT-4, Llama, Gemini, etc.) para razonar sobre si un candidato ORCID es plausible dado el contexto del padrón, actuando como "juez" en casos ambiguos.
-- **Matching difuso**: Algoritmos de similitud de cadenas (Jaro-Winkler, Levenshtein, n-gramas) sobre nombres normalizados para generar candidatos de alta similitud.
-- **Grafos de conocimiento**: Construir un grafo que relacione investigadores con co-autores, instituciones y publicaciones, y usar la estructura del grafo para desambiguar identidades.
-- **Fuentes secundarias**: Portales web institucionales (páginas de investigadores), Google Scholar, ResearchGate, Scopus Author IDs, como fuentes complementarias de validación.
-- **Aprendizaje automático supervisado**: Si existe una muestra de pares (investigador, ORCID confirmado), entrenar un clasificador que aprenda a distinguir matches correctos de falsos positivos.
+---
 
-## Criterios de Evaluación
+### Paso 1 — `snii_llm_identity_resolver.py`: Resolución de identidad
 
-Para medir la calidad de cualquier solución propuesta, se sugiere construir un conjunto de evaluación (_gold set_) con al menos 200 casos cuyo ORCID sea conocido manualmente, y reportar:
+Resuelve la identidad de cada investigador del padrón SNII asignándole un **ORCID**, un **OpenAlex Author ID** y **Scopus IDs** cuando existen, mediante búsqueda semántica multi-fuente con verificación final por LLM.
 
-- **Precisión** (Precision): ¿Qué fracción de los ORCIDs asignados son correctos?
-- **Cobertura** (Recall): ¿Qué fracción del total de investigadores con ORCID existente fue identificada?
-- **F1-score**: Media armónica de precisión y cobertura.
-- **Tasa de abstención**: ¿Qué porcentaje del padrón quedó sin ORCID asignado? (Puede ser deseable tener alta cobertura o alta precisión según el caso de uso).
+#### Flujo interno
+
+Para cada investigador en el Excel:
+
+1. **Embedding semántico** del perfil textual `"Nombre | Institución | Subdependencia"`.
+2. **Búsqueda de candidatos en múltiples fuentes** (en orden de prioridad):
+   - **OpenAlex Authors** (ClickHouse local): búsqueda lexicográfica por apellido + ranking Jaro-Winkler. Fuente prioritaria porque provee OpenAlex ID y Scopus IDs directamente.
+   - **Qdrant `local_authors`** (Neo4j/SIIA): priorizado para UNAM cuando OpenAlex no arroja resultados de alta calidad (score ≥ 0.95).
+   - **Qdrant `orcid_authors_vec`** (dump ORCID): búsqueda vectorial para el resto de instituciones.
+   - **ClickHouse text-search fuzzy** (dump ORCID): fallback SQL con Jaro-Winkler.
+3. **Verificación LLM**: los candidatos se presentan a un LLM local con un prompt estructurado. El LLM devuelve JSON con `match`, `candidate_index`, `orcid` y `reason`.
+4. **Persistencia incremental**: resultados guardados en `data/snii_llm_verified_matches.json` cada 10 registros. Los registros ya confirmados (`match: true`) se saltan en ejecuciones subsecuentes.
+
+#### Salida: `data/snii_llm_verified_matches.json`
+
+```jsonc
+[
+  {
+    "snii_author": "APELLIDO, NOMBRE",
+    "snii_institution": "UNAM",
+    "snii_subdependency": "Instituto de Astronomia",
+    "match": true,
+    "matched_author": "Nombre Apellido",
+    "matched_orcid": "0000-0001-2345-6789",
+    "matched_openalex_id": "A1234567890",
+    "scopus_ids": ["12345678"],
+    "source": "OpenAlex DB Local",
+    "reason": "Nombre e institucion coinciden plenamente.",
+    "discarded_candidates": []
+  }
+]
+```
+
+#### Uso
+
+```bash
+# Procesar todo el padron
+python SNII/snii_llm_identity_resolver.py
+
+# Modo prueba (primeros N registros)
+python SNII/snii_llm_identity_resolver.py --limit 50
+```
+
+---
+
+### Paso 2 — `ingest_snii_apis.py`: Ingesta de publicaciones
+
+Lee `snii_llm_verified_matches.json` y para cada investigador con `match: true` extrae su producción científica desde múltiples APIs, enriquece los metadatos y los ingesta en Neo4j y Qdrant.
+
+#### Fuentes de publicaciones (en orden de prioridad)
+
+| Fuente | Identificador usado | Qué provee |
+|---|---|---|
+| **Scopus** (pybliometrics) | `scopus_ids` | DOI, título, año, resumen, citas |
+| **ORCID pública** | `matched_orcid` | Lista de works con DOI/put-code |
+| **OpenAlex Author API** | `matched_openalex_id` | Todos los trabajos del autor por su ID |
+
+Los artículos de las tres fuentes se **fusionan y deduplican por DOI y título** (normalizado) antes de procesarse.
+
+#### Enriquecimiento por artículo
+
+Para cada DOI recuperado, se consulta OpenAlex (API local o `pyalex` oficial) para obtener:
+- Autores completos (`authorships`)
+- Abstract reconstruido (desde el `abstract_inverted_index`)
+- Keywords de OpenAlex
+- Conteo de citas actualizado
+- OpenAlex Work ID (para vincular con el grafo de citas)
+- Financiadores y números de award
+
+#### Destinos de ingesta
+
+- **Neo4j**: nodo `APIPaper` ligado al nodo `Academic` con la cadena de afiliación `Academic → Subdependencia → Institución`. Persiste también `orcid`, `openalex_id` del autor, veredicto de auditoría y timestamp.
+- **Qdrant** (colección `api_papers`): embedding de `título + abstract` por artículo, con payload que incluye `academic_name`, `doi`, `year`, `source` y entidad de adscripción.
+
+#### Condiciones de salto
+
+El script **no** recolecta publicaciones cuando:
+- `match: false`
+- `audit.verdict == 'FALSE_POSITIVE'`
+- No hay ni ORCID ni OpenAlex Author ID disponible
+- El investigador ya tiene publicaciones en Neo4j (a menos que se use `--force`)
+
+#### Uso
+
+```bash
+# Ingesta completa
+python SNII/ingest_snii_apis.py
+
+# Solo investigadores auditados como CONFIRMED
+python SNII/ingest_snii_apis.py --confirmed-only
+
+# Forzar re-ingesta de un investigador especifico
+python SNII/ingest_snii_apis.py --name "GARCIA" --force
+
+# Modo local (sin limites de API externa), con offset y limite
+python SNII/ingest_snii_apis.py --local --offset 500 --limit 200
+
+# Especificar archivo de entrada distinto
+python SNII/ingest_snii_apis.py --input data/snii_llm_verified_matches.json
+```
+
+---
+
+## Scripts del Directorio
+
+| Script | Descripción |
+|---|---|
+| `snii_llm_identity_resolver.py` | **Paso 1.** Resuelve identidades SNII → ORCID / OpenAlex ID mediante búsqueda semántica + LLM. |
+| `ingest_snii_apis.py` | **Paso 2.** Ingesta publicaciones de los investigadores identificados en Neo4j y Qdrant. |
+| `vectorize_researchers.py` | Script original multi-paso (pasos 1–4 de vectorización). Referencia histórica; `snii_llm_identity_resolver.py` es la versión producción del paso 4. |
+| `match_snii_orcid.py` | Utilidades compartidas: normalización de texto, clientes ClickHouse, constantes de rutas y bases de datos. |
+
+---
+
+## Campos del JSON de Salida
+
+Un registro en `snii_llm_verified_matches.json` extiende el padrón original con:
+
+| Campo | Descripción |
+|---|---|
+| `matched_orcid` | Identificador ORCID en formato `XXXX-XXXX-XXXX-XXXX`, o `null`. |
+| `matched_openalex_id` | OpenAlex Author ID (p. ej. `A1234567890`), o `null`. |
+| `scopus_ids` | Lista de Scopus Author IDs, o lista vacía. |
+| `match` | `true` si el LLM confirmó un candidato. |
+| `source` | Fuente que proveyó el candidato ganador (`OpenAlex DB Local`, `ORCID Dump (Qdrant)`, etc.). |
+| `reason` | Justificación breve del LLM. |
+| `discarded_candidates` | Lista de candidatos descartados con su razón. |
+
+---
 
 ## Licencia y Datos
 
 El padrón del SNII es un documento de acceso público publicado por el CONAHCYT. Los datos de ORCID están sujetos a los términos de uso de [ORCID Public Data File](https://support.orcid.org/hc/en-us/articles/360006897174). Cualquier uso de APIs externas debe respetar sus condiciones de servicio y cuotas de uso.
 
 ---
-*Documento generado como punto de partida para motivar la exploración de soluciones al problema de identificación de autores científicos a escala nacional.*
+*Última actualización: refleja el pipeline implementado con `snii_llm_identity_resolver.py` + `ingest_snii_apis.py`.*
