@@ -202,6 +202,9 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False):
     """
     print("\n🚀 Resolviendo identidades SNII con LLM (búsqueda semántica + reranking)...")
 
+    # Flag global para evitar trabarnos si la API oficial nos bloquea
+    api_oficial_bloqueada = False
+
     df = pd.read_excel(SNII_PATH)
 
     if target_name:
@@ -394,9 +397,10 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False):
                 print(f"      ⚠️ Error consultando ClickHouse text search: {e}")
 
         # --- Fallback Oficial de OpenAlex (Último recurso) ---
-        if not high_quality_oa:
+        if not high_quality_oa and not api_oficial_bloqueada:
             try:
                 import pyalex
+                pyalex.config.max_retries = 0  # Fail fast para no trabar el pipeline
                 pyalex.config.email = os.getenv("EMAIL_ADDRESS", "sin_correo@ciencias.unam.mx")
                 if os.getenv("OPENALEX_API_KEY"):
                     pyalex.config.api_key = os.getenv("OPENALEX_API_KEY")
@@ -421,8 +425,11 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False):
                         })
             except ImportError:
                 print("      ⚠️ Módulo 'pyalex' no encontrado. Saltando fallback de la API oficial.")
+                api_oficial_bloqueada = True
             except Exception as e:
-                print(f"      ⚠️ Error consultando API Oficial de OpenAlex: {e}")
+                print(f"      ⛔ Error consultando API Oficial de OpenAlex: {e}")
+                print("      🛑 Desactivando consultas a la API oficial para el resto del padrón para evitar bloqueos prolongados.")
+                api_oficial_bloqueada = True
 
         # Preparar Prompt para el LLM y mostrar candidatos
         candidates_str = ""
