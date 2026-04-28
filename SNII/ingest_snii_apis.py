@@ -338,20 +338,26 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
         
         # Prioridad: JSON > Neo4j
         orcid = orcid or neo4j_ids.get('orcid')
-        openalex_id = data.get('matched_openalex_id')
-        openalex_id = openalex_id or neo4j_ids.get('openalex_id')
+        
+        # Soportar múltiples IDs de OpenAlex
+        oa_ids = data.get('openalex_ids') or []
+        legacy_oa_id = data.get('matched_openalex_id')
+        if legacy_oa_id and legacy_oa_id not in oa_ids:
+            oa_ids.append(legacy_oa_id)
+        if not oa_ids and neo4j_ids.get('openalex_id'):
+            oa_ids.append(neo4j_ids.get('openalex_id'))
         scopus_ids = data.get('scopus_ids') # Dejar abierta la posibilidad de scopus_ids en Neo4j si se añade después
 
         # 3. Determinar si es seguro recolectar publicaciones
-        has_openalex_id = openalex_id and openalex_id is not False
+        has_openalex_ids = len(oa_ids) > 0
         is_false_positive = audit.get('verdict') == 'FALSE_POSITIVE'
         is_valid_match = data.get('match') is True and not is_false_positive
         
         # Permitir ingesta si hay match válido + (ORCID o OpenAlex ID)
-        is_safe_match = is_valid_match and (orcid or has_openalex_id)
+        is_safe_match = is_valid_match and (orcid or has_openalex_ids)
         
         if not is_safe_match:
-            print(f"  ℹ️ Saltando recolección de publicaciones (Match: {data.get('match')}, Veredicto: {audit.get('verdict')}, ORCID: {orcid}, OA_ID: {openalex_id})")
+            print(f"  ℹ️ Saltando recolección de publicaciones (Match: {data.get('match')}, Veredicto: {audit.get('verdict')}, ORCID: {orcid}, OA_IDs: {oa_ids})")
             continue
 
         # 4. Verificar existencia de publicaciones (evitar procesar de nuevo si no se fuerza)
@@ -362,7 +368,14 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
         # 5. Recolectar publicaciones según el caso disponible (Scopus > ORCID > OpenAlex)
         meta_scopus = obtener_metadatos_de_scopus(scopus_ids) if scopus_ids else {}
         meta_orcid = obtener_metadatos_de_orcid(orcid) if orcid else {}
-        meta_oa_author = obtener_metadatos_de_openalex_autor(openalex_id, force_local=force_local) if openalex_id else {}
+        
+        meta_oa_author = {}
+        for oa_id in oa_ids:
+            if oa_id and oa_id is not False:
+                oa_works = obtener_metadatos_de_openalex_autor(oa_id, force_local=force_local)
+                if oa_works:
+                    # Fusionar works de este OpenAlex ID al diccionario maestro
+                    meta_oa_author.update(oa_works)
 
         # Fusionar con deduplicación por título
         scopus_titles = {_clean_t(d.get('Title', '')) for d in meta_scopus.values() if d.get('Title')}

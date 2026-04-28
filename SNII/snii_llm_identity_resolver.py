@@ -447,12 +447,12 @@ Instrucciones vitales:
 1. Analiza el nombre (variaciones por apellidos compuestos, omisiones de nombre central, apodos, etc).
 2. Analiza la afiliación desglosada en Nivel 1 (Institución) y Nivel 2 (Subdependencia).
 3. ATENCIÓN: Si el investigador SNII indica 'Institución: SIN INSTITUCIÓN', DEBES IGNORAR por completo las afiliaciones de los candidatos y realizar el match 100% evaluando la compatibilidad de los nombres. ¡No penalices al candidato por tener una institución registrada en ORCID si al SNII le falta el dato!
-4. Si crees que hay coincidencia segura, responde con el número del candidato y su ORCID.
+4. Si crees que hay coincidencia segura con uno o MÁS perfiles (ej. perfiles fragmentados del mismo autor en OpenAlex), responde con una lista de sus números en "matched_candidate_indices".
 5. No respondas con "NINGUNO" si hay dudas; mejor marca "match": false.
 6. Requisito de formato de salida estricto: JSON plano {{
     "match": true/false, 
-    "candidate_index": int/null, 
-    "orcid": "...", 
+    "matched_candidate_indices": [int, int] o [], 
+    "orcid": "el ORCID si lo encontraste", 
     "reason": "breve justificación",
     "discarded_candidates": [
         {{"index": int, "name": "...", "orcid": "...", "reason": "razón breve del descarte"}}
@@ -483,13 +483,33 @@ Respuesta:"""
             }
 
             if res_json.get("match"):
-                m_idx = res_json.get("candidate_index")
-                if m_idx and 1 <= m_idx <= len(all_candidates):
-                    final_match = all_candidates[m_idx - 1]
-                    confirmed_orcid = res_json.get("orcid") or final_match.get('orcid')
+                m_indices = res_json.get("matched_candidate_indices") or []
+                # Fallback por si el LLM aún usa el formato viejo
+                if not m_indices and res_json.get("candidate_index"):
+                    m_indices = [res_json.get("candidate_index")]
+                    
+                valid_matches = []
+                for m_idx in m_indices:
+                    if m_idx and 1 <= m_idx <= len(all_candidates):
+                        valid_matches.append(all_candidates[m_idx - 1])
+                
+                if valid_matches:
+                    # Extraer el ORCID (usar el que provea el LLM o el primero disponible)
+                    confirmed_orcid = res_json.get("orcid")
+                    if not confirmed_orcid or str(confirmed_orcid).lower() == 'none':
+                        confirmed_orcid = next((m.get('orcid') for m in valid_matches if m.get('orcid') and str(m.get('orcid')).lower() != 'none'), None)
 
-                    # Extraer Scopus IDs: Prioridad CANDIDATO (OpenAlex), luego FALLBACK REMOTE
-                    scopus_ids = final_match.get('scopus_ids') or []
+                    # Extraer Scopus IDs de todos los perfiles matched
+                    scopus_ids = []
+                    for m in valid_matches:
+                        if m.get('scopus_ids'):
+                            scopus_ids.extend(m.get('scopus_ids'))
+                            
+                    # Extraer OpenAlex IDs de todos los perfiles matched
+                    openalex_ids = [m.get('openalex_id') for m in valid_matches if m.get('openalex_id')]
+                    
+                    # Consolidar nombres de fuentes
+                    source_names = list(set(m['source'] for m in valid_matches))
 
                     if not scopus_ids and confirmed_orcid and str(confirmed_orcid).lower() != 'none':
                         clean_orcid = str(confirmed_orcid).replace('https://orcid.org/', '').strip()
@@ -506,15 +526,19 @@ Respuesta:"""
                             except Exception as se:
                                 print(f"      ⚠️ No se pudieron extraer Scopus IDs de Remote: {se}")
 
-                    print(f"      ✅ MATCH CONFIRMADO por LLM: [SNII] {snii_name} ≈ [Match] {final_match['name']} ({confirmed_orcid})")
+                    names_str = " + ".join([m['name'] for m in valid_matches])
+                    print(f"      ✅ MATCH CONFIRMADO por LLM: [SNII] {snii_name} ≈ [Match] {names_str} ({confirmed_orcid})")
                     result_entry.update({
                         "match": True,
-                        "matched_author": final_match['name'],
+                        "matched_author": valid_matches[0]['name'],
                         "matched_orcid": confirmed_orcid,
-                        "matched_openalex_id": final_match.get('openalex_id'),
-                        "scopus_ids": scopus_ids,
-                        "source": final_match['source']
+                        "openalex_ids": openalex_ids,
+                        "matched_openalex_id": openalex_ids[0] if openalex_ids else None, # Compatibilidad hacia atrás
+                        "scopus_ids": list(set(scopus_ids)),
+                        "source": ", ".join(source_names)
                     })
+                else:
+                    print(f"      ❌ NINGUNO: El LLM devolvió índices inválidos para {snii_name}")
             else:
                 print(f"      ❌ NINGUNO: No se encontró match para {snii_name}")
 
