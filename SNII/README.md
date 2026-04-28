@@ -104,9 +104,18 @@ Para cada investigador en el Excel:
 # Procesar todo el padron
 python SNII/snii_llm_identity_resolver.py
 
-# Modo prueba (primeros N registros)
+# Buscar un investigador especifico por nombre (parcial, insensible a mayusculas)
+python SNII/snii_llm_identity_resolver.py --name "GARCIA LOPEZ"
+python SNII/snii_llm_identity_resolver.py --name "Maria Elena"
+python SNII/snii_llm_identity_resolver.py --name "GARC"   # encuentra todos los Garcia*
+
+# Modo prueba (primeros N registros del padron completo)
 python SNII/snii_llm_identity_resolver.py --limit 50
 ```
+
+> **Nota sobre `--name`:** La búsqueda es un `contains` sobre la columna `NOMBRE DEL INVESTIGADOR` del Excel SNII.
+> Si el fragmento coincide con varios registros (por ejemplo, un apellido común), todos serán procesados.
+> El resultado se guarda/actualiza en `data/snii_llm_verified_matches.json` igual que en el modo completo.
 
 ---
 

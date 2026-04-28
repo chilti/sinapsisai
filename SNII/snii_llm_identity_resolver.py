@@ -365,10 +365,16 @@ def resolve_snii_identities(limit_test=None, target_name=None):
             except Exception as e:
                 print(f"      ⚠️ Error consultando ClickHouse text search: {e}")
 
-        # Preparar Prompt para el LLM
+        # Preparar Prompt para el LLM y mostrar candidatos
         candidates_str = ""
-        for i, cand in enumerate(all_candidates):
-            candidates_str += f"{i+1}. [{cand['source']}] Nombre: {cand['name']} | ORCID: {cand['orcid']} | Afiliación: {cand['affiliation']}\n"
+        if not all_candidates:
+            print("      ⚠️ No se encontraron candidatos en ninguna fuente.")
+        else:
+            print(f"      🔎 {len(all_candidates)} candidato(s) encontrado(s):")
+            for i, cand in enumerate(all_candidates):
+                cand_info = f"[{cand['source']}] {cand['name']} | ORCID: {cand['orcid']} | Afiliación: {cand['affiliation']}"
+                print(f"         {i+1}. {cand_info}")
+                candidates_str += f"{i+1}. {cand_info}\n"
 
         prompt = f"""Eres un experto investigador bibliográfico. Tu tarea es identificar si alguno de los candidatos recuperados coincide exactamente con el investigador del SNII.
 
