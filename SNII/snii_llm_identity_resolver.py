@@ -133,7 +133,7 @@ def get_embeddings(texts: list, batch_size: int = 10) -> list:
 LOCAL_API_DISABLED = False
 LOCAL_API_FAILURES = 0
 
-def get_author_works_titles(openalex_id, limit=3):
+def get_author_works_titles(openalex_id, limit=3, verbose=False):
     """Obtiene titulos de obras recientes de un autor en OpenAlex."""
     global LOCAL_API_DISABLED, LOCAL_API_FAILURES
     if not openalex_id:
@@ -175,7 +175,7 @@ def get_author_works_titles(openalex_id, limit=3):
     return titles[:limit]
 
 
-def get_orcid_works_titles(orcid_url, limit=3):
+def get_orcid_works_titles(orcid_url, limit=3, verbose=False):
     """Obtiene ttulos de obras recientes de un perfil ORCID."""
     if not orcid_url:
         return []
@@ -418,7 +418,7 @@ def search_orcid_records_batch(names_info: list, limit_per_name: int = 5, verbos
         return {info['snii_name']: [] for info in names_info}
 
 
-def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list:
+def search_openalex_authors(name: str, institution: str, limit: int = 5, verbose: bool = False) -> list:
     """Intenta buscar un autor usando la API Local (Modo Rayo) y cae a ClickHouse si falla."""
     local_api = os.getenv("OPENALEX_LOCAL_API", "http://localhost:5012")
     
@@ -668,7 +668,7 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                 if not high_quality_oa:
                     if verbose:
                         print(f"       Consultando API Local de OpenAlex (Modo Rayo)...")
-                    cands_oa_api = search_openalex_authors(snii_name, final_inst)
+                    cands_oa_api = search_openalex_authors(snii_name, final_inst, verbose=verbose)
                     for c in cands_oa_api:
                         if not any(a.get('openalex_id') == c['openalex_id'] for a in all_candidates):
                             # El fetch de obras ya viene dentro de search_openalex_authors o se hace aqui
