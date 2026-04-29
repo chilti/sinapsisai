@@ -320,10 +320,14 @@ def search_orcid_records_batch(names_info: list, limit_per_name: int = 5) -> dic
     
     try:
         ch = get_orcid_client()
-        # Verificar si la base de datos de ORCID existe en este servidor
-        db_exists = ch.query(f"SELECT count() FROM system.databases WHERE name = '{CH_DB_ORCID}'").result_rows[0][0]
-        if not db_exists:
-            print(f"      ℹ️  Base de datos {CH_DB_ORCID} no encontrada. Saltando búsqueda batch de ORCID.")
+        # Verificar si la base de datos de ORCID existe en este servidor (con manejo de errores para evitar cuelgues)
+        try:
+            db_exists = ch.query(f"SELECT count() FROM system.databases WHERE name = '{CH_DB_ORCID}'").result_rows[0][0]
+            if not db_exists:
+                print(f"      ℹ️  Base de datos {CH_DB_ORCID} no encontrada en ClickHouse Local. Saltando.")
+                return {info['snii_name']: [] for info in names_info}
+        except Exception as conn_err:
+            print(f"      ⚠️ No se pudo conectar a ClickHouse Local (ORCID): {conn_err}. Saltando búsqueda ORCID.")
             return {info['snii_name']: [] for info in names_info}
 
         clauses = []

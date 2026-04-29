@@ -180,11 +180,11 @@ def calculate_score(seed_author, ch_record):
 
 def get_client():
     """Conector para OpenAlex (Remoto)"""
-    return clickhouse_connect.get_client(host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD, database=CH_DB)
+    return clickhouse_connect.get_client(host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD, database=CH_DB, connect_timeout=20)
 
 def get_orcid_client():
     """Conector para ORCID Records (Local)"""
-    return clickhouse_connect.get_client(host=CH_ORCID_HOST, port=CH_ORCID_PORT, username=CH_ORCID_USER, password=CH_ORCID_PASS, database=CH_DB_ORCID)
+    return clickhouse_connect.get_client(host=CH_ORCID_HOST, port=CH_ORCID_PORT, username=CH_ORCID_USER, password=CH_ORCID_PASS, database=CH_DB_ORCID, connect_timeout=10)
 
 def load_existing_mappings():
     """Carga mapeos desde archivos Excel si existen para pre-llenar ORCIDs"""
