@@ -222,6 +222,14 @@ def search_openalex_authors_batch(names_info: list, limit_per_name: int = 5) -> 
             # Usamos match() de ClickHouse para búsqueda por regex multi-token
             clauses.append(f"(match(display_name, '{r1}') AND match(display_name, '{r2}'))")
         
+        # Optimización: Pre-filtro rápido para reducir el escaneo de filas
+        # Obtenemos todos los tokens (k1) de los investigadores en el lote
+        all_k1 = list(set([info['k1'].lower() for info in names_info if len(info['k1']) > 2]))
+        if not all_k1:
+            return {info['snii_name']: [] for info in names_info}
+            
+        pre_filter = f"multiSearchAnyCaseInsensitive(display_name, {all_k1})"
+        
         where_clause = " OR ".join(clauses)
         
         # Límite proporcional al lote
@@ -230,7 +238,7 @@ def search_openalex_authors_batch(names_info: list, limit_per_name: int = 5) -> 
         query = f"""
         SELECT id, display_name, orcid, raw_data, ids
         FROM {CH_DB}.authors_seed_mexico
-        WHERE {where_clause}
+        WHERE ({pre_filter}) AND ({where_clause})
         LIMIT {query_limit}
         """
         rows = ch.query(query).result_rows
@@ -323,13 +331,22 @@ def search_orcid_records_batch(names_info: list, limit_per_name: int = 5) -> dic
             k1 = info['k1'].replace("'", "''").lower()
             k2 = info['k2'].replace("'", "''").lower()
             clauses.append(f"( (lower(family_name) LIKE '%{k1}%' OR lower(credit_name) LIKE '%{k1}%') AND (lower(given_names) LIKE '%{k2}%' OR lower(credit_name) LIKE '%{k2}%') )")
+
+        # Optimización: Pre-filtro rápido con multiSearch
+        all_tokens = []
+        for info in names_info:
+            all_tokens.append(info['k1'].lower())
+            all_tokens.append(info['k2'].lower())
+        all_tokens = list(set([t for t in all_tokens if len(t) > 2]))
+        
+        pre_filter = f"multiSearchAnyCaseInsensitive(credit_name, {all_tokens}) OR multiSearchAnyCaseInsensitive(family_name, {all_tokens})"
         
         where_clause = " OR ".join(clauses)
         
         query = f"""
         SELECT orcid, given_names, family_name, credit_name, last_affiliation 
         FROM {CH_DB_ORCID}.orcid_records 
-        WHERE {where_clause}
+        WHERE ({pre_filter}) AND ({where_clause})
         LIMIT {len(names_info) * limit_per_name * 10}
         """
         rows = ch.query(query).result_rows
@@ -427,7 +444,7 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
             print(f"   ⚠️ No se pudo cargar progreso previo: {e}")
 
     # ── Bucle Principal por Lotes ──────────────────────────────────────────
-    batch_size = 50
+    batch_size = 10 # Reducido de 50 a 10 para evitar timeouts en ClickHouse por Regex pesado
     rows_list = list(df.iterrows())
     
     for b_idx in range(0, len(rows_list), batch_size):
