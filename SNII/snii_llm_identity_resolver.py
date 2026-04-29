@@ -428,7 +428,8 @@ def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list
             if resp.status_code == 200:
                 results = resp.json().get('results', [])
                 if results:
-                    print(f"       [INFO] {len(results)} candidatos encontrados via API Local.")
+                    if verbose:
+                        print(f"       [INFO] {len(results)} candidatos encontrados via API Local.")
                     cands = []
                     for r in results:
                         # Adaptar formato de API al formato interno
@@ -445,7 +446,8 @@ def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list
         print(f"       [DEBUG] API Local no disponible para busqueda individual: {e}")
 
     # 2. Fallback a ClickHouse (Lógica Batch individualizada)
-    print(f"       [INFO] Consultando ClickHouse (Fallback)...")
+    if verbose:
+        print(f"       [INFO] Consultando ClickHouse (Fallback)...")
     k1, k2 = get_search_keys(name)
     res = search_openalex_authors_batch([{'snii_name': name, 'k1': k1, 'k2': k2}], limit_per_name=limit)
     return res.get(name, [])
@@ -518,7 +520,8 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
             k1, k2 = get_search_keys(s_name)
             batch_query_info.append({'snii_name': s_name, 'k1': k1, 'k2': k2})
         
-        print(f"\n Consultando lote de {len(batch_query_info)} investigadores en ClickHouse (OpenAlex + ORCID)...")
+        if verbose:
+            print(f"\n Consultando lote de {len(batch_query_info)} investigadores en ClickHouse (OpenAlex + ORCID)...")
         batch_oa_map = search_openalex_authors_batch(batch_query_info, limit_per_name=5)
         batch_orcid_map = search_orcid_records_batch(batch_query_info, limit_per_name=4)
 
@@ -660,7 +663,8 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
 
                 # --- Fallback de OpenAlex (Prioridad API Local) ---
                 if not high_quality_oa:
-                    print(f"       Consultando API Local de OpenAlex (Modo Rayo)...")
+                    if verbose:
+                        print(f"       Consultando API Local de OpenAlex (Modo Rayo)...")
                     cands_oa_api = search_openalex_authors(snii_name, final_inst)
                     for c in cands_oa_api:
                         if not any(a.get('openalex_id') == c['openalex_id'] for a in all_candidates):
@@ -674,13 +678,16 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                 # Preparar Prompt para el LLM y mostrar candidatos
                 candidates_str = ""
                 if not all_candidates:
-                    print("       No se encontraron candidatos en ninguna fuente.")
+                    if verbose:
+                        print("       No se encontraron candidatos en ninguna fuente.")
                 else:
-                    print(f"       {len(all_candidates)} candidato(s) encontrado(s):")
+                    if verbose:
+                        print(f"       {len(all_candidates)} candidato(s) encontrado(s):")
                     for i, cand in enumerate(all_candidates):
                         works_str = f" | Obras: {', '.join(cand['works'])}" if cand.get('works') else ""
                         cand_info = f"[{cand['source']}] {cand['name']} | ORCID: {cand['orcid']} | Afiliacin: {cand['affiliation']}{works_str}"
-                        print(f"         {i+1}. {cand_info}")
+                        if verbose:
+                            print(f"         {i+1}. {cand_info}")
                         candidates_str += f"{i+1}. {cand_info}\n"
 
                 prompt = f"""Eres un experto investigador bibliogrfico. Tu tarea es identificar si alguno de los candidatos recuperados coincide exactamente con el investigador del SNII.
