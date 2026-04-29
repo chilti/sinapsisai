@@ -451,9 +451,9 @@ def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list
     return res.get(name, [])
 
 
-def resolve_snii_identities(limit_test=None, target_name=None, force=False, ingest=False, force_ingest=False):
-    """Pipeline principal: SNII  candidatos multi-fuente  verificacin LLM  JSON de resultados."""
-    print("\n Resolviendo identidades SNII con LLM (bsqueda semntica + reranking)...")
+def resolve_snii_identities(limit_test=None, target_name=None, force=False, ingest=False, force_ingest=False, verbose=False):
+    """Pipeline principal: SNII -> candidatos multi-fuente -> verificacion LLM -> JSON de resultados."""
+    print("\n Resolviendo identidades SNII con LLM (busqueda semantica + reranking)...")
 
     # Flag global para evitar trabarnos si la API oficial nos bloquea
     api_oficial_bloqueada = False
@@ -713,8 +713,15 @@ Respuesta:"""
                 res_json = {}
                 for attempt in range(max_retries):
                     try:
+                        if verbose:
+                            print(f"\n--- PROMPT ENVIADO AL LLM ---\n{prompt}\n----------------------------")
+                        
                         response = llm.invoke([HumanMessage(content=prompt)])
                         res_text = response.content.strip()
+                        
+                        if verbose:
+                            print(f"--- RESPUESTA CRUDA LLM ---\n{res_text}\n---------------------------")
+
                         # Limpiar posibles bloques de cdigo
                         if "```json" in res_text:
                             res_text = res_text.split("```json")[1].split("```")[0].strip()
@@ -874,6 +881,7 @@ if __name__ == "__main__":
     parser.add_argument("--force", action="store_true", help="Fuerza la re-verificacin incluso si ya existe match.")
     parser.add_argument("--ingest", action="store_true", help="Cargar automticamente los trabajos al confirmar match")
     parser.add_argument("--force-ingest", action="store_true", help="Forzar carga de trabajos incluso si ya existen")
+    parser.add_argument("--verbose", action="store_true", help="Muestra el prompt y respuesta detallada del LLM")
     args = parser.parse_args()
 
-    resolve_snii_identities(limit_test=args.limit, target_name=args.name, force=args.force, ingest=args.ingest, force_ingest=args.force_ingest)
+    resolve_snii_identities(limit_test=args.limit, target_name=args.name, force=args.force, ingest=args.ingest, force_ingest=args.force_ingest, verbose=args.verbose)
