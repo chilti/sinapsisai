@@ -117,27 +117,41 @@ def get_embeddings(texts: list, batch_size: int = 10) -> list:
     return all_embeddings
 
 
+# Cache para estado de API Local
+LOCAL_API_DISABLED = False
+LOCAL_API_FAILURES = 0
+
 def get_author_works_titles(openalex_id, limit=3):
-    """Obtiene ttulos de obras recientes de un autor en OpenAlex."""
+    """Obtiene titulos de obras recientes de un autor en OpenAlex."""
+    global LOCAL_API_DISABLED, LOCAL_API_FAILURES
     if not openalex_id:
         return []
     oa_id_clean = str(openalex_id).split('/')[-1].strip()
     titles = []
     
-    # Intentar API Local primero
-    local_api = os.getenv("OPENALEX_LOCAL_API", "http://localhost:5012")
-    try:
-        url = f"{local_api}/works"
-        params = {"filter": f"author.id:{oa_id_clean}", "per_page": limit, "sort": "publication_year:desc"}
-        with httpx.Client(timeout=10) as client:
-            resp = client.get(url, params=params)
-            if resp.status_code == 200:
-                results = resp.json().get('results', [])
-                titles = [w.get('title') for w in results if w.get('title')]
-    except:
-        pass
+    # Intentar API Local primero (si no esta deshabilitada)
+    if not LOCAL_API_DISABLED:
+        local_api = os.getenv("OPENALEX_LOCAL_API", "http://localhost:5012")
+        try:
+            url = f"{local_api}/works"
+            params = {"filter": f"author.id:{oa_id_clean}", "per_page": limit, "sort": "publication_year:desc"}
+            # Reducimos timeout a 2s para evitar bloqueos si la API no responde
+            with httpx.Client(timeout=2.0) as client:
+                resp = client.get(url, params=params)
+                if resp.status_code == 200:
+                    results = resp.json().get('results', [])
+                    titles = [w.get('title') for w in results if w.get('title')]
+                    LOCAL_API_FAILURES = 0 # Reset si tiene exito
+                else:
+                    LOCAL_API_FAILURES += 1
+        except Exception:
+            LOCAL_API_FAILURES += 1
+        
+        if LOCAL_API_FAILURES >= 3:
+            print(f"      [WARN] API Local en {local_api} no responde. Deshabilitando para este lote.")
+            LOCAL_API_DISABLED = True
 
-    # Si no hay ttulos y no est bloqueada, intentar API Oficial (pyalex)
+    # Si no hay titulos y no esta bloqueada, intentar API Oficial (pyalex) con backup
     if not titles:
         try:
             import pyalex
@@ -299,6 +313,7 @@ def search_openalex_authors_batch(names_info: list, limit_per_name: int = 5) -> 
                     })
         
         # Sort, limit and fetch works for each name
+        print(f"      [DEBUG] Procesando y enriqueciendo {len(results_map)} investigadores...")
         for name in results_map:
             results_map[name].sort(key=lambda x: x['score'], reverse=True)
             results_map[name] = results_map[name][:limit_per_name]
