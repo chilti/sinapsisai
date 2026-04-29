@@ -216,7 +216,7 @@ def search_openalex_authors_batch(names_info: list, limit_per_name: int = 5) -> 
         
         query = f"""
         SELECT id, display_name, orcid, raw_data, ids
-        FROM {CH_DB}.authors
+        FROM {CH_DB}.authors_seed_mexico
         WHERE {where_clause}
         LIMIT {query_limit}
         """
@@ -480,6 +480,34 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
 
                 # ── OpenAlex Authors (Ya pre-cargados en Batch) ────────────────────────
                 openalex_candidates = batch_oa_map.get(snii_name, [])
+                
+                # --- NUEVO: Lógica de Auto-Confirmación (Ahorro de LLM) ---
+                best_oa = openalex_candidates[0] if openalex_candidates else None
+                if best_oa and best_oa['score'] > 0.98:
+                    # Si el nombre es casi idéntico y la institución coincide, auto-confirmamos
+                    cand_inst = best_oa['affiliation'].lower()
+                    if any(k in cand_inst for k in normalize_text(final_inst).split()):
+                        print(f"      ✨ [Auto-Match] Confianza alta para {snii_name}. Saltando LLM.")
+                        match_result = {
+                            "snii_author": snii_name,
+                            "snii_institution": final_inst,
+                            "snii_subdependency": final_sub,
+                            "match": True,
+                            "source": best_oa['source'],
+                            "openalex_id": best_oa['openalex_id'],
+                            "name": best_oa['name'],
+                            "orcid": best_oa['orcid'],
+                            "affiliation": best_oa['affiliation'],
+                            "scopus_ids": best_oa.get('scopus_ids', []),
+                            "confidence": "AUTO_HIGH",
+                            "reason": "Nombre e Institución con coincidencia exacta (Heurística)"
+                        }
+                        verified_results.append(match_result)
+                        with open(output_path, "w", encoding="utf-8") as f:
+                            json.dump(verified_results, f, ensure_ascii=False, indent=2)
+                        processed_in_this_run.add(key)
+                        continue
+
                 for c in openalex_candidates:
                     all_candidates.append({
                         "source": "OpenAlex DB Local",
@@ -673,7 +701,7 @@ Respuesta:"""
                             clean_orcid = str(confirmed_orcid).replace('https://orcid.org/', '').strip()
                             try:
                                 ch_remote = get_ch_client()
-                                q_remote = f"SELECT ids FROM {CH_DB}.authors WHERE orcid = '{clean_orcid}' LIMIT 1"
+                                q_remote = f"SELECT ids FROM {CH_DB}.authors_seed_mexico WHERE orcid = '{clean_orcid}' LIMIT 1"
                                 rows = ch_remote.query(q_remote).result_rows
                                 if rows and rows[0][0]:
                                     ext = json.loads(rows[0][0]) if isinstance(rows[0][0], str) else rows[0][0]

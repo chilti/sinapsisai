@@ -17,6 +17,27 @@ El problema presenta los siguientes retos:
 1. **Variaciones en los nombres**: Una misma institución puede aparecer con distintas grafías, abreviaciones o idiomas a lo largo del padrón (ej. "UNAM", "Universidad Nacional Autónoma de México", "National Autonomous University of Mexico"). El catálogo ROR también mantiene sus propias variantes de nombres.
 2. **Jerarquía institucional**: El padrón distingue entre institución padre (p. ej. una universidad) y subdependencia (un instituto o facultad). Cada nivel puede tener su propio ROR, o únicamente existir el ROR del nivel superior. Determinar el nivel correcto de resolución es parte del problema.
 3. **Entidades sin ROR**: No todas las subdependencias del padrón tienen un registro en ROR, especialmente las de menor tamaño o antigüedad. El sistema debe distinguir "ROR no encontrado" de "ROR incorrecto asignado".
+
+## Pipeline de Resolución (Nuevo)
+
+Se ha implementado un pipeline de alto rendimiento inspirado en el resolver de identidades de investigadores:
+
+1.  **Tabla Semilla Optimizada**: Se utiliza `rag.institutions_seed_mexico` en ClickHouse, que contiene ~450k registros de instituciones filtradas por país (MX), términos clave (UNAM, IPN, etc.) y registros con ROR asignado.
+2.  **Búsqueda por Lotes (Batching)**: El script `snii_ror_resolver.py` procesa las entidades del SNII en lotes de 20, consultando ClickHouse mediante múltiples cláusulas `LIKE` para minimizar la latencia.
+3.  **Verificación Jerárquica con LLM**: Para cada combinación de Institución/Subdependencia, el LLM evalúa los candidatos recuperados y decide:
+    *   **Parent ROR**: El identificador de la universidad u organización principal.
+    *   **Matched ROR**: El identificador más específico disponible (ej: el ROR de un instituto de investigación dentro de una universidad).
+
+### Ejecución
+
+Para iniciar el proceso de resolución:
+
+```powershell
+python ROR\snii_ror_resolver.py --limit 100
+```
+
+Los resultados se guardan incrementalmente en `data/snii_ror_verified_matches.json`.
+
 4. **Escala**: El padrón contiene cientos de combinaciones únicas de institución/subdependencia. Cualquier solución debe ser eficiente y automatizable.
 5. **Verificación cruzada**: Un ROR candidato debe ser validable: idealmente, la producción científica recuperada mediante ese ROR desde OpenAlex debe ser coherente con el área de conocimiento y los investigadores reportados en el padrón.
 
