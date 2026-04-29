@@ -576,11 +576,11 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                 #  OpenAlex Authors (Ya pre-cargados en Batch) 
                 openalex_candidates = batch_oa_map.get(snii_name, [])
                 
-                # --- NUEVO: Lgica de Auto-Confirmacin (Ahorro de LLM) ---
+                # --- NUEVO: Logica de Auto-Confirmacion (Ahorro de LLM) ---
                 best_oa = openalex_candidates[0] if openalex_candidates else None
                 if best_oa and best_oa['score'] > 0.98:
-                    # Si el nombre es casi idntico y la institucin coincide, auto-confirmamos
-                    cand_inst = best_oa['affiliation'].lower()
+                    # Si el nombre es casi identico y la institucion coincide, auto-confirmamos
+                    cand_inst = best_oa.get('inst', '').lower()
                     if any(k in cand_inst for k in normalize_text(final_inst).split()):
                         print(f"       [Auto-Match] Confianza alta para {snii_name}. Saltando LLM.")
                         match_result = {
@@ -588,14 +588,14 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                             "snii_institution": final_inst,
                             "snii_subdependency": final_sub,
                             "match": True,
-                            "source": best_oa['source'],
+                            "source": "OpenAlex DB (Auto)",
                             "openalex_id": best_oa['openalex_id'],
                             "name": best_oa['name'],
                             "orcid": best_oa['orcid'],
-                            "affiliation": best_oa['affiliation'],
+                            "affiliation": best_oa.get('inst', ''),
                             "scopus_ids": best_oa.get('scopus_ids', []),
                             "confidence": "AUTO_HIGH",
-                            "reason": "Nombre e Institucin con coincidencia exacta (Heurstica)"
+                            "reason": "Nombre e Institucion con coincidencia exacta (Heuristica)"
                         }
                         verified_results.append(match_result)
                         with open(output_path, "w", encoding="utf-8") as f:
