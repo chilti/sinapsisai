@@ -329,44 +329,7 @@ def search_openalex_authors_batch(names_info: list, limit_per_name: int = 5) -> 
             results_map[name].sort(key=lambda x: x['score'], reverse=True)
             results_map[name] = results_map[name][:limit_per_name]
             for cand in results_map[name]:
-                cand['works'] = [] # Inicializar
-
-        # --- NUEVO: Búsqueda de obras en BATCH para reducir carga en el API ---
-        all_cand_ids = []
-        for name in results_map:
-            for cand in results_map[name]:
-                if cand['score'] > 0.85 or cand['orcid'] or cand['inst']:
-                    oa_id = str(cand['openalex_id']).split('/')[-1].strip()
-                    all_cand_ids.append(oa_id)
-        
-        if all_cand_ids and not LOCAL_API_DISABLED:
-            try:
-                local_api = os.getenv("OPENALEX_LOCAL_API", "http://localhost:5012")
-                # Agrupamos en pedazos de 20 para no saturar la URL
-                for i in range(0, len(all_cand_ids), 20):
-                    batch_ids = all_cand_ids[i:i+20]
-                    filter_str = "|".join(batch_ids)
-                    url = f"{local_api}/works"
-                    params = {"filter": f"author.id:{filter_str}", "per_page": 100, "sort": "publication_year:desc"}
-                    
-                    resp = http_client.get(url, params=params, timeout=5.0)
-                    if resp.status_code == 200:
-                        works = resp.json().get('results', [])
-                        # Mapear obras a candidatos
-                        for w in works:
-                            for auth in w.get('authorships', []):
-                                a_id = auth.get('author', {}).get('id', '').split('/')[-1]
-                                for name in results_map:
-                                    for cand in results_map[name]:
-                                        c_id_clean = str(cand['openalex_id']).split('/')[-1]
-                                        if c_id_clean == a_id and len(cand['works']) < 3:
-                                            if w.get('title') and w['title'] not in cand['works']:
-                                                cand['works'].append(w['title'])
-                    else:
-                        print(f"      [WARN] API Local devolvió error {resp.status_code} para lote de obras.")
-            except Exception as e:
-                print(f"      [WARN] Error en búsqueda batch de obras: {e}. Deshabilitando API Local temporalmente.")
-                # LOCAL_API_DISABLED = True # Comentado para intentar de nuevo en el siguiente lote
+                cand['works'] = [] # Títulos eliminados de la identificación para mayor velocidad
 
         return results_map
     except Exception as e:
