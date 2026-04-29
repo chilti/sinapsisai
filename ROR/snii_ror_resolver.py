@@ -185,20 +185,29 @@ def search_institutions_batch(names_info: list, limit_per_name: int = 10) -> dic
 def resolve_rors(limit_test=None, force=False):
     print("\n🚀 Resolviendo RORs de SNII con LLM + ClickHouse Batch...")
 
-    # 1. Cargar Padrón y extraer entidades únicas
+    # 1. Cargar Padrón y extraer entidades únicas (Detalladas)
     df = pd.read_excel(SNII_PATH)
     inst_col = 'INSTITUCIÓN DE ACREDITACIÓN'
     dep_col = 'DEPENDENCIA DE ACREDITACIÓN'
     sub_col = 'SUBDEPENDENCIA DE ACREDITACIÓN'
-    
-    # Limpiar nombres de columnas
     df.columns = [c.strip() for c in df.columns]
     
-    entities_df = df[[inst_col, dep_col, sub_col]].drop_duplicates().reset_index(drop=True)
+    # Entidades detalladas (Inst || Dep || Sub)
+    detail_entities = df[[inst_col, dep_col, sub_col]].drop_duplicates()
+    
+    # Entidades raíz (Solo Institución) para asegurar el Parent ROR
+    root_entities = pd.DataFrame({
+        inst_col: df[inst_col].unique(),
+        dep_col: "SIN INFORMACIÓN",
+        sub_col: "SIN INFORMACIÓN"
+    })
+    
+    entities_df = pd.concat([detail_entities, root_entities]).drop_duplicates().reset_index(drop=True)
+    
     if limit_test:
         entities_df = entities_df.head(limit_test)
     
-    print(f"📊 Se identificaron {len(entities_df)} combinaciones únicas de Institución/Dependencia/Subdependencia.")
+    print(f"📊 Se identificaron {len(entities_df)} entidades a resolver (incluyendo instituciones raíz).")
 
     output_path = os.path.join("data", "snii_ror_verified_matches.json")
     verified_results = {}

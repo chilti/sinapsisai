@@ -126,9 +126,18 @@ class RORIngestor:
             exists_graph = self.graph_store.check_paper_exists(doi)
             exists_qdrant = self.vector_store.check_document_exists(doi)
             
-            # 2. Si ya existe en Neo4j, saltar (o actualizar si fuera necesario, pero por ahora saltamos por eficiencia)
+            # 2. Si ya existe en Neo4j, ENRIQUECER en lugar de saltar
             if exists_graph:
-                # Si falta en Qdrant pero existe en Neo4j, aún podemos vectorizarlo
+                # Marcamos como IndexedOpenAlex (aunque ya sea IndexedWoS)
+                self.graph_store.mark_paper_as_indexed(doi, 'openalex')
+                self.graph_store.set_paper_openalex_id(doi, work.get('id'))
+                
+                # Link Jerárquico (Asegurar que esté vinculado a esta institución/subdependencia)
+                self.graph_store.add_entity_paper_link(inst_name, doi)
+                if sub_name and sub_name != "SIN INFORMACIÓN":
+                    self.graph_store.add_entity_paper_link(sub_name, doi)
+                
+                # Si falta en Qdrant pero existe en Neo4j, lo vectorizamos
                 if not exists_qdrant:
                     self._prepare_for_qdrant(work, inst_name, sub_name, batch_texts, batch_payloads)
                 continue
@@ -215,26 +224,104 @@ class RORIngestor:
 
     def run(self, limit=None, local_only=False):
         mapping = self.load_mapping()
-        print(f"DEBUG: {len(mapping)} entries in mapping.")
-        count = 0
+        print(f"📊 Cargados {len(mapping)} registros del mapeo ROR.")
+        
+        # 1. Agrupar entidades por ROR
+        ror_groups = {} # ror_id -> list of (inst, sub, is_specific)
         for key, data in mapping.items():
-            ror_id = data.get('best_match_ror')
+            ror_id = data.get('matched_ror') or data.get('best_match_ror')
+            parent_ror = data.get('parent_ror')
             conf = data.get('confidence', 0)
             
-            # print(f"DEBUG: Testing {key} | ROR: {ror_id} | Conf: {conf}") # Limpiar debug ruidoso
-            
-            if not ror_id or conf < 70:
-                continue
-            
-            if limit and count >= limit: 
-                break
+            if not ror_id or conf < 70: continue
+                
+            if ror_id not in ror_groups: ror_groups[ror_id] = []
             
             parts = key.split(' || ')
             inst = parts[0]
-            sub = parts[1] if len(parts) > 1 else "SIN INFORMACIÓN"
+            sub = parts[-1] if len(parts) > 1 else "SIN INFORMACIÓN"
             
-            self.ingest_by_ror(ror_id, inst, sub, local_only=local_only)
+            # Es específico si el ROR es distinto al del padre 
+            # O si la entidad misma es la institución (sub es SIN INFORMACIÓN)
+            is_specific = (ror_id != parent_ror) or (sub == "SIN INFORMACIÓN")
+            
+            ror_groups[ror_id].append((inst, sub, is_specific))
+
+        print(f"🎯 Identificados {len(ror_groups)} RORs únicos para procesar.")
+        
+        count = 0
+        for ror_id, entities in ror_groups.items():
+            if limit and count >= limit: break
+            
+            main_inst = entities[0][0]
+            print(f"\n🚀 Procesando ROR {ror_id} ({main_inst})")
+            
+            try:
+                processed_count = 0
+                for page in openalex_utils.get_works_by_ror(ror_id, per_page=100, local_only=local_only):
+                    self._process_works_batch_multi(page, entities, ror_id)
+                    processed_count += len(page)
+                print(f"   ✅ Finalizado: {processed_count} trabajos.")
+            except Exception as e:
+                print(f"   ❌ Error: {e}")
             count += 1
+
+    def _process_works_batch_multi(self, works, entities, ror_id):
+        """Procesa trabajos vinculándolos solo a las entidades con ID específico."""
+        batch_payloads = []
+        batch_texts = []
+        
+        for work in works:
+            doi_raw = work.get('doi')
+            if not doi_raw: continue
+            doi = doi_raw.replace("https://doi.org/", "").strip().lower()
+            
+            if not self.graph_store.check_paper_exists(doi):
+                # (Lógica simplificada de inserción)
+                self.graph_store.add_paper({
+                    "paper_id": doi, "doi": doi, 
+                    "title": work.get('display_name') or "Sin Título",
+                    "year": work.get('publication_year', 0),
+                    "citations": work.get('cited_by_count', 0),
+                    "raw_metadata": work
+                })
+
+            self.graph_store.mark_paper_as_indexed(doi, 'openalex')
+            self.graph_store.set_paper_openalex_id(doi, work.get('id'))
+
+            # VINCULACIÓN RESTRINGIDA (Regla del Usuario)
+            for inst_name, sub_name, is_specific in entities:
+                # 1. Siempre a la Institución
+                self.graph_store.add_entity_paper_link(inst_name, doi)
+                
+                # 2. Solo a la Subdependencia si el ROR es específico para ella
+                if sub_name and sub_name != "SIN INFORMACIÓN" and is_specific:
+                    self.graph_store.add_entity_paper_link(sub_name, doi)
+                
+            exists_qdrant = self.vector_store.check_document_exists(doi)
+            if not exists_qdrant:
+                self._prepare_for_qdrant_multi(work, entities, batch_texts, batch_payloads)
+
+        # Vectorizar
+        if batch_texts:
+            try:
+                embeddings = embeddings_model.embed_documents(batch_texts)
+                self.vector_store.add_documents(batch_payloads, embeddings)
+            except: pass
+
+    def _prepare_for_qdrant_multi(self, work, entities, batch_texts, batch_payloads):
+        ref_inst, ref_sub = entities[0]
+        title = work.get('display_name') or "Sin Título"
+        abstract = deconstruct_abstract(work.get('abstract_inverted_index'))
+        doi = work.get('doi', '').replace("https://doi.org/", "").lower()
+        
+        text_content = f"Title: {title}\nAbstract: {abstract or ''}".strip()
+        batch_texts.append(text_content)
+        batch_payloads.append({
+            "paper_id": doi, "title": title, "doi": doi,
+            "entity": ref_sub if ref_sub != "SIN INFORMACIÓN" else ref_inst,
+            "text": text_content
+        })
 
 if __name__ == "__main__":
     import argparse

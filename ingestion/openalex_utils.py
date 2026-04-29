@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-LOCAL_BASE    = os.getenv("OPENALEX_LOCAL_API", "http://localhost:5009")
+LOCAL_BASE    = os.getenv("OPENALEX_LOCAL_API", "http://localhost:5012")
 OFFICIAL_BASE = "https://api.openalex.org"
 
 # Se pone True si la oficial responde con 403/429 para no seguir intentando
