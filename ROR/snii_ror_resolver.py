@@ -188,16 +188,17 @@ def resolve_rors(limit_test=None, force=False):
     # 1. Cargar Padrón y extraer entidades únicas
     df = pd.read_excel(SNII_PATH)
     inst_col = 'INSTITUCIÓN DE ACREDITACIÓN'
+    dep_col = 'DEPENDENCIA DE ACREDITACIÓN'
     sub_col = 'SUBDEPENDENCIA DE ACREDITACIÓN'
     
     # Limpiar nombres de columnas
     df.columns = [c.strip() for c in df.columns]
     
-    entities_df = df[[inst_col, sub_col]].drop_duplicates().reset_index(drop=True)
+    entities_df = df[[inst_col, dep_col, sub_col]].drop_duplicates().reset_index(drop=True)
     if limit_test:
         entities_df = entities_df.head(limit_test)
     
-    print(f"📊 Se identificaron {len(entities_df)} combinaciones únicas de Institución/Subdependencia.")
+    print(f"📊 Se identificaron {len(entities_df)} combinaciones únicas de Institución/Dependencia/Subdependencia.")
 
     output_path = os.path.join("data", "snii_ror_verified_matches.json")
     verified_results = {}
@@ -223,26 +224,34 @@ def resolve_rors(limit_test=None, force=False):
         
         for _, row in chunk:
             inst = str(row[inst_col]).strip()
-            sub = str(row[sub_col]).strip() if pd.notna(row[sub_col]) else "SIN INFORMACIÓN"
-            key = f"{inst} || {sub}"
+            dep = str(row[dep_col]).strip() if pd.notna(row[dep_col]) else ""
+            sub = str(row[sub_col]).strip() if pd.notna(row[sub_col]) else ""
+            
+            key = f"{inst} || {dep} || {sub}"
             
             if key in verified_results and not force:
                 continue
                 
-            # Agregamos institución al batch
+            # 1. Agregamos institución al batch
             if inst not in [q['query_name'] for q in batch_query_info]:
                 keys, acrs = get_search_keys(inst)
                 batch_query_info.append({'query_name': inst, 'keys': keys, 'acrs': acrs})
             
-            # Agregamos subdependencia al batch si es específica
-            if sub and sub.upper() not in ["SIN INFORMACIÓN", "SIN INFORMACION", "NO APLICA", "NAN"]:
-                # Buscamos la subdependencia combinada con la institución para mejor contexto
+            # 2. Agregamos dependencia al batch si es específica
+            if dep and dep.upper() not in ["SIN INFORMACIÓN", "SIN INFORMACION", "NO APLICA", "NAN", inst.upper()]:
+                dep_query = f"{dep} {inst}"
+                if dep_query not in [q['query_name'] for q in batch_query_info]:
+                    keys, acrs = get_search_keys(dep)
+                    batch_query_info.append({'query_name': dep_query, 'keys': keys, 'acrs': acrs})
+
+            # 3. Agregamos subdependencia al batch si es específica
+            if sub and sub.upper() not in ["SIN INFORMACIÓN", "SIN INFORMACION", "NO APLICA", "NAN", inst.upper(), dep.upper()]:
                 sub_query = f"{sub} {inst}"
                 if sub_query not in [q['query_name'] for q in batch_query_info]:
-                    keys, acrs = get_search_keys(sub) # Aquí usamos keys de la subdependencia
+                    keys, acrs = get_search_keys(sub)
                     batch_query_info.append({'query_name': sub_query, 'keys': keys, 'acrs': acrs})
             
-            entity_map[key] = (inst, sub)
+            entity_map[key] = (inst, dep, sub)
 
         if not batch_query_info:
             continue
@@ -251,23 +260,33 @@ def resolve_rors(limit_test=None, force=False):
         batch_results = search_institutions_batch(batch_query_info)
 
         # 3. Procesar cada entidad del lote con el LLM
-        for key, (inst, sub) in entity_map.items():
-            print(f"🔍 Verificando: {inst} | {sub}...")
+        for key, (inst, dep, sub) in entity_map.items():
+            print(f"🔍 Verificando: {inst} | {dep} | {sub}...")
             
-            # Candidatos del padre
+            # Candidatos del padre (Institución)
             parent_cands = batch_results.get(inst, [])
             
-            # Candidatos del hijo (si aplica)
-            child_query = f"{sub} {inst}"
-            child_cands = batch_results.get(child_query, [])
+            # Candidatos de la dependencia
+            dep_query = f"{dep} {inst}"
+            dep_cands = batch_results.get(dep_query, [])
 
-            # Mostrar candidatos en log (estilo snii_llm_identity_resolver)
+            # Candidatos del hijo (Subdependencia)
+            sub_query = f"{sub} {inst}"
+            child_cands = batch_results.get(sub_query, [])
+
+            # Mostrar candidatos en log
             print(f"      🔎 {len(parent_cands)} candidatos para Institución")
-            for i, c in enumerate(parent_cands[:3]):
+            for i, c in enumerate(parent_cands[:2]):
                 print(f"         {i+1}. {c['name']} ({c['type']})")
+            
+            if dep_cands:
+                print(f"      🔎 {len(dep_cands)} candidatos para Dependencia")
+                for i, c in enumerate(dep_cands[:2]):
+                    print(f"         {i+1}. {c['name']} ({c['type']})")
+
             if child_cands:
                 print(f"      🔎 {len(child_cands)} candidatos para Subdependencia")
-                for i, c in enumerate(child_cands[:3]):
+                for i, c in enumerate(child_cands[:2]):
                     print(f"         {i+1}. {c['name']} ({c['type']})")
             
             # Formatear para el LLM
@@ -283,17 +302,21 @@ def resolve_rors(limit_test=None, force=False):
 
 ENTIDAD SNII:
 - Institución: {inst}
+- Dependencia: {dep}
 - Subdependencia: {sub}
 
 CANDIDATOS PARA LA INSTITUCIÓN:
 {format_cands(parent_cands)}
 
+CANDIDATOS PARA LA DEPENDENCIA:
+{format_cands(dep_cands)}
+
 CANDIDATOS PARA LA SUBDEPENDENCIA:
 {format_cands(child_cands)}
 
 INSTRUCCIONES:
-1. Identifica el ROR y el OpenAlex ID más específicos para la SUBDEPENDENCIA.
-2. REGLA DE ORO: Si la subdependencia es específica (ej: Facultad, Instituto, Departamento) pero NO encuentras un candidato que coincida con ella, debes poner "matched_ror": null y "matched_openalex_id": null. NUNCA asignes el ID de la Universidad principal a los campos 'matched' si la subdependencia no fue encontrada.
+1. Identifica el ROR y el OpenAlex ID más específicos (Subdependencia > Dependencia > Institución).
+2. REGLA DE ORO: Si la dependencia o subdependencia son específicas pero NO encuentras un candidato que coincida con ellas, debes poner "matched_ror": null y "matched_openalex_id": null. NUNCA asignes el ID de la Universidad principal a los campos 'matched' si la unidad específica no fue encontrada.
 3. El 'Parent ROR' / 'Parent OpenAlex ID' siempre debe ser el de la Universidad o Institución principal (ej: UNAM, IPN) identificada, independientemente de si encontraste la subdependencia o no.
 4. Si un candidato tiene OpenAlex ID pero no tiene ROR, identifícalo de todos modos y deja el ROR como null.
 5. Responde únicamente en JSON:
