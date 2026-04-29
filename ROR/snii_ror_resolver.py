@@ -216,6 +216,15 @@ def resolve_rors(limit_test=None, force=False):
             # Candidatos del hijo (si aplica)
             child_query = f"{sub} {inst}"
             child_cands = batch_results.get(child_query, [])
+
+            # Mostrar candidatos en log (estilo snii_llm_identity_resolver)
+            print(f"      🔎 {len(parent_cands)} candidatos para Institución")
+            for i, c in enumerate(parent_cands[:3]):
+                print(f"         {i+1}. {c['name']} ({c['type']})")
+            if child_cands:
+                print(f"      🔎 {len(child_cands)} candidatos para Subdependencia")
+                for i, c in enumerate(child_cands[:3]):
+                    print(f"         {i+1}. {c['name']} ({c['type']})")
             
             # Formatear para el LLM
             def format_cands(cands):
@@ -264,7 +273,9 @@ INSTRUCCIONES:
                 res_json = json.loads(res_text)
                 
                 verified_results[key] = res_json
-                print(f"      ✅ OK: {res_json.get('matched_name')} ({res_json.get('confidence')}%)")
+                match_name = res_json.get('matched_name') or res_json.get('parent_name') or "Ninguno"
+                print(f"      ✅ OK: {match_name} ({res_json.get('confidence')}%)")
+                print(f"         📝 Razón: {res_json.get('reason')}")
             except Exception as e:
                 print(f"      ❌ Error LLM: {e}")
 
