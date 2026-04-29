@@ -50,14 +50,37 @@ llm = ChatOpenAI(
     temperature=0
 )
 
+def get_accent_insensitive_regex(text: str) -> str:
+    """Genera una regex para ClickHouse que ignora acentos y es case-insensitive."""
+    vowel_map = {
+        'a': '[aáàâä]', 'e': '[eéèêë]', 'i': '[iíìîï]', 
+        'o': '[oóòôö]', 'u': '[uúùûü]'
+    }
+    regex = ""
+    for char in text.lower():
+        regex += vowel_map.get(char, char)
+    return f"(?i){regex}"
+
+
 def get_search_keys(name: str):
-    """Extrae palabras clave para búsqueda en ClickHouse."""
+    """Extrae palabras clave y acrónimos para búsqueda en ClickHouse."""
     if not name or str(name).lower() in ["nan", "sin informacion", "sin información", "no aplica"]:
-        return []
-    # Filtrar palabras cortas y comunes
-    stop_words = ["de", "la", "el", "y", "en", "del", "las", "los", "para", "por", "con", "una", "un"]
-    parts = [p.strip() for p in normalize_text(name).replace(',', ' ').split() if len(p) > 2 and p.lower() not in stop_words]
-    return parts[:3] # Usar las primeras 3 palabras significativas
+        return [], []
+    
+    import re
+    acronyms = []
+    # Extraer acrónimo si existe en paréntesis: "INSTITUTO ... (INAOE)"
+    match = re.search(r'\(([^)]+)\)', name)
+    if match:
+        acr = match.group(1).strip().upper()
+        if 2 <= len(acr) <= 10: # Longitud razonable para acrónimo
+            acronyms.append(acr)
+    
+    # Filtrar palabras comunes que generan mucho ruido
+    stop_words = ["de", "la", "el", "y", "en", "del", "las", "los", "para", "por", "con", "una", "un", 
+                  "instituto", "centro", "nacional", "universidad", "investigacion", "cientifica", "tecnologica"]
+    parts = [p.strip() for p in normalize_text(name).replace(',', ' ').replace('(', ' ').replace(')', ' ').split() if len(p) > 3 and p.lower() not in stop_words]
+    return parts[:3], acronyms
 
 def search_institutions_batch(names_info: list, limit_per_name: int = 10) -> dict:
     """Busca candidatos en ClickHouse para un lote de nombres de instituciones.
@@ -71,25 +94,35 @@ def search_institutions_batch(names_info: list, limit_per_name: int = 10) -> dic
         clauses = []
         for info in names_info:
             keys = info['keys']
-            if not keys: continue
-            # Al menos 2 palabras clave deben coincidir si hay varias, o 1 si solo hay una
-            if len(keys) >= 2:
-                sub_clauses = [f"lower(display_name) LIKE '%{k.lower()}%'" for k in keys]
-                # Requiere al menos 2 palabras clave para reducir ruido
-                clauses.append(f"({' AND '.join(sub_clauses[:2])})")
-            else:
-                clauses.append(f"lower(display_name) LIKE '%{keys[0].lower()}%'")
+            acrs = info.get('acrs', [])
+            
+            sub_clauses = []
+            if acrs:
+                # Búsqueda por acrónimo exacto
+                sub_clauses.append(f"has(acronyms, '{acrs[0]}')")
+            
+            if keys:
+                # Búsqueda por Regex insensitivo a acentos
+                k_regexes = [get_accent_insensitive_regex(k) for k in keys]
+                if len(k_regexes) >= 2:
+                    sub_clauses.append(f"(match(display_name, '{k_regexes[0]}') AND match(display_name, '{k_regexes[1]}'))")
+                else:
+                    sub_clauses.append(f"match(display_name, '{k_regexes[0]}')")
+            
+            if sub_clauses:
+                clauses.append(f"({' OR '.join(sub_clauses)})")
         
         if not clauses:
             return {info['query_name']: [] for info in names_info}
 
         where_clause = " OR ".join(clauses)
         
-        # Consultar la tabla semilla optimizada
+        # Consultar la tabla semilla optimizada priorizando México
         query = f"""
-        SELECT id, display_name, ror, type, country_code, city, state, parent_id, parent_name, raw_data
+        SELECT id, display_name, ror, type, country_code, city, state, parent_id, parent_name, acronyms, raw_data
         FROM {CH_DB}.institutions_seed_mexico
         WHERE {where_clause}
+        ORDER BY (country_code = 'MX') DESC
         LIMIT {len(names_info) * limit_per_name * 5}
         """
         rows = ch.query(query).result_rows
@@ -98,7 +131,7 @@ def search_institutions_batch(names_info: list, limit_per_name: int = 10) -> dic
         results_map = {info['query_name']: [] for info in names_info}
         
         for r in rows:
-            oa_id, disp_name, ror, itype, country, city, state, p_id, p_name, raw_json = r
+            oa_id, disp_name, ror, itype, country, city, state, p_id, p_name, acronyms, raw_json = r
             cand_norm = normalize_text(disp_name)
             
             for info in names_info:
@@ -107,7 +140,16 @@ def search_institutions_batch(names_info: list, limit_per_name: int = 10) -> dic
                 
                 # Scoring simple
                 score = jaro_winkler(query_norm, cand_norm)
-                if score > 0.7:
+                
+                # Priorizar acrónimos en el score
+                if info.get('acrs') and any(a in acronyms for a in info['acrs']):
+                    score = max(score, 0.95)
+                
+                # Penalizar si no es de México a menos que el score sea muy alto
+                if country != 'MX' and score < 0.9:
+                    score -= 0.1
+
+                if score > 0.65:
                     # Parsear relaciones para el LLM
                     rels = []
                     try:
@@ -189,14 +231,16 @@ def resolve_rors(limit_test=None, force=False):
                 
             # Agregamos institución al batch
             if inst not in [q['query_name'] for q in batch_query_info]:
-                batch_query_info.append({'query_name': inst, 'keys': get_search_keys(inst)})
+                keys, acrs = get_search_keys(inst)
+                batch_query_info.append({'query_name': inst, 'keys': keys, 'acrs': acrs})
             
             # Agregamos subdependencia al batch si es específica
             if sub and sub.upper() not in ["SIN INFORMACIÓN", "SIN INFORMACION", "NO APLICA", "NAN"]:
                 # Buscamos la subdependencia combinada con la institución para mejor contexto
                 sub_query = f"{sub} {inst}"
                 if sub_query not in [q['query_name'] for q in batch_query_info]:
-                    batch_query_info.append({'query_name': sub_query, 'keys': get_search_keys(sub)})
+                    keys, acrs = get_search_keys(sub) # Aquí usamos keys de la subdependencia
+                    batch_query_info.append({'query_name': sub_query, 'keys': keys, 'acrs': acrs})
             
             entity_map[key] = (inst, sub)
 

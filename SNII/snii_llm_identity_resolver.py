@@ -193,8 +193,20 @@ def get_search_keys(name: str):
     return k1, k2
 
 
+def get_accent_insensitive_regex(text: str) -> str:
+    """Genera una regex para ClickHouse que ignora acentos y es case-insensitive."""
+    vowel_map = {
+        'a': '[aáàâä]', 'e': '[eéèêë]', 'i': '[iíìîï]', 
+        'o': '[oóòôö]', 'u': '[uúùûü]'
+    }
+    regex = ""
+    for char in text.lower():
+        regex += vowel_map.get(char, char)
+    return f"(?i){regex}"
+
+
 def search_openalex_authors_batch(names_info: list, limit_per_name: int = 5) -> dict:
-    """Busca candidatos en ClickHouse para un lote de investigadores.
+    """Busca candidatos en ClickHouse para un lote de investigadores usando Regex de alto rendimiento.
     names_info: lista de diccionarios {snii_name, k1, k2}
     Retorna: {snii_name: [candidatos]}
     """
@@ -205,9 +217,10 @@ def search_openalex_authors_batch(names_info: list, limit_per_name: int = 5) -> 
         ch = get_ch_client()
         clauses = []
         for info in names_info:
-            k1 = info['k1'].replace("'", "''")
-            k2 = info['k2'].replace("'", "''")
-            clauses.append(f"(lower(display_name) LIKE '%{k1.lower()}%' AND lower(display_name) LIKE '%{k2.lower()}%')")
+            r1 = get_accent_insensitive_regex(info['k1'].replace("'", "''"))
+            r2 = get_accent_insensitive_regex(info['k2'].replace("'", "''"))
+            # Usamos match() de ClickHouse para búsqueda por regex multi-token
+            clauses.append(f"(match(display_name, '{r1}') AND match(display_name, '{r2}'))")
         
         where_clause = " OR ".join(clauses)
         
