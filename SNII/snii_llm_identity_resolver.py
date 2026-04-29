@@ -658,44 +658,18 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                                 "works": ch_works, "score_vec": c['score']
                             })
 
-                # --- Fallback Oficial de OpenAlex (ltimo recurso) ---
-                if not high_quality_oa and not api_oficial_bloqueada:
-                    try:
-                        import pyalex
-                        pyalex.config.max_retries = 0
-                        pyalex.config.email = os.getenv("EMAIL_ADDRESS", "sin_correo@ciencias.unam.mx")
-                        if os.getenv("OPENALEX_API_KEY"): pyalex.config.api_key = os.getenv("OPENALEX_API_KEY")
-                        
-                        print("       Consultando API Oficial de OpenAlex como ltimo recurso...")
-                        results = pyalex.Authors().search(snii_name).get(per_page=3)
-                        for r in results:
-                            oa_id = r.get('id')
-                            disp_name = r.get('display_name', '')
-                            orc = r.get('orcid')
-                            
-                            # Extraccin robusta de afiliacin
-                            inst_name = ""
-                            affils = r.get('affiliations') or []
-                            if affils and isinstance(affils, list) and len(affils) > 0:
-                                inst_info = affils[0].get('institution')
-                                if inst_info and isinstance(inst_info, dict): inst_name = inst_info.get('display_name')
-                            if not inst_name:
-                                lki_list = r.get('last_known_institutions')
-                                if lki_list and isinstance(lki_list, list) and len(lki_list) > 0:
-                                    inst_name = lki_list[0].get('display_name')
-                            if not inst_name:
-                                inst_name = "Unknown"
-                            
-                            if not any(a.get('openalex_id') == oa_id for a in all_candidates):
-                                oa_works = get_author_works_titles(oa_id)
-                                all_candidates.append({
-                                    "source": "OpenAlex Oficial (API)",
-                                    "openalex_id": oa_id, "name": disp_name, "orcid": orc, "affiliation": inst_name,
-                                    "works": oa_works, "score_vec": 0.0
-                                })
-                    except Exception as e:
-                        print(f"       Error consultando API Oficial de OpenAlex: {e}")
-                        api_oficial_bloqueada = True
+                # --- Fallback de OpenAlex (Prioridad API Local) ---
+                if not high_quality_oa:
+                    print(f"       Consultando API Local de OpenAlex (Modo Rayo)...")
+                    cands_oa_api = search_openalex_authors(snii_name, final_inst)
+                    for c in cands_oa_api:
+                        if not any(a.get('openalex_id') == c['openalex_id'] for a in all_candidates):
+                            # El fetch de obras ya viene dentro de search_openalex_authors o se hace aqui
+                            all_candidates.append({
+                                "source": "OpenAlex Local (API)",
+                                "openalex_id": c['openalex_id'], "name": c['name'], "orcid": c['orcid'], "affiliation": c['inst'],
+                                "works": c.get('works', []), "score_vec": 0.0
+                            })
 
                 # Preparar Prompt para el LLM y mostrar candidatos
                 candidates_str = ""
