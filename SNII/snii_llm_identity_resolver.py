@@ -44,10 +44,17 @@ MEX_KEYWORDS = [
 
 if os.path.exists(SNII_PATH):
     try:
-        print(" Cargando instituciones desde SNII para expandir red de seguridad...")
+        print("📡 Cargando instituciones desde SNII para expandir red de seguridad...")
         df_snii = pd.read_excel(SNII_PATH)
-        instituciones = df_snii['INSTITUCIN DE ACREDITACIN'].dropna().unique().tolist()
-        subdependencias = df_snii['SUBDEPENDENCIA DE ACREDITACIN'].dropna().unique().tolist()
+        # Normalizar nombres de columnas para evitar KeyErrors por acentos/encoding
+        df_snii.columns = [normalize_text(c).upper() for c in df_snii.columns]
+        
+        name_col = 'NOMBRE DEL INVESTIGADOR'
+        inst_col = 'INSTITUCION DE ACREDITACION'
+        sub_col = 'SUBDEPENDENCIA DE ACREDITACION'
+
+        instituciones = df_snii[inst_col].dropna().unique().tolist()
+        subdependencias = df_snii[sub_col].dropna().unique().tolist()
 
         for ext_name in instituciones + subdependencias:
             clean_name = str(ext_name).lower().replace("'", "").strip()
@@ -210,8 +217,8 @@ def get_search_keys(name: str):
 def get_accent_insensitive_regex(text: str) -> str:
     """Genera una regex para ClickHouse que ignora acentos y es case-insensitive."""
     vowel_map = {
-        'a': '[a]', 'e': '[e]', 'i': '[i]', 
-        'o': '[o]', 'u': '[u]'
+        'a': '[aáàâä]', 'e': '[eéèêë]', 'i': '[iíìîï]', 
+        'o': '[oóòôö]', 'u': '[uúùûü]'
     }
     regex = ""
     for char in text.lower():
@@ -440,9 +447,12 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
     orcid_store = QdrantStore(collection_name="orcid_authors_vec")
 
     name_col = 'NOMBRE DEL INVESTIGADOR'
-    inst_col = 'INSTITUCIN DE ACREDITACIN'
-    dep_inst_col = 'DEPENDENCIA DE ACREDITACIN'
-    sub_inst_col = 'SUBDEPENDENCIA DE ACREDITACIN'
+    inst_col = 'INSTITUCION DE ACREDITACION'
+    dep_inst_col = 'DEPENDENCIA DE ACREDITACION'
+    sub_inst_col = 'SUBDEPENDENCIA DE ACREDITACION'
+
+    # Normalizar columnas del dataframe principal
+    df.columns = [normalize_text(c).upper() for c in df.columns]
 
     output_path = os.path.join("data", "snii_llm_verified_matches.json")
     verified_results = []
@@ -484,6 +494,10 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
         batch_orcid_map = search_orcid_records_batch(batch_query_info, limit_per_name=4)
 
         for idx, row in chunk:
+            snii_name = "Desconocido"
+            final_inst = "Desconocido"
+            final_sub = "Desconocido"
+            key = None
             try:
                 snii_name = str(row[name_col]).strip()
 
