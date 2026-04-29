@@ -10,7 +10,7 @@ import pyalex
 from Levenshtein import jaro_winkler
 from datetime import datetime
 
-# Añadir path para importar desde la carpeta raíz
+# Aadir path para importar desde la carpeta raz
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.knowledge_graph import Neo4jGraphStore
 
@@ -20,7 +20,7 @@ load_dotenv()
 
 pyalex.config.email = os.getenv("EMAIL_ADDRESS", "sin_correo@ciencias.unam.mx")
 
-# Configuración ClickHouse
+# Configuracin ClickHouse
 CH_HOST = os.getenv("CH_HOST", "127.0.0.1")
 CH_PORT = int(os.getenv("CH_PORT", 8123))
 CH_USER = os.getenv("CH_USER", "admin")
@@ -34,12 +34,12 @@ CH_ORCID_USER = os.getenv("CH_ORCID_USER", "default")
 CH_ORCID_PASS = os.getenv("CH_ORCID_PASSWORD", "")
 CH_DB_ORCID   = os.getenv("CH_ORCID_DATABASE", "orcid")
 
-# Configuración Neo4j (Bolt)
+# Configuracin Neo4j (Bolt)
 NEO4J_URI  = os.getenv("NEO4J_URI", "bolt://127.0.0.1:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASS = os.getenv("NEO4J_PASS")
 
-# Definir rutas absolutas basadas en la ubicación del script
+# Definir rutas absolutas basadas en la ubicacin del script
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 SEED_PATH = os.path.join(SCRIPT_DIR, "..", "data", "authors_mexico_seed.json")
@@ -52,19 +52,19 @@ OUTPUT_PATH = os.path.join(SCRIPT_DIR, "..", "data", "authors_matched_orcid.json
 
 def normalize_text(text):
     if not text: return ""
-    # Remover acentos y convertir a minúsculas
+    # Remover acentos y convertir a minsculas
     text = unicodedata.normalize('NFD', text).encode('ascii', 'ignore').decode('utf-8')
     text = text.lower().strip()
-    # Remover títulos académicos comunes (y el punto/espacio que los siga)
+    # Remover ttulos acadmicos comunes (y el punto/espacio que los siga)
     text = re.sub(r'\b(dr|dra|msc|phd|mtro|mtra|lic|ing|profr?|profra)\.?\s*', '', text)
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
 def extract_sub_affiliation(affiliation):
-    """Extrae facultades, centros, institutos o departamentos de una cadena de afiliación"""
+    """Extrae facultades, centros, institutos o departamentos de una cadena de afiliacin"""
     if not affiliation: return None
     
-    # Patrones comunes en español e inglés
+    # Patrones comunes en espaol e ingls
     patterns = [
         r"(facultad de [^,]+)",
         r"(instituto de [^,]+)",
@@ -82,7 +82,7 @@ def extract_sub_affiliation(affiliation):
     return None
 
 def fetch_recent_dois(orcid, years=3):
-    """Obtiene DOIs de los últimos años usando Pyalex"""
+    """Obtiene DOIs de los ltimos aos usando Pyalex"""
     current_year = datetime.now().year
     min_year = current_year - years
     
@@ -110,7 +110,7 @@ def calculate_score(seed_author, ch_record):
     """
     orcid, gn, fn, cn, emails, last_aff, city, country = ch_record
     
-    # 0. Coincidencia de ARTÍCULOS (DOIs) - Si la semilla tiene DOIs y podemos cruzarlos
+    # 0. Coincidencia de ARTCULOS (DOIs) - Si la semilla tiene DOIs y podemos cruzarlos
     # (En este entorno local, orcid_records no tiene DOIs, omitimos este paso de CH directo)
     
     # 0.1 Coincidencia de EMAILS
@@ -120,7 +120,7 @@ def calculate_score(seed_author, ch_record):
         return 1.0
 
     # 1. Nombre Completo (Fuzzy Matching con Tokens Ordenados)
-    # Esto hace que "Lopez, Juan" y "Juan Lopez" sean idénticos al compararlos
+    # Esto hace que "Lopez, Juan" y "Juan Lopez" sean idnticos al compararlos
     def get_token_sorted_name(name_str):
         clean = normalize_text(name_str).replace(',', ' ')
         tokens = sorted([t for t in clean.split() if len(t) > 1])
@@ -131,17 +131,17 @@ def calculate_score(seed_author, ch_record):
     
     name_score = jaro_winkler(sorted_seed, sorted_ch)
     
-    # También probar contra el nombre de crédito si existe
+    # Tambin probar contra el nombre de crdito si existe
     if cn:
         sorted_cn = get_token_sorted_name(cn)
         name_score = max(name_score, jaro_winkler(sorted_seed, sorted_cn))
     
-    # 2. Afiliación
+    # 2. Afiliacin
     aff_score = 0
     main_aff_upper = seed_author.get('main_affiliation', '').upper()
     
-    # Inmunidad si no tiene institución
-    if "SIN INSTITUCIÓN" in main_aff_upper or "SIN INSTITUCION" in main_aff_upper:
+    # Inmunidad si no tiene institucin
+    if "SIN INSTITUCIN" in main_aff_upper or "SIN INSTITUCION" in main_aff_upper:
         total_score = name_score
     else:
         seed_aff = normalize_text(seed_author.get('main_affiliation', ''))
@@ -166,13 +166,13 @@ def calculate_score(seed_author, ch_record):
                 if sub_aff in last_aff_norm or jaro_winkler(sub_aff, last_aff_norm) > 0.85:
                     aff_score = min(aff_score + 0.15, 1.0)
         
-        # Puntuación final ponderada
+        # Puntuacin final ponderada
         if not last_aff:
             total_score = name_score
         else:
             total_score = (name_score * 0.6) + (aff_score * 0.4)
     
-    # REGLA ESTRICTA: Si el nombre no es casi idéntico, penalización fuerte
+    # REGLA ESTRICTA: Si el nombre no es casi idntico, penalizacin fuerte
     if name_score < 0.93:
         total_score *= 0.5 
         
@@ -211,27 +211,27 @@ def load_existing_mappings():
 def load_snii_authors():
     """Carga autores desde el archivo del SNII 2025"""
     if not os.path.exists(SNII_PATH):
-        print(f"No se encontró el archivo SNII en {SNII_PATH}")
+        print(f"No se encontr el archivo SNII en {SNII_PATH}")
         return []
     try:
         df = pd.read_excel(SNII_PATH)
-        # Ajustar nombres de columnas según inspección del archivo real 2025
+        # Ajustar nombres de columnas segn inspeccin del archivo real 2025
         name_col = 'NOMBRE DEL INVESTIGADOR'
-        inst_col = 'INSTITUCIÓN DE ACREDITACIÓN'
-        dep_inst_col = 'DEPENDENCIA DE ACREDITACIÓN'
-        sub_inst_col = 'SUBDEPENDENCIA DE ACREDITACIÓN'
+        inst_col = 'INSTITUCIN DE ACREDITACIN'
+        dep_inst_col = 'DEPENDENCIA DE ACREDITACIN'
+        sub_inst_col = 'SUBDEPENDENCIA DE ACREDITACIN'
         
         authors = []
         for _, row in df.iterrows():
-            # Extraer afiliación combinando institución y dependencia
+            # Extraer afiliacin combinando institucin y dependencia
             raw_inst = str(row[inst_col]) if pd.notna(row[inst_col]) else ""
             raw_dep = str(row[dep_inst_col]) if pd.notna(row[dep_inst_col]) else ""
             raw_sub = str(row[sub_inst_col]) if pd.notna(row[sub_inst_col]) else ""
             
-            if raw_inst.upper() in ["SIN INSTITUCIÓN", "SIN INSTITUCION"]:
-                final_inst = "SIN INSTITUCIÓN"
+            if raw_inst.upper() in ["SIN INSTITUCIN", "SIN INSTITUCION"]:
+                final_inst = "SIN INSTITUCIN"
                 final_sub = "NO APLICA"
-            elif raw_sub.upper() in ["SIN INFORMACION", "SIN INFORMACIÓN", ""]:
+            elif raw_sub.upper() in ["SIN INFORMACION", "SIN INFORMACIN", ""]:
                 final_inst = raw_inst
                 final_sub = raw_dep if raw_dep else raw_sub
             else:
@@ -253,18 +253,18 @@ def load_snii_authors():
 
 def discover_orcid_locally(graph_store, name, affiliation, mex_keywords):
     """
-    Busca el ORCID de forma 'activa' en Neo4j usando los metadatos de los artículos
+    Busca el ORCID de forma 'activa' en Neo4j usando los metadatos de los artculos
     ingeridos (Papers) como contexto.
     """
     try:
-        # Extraer apellido para la búsqueda base
+        # Extraer apellido para la bsqueda base
         parts = normalize_text(name).replace(',', ' ').split()
         if not parts: return None, None
         surname = parts[0]
         if len(parts) > 1 and parts[0] in ['juan', 'jose', 'maria', 'ana']:
             surname = parts[-1]
 
-        # Reducimos longitud de institución para ser más tolerantes
+        # Reducimos longitud de institucin para ser ms tolerantes
         inst_hint = affiliation[:12].replace("'", "")
         
         # Consulta Cypher para Neo4j (buscamos en raw_metadata que es JSON string)
@@ -278,19 +278,19 @@ def discover_orcid_locally(graph_store, name, affiliation, mex_keywords):
         
         with graph_store.driver.session() as session:
             rows = list(session.run(query, surname=surname, inst_hint=inst_hint))
-            print(f"      [Neo4j] {len(rows)} artículos encontrados con términos base.")
+            print(f"      [Neo4j] {len(rows)} artculos encontrados con trminos base.")
             
             stop_tokens = {'de', 'la', 'del', 'los', 'las', 'y', 'e', 'san', 'santa'}
 
             for idx, record in enumerate(rows):
                 raw_json = record["raw_json"]
                 data = json.loads(raw_json)
-                title = data.get('title', 'Sin Título')[:50]
+                title = data.get('title', 'Sin Ttulo')[:50]
                 authorships = data.get('authorships', [])
                 
-                # Para depuración, mostrar qué estamos revisando
+                # Para depuracin, mostrar qu estamos revisando
                 if idx < 3: # Solo los primeros 3 para no saturar
-                    print(f"      - Revisando artículo: {title}...")
+                    print(f"      - Revisando artculo: {title}...")
 
                 for auth in authorships:
                     author_info = auth.get('author', {})
@@ -324,7 +324,7 @@ def discover_orcid_locally(graph_store, name, affiliation, mex_keywords):
     return None, None
 
 def get_orcid_emails(orcid_client, orcid):
-    """Extrae los correos electrónicos del ORCID desde la tabla local orcid_records."""
+    """Extrae los correos electrnicos del ORCID desde la tabla local orcid_records."""
     try:
         query = f"SELECT emails FROM {CH_DB_ORCID}.orcid_records WHERE orcid = '{orcid}'"
         res = orcid_client.query(query).result_rows
@@ -365,7 +365,7 @@ def run_matching(limit=500, min_score=0.5):
         except Exception as e:
             print(f"Aviso: No se pudo cargar el archivo seed {SEED_PATH}: {e}")
     else:
-        print(f"Aviso: El archivo seed {SEED_PATH} no existe o está vacío. Se omitirá el cruce con Neo4j.")
+        print(f"Aviso: El archivo seed {SEED_PATH} no existe o est vaco. Se omitir el cruce con Neo4j.")
 
     # Asegurar que el directorio de salida existe
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
@@ -381,7 +381,7 @@ def run_matching(limit=500, min_score=0.5):
         
         author['source_origin'] = 'SNII_2025'
         
-        # A. ¿Ya tenemos el ORCID en archivos de mapeo manual (Excel)?
+        # A. Ya tenemos el ORCID en archivos de mapeo manual (Excel)?
         if norm_name in existing_mappings:
             orcid = existing_mappings[norm_name]
             print(f"> Investigador: {name}")
@@ -398,7 +398,7 @@ def run_matching(limit=500, min_score=0.5):
             })
             continue
 
-        # B. ¿Existe en la base de Neo4j (Seed)?
+        # B. Existe en la base de Neo4j (Seed)?
         if norm_name in neo4j_data:
             n4j_author = neo4j_data[norm_name]
             if n4j_author.get('orcid'):
@@ -418,21 +418,21 @@ def run_matching(limit=500, min_score=0.5):
                 continue
             
         # C. De lo contrario, buscar en ClickHouse (ORCID)
-        # Limpiar puntuación para la búsqueda
+        # Limpiar puntuacin para la bsqueda
         clean_name = norm_name.replace(',', ' ').strip()
         parts = clean_name.split()
         if not parts: continue
         
-        # Estrategia de búsqueda mejorada para SNII (Apellido Paterno)
-        # Si el nombre original tenía coma "APELLIDOS, NOMBRES", tomamos el primer apellido
+        # Estrategia de bsqueda mejorada para SNII (Apellido Paterno)
+        # Si el nombre original tena coma "APELLIDOS, NOMBRES", tomamos el primer apellido
         if ',' in author['name']:
             search_term = normalize_text(author['name'].split(',')[0].split()[0])
         else:
-            # Si no hay coma, intentamos evitar nombres comunes como primer término de búsqueda
+            # Si no hay coma, intentamos evitar nombres comunes como primer trmino de bsqueda
             common_names = ['juan', 'jose', 'maria', 'ana', 'luis', 'carlos', 'martha', 'rosa', 'pedro', 'jesus']
             search_term = parts[0]
             if search_term in common_names and len(parts) > 1:
-                search_term = parts[-1] # Probar con el último si el primero es muy común
+                search_term = parts[-1] # Probar con el ltimo si el primero es muy comn
             
         author['search_term'] = search_term.strip().replace("'", "")
         authors_to_search.append(author)
@@ -443,16 +443,16 @@ def run_matching(limit=500, min_score=0.5):
     
     for i in range(0, total, batch_size):
         batch = authors_to_search[i:i + batch_size]
-        # Filtrar stop words de los términos de búsqueda
+        # Filtrar stop words de los trminos de bsqueda
         stop_words = {'de', 'del', 'la', 'los', 'las', 'san', 'santa'}
         terms = list(set([a['search_term'] for a in batch if a['search_term'] not in stop_words]))
         if not terms: continue
         
-        # Opción universalmente compatible: LOWER(...) LIKE ...
+        # Opcin universalmente compatible: LOWER(...) LIKE ...
         filters = []
         for t in terms:
             t_esc = t.lower().replace("'", "''")
-            if len(t_esc) < 3: continue # Ignorar términos muy cortos
+            if len(t_esc) < 3: continue # Ignorar trminos muy cortos
             filters.append(f"lower(family_name) LIKE '%{t_esc}%'")
             filters.append(f"lower(credit_name) LIKE '%{t_esc}%'")
         
@@ -468,15 +468,15 @@ def run_matching(limit=500, min_score=0.5):
         """
         
         try:
-            print(f"Consultando bloque {i//batch_size + 1} de {total//batch_size + 1} (Términos: {terms})...")
+            print(f"Consultando bloque {i//batch_size + 1} de {total//batch_size + 1} (Trminos: {terms})...")
             candidates = client.query(query).result_rows
             print(f" -> {len(candidates)} candidatos devueltos por ClickHouse.")
             
             for author in batch:
                 sterm = author['search_term'].lower()
-                print(f"  [ClickHouse] Buscando candidatos para: '{author['name']}' (Término: {sterm})")
+                print(f"  [ClickHouse] Buscando candidatos para: '{author['name']}' (Trmino: {sterm})")
                 
-                # Filtrar candidatos: que coincida el apellido Y que sea de México (MX) o tenga institución mexicana
+                # Filtrar candidatos: que coincida el apellido Y que sea de Mxico (MX) o tenga institucin mexicana
                 my_cands = []
                 for c in candidates:
                     last_fn = str(c[2] or '').lower()
@@ -485,11 +485,11 @@ def run_matching(limit=500, min_score=0.5):
                     aff_text = str(c[5] or '').lower()
                     
                     if sterm in last_fn or sterm in credit_n:
-                        # Prioridad absoluta a México
+                        # Prioridad absoluta a Mxico
                         if country == 'MX' or any(k in aff_text for k in mex_keywords):
                             my_cands.append(c)
                 
-                print(f"    -> {len(my_cands)} candidatos potenciales después de filtrar por País/Inst.")
+                print(f"    -> {len(my_cands)} candidatos potenciales despus de filtrar por Pas/Inst.")
                 if my_cands:
                     # Mostrar solo los primeros 2 candidatos para no saturar
                     for idx, c in enumerate(my_cands[:2]):
@@ -503,13 +503,13 @@ def run_matching(limit=500, min_score=0.5):
                         max_s = score
                         best_match = cand
                 
-                if best_match and max_s >= 0.8: # Log para depuración si es cercano
+                if best_match and max_s >= 0.8: # Log para depuracin si es cercano
                     print(f"   [Debug] Mejor match para '{author['name']}': ORCID={best_match[0]}, Score={max_s:.4f}")
 
                 if best_match and max_s >= min_score:
                     orcid = best_match[0]
                     aff = best_match[5] 
-                    print(f"    ✅ Match exitoso en ClickHouse! Score: {max_s:.2f} | ORCID: {orcid}")
+                    print(f"     Match exitoso en ClickHouse! Score: {max_s:.2f} | ORCID: {orcid}")
                     res = {
                         "source_name": author['name'],
                         "source_origin": author.get('source_origin'),
@@ -531,7 +531,7 @@ def run_matching(limit=500, min_score=0.5):
                     # FALLBACK: DESCUBRIMIENTO ACTIVO LOCAL (En Neo4j)
                     found_orcid, info = discover_orcid_locally(graph_store, author['name'], author.get('main_affiliation', ''), mex_keywords)
                     if found_orcid:
-                        print(f"    ✅ [Descubrimiento] Match encontrado en Neo4j! ORCID: {found_orcid} | Contexto: {info['institution']}")
+                        print(f"     [Descubrimiento] Match encontrado en Neo4j! ORCID: {found_orcid} | Contexto: {info['institution']}")
                         # Obtener correos para este ORCID descubierto
                         emails = get_orcid_emails(client, found_orcid)
                         res = {
@@ -551,7 +551,7 @@ def run_matching(limit=500, min_score=0.5):
                         }
                         results.append(res)
                     else:
-                        print(f"    ❌ No se encontró nada para '{author['name']}' en ninguna base.")
+                        print(f"     No se encontr nada para '{author['name']}' en ninguna base.")
                 print("-" * 30)
                 
         except Exception as e:
@@ -564,4 +564,4 @@ def run_matching(limit=500, min_score=0.5):
     print(f"Proceso completado. Matches encontrados: {len(results)}")
 
 if __name__ == "__main__":
-    run_matching(limit=10) # Límite razonable para pruebas en este entorno
+    run_matching(limit=10) # Lmite razonable para pruebas en este entorno
