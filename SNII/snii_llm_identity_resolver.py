@@ -416,7 +416,36 @@ def search_orcid_records_batch(names_info: list, limit_per_name: int = 5) -> dic
 
 
 def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list:
-    """Fallback individual si es necesario (usa la lgica batch para un solo nombre)."""
+    """Intenta buscar un autor usando la API Local (Modo Rayo) y cae a ClickHouse si falla."""
+    local_api = os.getenv("OPENALEX_LOCAL_API", "http://localhost:5012")
+    
+    # 1. Intentar API Local (Modo Rayo)
+    try:
+        url = f"{local_api}/authors"
+        params = {"filter": f"display_name.search:{name}", "per_page": limit}
+        with httpx.Client(timeout=5.0) as client:
+            resp = client.get(url, params=params)
+            if resp.status_code == 200:
+                results = resp.json().get('results', [])
+                if results:
+                    print(f"       [INFO] {len(results)} candidatos encontrados via API Local.")
+                    cands = []
+                    for r in results:
+                        # Adaptar formato de API al formato interno
+                        cands.append({
+                            "openalex_id": r.get('id'),
+                            "name": r.get('display_name'),
+                            "orcid": r.get('orcid'),
+                            "inst": (r.get('last_known_institution') or {}).get('display_name', ""),
+                            "scopus_ids": (r.get('ids') or {}).get('scopus', []),
+                            "score": 0.9 # Score base alto para resultados de API de busqueda
+                        })
+                    return cands
+    except Exception as e:
+        print(f"       [DEBUG] API Local no disponible para busqueda individual: {e}")
+
+    # 2. Fallback a ClickHouse (Lógica Batch individualizada)
+    print(f"       [INFO] Consultando ClickHouse (Fallback)...")
     k1, k2 = get_search_keys(name)
     res = search_openalex_authors_batch([{'snii_name': name, 'k1': k1, 'k2': k2}], limit_per_name=limit)
     return res.get(name, [])
