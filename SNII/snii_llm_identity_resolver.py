@@ -231,7 +231,7 @@ def get_accent_insensitive_regex(text: str) -> str:
     return f"(?i){regex}"
 
 
-def search_openalex_authors_batch(names_info: list, limit_per_name: int = 5) -> dict:
+def search_openalex_authors_batch(names_info: list, limit_per_name: int = 5, verbose: bool = False) -> dict:
     """Busca candidatos en ClickHouse para un lote de investigadores usando Regex de alto rendimiento.
     names_info: lista de diccionarios {snii_name, k1, k2}
     Retorna: {snii_name: [candidatos]}
@@ -240,7 +240,8 @@ def search_openalex_authors_batch(names_info: list, limit_per_name: int = 5) -> 
         return {}
     
     try:
-        print("      [DEBUG] Iniciando busqueda batch en OpenAlex...")
+        if verbose:
+            print("      [DEBUG] Iniciando busqueda batch en OpenAlex...")
         ch = get_ch_client()
         clauses = []
         for info in names_info:
@@ -269,7 +270,8 @@ def search_openalex_authors_batch(names_info: list, limit_per_name: int = 5) -> 
         LIMIT {query_limit}
         """
         rows = ch.query(query).result_rows
-        print(f"      [DEBUG] OpenAlex devolvio {len(rows)} filas.")
+        if verbose:
+            print(f"      [DEBUG] OpenAlex devolvio {len(rows)} filas.")
         
         from Levenshtein import jaro_winkler
         results_map = {info['snii_name']: [] for info in names_info}
@@ -337,13 +339,14 @@ def search_openalex_authors_batch(names_info: list, limit_per_name: int = 5) -> 
         return {info['snii_name']: [] for info in names_info}
 
 
-def search_orcid_records_batch(names_info: list, limit_per_name: int = 5) -> dict:
+def search_orcid_records_batch(names_info: list, limit_per_name: int = 5, verbose: bool = False) -> dict:
     """Busca candidatos en el dump de ORCID (ClickHouse) para un lote de investigadores."""
     if not names_info:
         return {}
     
     try:
-        print("      [DEBUG] Iniciando busqueda batch en ORCID...")
+        if verbose:
+            print("      [DEBUG] Iniciando busqueda batch en ORCID...")
         ch = get_orcid_client()
         # Verificar si la base de datos de ORCID existe en este servidor (con manejo de errores para evitar cuelgues)
         try:
@@ -522,8 +525,8 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
         
         if verbose:
             print(f"\n Consultando lote de {len(batch_query_info)} investigadores en ClickHouse (OpenAlex + ORCID)...")
-        batch_oa_map = search_openalex_authors_batch(batch_query_info, limit_per_name=5)
-        batch_orcid_map = search_orcid_records_batch(batch_query_info, limit_per_name=4)
+        batch_oa_map = search_openalex_authors_batch(batch_query_info, limit_per_name=5, verbose=verbose)
+        batch_orcid_map = search_orcid_records_batch(batch_query_info, limit_per_name=4, verbose=verbose)
 
         for idx, row in chunk:
             snii_name = "Desconocido"
