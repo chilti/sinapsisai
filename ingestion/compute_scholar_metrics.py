@@ -509,10 +509,6 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
             WITH e
             MATCH (e)-[:HAS_PAPER]->(p:Paper{label_filter})
             RETURN p
-            UNION
-            WITH e
-            MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper{label_filter})
-            RETURN p
         }
         WITH e, institutions, p
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
@@ -536,10 +532,6 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
         CALL (e) {
             WITH e
             MATCH (e)-[:HAS_PAPER]->(p:Paper{label_filter})
-            RETURN p
-            UNION
-            WITH e
-            MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper{label_filter})
             RETURN p
         }
         WITH e, institutions, p
@@ -1347,12 +1339,23 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
         # Exportar listado general de papers de Institucion
         save_disaggregated_parquets(df_inst_raw, 'papers_institucion.parquet', 'entity')
         
-        df_inst_tot = aggregate_metrics(df_inst_raw, ['entity_name'])
+        # --- Crear entradas "Self" para que la Institución aparezca como su propia Subdependencia ---
+        # Esto asegura que el total institucional esté disponible en el widget de subdependencias
+        df_self_raw = df_inst_raw.explode('institutions')
+        df_self_raw['entity_name'] = df_self_raw['institutions']
+        # Evitar duplicar si por alguna razón la entidad ya se llama igual que la institución
+        # (aunque aggregate_metrics lo manejaría, ahorramos filas)
+        df_self_raw = df_self_raw[~df_self_raw.index.isin(df_inst_raw[df_inst_raw['entity_name'].isin(df_self_raw['entity_name'])].index)]
+        
+        # Re-unir para que las agregaciones posteriores (Sunburst, Keywords, etc) incluyan el "Self"
+        df_inst_raw_full = pd.concat([df_inst_raw, df_self_raw], ignore_index=True)
+
+        df_inst_tot = aggregate_metrics(df_inst_raw_full, ['entity_name'])
 
         # ── Interdisciplinariedad por entidad ──────────────────────────────────
-        if 'topics' in df_inst_raw.columns:
+        if 'topics' in df_inst_raw_full.columns:
             inter_rows_inst = []
-            for e_name, grp in df_inst_raw.groupby('entity_name'):
+            for e_name, grp in df_inst_raw_full.groupby('entity_name'):
                 idx = compute_interdisciplinarity(grp['topics'])
                 idx['entity_name'] = e_name
                 inter_rows_inst.append(idx)
@@ -1393,10 +1396,10 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
         save_disaggregated_parquets(df_inst_tot, 'institucion_total.parquet', 'entity', include_academics_list=True)
 
         # ── Keywords por entidad ───────────────────────────────────────────────
-        if 'keywords' in df_inst_raw.columns:
+        if 'keywords' in df_inst_raw_full.columns:
             from collections import Counter
             kw_inst_rows = []
-            for e_name, grp in df_inst_raw.groupby('entity_name'):
+            for e_name, grp in df_inst_raw_full.groupby('entity_name'):
                 cnt = Counter()
                 for kws in grp['keywords']:
                     if isinstance(kws, list):
@@ -1408,12 +1411,12 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
                 print(f"  → keywords_institucion.parquet: {len(kw_inst_rows)} filas incremental o total")
 
     
-        df_inst_ann = aggregate_metrics(df_inst_raw, ['entity_name', 'year'])
+        df_inst_ann = aggregate_metrics(df_inst_raw_full, ['entity_name', 'year'])
         save_disaggregated_parquets(df_inst_ann, 'institucion_annual.parquet', 'entity')
         
         # Tópicos Entidad Real
         inst_topics_list = []
-        for _, row in df_inst_raw.iterrows():
+        for _, row in df_inst_raw_full.iterrows():
             e_name = row['entity_name']
             year = row['year']
             
