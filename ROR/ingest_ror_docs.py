@@ -67,6 +67,32 @@ class RORIngestor:
     def __init__(self):
         self.vector_store = QdrantStore(collection_name="api_papers")
         self.graph_store = Neo4jGraphStore()
+        # Cache de DOIs procesados en esta ejecución para evitar redundancia
+        self.processed_dois = set()
+        
+    def _extract_authors_and_concepts(self, work):
+        """Extrae autores y conceptos formateados para Neo4jGraphStore."""
+        authors = []
+        for auth in work.get('authorships', []):
+            author_name = auth.get('author', {}).get('display_name', 'Unknown')
+            insts = []
+            for inst_data in auth.get('institutions', []):
+                insts.append({
+                    "id": inst_data.get('id'),
+                    "name": inst_data.get('display_name') or inst_data.get('name'),
+                    "ror": inst_data.get('ror'),
+                    "country_code": inst_data.get('country_code'),
+                    "type": inst_data.get('type')
+                })
+            authors.append({"name": author_name, "institutions": insts})
+
+        concepts = []
+        for concept in work.get('concepts', []):
+            concepts.append({
+                "id": concept.get('id'),
+                "name": concept.get('display_name')
+            })
+        return authors, concepts
         
     def load_mapping(self):
         path = 'ROR/snii_ror_mapping.json'
@@ -117,57 +143,49 @@ class RORIngestor:
                         })
                         break
 
+        # Deduplicación local del batch para no repetir vectorización en la misma página
+        batch_seen = set()
+
         for work in works:
             doi_raw = work.get('doi')
             if not doi_raw: continue
             doi = doi_raw.replace("https://doi.org/", "").strip().lower()
             
-            # 1. Verificar si ya existe en ambas bases
+            # Evitar duplicados en el mismo batch (página de OpenAlex)
+            if doi in batch_seen: continue
+            batch_seen.add(doi)
+
+            # 1. Verificar si ya fue procesado en esta ejecución (ahorro de DB)
+            if doi in self.processed_dois:
+                # Solo aseguramos el link por si acaso es una nueva entidad vinculada al mismo DOI
+                self.graph_store.add_entity_paper_link(inst_name, doi)
+                if sub_name and sub_name != "SIN INFORMACIÓN":
+                    self.graph_store.add_entity_paper_link(sub_name, doi)
+                continue
+
+            # 2. Verificar si ya existe en las bases (para DOIs no vistos en este run)
             exists_graph = self.graph_store.check_paper_exists(doi)
             exists_qdrant = self.vector_store.check_document_exists(doi)
             
-            # 2. Si ya existe en Neo4j, ENRIQUECER en lugar de saltar
+            # 3. Si ya existe en Neo4j, ENRIQUECER en lugar de saltar
             if exists_graph:
-                # Marcamos como IndexedOpenAlex (aunque ya sea IndexedWoS)
                 self.graph_store.mark_paper_as_indexed(doi, 'openalex')
                 self.graph_store.set_paper_openalex_id(doi, work.get('id'))
-                
-                # Link Jerárquico (Asegurar que esté vinculado a esta institución/subdependencia)
                 self.graph_store.add_entity_paper_link(inst_name, doi)
                 if sub_name and sub_name != "SIN INFORMACIÓN":
                     self.graph_store.add_entity_paper_link(sub_name, doi)
                 
-                # Si falta en Qdrant pero existe en Neo4j, lo vectorizamos
                 if not exists_qdrant:
                     self._prepare_for_qdrant(work, inst_name, sub_name, batch_texts, batch_payloads)
+                
+                self.processed_dois.add(doi)
                 continue
             
-            # 3. Si no existe en Neo4j, procesar e insertar
-            # 3a. Preparar para Qdrant (si no existe)
+            # 4. Si no existe en Neo4j, procesar e insertar
             if not exists_qdrant:
                 self._prepare_for_qdrant(work, inst_name, sub_name, batch_texts, batch_payloads)
 
-            # 3b. Preparar datos para Neo4j (basado en el esquema de add_paper)
-            authors = []
-            for auth in work.get('authorships', []):
-                author_name = auth.get('author', {}).get('display_name', 'Unknown')
-                insts = []
-                for inst_data in auth.get('institutions', []):
-                    insts.append({
-                        "id": inst_data.get('id'),
-                        "name": inst_data.get('display_name') or inst_data.get('name'),
-                        "ror": inst_data.get('ror'),
-                        "country_code": inst_data.get('country_code'),
-                        "type": inst_data.get('type')
-                    })
-                authors.append({"name": author_name, "institutions": insts})
-
-            concepts = []
-            for concept in work.get('concepts', []):
-                concepts.append({
-                    "id": concept.get('id'),
-                    "name": concept.get('display_name')
-                })
+            authors, concepts = self._extract_authors_and_concepts(work)
 
             paper_data = {
                 "paper_id": doi,
@@ -180,17 +198,15 @@ class RORIngestor:
                 "raw_metadata": work
             }
             
-            # Guardamos el paper (la validación de existencia ya se hizo arriba)
             self.graph_store.add_paper(paper_data)
-            
-            # 4. Marcar como IndexedOpenAlex
             self.graph_store.mark_paper_as_indexed(doi, 'openalex')
             self.graph_store.set_paper_openalex_id(doi, work.get('id'))
             
-            # 5. Link Jerárquico
             self.graph_store.add_entity_paper_link(inst_name, doi)
             if sub_name and sub_name != "SIN INFORMACIÓN":
                  self.graph_store.add_entity_paper_link(sub_name, doi)
+            
+            self.processed_dois.add(doi)
 
         # 6. Embeddings masivos
         if batch_texts:
@@ -270,19 +286,37 @@ class RORIngestor:
         """Procesa trabajos vinculándolos solo a las entidades con ID específico."""
         batch_payloads = []
         batch_texts = []
+        batch_seen = set()
         
         for work in works:
             doi_raw = work.get('doi')
             if not doi_raw: continue
             doi = doi_raw.replace("https://doi.org/", "").strip().lower()
             
-            if not self.graph_store.check_paper_exists(doi):
-                # (Lógica simplificada de inserción)
+            if doi in batch_seen: continue
+            batch_seen.add(doi)
+
+            # 1. Si ya se procesó en este run, solo actualizamos links
+            if doi in self.processed_dois:
+                for inst_name, sub_name, is_specific in entities:
+                    self.graph_store.add_entity_paper_link(inst_name, doi)
+                    if sub_name and sub_name != "SIN INFORMACIÓN" and is_specific:
+                        self.graph_store.add_entity_paper_link(sub_name, doi)
+                continue
+
+            # 2. Verificar existencia en bases
+            exists_graph = self.graph_store.check_paper_exists(doi)
+            exists_qdrant = self.vector_store.check_document_exists(doi)
+
+            if not exists_graph:
+                authors, concepts = self._extract_authors_and_concepts(work)
                 self.graph_store.add_paper({
                     "paper_id": doi, "doi": doi, 
                     "title": work.get('display_name') or "Sin Título",
                     "year": work.get('publication_year', 0),
                     "citations": work.get('cited_by_count', 0),
+                    "authors": authors,
+                    "concepts": concepts,
                     "raw_metadata": work
                 })
 
@@ -298,9 +332,10 @@ class RORIngestor:
                 if sub_name and sub_name != "SIN INFORMACIÓN" and is_specific:
                     self.graph_store.add_entity_paper_link(sub_name, doi)
                 
-            exists_qdrant = self.vector_store.check_document_exists(doi)
             if not exists_qdrant:
                 self._prepare_for_qdrant_multi(work, entities, batch_texts, batch_payloads)
+            
+            self.processed_dois.add(doi)
 
         # Vectorizar
         if batch_texts:
