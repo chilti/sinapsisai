@@ -505,7 +505,7 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
         OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
         WITH e, collect(DISTINCT CASE WHEN p_inst IS NOT NULL THEN p_inst.name ELSE (CASE WHEN e:Institution THEN e.name ELSE null END) END) AS institutions
         
-        CALL {
+        CALL (e) {
             WITH e
             MATCH (e)-[:HAS_PAPER]->(p:Paper{label_filter})
             RETURN p
@@ -533,7 +533,7 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
         OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
         WITH e, collect(DISTINCT CASE WHEN p_inst IS NOT NULL THEN p_inst.name ELSE (CASE WHEN e:Institution THEN e.name ELSE null END) END) AS institutions
         
-        CALL {
+        CALL (e) {
             WITH e
             MATCH (e)-[:HAS_PAPER]->(p:Paper{label_filter})
             RETURN p
