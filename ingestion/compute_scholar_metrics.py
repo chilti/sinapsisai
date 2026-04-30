@@ -1468,8 +1468,91 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
             print("⏩ Saltando métricas institucionales (Modo Académico detectado para velocidad).")
         else:
             print("⚠ No hay artículos cargados por Entidad. Institucion View estará vacía.")
-    
-    # 4. PRECALCULO DE UMAP (Trayectorias)
+            
+    # ── 4. CÁLCULO DE CAPACIDAD INSTALADA ─────────────────────────────────────
+    # (Toda la producción de los académicos actuales proyectada a sus entidades)
+    if not df_raw.empty:
+        print("⏳ Calculando CAPACIDAD INSTALADA (Producción total de académicos)...")
+        
+        # Proyectar df_raw a entidades usando el mapa de académicos
+        capacidad_records = []
+        for _, row in df_raw.iterrows():
+            ac_name = row['academic_name']
+            if ac_name in academics_map:
+                for ent, inst in academics_map[ac_name]:
+                    new_row = row.copy()
+                    new_row['entity_name'] = ent
+                    new_row['institutions'] = [inst]
+                    capacidad_records.append(new_row)
+        
+        if capacidad_records:
+            df_cap_raw = pd.DataFrame(capacidad_records)
+            
+            # --- Entradas "Self" para Capacidad ---
+            df_cap_self = df_cap_raw.copy()
+            df_cap_self['entity_name'] = df_cap_self['institutions'].apply(lambda x: x[0] if isinstance(x, list) and x else "SIN INSTITUCIÓN")
+            # Unir y quitar duplicados exactos (si la entidad ya era la institución)
+            df_cap_raw_full = pd.concat([df_cap_raw, df_cap_self], ignore_index=True).drop_duplicates(subset=['academic_name', 'paper_id', 'entity_name'])
+            
+            # 4.1. Métricas Totales
+            df_cap_tot = aggregate_metrics(df_cap_raw_full, ['entity_name'])
+            # Interdisciplinariedad
+            if 'topics' in df_cap_raw_full.columns:
+                cap_inter_rows = []
+                for e_name, grp in df_cap_raw_full.groupby('entity_name'):
+                    idx = compute_interdisciplinarity(grp['topics'])
+                    idx['entity_name'] = e_name
+                    cap_inter_rows.append(idx)
+                if cap_inter_rows:
+                    df_cap_tot = df_cap_tot.merge(pd.DataFrame(cap_inter_rows), on='entity_name', how='left')
+            
+            save_disaggregated_parquets(df_cap_tot, 'metrics_institucion_capacidad.parquet', 'entity', updated_files=updated_files)
+            
+            # 4.2. Papers
+            save_disaggregated_parquets(df_cap_raw_full, 'papers_institucion_capacidad.parquet', 'entity', updated_files=updated_files)
+            
+            # 4.3. Anual
+            df_cap_ann = aggregate_metrics(df_cap_raw_full, ['entity_name', 'year'])
+            save_disaggregated_parquets(df_cap_ann, 'institucion_annual_capacidad.parquet', 'entity', updated_files=updated_files)
+            
+            # 4.4. Keywords
+            if 'keywords' in df_cap_raw_full.columns:
+                from collections import Counter
+                kw_cap_rows = []
+                for e_name, grp in df_cap_raw_full.groupby('entity_name'):
+                    cnt = Counter()
+                    for kws in grp['keywords']:
+                        if isinstance(kws, list):
+                            cnt.update([k for k in kws if k])
+                    for kw, freq in cnt.most_common(1000):
+                        kw_cap_rows.append({'entity_name': e_name, 'keyword': kw, 'freq': freq})
+                if kw_cap_rows:
+                    save_disaggregated_parquets(pd.DataFrame(kw_cap_rows), 'keywords_institucion_capacidad.parquet', 'entity', updated_files=updated_files)
+
+            # 4.5. Tópicos (Sunburst)
+            cap_topics_list = []
+            for _, row in df_cap_raw_full.iterrows():
+                p_topic = row.get('primary_topic_name')
+                if p_topic and p_topic != 'Unknown':
+                    cap_topics_list.append({
+                        'entity_name': row['entity_name'],
+                        'year': int(row['year']),
+                        'domain': row.get('primary_topic_domain', 'Unknown'),
+                        'field': row.get('primary_topic_field', 'Unknown'),
+                        'subfield': row.get('primary_topic_subfield', 'Unknown'),
+                        'topic': p_topic
+                    })
+            if cap_topics_list:
+                df_cap_t_raw = pd.DataFrame(cap_topics_list)
+                df_cap_t_agg = df_cap_t_raw.groupby(['entity_name', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
+                save_disaggregated_parquets(df_cap_t_agg, 'topics_institucion_capacidad.parquet', 'entity', updated_files=updated_files)
+                
+                df_cap_t_evol = df_cap_t_raw.groupby(['entity_name', 'year', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
+                save_disaggregated_parquets(df_cap_t_evol, 'thematic_evolution_institucion_capacidad.parquet', 'entity', updated_files=updated_files)
+            
+            print(f"✅ CAPACIDAD INSTALADA calculada para {len(df_cap_tot)} entidades.")
+
+    # ── 5. PRECALCULO DE UMAP (Trayectorias) ──────────────────────────────────
     print("⏳ Proyectando UMAP de Trayectorias (Desempeño Académico)...")
     umap_df = df_inv_recent
     if os.path.exists(CACHE_DIR / 'investigador_recent.parquet'):
