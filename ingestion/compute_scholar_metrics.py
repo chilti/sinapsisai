@@ -969,7 +969,7 @@ def aggregate_metrics(df_papers, group_cols):
     df_agg = df_agg.merge(h_series, on=group_cols, how='left')
     return df_agg
 
-def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, include_academics_list=False):
+def save_disaggregated_parquets(df, base_name, group_level='academic', academics_map=None, include_papers=False, include_sdgs=False, include_keywords=False, include_academics_list=False, updated_files=None):
     """
     Guarda el dataframe en carpetas separadas:
     data/dash_cache/<Entidad>/<Academico>/archivo.parquet
@@ -1060,7 +1060,11 @@ def save_disaggregated_parquets(df, base_name, group_level, academics_map=None, 
                     except:
                         grp_final['academics_list'] = "[]"
                 
-                grp_final.to_parquet(target_dir / base_name, index=False)
+                final_path = target_dir / base_name
+                grp_final.to_parquet(final_path, index=False)
+                
+                if updated_files is not None:
+                    updated_files.add(str(final_path.absolute()))
         graph_store.close()
 
 import unicodedata
@@ -1108,6 +1112,10 @@ def load_snii_master_map(excel_path):
     return snii_map
 
 def process_and_save(entity_filter=None, academic_filter=None, source_filter='all'):
+    import time
+    start_time = time.time()
+    updated_files = set() # Trackear archivos escritos en este run
+    
     print(f"Iniciando Pre-cálculo de Métricas (Fuente: {source_filter})...")
     
     # Cargar mapa maestro del SNII
@@ -1241,17 +1249,17 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
         df_topics['count'] = 1
         # Evolución (con año)
         df_topics_evol = df_topics.groupby(['academic_name', 'year', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
-        save_disaggregated_parquets(df_topics_evol, 'thematic_evolution_investigador.parquet', 'academic', academics_map)
+        save_disaggregated_parquets(df_topics_evol, 'thematic_evolution_investigador.parquet', 'academic', academics_map, updated_files=updated_files)
         
         # Totales (para Sunburst, agrupado sin año)
         df_topics_agg = df_topics.groupby(['academic_name', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
-        save_disaggregated_parquets(df_topics_agg, 'topics_investigador.parquet', 'academic', academics_map)
+        save_disaggregated_parquets(df_topics_agg, 'topics_investigador.parquet', 'academic', academics_map, updated_files=updated_files)
     else:
         # Escribir parquet vacío para que el dashboard muestre mensaje en vez de None
         print("⚠️  No se encontraron tópicos en raw_metadata ni en nodos :Topic del grafo.")
         df_topics_agg = pd.DataFrame(columns=['academic_name', 'domain', 'field', 'subfield', 'topic', 'value'])
-        save_disaggregated_parquets(df_topics_agg, 'topics_investigador.parquet', 'academic', academics_map)
-        save_disaggregated_parquets(pd.DataFrame(columns=['academic_name', 'year', 'domain', 'field', 'subfield', 'topic', 'value']), 'thematic_evolution_investigador.parquet', 'academic', academics_map)
+        save_disaggregated_parquets(df_topics_agg, 'topics_investigador.parquet', 'academic', academics_map, updated_files=updated_files)
+        save_disaggregated_parquets(pd.DataFrame(columns=['academic_name', 'year', 'domain', 'field', 'subfield', 'topic', 'value']), 'thematic_evolution_investigador.parquet', 'academic', academics_map, updated_files=updated_files)
     # Limpiar archivos de versiones anteriores si existen
     if os.path.exists(CACHE_DIR / 'concepts_investigador.parquet'):
         os.remove(CACHE_DIR / 'concepts_investigador.parquet')
@@ -1262,7 +1270,7 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
     print("⏳ Agregando métricas a nivel Investigador...")
     # Agregamos 'entities' para conservar las afiliaciones en el agrupamiento
     df_inv_annual = aggregate_metrics(df_raw, ['academic_name', 'entities', 'year'])
-    save_disaggregated_parquets(df_inv_annual, 'investigador_annual.parquet', 'academic', academics_map)
+    save_disaggregated_parquets(df_inv_annual, 'investigador_annual.parquet', 'academic', academics_map, updated_files=updated_files)
     
     df_inv_tot = aggregate_metrics(df_raw, ['academic_name', 'entities'])
 
@@ -1278,7 +1286,7 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
             df_inter = pd.DataFrame(inter_rows)
             df_inv_tot = df_inv_tot.merge(df_inter, on='academic_name', how='left')
 
-    save_disaggregated_parquets(df_inv_tot, 'investigador_total.parquet', 'academic', academics_map)
+    save_disaggregated_parquets(df_inv_tot, 'investigador_total.parquet', 'academic', academics_map, updated_files=updated_files)
     
     # ── Keywords por investigador ──────────────────────────────────────────────
     print("⏳ Calculando keywords por investigador...")
@@ -1293,7 +1301,7 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
             for kw, freq in cnt.most_common(1000):
                 kw_rows.append({'academic_name': ac_name, 'keyword': kw, 'freq': freq})
         if kw_rows:
-            save_disaggregated_parquets(pd.DataFrame(kw_rows), 'keywords_investigador.parquet', 'academic', academics_map)
+            save_disaggregated_parquets(pd.DataFrame(kw_rows), 'keywords_investigador.parquet', 'academic', academics_map, updated_files=updated_files)
             print(f"  → keywords_investigador.parquet: {len(kw_rows)} filas incremental o total")
 
     df_raw_recent = df_raw[(df_raw['year'] >= 2021) & (df_raw['year'] <= 2025)]
@@ -1310,7 +1318,7 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
             df_inter_recent = pd.DataFrame(inter_rows_recent)
             df_inv_recent = df_inv_recent.merge(df_inter_recent[['academic_name', 'gini_topics']], on='academic_name', how='left')
 
-    save_disaggregated_parquets(df_inv_recent, 'investigador_recent.parquet', 'academic', academics_map)
+    save_disaggregated_parquets(df_inv_recent, 'investigador_recent.parquet', 'academic', academics_map, updated_files=updated_files)
     
     # 3. AGREGADOS A NIVEL INSTITUCIÓN (Macro)
     df_inst_raw = pd.DataFrame()
@@ -1337,7 +1345,7 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
                 df_inst_raw[c] = df_inst_raw[c].apply(lambda x: list(x) if isinstance(x, (list, tuple, np.ndarray)) else [])
 
         # Exportar listado general de papers de Institucion
-        save_disaggregated_parquets(df_inst_raw, 'papers_institucion.parquet', 'entity')
+        save_disaggregated_parquets(df_inst_raw, 'papers_institucion.parquet', 'entity', updated_files=updated_files)
         
         # --- Crear entradas "Self" para que la Institución aparezca como su propia Subdependencia ---
         # Esto asegura que el total institucional esté disponible en el widget de subdependencias
@@ -1393,7 +1401,7 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
             except Exception as e:
                 print(f"  ❌ Error al integrar estadísticas SNII: {e}")
 
-        save_disaggregated_parquets(df_inst_tot, 'institucion_total.parquet', 'entity', include_academics_list=True)
+        save_disaggregated_parquets(df_inst_tot, 'institucion_total.parquet', 'entity', include_academics_list=True, updated_files=updated_files)
 
         # ── Keywords por entidad ───────────────────────────────────────────────
         if 'keywords' in df_inst_raw_full.columns:
@@ -1407,12 +1415,12 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
                 for kw, freq in cnt.most_common(1000):
                     kw_inst_rows.append({'entity_name': e_name, 'keyword': kw, 'freq': freq})
             if kw_inst_rows:
-                save_disaggregated_parquets(pd.DataFrame(kw_inst_rows), 'keywords_institucion.parquet', 'entity')
+                save_disaggregated_parquets(pd.DataFrame(kw_inst_rows), 'keywords_institucion.parquet', 'entity', updated_files=updated_files)
                 print(f"  → keywords_institucion.parquet: {len(kw_inst_rows)} filas incremental o total")
 
     
         df_inst_ann = aggregate_metrics(df_inst_raw_full, ['entity_name', 'year'])
-        save_disaggregated_parquets(df_inst_ann, 'institucion_annual.parquet', 'entity')
+        save_disaggregated_parquets(df_inst_ann, 'institucion_annual.parquet', 'entity', updated_files=updated_files)
         
         # Tópicos Entidad Real
         inst_topics_list = []
@@ -1450,10 +1458,10 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
             # Aseguramos que 'year' existe en inst_topics_list
             # Evolución (con año)
             df_inst_evol = df_inst_t_raw.groupby(['entity_name', 'year', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
-            save_disaggregated_parquets(df_inst_evol, 'thematic_evolution_institucion.parquet', 'entity')
+            save_disaggregated_parquets(df_inst_evol, 'thematic_evolution_institucion.parquet', 'entity', updated_files=updated_files)
             
             df_inst_t = df_inst_t_raw.groupby(['entity_name', 'domain', 'field', 'subfield', 'topic']).size().reset_index(name='value')
-            save_disaggregated_parquets(df_inst_t, 'topics_institucion.parquet', 'entity')
+            save_disaggregated_parquets(df_inst_t, 'topics_institucion.parquet', 'entity', updated_files=updated_files)
 
     else:
         if academic_filter and not entity_filter:
@@ -1520,6 +1528,41 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
         with open(CACHE_DIR / 'hierarchy.json', 'w', encoding='utf-8') as f:
             json.dump(hierarchy_map, f, ensure_ascii=False, indent=2)
         print(f"✅ hierarchy.json exportado con éxito ({len(hierarchy_map)} instituciones).")
+
+    # --- FASE DE LIMPIEZA DE CACHÉ ---
+    # Solo si el proceso terminó con éxito y tenemos archivos actualizados
+    if updated_files:
+        print(f"⏳ Limpiando archivos obsoletos en data/cache/...")
+        count_del = 0
+        # Si hay filtros, solo limpiamos dentro de las carpetas tocadas
+        # Si es un run completo, limpiamos todo el cache
+        is_full_run = (not entity_filter and not academic_filter)
+        
+        for root, dirs, files in os.walk(CACHE_DIR):
+            for file in files:
+                if file.endswith('.parquet'):
+                    full_path = os.path.join(root, file)
+                    abs_path = str(Path(full_path).absolute())
+                    
+                    if abs_path not in updated_files:
+                        # Si es run completo, borrar siempre
+                        # Si es filtrado, borrar solo si está en el "scope" de lo que procesamos
+                        if is_full_run:
+                            try:
+                                os.remove(full_path)
+                                count_del += 1
+                            except: pass
+                        else:
+                            # Lógica de scope: si la carpeta del archivo fue tocada en este run,
+                            # pero el archivo no está en updated_files, es obsoleto.
+                            if any(abs_path.startswith(os.path.dirname(u)) for u in updated_files):
+                                try:
+                                    os.remove(full_path)
+                                    count_del += 1
+                                except: pass
+        
+        if count_del > 0:
+            print(f"🧹 Limpieza completada: {count_del} archivos antiguos eliminados.")
 
     print("\n🎉 Todas las métricas y Parquets se han generado exitosamente en data/cache/")
 
