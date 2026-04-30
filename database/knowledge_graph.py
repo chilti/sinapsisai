@@ -8,18 +8,16 @@ class Neo4jGraphStore:
     relaciones complejas (citas, coautorías, afiliaciones).
     """
     def __init__(self, uri=None, user=None, password=None):
-        # 1. Priorizar argumentos pasados
-        # 2. Fallback a variables de entorno (Estándar o MEXICO)
-        # 3. Fallback a valores por defecto quemados
-        
+        # Prioridad: Argumentos > Variables de Entorno (Standard) > Default Bolt
         if not uri:
-            uri = os.getenv("NEO4J_URI") or os.getenv("NEO4J_URI_MEXICO") or "bolt://127.0.0.1:7687"
+            uri = os.getenv("NEO4J_URI") or "bolt://127.0.0.1:7687"
         
         if not user:
-            user = os.getenv("NEO4J_USER") or os.getenv("NEO4J_USER_MEXICO") or "neo4j"
+            user = os.getenv("NEO4J_USER") or "neo4j"
             
         if not password:
-            password = os.getenv("NEO4J_PASS") or os.getenv("NEO4J_PASSWORD_MEXICO") or "password"
+            # Intentar NEO4J_PASS o NEO4J_PASSWORD
+            password = os.getenv("NEO4J_PASS") or os.getenv("NEO4J_PASSWORD") or "password"
             
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
         self._init_constraints()
