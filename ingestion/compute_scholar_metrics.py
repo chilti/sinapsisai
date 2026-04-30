@@ -21,8 +21,14 @@ from sklearn.preprocessing import StandardScaler
 import warnings
 warnings.filterwarnings('ignore') # UMAP genera warnings de numba
 
+from dotenv import load_dotenv
+
 # Añadir el path del grafo
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# Cargar variables de entorno
+load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env')))
+
 from database.knowledge_graph import Neo4jGraphStore
 
 BASE_PATH = Path(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
