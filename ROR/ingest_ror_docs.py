@@ -345,7 +345,7 @@ class RORIngestor:
             except: pass
 
     def _prepare_for_qdrant_multi(self, work, entities, batch_texts, batch_payloads):
-        ref_inst, ref_sub = entities[0]
+        ref_inst, ref_sub, _ = entities[0]
         title = work.get('display_name') or "Sin Título"
         abstract = deconstruct_abstract(work.get('abstract_inverted_index'))
         doi = work.get('doi', '').replace("https://doi.org/", "").lower()
