@@ -498,55 +498,6 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
     elif source_filter == 'openalex':
         label_filter = ":IndexedOpenAlex"
 
-    if entity_filter:
-        print(f"  -> Filtrando por Entidad (Papers): {entity_filter} (Fuente: {source_filter})")
-        query = """
-        MATCH (e:Entity {name: $entity})
-        OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
-        WITH e, collect(DISTINCT CASE WHEN p_inst IS NOT NULL THEN p_inst.name ELSE (CASE WHEN e:Institution THEN e.name ELSE null END) END) AS institutions
-        
-        CALL (e) {
-            WITH e
-            MATCH (e)-[:HAS_PAPER]->(p:Paper{label_filter})
-            RETURN p
-        }
-        WITH e, institutions, p
-        OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
-        RETURN e.name AS entity_name,
-               institutions,
-               p.id AS paper_id,
-               p.doi AS paper_doi,
-               p.year AS year,
-               p.citations AS citations,
-               p.raw_metadata AS raw_metadata,
-               collect({id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs
-        """.replace("{label_filter}", label_filter)
-        params = {"entity": entity_filter}
-    else:
-        print(f"  -> Procesando todas las entidades (Fuente: {source_filter})")
-        query = """
-        MATCH (e:Entity)
-        OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
-        WITH e, collect(DISTINCT CASE WHEN p_inst IS NOT NULL THEN p_inst.name ELSE (CASE WHEN e:Institution THEN e.name ELSE null END) END) AS institutions
-        
-        CALL (e) {
-            WITH e
-            MATCH (e)-[:HAS_PAPER]->(p:Paper{label_filter})
-            RETURN p
-        }
-        WITH e, institutions, p
-        OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
-        RETURN e.name AS entity_name,
-               institutions,
-               p.id AS paper_id,
-               p.doi AS paper_doi,
-               p.year AS year,
-               p.citations AS citations,
-               p.raw_metadata AS raw_metadata,
-               collect({id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs
-        """.replace("{label_filter}", label_filter)
-        params = {}
-        
     # Cargar mapeo de ROR
     ror_map = {}
     mapping_path = BASE_PATH / 'ROR' / 'snii_ror_mapping.json'
@@ -556,200 +507,247 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
                 ror_map = json.load(f)
         except: pass
 
+    def _process_row(row):
+        e_name = row['entity_name']
+        insts = row.get('institutions', [])
+        
+        # Promoción de "Mexico" a Institución de primer nivel
+        if not insts and e_name.lower() in ["mexico", "méxico"]:
+            p_inst = "MEXICO"
+        else:
+            p_inst = insts[0] if insts else "SIN INSTITUCIÓN"
+        
+        mapping_key = f"{p_inst} || {e_name}"
+        # Si la entidad se promocionó a Institución, la subdependencia en el mapeo suele ser "SIN INFORMACIÓN"
+        if mapping_key not in ror_map and e_name == p_inst:
+            mapping_key = f"{p_inst} || SIN INFORMACIÓN"
+        
+        ror_info = ror_map.get(mapping_key, {})
+        ror_id = ror_info.get('best_match_ror')
+        ror_reason = ror_info.get('reason')
+
+        raw_meta = {}
+        if row['raw_metadata']:
+            try:
+                raw_meta = json.loads(row['raw_metadata'])
+            except:
+                pass
+        
+        # Identificar papers enriquecidos por OpenAlex (resiliente a campos faltantes)
+        has_oa_link = any([
+            bool(raw_meta.get('openalex_url')),
+            bool(raw_meta.get('id')),
+            raw_meta.get('fwci') is not None,
+            bool(raw_meta.get('OpenAlex_Topics'))
+        ])
+        
+        title = raw_meta.get('Title') or raw_meta.get('title') or raw_meta.get('TI') or 'No Title'
+        source = raw_meta.get('Source') or raw_meta.get('source_title') or raw_meta.get('journal_iso_source_abbreviation') or raw_meta.get('publication_name') or raw_meta.get('SO') or 'Unknown'
+        # Lógica de enlace: Priorizar DOI recuperado, evitar placeholders de orcid
+        doi_val = row.get('paper_doi') or row['paper_id']
+        doi_link = None
+        if doi_val and str(doi_val).startswith("10."):
+            doi_link = "https://doi.org/" + str(doi_val).lower()
+        elif doi_val and not any(x in str(doi_val).lower() for x in ["urn:", "orcid-work:"]):
+            doi_link = "https://doi.org/" + str(doi_val)
+        
+        # Open Access Logic
+        is_oa = False
+        oa_status = 'closed'
+        oa_data = raw_meta.get('open_access')
+        if oa_data is None and 'raw_metadata' in raw_meta:
+            oa_data = raw_meta.get('raw_metadata', {}).get('open_access') if isinstance(raw_meta.get('raw_metadata'), dict) else None
+
+        if isinstance(oa_data, dict):
+            is_oa = oa_data.get('is_oa', False)
+            oa_status = str(oa_data.get('oa_status', 'closed')).lower()
+        elif 'OA' in raw_meta:
+             oa_str = str(raw_meta.get('OA', '')).lower()
+             if 'green' in oa_str: oa_status = 'green'
+             elif 'gold' in oa_str: oa_status = 'gold'
+             elif 'hybrid' in oa_str: oa_status = 'hybrid'
+             elif 'bronze' in oa_str: oa_status = 'bronze'
+             is_oa = oa_status != 'closed'
+             
+        # Impact Indicators
+        fwci = np.nan
+        percentile = np.nan
+        is_in_top_10_percent = np.nan
+        is_in_top_1_percent = np.nan
+
+        if has_oa_link:
+            fwci = raw_meta.get('fwci')
+            if fwci is None and isinstance(raw_meta.get('raw_metadata'), dict):
+                fwci = raw_meta['raw_metadata'].get('fwci')
+            fwci = _safe_float(fwci) if fwci is not None else np.nan
+            
+            percentile = raw_meta.get('citation_normalized_percentile')
+            if percentile is None and isinstance(raw_meta.get('raw_metadata'), dict):
+                percentile = raw_meta['raw_metadata'].get('citation_normalized_percentile')
+            percentile = _safe_float(percentile) if percentile is not None else np.nan
+            
+            top10 = raw_meta.get('is_in_top_10_percent')
+            if top10 is None and isinstance(raw_meta.get('raw_metadata'), dict):
+                top10 = raw_meta['raw_metadata'].get('is_in_top_10_percent')
+            is_in_top_10_percent = _safe_float(top10) if top10 is not None else np.nan
+
+            top1 = raw_meta.get('is_in_top_1_percent')
+            if top1 is None and isinstance(raw_meta.get('raw_metadata'), dict):
+                top1 = raw_meta['raw_metadata'].get('is_in_top_1_percent')
+            is_in_top_1_percent = _safe_float(top1) if top1 is not None else np.nan
+        
+        topics = raw_meta.get('OpenAlex_Topics') or raw_meta.get('topics')
+        if topics is None and isinstance(raw_meta.get('raw_metadata'), dict):
+            topics = raw_meta['raw_metadata'].get('OpenAlex_Topics') or raw_meta['raw_metadata'].get('topics')
+        if not isinstance(topics, list): topics = []
+        
+        # Manejo de ODS
+        sdg_id, sdg_name, sdg_conf, sdg_reas = None, None, None, None
+        if row['sdgs']:
+            first_sdg = [s for s in row['sdgs'] if s.get('id') is not None]
+            if first_sdg:
+                sdg_id = first_sdg[0]['id']
+                sdg_name = first_sdg[0]['name']
+                sdg_conf = first_sdg[0]['confidence']
+                sdg_reas = first_sdg[0]['reasoning']
+
+        # Lógica de Citas
+        citations = row.get('citations') or 0
+        if isinstance(citations, (int, float)) and not np.isnan(citations):
+            citations = int(citations)
+        elif isinstance(citations, str) and citations.isdigit():
+            citations = int(citations)
+        else:
+            citations = 0
+        
+        if has_oa_link:
+            oa_cites = raw_meta.get('cited_by_count')
+            if oa_cites is None:
+                counts = raw_meta.get('counts_by_year', [])
+                if isinstance(counts, list) and counts:
+                    oa_cites = sum(y.get('cited_by_count', 0) for y in counts)
+                else:
+                    oa_cites = 0
+            if oa_cites is not None and int(oa_cites) > citations:
+                citations = int(oa_cites)
+
+        return {
+            'entity_name': row['entity_name'],
+            'institutions': ";".join(row['institutions']) if row.get('institutions') else "Sin Institución",
+            'paper_id': row['paper_id'],
+            'year': row['year'],
+            'citations': citations,
+            'Title': title,
+            'Source': source,
+            'DOI': doi_link,
+            'Link': doi_link,
+            'openalex_url': raw_meta.get('openalex_url'),
+            'has_oa_data':  int(has_oa_link),
+            'fwci':                         fwci,
+            'is_oa':                        int(is_oa),
+            'oa_status':                    oa_status,
+            'is_in_top_10_percent':         is_in_top_10_percent,
+            'is_in_top_1_percent':          is_in_top_1_percent,
+            'citation_normalized_percentile': percentile,
+            'counts_by_year':        raw_meta.get('counts_by_year') or [],
+            'referenced_works_count': int(raw_meta.get('referenced_works_count', 0) or 0),
+            'referenced_works':      raw_meta.get('referenced_works') or [],
+            'apc_paid_usd': float(raw_meta.get('apc_paid_usd', 0) or 0),
+            'apc_list_usd': float(raw_meta.get('apc_list_usd', 0) or 0),
+            'author_count':             int(raw_meta.get('author_count', 0) or 0),
+            'countries_distinct_count': int(raw_meta.get('countries_distinct_count', 0) or 0),
+            'institutions_distinct_count': int(raw_meta.get('institutions_distinct_count', 0) or 0),
+            'countries':            raw_meta.get('countries') or [],
+            'coauthor_institutions': raw_meta.get('coauthor_institutions') or [],
+            'license':                   raw_meta.get('license'),
+            'any_repository_has_fulltext': bool(raw_meta.get('any_repository_has_fulltext', False)),
+            'locations_count':           int(raw_meta.get('locations_count', 0) or 0),
+            'oa_url':                    raw_meta.get('oa_url'),
+            'indexed_in':        raw_meta.get('indexed_in') or [],
+            'is_retracted':      bool(raw_meta.get('is_retracted', False)),
+            'language':          raw_meta.get('language', 'en') or 'en',
+            'type':              raw_meta.get('type', 'article'),
+            'journal_is_oa':      bool(raw_meta.get('journal_is_oa', False)),
+            'journal_is_in_doaj': bool(raw_meta.get('journal_is_in_doaj', False)),
+            'journal_is_core':    bool(raw_meta.get('journal_is_core', False)),
+            'issn':               raw_meta.get('issn'),
+            'primary_topic_name':     raw_meta.get('primary_topic_name'),
+            'primary_topic_domain':   raw_meta.get('primary_topic_domain'),
+            'primary_topic_field':    raw_meta.get('primary_topic_field'),
+            'primary_topic_subfield': raw_meta.get('primary_topic_subfield'),
+            'primary_topic_score':    raw_meta.get('primary_topic_score'),
+            'keywords':              _clean_keywords(raw_meta.get('keywords')),
+            'topics': _clean_topics(topics),
+            'ODS_ID': sdg_id,
+            'ODS_Nombre': sdg_name,
+            'ODS_Confianza': sdg_conf,
+            'ODS_Justificacion': sdg_reas,
+            'ror_id': ror_id,
+            'ror_reason': ror_reason
+        }
+
     records = []
-    with graph_store.driver.session() as session:
-        result = session.run(query, **params)
-        for row in result:
-            e_name = row['entity_name']
-            insts = row.get('institutions', [])
+    if entity_filter:
+        print(f"  -> Filtrando por Entidad (Papers): {entity_filter} (Fuente: {source_filter})")
+        query = """
+        MATCH (e:Entity {name: $entity})
+        OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
+        WITH e, collect(DISTINCT CASE WHEN p_inst IS NOT NULL THEN p_inst.name ELSE (CASE WHEN e:Institution THEN e.name ELSE null END) END) AS institutions
+        CALL (e) {
+            WITH e
+            MATCH (e)-[:HAS_PAPER]->(p:Paper{label_filter})
+            RETURN p
+        }
+        WITH e, institutions, p
+        OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
+        RETURN e.name AS entity_name,
+               institutions,
+               p.id AS paper_id,
+               p.doi AS paper_doi,
+               p.year AS year,
+               p.citations AS citations,
+               p.raw_metadata AS raw_metadata,
+               collect({id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs
+        """.replace("{label_filter}", label_filter)
+        
+        with graph_store.driver.session() as session:
+            result = session.run(query, {"entity": entity_filter})
+            for row in result:
+                records.append(_process_row(row))
+    else:
+        print(f"  -> Procesando todas las entidades en bloques (Fuente: {source_filter})")
+        with graph_store.driver.session() as session:
+            all_entities = [r['name'] for r in session.run("MATCH (e:Entity) RETURN e.name AS name")]
+            print(f"     Identificadas {len(all_entities)} entidades.")
             
-            # Promoción de "Mexico" a Institución de primer nivel
-            if not insts and e_name.lower() in ["mexico", "méxico"]:
-                p_inst = "MEXICO"
-            else:
-                p_inst = insts[0] if insts else "SIN INSTITUCIÓN"
-            
-            mapping_key = f"{p_inst} || {e_name}"
-            # Si la entidad se promocionó a Institución, la subdependencia en el mapeo suele ser "SIN INFORMACIÓN"
-            if mapping_key not in ror_map and e_name == p_inst:
-                mapping_key = f"{p_inst} || SIN INFORMACIÓN"
-            
-            ror_info = ror_map.get(mapping_key, {})
-            ror_id = ror_info.get('best_match_ror')
-            ror_reason = ror_info.get('reason')
-
-            raw_meta = {}
-            
-            if row['raw_metadata']:
-                try:
-                    raw_meta = json.loads(row['raw_metadata'])
-                except:
-                    pass
-            
-            # Identificar papers enriquecidos por OpenAlex (resiliente a campos faltantes)
-            has_oa_link = any([
-                bool(raw_meta.get('openalex_url')),
-                bool(raw_meta.get('id')),
-                raw_meta.get('fwci') is not None,
-                bool(raw_meta.get('OpenAlex_Topics'))
-            ])
-            oa_url_raw = raw_meta.get('openalex_url') or raw_meta.get('id')
-            
-            title = raw_meta.get('Title') or raw_meta.get('title') or raw_meta.get('TI') or 'No Title'
-            source = raw_meta.get('Source') or raw_meta.get('source_title') or raw_meta.get('journal_iso_source_abbreviation') or raw_meta.get('publication_name') or raw_meta.get('SO') or 'Unknown'
-            # Lógica de enlace: Priorizar DOI recuperado, evitar placeholders de orcid
-            doi_val = row.get('paper_doi') or row['paper_id']
-            doi_link = None
-            if doi_val and str(doi_val).startswith("10."):
-                doi_link = "https://doi.org/" + str(doi_val).lower()
-            elif doi_val and not any(x in str(doi_val).lower() for x in ["urn:", "orcid-work:"]):
-                doi_link = "https://doi.org/" + str(doi_val)
-            
-            # Open Access Logic
-            is_oa = False
-            oa_status = 'closed'
-            oa_data = raw_meta.get('open_access')
-            if oa_data is None and 'raw_metadata' in raw_meta:
-                oa_data = raw_meta['raw_metadata'].get('open_access')
-
-            if isinstance(oa_data, dict):
-                is_oa = oa_data.get('is_oa', False)
-                oa_status = str(oa_data.get('oa_status', 'closed')).lower()
-            elif 'OA' in raw_meta:
-                 oa_str = str(raw_meta.get('OA', '')).lower()
-                 if 'green' in oa_str: oa_status = 'green'
-                 elif 'gold' in oa_str: oa_status = 'gold'
-                 elif 'hybrid' in oa_str: oa_status = 'hybrid'
-                 elif 'bronze' in oa_str: oa_status = 'bronze'
-                 is_oa = oa_status != 'closed'
-                 
-            is_in_top_10_percent = raw_meta.get('is_in_top_10_percent')
-            if is_in_top_10_percent is None and 'raw_metadata' in raw_meta:
-                is_in_top_10_percent = raw_meta['raw_metadata'].get('is_in_top_10_percent')
-            
-            is_in_top_1_percent = raw_meta.get('is_in_top_1_percent')
-            if is_in_top_1_percent is None and 'raw_metadata' in raw_meta:
-                is_in_top_1_percent = raw_meta['raw_metadata'].get('is_in_top_1_percent')
-
-            # Impact Indicators (Only if enriched)
-            if has_oa_link:
-                fwci = raw_meta.get('fwci')
-                if fwci is None and 'raw_metadata' in raw_meta:
-                    fwci = raw_meta['raw_metadata'].get('fwci')
-                fwci = _safe_float(fwci) if fwci is not None else np.nan
+            batch_size = 50
+            for i in range(0, len(all_entities), batch_size):
+                batch = all_entities[i:i+batch_size]
+                print(f"     → Procesando entidades {i} a {min(i+batch_size, len(all_entities))}...")
+                query = """
+                MATCH (e:Entity) WHERE e.name IN $batch
+                OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
+                WITH e, collect(DISTINCT CASE WHEN p_inst IS NOT NULL THEN p_inst.name ELSE (CASE WHEN e:Institution THEN e.name ELSE null END) END) AS institutions
+                CALL (e) {
+                    WITH e
+                    MATCH (e)-[:HAS_PAPER]->(p:Paper{label_filter})
+                    RETURN p
+                }
+                WITH e, institutions, p
+                OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
+                RETURN e.name AS entity_name,
+                       institutions,
+                       p.id AS paper_id,
+                       p.doi AS paper_doi,
+                       p.year AS year,
+                       p.citations AS citations,
+                       p.raw_metadata AS raw_metadata,
+                       collect({id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs
+                """.replace("{label_filter}", label_filter)
                 
-                percentile = raw_meta.get('citation_normalized_percentile')
-                if percentile is None and 'raw_metadata' in raw_meta:
-                    percentile = raw_meta['raw_metadata'].get('citation_normalized_percentile')
-                percentile = _safe_float(percentile) if percentile is not None else np.nan
-                
-                is_in_top_10_percent = _safe_float(is_in_top_10_percent) if is_in_top_10_percent is not None else np.nan
-                is_in_top_1_percent = _safe_float(is_in_top_1_percent) if is_in_top_1_percent is not None else np.nan
-            else:
-                fwci = np.nan
-                percentile = np.nan
-                is_in_top_10_percent = np.nan
-                is_in_top_1_percent = np.nan
-            
-            topics = raw_meta.get('OpenAlex_Topics') or raw_meta.get('topics')
-            if topics is None and 'raw_metadata' in raw_meta:
-                topics = raw_meta['raw_metadata'].get('OpenAlex_Topics') or raw_meta['raw_metadata'].get('topics')
-            if not isinstance(topics, list): topics = []
-            
-            # Manejo de ODS
-            sdg_id, sdg_name, sdg_conf, sdg_reas = None, None, None, None
-            if row['sdgs']:
-                first_sdg = [s for s in row['sdgs'] if s['id'] is not None]
-                if first_sdg:
-                    sdg_id = first_sdg[0]['id']
-                    sdg_name = first_sdg[0]['name']
-                    sdg_conf = first_sdg[0]['confidence']
-                    sdg_reas = first_sdg[0]['reasoning']
-
-            # Lógica de Citas: Priorizar OpenAlex
-            citations = row.get('citations')
-            if isinstance(citations, (int, float)) and not np.isnan(citations):
-                citations = int(citations)
-            elif isinstance(citations, str) and citations.isdigit():
-                citations = int(citations)
-            else:
-                citations = 0
-            
-            if has_oa_link:
-                oa_cites = raw_meta.get('cited_by_count')
-                if oa_cites is None:
-                    counts = raw_meta.get('counts_by_year', [])
-                    if isinstance(counts, list) and counts:
-                        oa_cites = sum(y.get('cited_by_count', 0) for y in counts)
-                    else:
-                        oa_cites = 0
-                if oa_cites is not None and int(oa_cites) > citations:
-                    citations = int(oa_cites)
-
-            records.append({
-                'entity_name': row['entity_name'],
-                'institutions': ";".join(row['institutions']) if row.get('institutions') else "Sin Institución",
-                'paper_id': row['paper_id'],
-                'year': row['year'],
-                'citations': citations,
-                'Title': title,
-                'Source': source,
-                'DOI': doi_link,
-                'Link': doi_link,
-                'openalex_url': raw_meta.get('openalex_url'),
-                'has_oa_data':  int(has_oa_link),
-                # ── Impacto ────────────────────────────────────────────────────
-                'fwci':                         fwci,
-                'is_oa':                        int(is_oa),
-                'oa_status':                    oa_status,
-                'is_in_top_10_percent':         is_in_top_10_percent,
-                'is_in_top_1_percent':          is_in_top_1_percent,
-                'citation_normalized_percentile': percentile,
-                # ── Trayectoria de citas ────────────────────────────────────────
-                'counts_by_year':        raw_meta.get('counts_by_year') or [],
-                'referenced_works_count': int(raw_meta.get('referenced_works_count', 0) or 0),
-                'referenced_works':      raw_meta.get('referenced_works') or [],
-                # ── APC ─────────────────────────────────────────────────────────
-                'apc_paid_usd': float(raw_meta.get('apc_paid_usd', 0) or 0),
-                'apc_list_usd': float(raw_meta.get('apc_list_usd', 0) or 0),
-                # ── Colaboración ────────────────────────────────────────────────
-                'author_count':             int(raw_meta.get('author_count', 0) or 0),
-                'countries_distinct_count': int(raw_meta.get('countries_distinct_count', 0) or 0),
-                'institutions_distinct_count': int(raw_meta.get('institutions_distinct_count', 0) or 0),
-                'countries':            raw_meta.get('countries') or [],
-                'coauthor_institutions': raw_meta.get('coauthor_institutions') or [],
-                # ── OA avanzado ─────────────────────────────────────────────────
-                'license':                   raw_meta.get('license'),
-                'any_repository_has_fulltext': bool(raw_meta.get('any_repository_has_fulltext', False)),
-                'locations_count':           int(raw_meta.get('locations_count', 0) or 0),
-                'oa_url':                    raw_meta.get('oa_url'),
-                # ── Indexación ─────────────────────────────────────────────────
-                'indexed_in':        raw_meta.get('indexed_in') or [],
-                'is_retracted':      bool(raw_meta.get('is_retracted', False)),
-                'language':          raw_meta.get('language', 'en') or 'en',
-                'type':              raw_meta.get('type', 'article'),
-                # ── Revista ────────────────────────────────────────────────────
-                'journal_is_oa':      bool(raw_meta.get('journal_is_oa', False)),
-                'journal_is_in_doaj': bool(raw_meta.get('journal_is_in_doaj', False)),
-                'journal_is_core':    bool(raw_meta.get('journal_is_core', False)),
-                'issn':               raw_meta.get('issn'),
-                # ── Tópico primario ─────────────────────────────────────────────
-                'primary_topic_name':     raw_meta.get('primary_topic_name'),
-                'primary_topic_domain':   raw_meta.get('primary_topic_domain'),
-                'primary_topic_field':    raw_meta.get('primary_topic_field'),
-                'primary_topic_subfield': raw_meta.get('primary_topic_subfield'),
-                'primary_topic_score':    raw_meta.get('primary_topic_score'),
-                'keywords':              _clean_keywords(raw_meta.get('keywords')),
-                # ── Tópicos y ODS ──────────────────────────────────────────────
-                'topics': _clean_topics(topics),
-                'ODS_ID': sdg_id,
-                'ODS_Nombre': sdg_name,
-                'ODS_Confianza': sdg_conf,
-                'ODS_Justificacion': sdg_reas,
-                # ── ROR Info ──────────────────────────────────────────────────
-                'ror_id': ror_id,
-                'ror_reason': ror_reason
-            })
+                batch_result = session.run(query, {"batch": batch})
+                for row in batch_result:
+                    records.append(_process_row(row))
             
     return pd.DataFrame(records)
 
