@@ -193,9 +193,13 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
         print(f"  -> Filtrando por Académico: {academic_filter} (Fuente: {source_filter})")
         query = """
         MATCH (a:Academic {name: $academic})
-        OPTIONAL MATCH (a)-[:AUTHORED]->(p{label_filter})
         OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
-        OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(i:Institution)
+        OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
+        WITH a, collect(DISTINCT {ent: e.name, inst: CASE WHEN p_inst IS NOT NULL THEN p_inst.name ELSE (CASE WHEN e:Institution THEN e.name ELSE null END) END}) AS affiliations
+        
+        OPTIONAL MATCH (a)-[:AUTHORED]->(p{label_filter})
+        WITH a, affiliations, p
+        
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
         RETURN a.name AS academic_name,
@@ -209,8 +213,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                a.audit_confidence AS audit_confidence,
                a.audit_timestamp AS audit_timestamp,
                a.is_snii AS is_snii,
-               collect(DISTINCT e.name) AS entities,
-               collect(DISTINCT i.name) AS institutions,
+               affiliations,
                p.id AS paper_id,
                p.doi AS paper_doi,
                p.year AS year,
@@ -224,9 +227,13 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
         print(f"  -> Filtrando por Entidad (Investigadores): {entity_filter} (Fuente: {source_filter})")
         query = """
         MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)
-        OPTIONAL MATCH (a)-[:AUTHORED]->(p{label_filter})
         OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
-        WITH e, a, p, CASE WHEN p_inst IS NOT NULL THEN p_inst ELSE (CASE WHEN e:Institution THEN e ELSE null END) END AS i
+        WITH e, a, CASE WHEN p_inst IS NOT NULL THEN p_inst.name ELSE (CASE WHEN e:Institution THEN e.name ELSE null END) END AS inst_name
+        WITH a, collect(DISTINCT {ent: e.name, inst: inst_name}) AS affiliations
+        
+        OPTIONAL MATCH (a)-[:AUTHORED]->(p{label_filter})
+        WITH a, affiliations, p
+        
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
         RETURN a.name AS academic_name,
@@ -240,7 +247,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                a.audit_confidence AS audit_confidence,
                a.audit_timestamp AS audit_timestamp,
                a.is_snii AS is_snii,
-               collect(DISTINCT {ent: e.name, inst: i.name}) AS affiliations,
+               affiliations,
                p.id AS paper_id,
                p.doi AS paper_doi,
                p.year AS year,
@@ -254,10 +261,13 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
         print(f"  -> Procesando todos los académicos (Fuente: {source_filter})")
         query = """
         MATCH (a:Academic)
-        OPTIONAL MATCH (a)-[:AUTHORED]->(p{label_filter})
         OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
         OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
-        WITH a, p, e, CASE WHEN p_inst IS NOT NULL THEN p_inst ELSE (CASE WHEN e:Institution THEN e ELSE null END) END AS i
+        WITH a, collect(DISTINCT {ent: e.name, inst: CASE WHEN p_inst IS NOT NULL THEN p_inst.name ELSE (CASE WHEN e:Institution THEN e.name ELSE null END) END}) AS affiliations
+        
+        OPTIONAL MATCH (a)-[:AUTHORED]->(p{label_filter})
+        WITH a, affiliations, p
+        
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
         RETURN a.name AS academic_name,
@@ -269,7 +279,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                a.audit_confidence AS audit_confidence,
                a.audit_timestamp AS audit_timestamp,
                a.is_snii AS is_snii,
-               collect(DISTINCT {ent: e.name, inst: i.name}) AS affiliations,
+               affiliations,
                p.id AS paper_id,
                p.doi AS paper_doi,
                p.year AS year,
@@ -487,17 +497,21 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
         query = """
         MATCH (e:Entity {name: $entity})
         OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
-        WITH e, CASE WHEN p_inst IS NOT NULL THEN p_inst ELSE (CASE WHEN e:Institution THEN e ELSE null END) END AS i
+        WITH e, collect(DISTINCT CASE WHEN p_inst IS NOT NULL THEN p_inst.name ELSE (CASE WHEN e:Institution THEN e.name ELSE null END) END) AS institutions
         
-        // Buscamos papers directos Y papers de académicos afiliados
-        OPTIONAL MATCH (e)-[:HAS_PAPER]->(p1:Paper{label_filter})
-        OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p2:Paper{label_filter})
-        WITH e, i, [p in collect(DISTINCT p1) + collect(DISTINCT p2) WHERE p IS NOT NULL] AS all_papers
-        UNWIND all_papers AS p
-        
+        CALL {
+            WITH e
+            MATCH (e)-[:HAS_PAPER]->(p:Paper{label_filter})
+            RETURN p
+            UNION
+            WITH e
+            MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper{label_filter})
+            RETURN p
+        }
+        WITH e, institutions, p
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         RETURN e.name AS entity_name,
-               collect(DISTINCT i.name) AS institutions,
+               institutions,
                p.id AS paper_id,
                p.doi AS paper_doi,
                p.year AS year,
@@ -511,17 +525,21 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
         query = """
         MATCH (e:Entity)
         OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
-        WITH e, CASE WHEN p_inst IS NOT NULL THEN p_inst ELSE (CASE WHEN e:Institution THEN e ELSE null END) END AS i
+        WITH e, collect(DISTINCT CASE WHEN p_inst IS NOT NULL THEN p_inst.name ELSE (CASE WHEN e:Institution THEN e.name ELSE null END) END) AS institutions
         
-        // Buscamos papers directos Y papers de académicos afiliados
-        OPTIONAL MATCH (e)-[:HAS_PAPER]->(p1:Paper{label_filter})
-        OPTIONAL MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p2:Paper{label_filter})
-        WITH e, i, [p in (collect(DISTINCT p1) + collect(DISTINCT p2)) WHERE p IS NOT NULL] AS all_papers
-        UNWIND all_papers AS p
-        
+        CALL {
+            WITH e
+            MATCH (e)-[:HAS_PAPER]->(p:Paper{label_filter})
+            RETURN p
+            UNION
+            WITH e
+            MATCH (e)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper{label_filter})
+            RETURN p
+        }
+        WITH e, institutions, p
         OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         RETURN e.name AS entity_name,
-               collect(DISTINCT i.name) AS institutions,
+               institutions,
                p.id AS paper_id,
                p.doi AS paper_doi,
                p.year AS year,
@@ -1129,7 +1147,15 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
         return
         
     df_raw = pd.concat(df_raw_list, ignore_index=True)
-    print(f"✅ Total {len(df_raw)} publicaciones cargadas.")
+    
+    # DEDUPLICACION CRITICA: Asegurar que no existan duplicados por (investigador, paper)
+    # Esto previene inflar métricas si el mismo paper viene de múltiples rutas
+    original_count = len(df_raw)
+    df_raw = df_raw.drop_duplicates(subset=['academic_name', 'paper_id'], keep='first')
+    if len(df_raw) < original_count:
+        print(f"  ⚠️  Se eliminaron {original_count - len(df_raw)} registros duplicados de académicos.")
+        
+    print(f"✅ Total {len(df_raw)} publicaciones únicas cargadas.")
     
     # Construir mapa de academicos a entidades
     academics_map = {}
@@ -1293,7 +1319,14 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
     if entity_filter or not academic_filter:
         print(f"⏳ Extrayendo y agregando métricas de DOIs de Entidades (Fuente: {source_filter})...")
         df_inst_raw = extract_entity_papers(entity_filter=entity_filter, source_filter=source_filter)
+    
     if not df_inst_raw.empty:
+        # DEDUPLICACION CRITICA: Asegurar que no existan duplicados por (entidad, paper)
+        original_inst_count = len(df_inst_raw)
+        df_inst_raw = df_inst_raw.drop_duplicates(subset=['entity_name', 'paper_id'], keep='first')
+        if len(df_inst_raw) < original_inst_count:
+            print(f"  ⚠️  Se eliminaron {original_inst_count - len(df_inst_raw)} registros duplicados institucionales.")
+
         df_inst_raw['year'] = pd.to_numeric(df_inst_raw['year'], errors='coerce')
         df_inst_raw = df_inst_raw.dropna(subset=['year'])
         # Filtrar años inválidos
