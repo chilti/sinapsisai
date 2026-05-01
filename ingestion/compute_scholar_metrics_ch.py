@@ -44,7 +44,6 @@ _clean_keywords             = _orig._clean_keywords
 _clean_topics               = _orig._clean_topics
 compute_citation_velocity   = _orig.compute_citation_velocity
 compute_interdisciplinarity = _orig.compute_interdisciplinarity
-aggregate_metrics           = _orig.aggregate_metrics
 CURRENT_YEAR                = _orig.CURRENT_YEAR
 
 BASE_PATH = Path(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -56,6 +55,61 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 def normalize_name(text):
     if not isinstance(text, str): return ""
     return unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('utf-8').upper().strip()
+
+
+def _ensure_ch_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Garantiza que el DataFrame tenga todas las columnas que aggregate_metrics
+    del script original accede incondicionalmente (tras el rename de agg_funcs).
+    Si una columna no existe se agrega con valor neutro.
+    """
+    # Columnas numéricas — NaN para que los promedios sean correctos
+    for col in ['fwci', 'citation_normalized_percentile',
+                'is_in_top_10_percent', 'is_in_top_1_percent',
+                'citations']:
+        if col not in df.columns:
+            df[col] = np.nan
+
+    # Columnas de OA — 0/closed como fallback conservador
+    if 'is_oa' not in df.columns:
+        df['is_oa'] = 0
+    if 'oa_status' not in df.columns:
+        df['oa_status'] = 'closed'
+
+    # Columnas de listas — lista vacía por fila
+    for col in ['counts_by_year', 'indexed_in']:
+        if col not in df.columns:
+            df[col] = [[] for _ in range(len(df))]
+
+    # Columnas booleanas / enteras
+    for col in ['is_retracted', 'journal_is_in_doaj', 'journal_is_core',
+                'any_repository_has_fulltext']:
+        if col not in df.columns:
+            df[col] = 0
+
+    # Columnas de texto
+    if 'language' not in df.columns:
+        df['language'] = 'en'
+    if 'license' not in df.columns:
+        df['license'] = None
+    if 'has_oa_data' not in df.columns:
+        df['has_oa_data'] = 0
+    if 'openalex_url' not in df.columns:
+        df['openalex_url'] = None
+
+    # Columnas de costos APC
+    for col in ['apc_paid_usd', 'apc_list_usd']:
+        if col not in df.columns:
+            df[col] = 0.0
+
+    return df
+
+
+def aggregate_metrics(df_papers: pd.DataFrame, group_cols: list) -> pd.DataFrame:
+    """Wrapper de aggregate_metrics del script original que garantiza
+    la existencia de todas las columnas esperadas antes de delegar."""
+    df_papers = _ensure_ch_columns(df_papers)
+    return _orig.aggregate_metrics(df_papers, group_cols)
 
 # --- Lógica de ClickHouse ---
 
