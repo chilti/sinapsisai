@@ -172,6 +172,15 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
         df_meta = fetch_metadata_from_clickhouse(batch_ids)
         df_chunk = neo_df[neo_df['paper_id'].isin(batch_ids)].merge(df_meta, on='paper_id', how='left')
 
+        # Garantizar columnas requeridas por aggregate_metrics tras el LEFT join
+        # (ausentes cuando ningún paper del batch tiene match en CH)
+        if 'has_oa_data' not in df_chunk.columns:
+            df_chunk['has_oa_data'] = 0
+        else:
+            df_chunk['has_oa_data'] = df_chunk['has_oa_data'].fillna(0).astype(int)
+        if 'openalex_url' not in df_chunk.columns:
+            df_chunk['openalex_url'] = None
+
         # Mapeos finales
         df_chunk['entities']      = df_chunk['affiliations'].apply(
             lambda x: ";".join(list(set([a['ent'] for a in x if a['ent']]))) if isinstance(x, list) else "Sin Entidad"
@@ -179,7 +188,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
         df_chunk['institutions']  = df_chunk['affiliations'].apply(
             lambda x: ";".join(list(set([a['inst'] for a in x if a['inst']]))) if isinstance(x, list) else "Sin Institución"
         )
-        # 'topics' ya viene correctamente construida desde fetch_metadata_from_clickhouse;
+        # 'topics' ya viene de fetch_metadata_from_clickhouse;
         # si falta (paper sin match en CH), inicializar como lista vacía.
         if 'topics' not in df_chunk.columns:
             df_chunk['topics'] = [[] for _ in range(len(df_chunk))]
@@ -205,6 +214,15 @@ def extract_entity_papers(entity_filter=None, source_filter='all'):
     all_paper_ids = neo_df['paper_id'].dropna().unique().tolist()
     df_meta = fetch_metadata_from_clickhouse(all_paper_ids)
     df_final = neo_df.merge(df_meta, on='paper_id', how='left')
+
+    # Garantizar columnas requeridas por aggregate_metrics tras el LEFT join
+    if 'has_oa_data' not in df_final.columns:
+        df_final['has_oa_data'] = 0
+    else:
+        df_final['has_oa_data'] = df_final['has_oa_data'].fillna(0).astype(int)
+    if 'openalex_url' not in df_final.columns:
+        df_final['openalex_url'] = None
+
     df_final['institutions'] = df_final['institutions'].apply(
         lambda x: ";".join(x) if isinstance(x, list) else "Sin Institución"
     )
