@@ -389,9 +389,11 @@ def save_disaggregated_parquets(df, base_name, group_level='academic',
                     updated_files.add(str(final_path.absolute()))
 
 def process_and_save(entity_filter=None, academic_filter=None, source_filter='all'):
+    from collections import Counter
     print(f"🚀 Iniciando proceso optimizado con ClickHouse (Fuente: {source_filter})...")
     updated_files = set()
-    
+
+    # ── 1. Extracción de papers por académico ──────────────────────────────────
     df_raw_list = []
     for chunk_df in extract_academic_papers(academic_filter, entity_filter, source_filter):
         if not chunk_df.empty:
@@ -402,24 +404,134 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
     df_raw = pd.concat(df_raw_list, ignore_index=True).drop_duplicates(subset=['academic_name', 'paper_id'])
     print(f"✅ {len(df_raw)} papers cargados.")
 
-    # Guardar parquets básicos (usando CACHE_DIR de este script, no el original)
-    _save_ch = lambda df, name, lvl: save_disaggregated_parquets(
-        df, name, lvl, updated_files=updated_files
-    )
+    # academics_map: {nombre -> [(ent, inst), ...]}
+    academics_map = {}
+    for _, row in df_raw[['academic_name', 'affiliations']].drop_duplicates('academic_name').iterrows():
+        aff = row['affiliations']
+        pairs = []
+        if isinstance(aff, list):
+            for a in aff:
+                if isinstance(a, dict) and a.get('ent'):
+                    pairs.append((a.get('ent'), a.get('inst') or 'SIN INSTITUCIÓN'))
+        academics_map[row['academic_name']] = pairs or [('Sin Entidad', 'SIN INSTITUCIÓN')]
 
-    _save_ch(df_raw, 'papers_profesor.parquet', 'academic')
+    def _save(df, name, lvl):
+        save_disaggregated_parquets(df, name, lvl,
+                                    academics_map=academics_map if lvl == 'academic' else None,
+                                    updated_files=updated_files)
 
-    df_inv_tot = aggregate_metrics(df_raw, ['academic_name'])
-    _save_ch(df_inv_tot, 'investigador_total.parquet', 'academic')
+    # ── 2. Papers raw por académico ────────────────────────────────────────────
+    _save(df_raw, 'papers_profesor.parquet', 'academic')
 
-    # Entidad
-    df_inst_raw = extract_entity_papers(entity_filter, source_filter)
-    if not df_inst_raw.empty:
-        _save_ch(df_inst_raw, 'papers_institucion.parquet', 'entity')
-        df_inst_tot = aggregate_metrics(df_inst_raw, ['entity_name'])
-        _save_ch(df_inst_tot, 'institucion_total.parquet', 'entity')
+    # ── 3. Tópicos ────────────────────────────────────────────────────────────
+    if 'topics' in df_raw.columns:
+        topic_rows, topic_evo_rows = [], []
+        for _, r in df_raw.iterrows():
+            ac_name = r['academic_name']
+            yr = r.get('year')
+            for t in (r['topics'] if isinstance(r['topics'], list) else []):
+                if not isinstance(t, dict):
+                    continue
+                entry = {
+                    'academic_name': ac_name,
+                    'domain':   t.get('domain') or 'Sin Dominio',
+                    'field':    t.get('field')  or 'Sin Campo',
+                    'subfield': t.get('subfield') or 'Sin Subcampo',
+                    'topic':    t.get('topic')   or 'Sin Tópico',
+                }
+                topic_rows.append(entry)
+                if yr and not pd.isna(yr):
+                    topic_evo_rows.append({**entry, 'year': int(yr)})
 
-    print("✅ Proceso completado exitosamente.")
+        if topic_rows:
+            df_topics = pd.DataFrame(topic_rows)
+            df_topics_agg = df_topics.groupby(
+                ['academic_name', 'domain', 'field', 'subfield', 'topic']
+            ).size().reset_index(name='value')
+            _save(df_topics_agg, 'topics_investigador.parquet', 'academic')
+
+            if topic_evo_rows:
+                df_evo = pd.DataFrame(topic_evo_rows)
+                df_evo_agg = df_evo.groupby(
+                    ['academic_name', 'year', 'domain', 'field', 'subfield', 'topic']
+                ).size().reset_index(name='value')
+                _save(df_evo_agg, 'thematic_evolution_investigador.parquet', 'academic')
+        else:
+            empty_t  = pd.DataFrame(columns=['academic_name', 'domain', 'field', 'subfield', 'topic', 'value'])
+            empty_te = pd.DataFrame(columns=['academic_name', 'year', 'domain', 'field', 'subfield', 'topic', 'value'])
+            _save(empty_t,  'topics_investigador.parquet', 'academic')
+            _save(empty_te, 'thematic_evolution_investigador.parquet', 'academic')
+
+    # ── 4. Métricas anuales por investigador ──────────────────────────────────
+    print("⏳ Agregando métricas anuales por investigador...")
+    if 'year' in df_raw.columns:
+        df_raw['year'] = pd.to_numeric(df_raw['year'], errors='coerce')
+        df_raw_yr = df_raw.dropna(subset=['year'])
+        df_inv_annual = aggregate_metrics(df_raw_yr, ['academic_name', 'entities', 'year'])
+        _save(df_inv_annual, 'investigador_annual.parquet', 'academic')
+
+    # ── 5. Métricas totales por investigador + interdisciplinariedad ───────────
+    print("⏳ Agregando métricas totales por investigador...")
+    df_inv_tot = aggregate_metrics(df_raw, ['academic_name', 'entities'])
+
+    if 'topics' in df_raw.columns:
+        inter_rows = []
+        for ac_name, grp in df_raw.groupby('academic_name'):
+            idx = compute_interdisciplinarity(grp['topics'])
+            idx['academic_name'] = ac_name
+            inter_rows.append(idx)
+        if inter_rows:
+            df_inter = pd.DataFrame(inter_rows)
+            df_inv_tot = df_inv_tot.merge(df_inter, on='academic_name', how='left')
+
+    _save(df_inv_tot, 'investigador_total.parquet', 'academic')
+
+    # ── 6. Keywords por investigador ──────────────────────────────────────────
+    if 'keywords' in df_raw.columns:
+        print("⏳ Calculando keywords por investigador...")
+        kw_rows = []
+        for ac_name, grp in df_raw.groupby('academic_name'):
+            cnt = Counter()
+            for kws in grp['keywords']:
+                if isinstance(kws, list):
+                    cnt.update([k for k in kws if k])
+            for kw, freq in cnt.most_common(1000):
+                kw_rows.append({'academic_name': ac_name, 'keyword': kw, 'freq': freq})
+        if kw_rows:
+            _save(pd.DataFrame(kw_rows), 'keywords_investigador.parquet', 'academic')
+
+    # ── 7. Métricas recientes (2021-2025) ─────────────────────────────────────
+    if 'year' in df_raw.columns:
+        df_raw_recent = df_raw[df_raw['year'].between(2021, CURRENT_YEAR)]
+        if not df_raw_recent.empty:
+            df_inv_recent = aggregate_metrics(df_raw_recent, ['academic_name', 'entities'])
+            if 'topics' in df_raw_recent.columns:
+                inter_r = []
+                for ac_name, grp in df_raw_recent.groupby('academic_name'):
+                    idx = compute_interdisciplinarity(grp['topics'])
+                    idx['academic_name'] = ac_name
+                    inter_r.append(idx)
+                if inter_r:
+                    df_inter_r = pd.DataFrame(inter_r)
+                    df_inv_recent = df_inv_recent.merge(
+                        df_inter_r[['academic_name', 'gini_topics']], on='academic_name', how='left'
+                    )
+            _save(df_inv_recent, 'investigador_recent.parquet', 'academic')
+
+    # ── 8. Métricas a nivel entidad ───────────────────────────────────────────
+    if entity_filter or not academic_filter:
+        print("⏳ Extrayendo métricas de entidades...")
+        df_inst_raw = extract_entity_papers(entity_filter, source_filter)
+        if not df_inst_raw.empty:
+            df_inst_raw = df_inst_raw.drop_duplicates(subset=['entity_name', 'paper_id'])
+            if 'year' in df_inst_raw.columns:
+                df_inst_raw['year'] = pd.to_numeric(df_inst_raw['year'], errors='coerce')
+            _save(df_inst_raw, 'papers_institucion.parquet', 'entity')
+            df_inst_tot = aggregate_metrics(df_inst_raw, ['entity_name'])
+            _save(df_inst_tot, 'institucion_total.parquet', 'entity')
+
+    print(f"✅ Proceso completado. {len(updated_files)} archivos actualizados.")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
