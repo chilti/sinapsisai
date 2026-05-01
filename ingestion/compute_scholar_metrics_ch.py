@@ -140,13 +140,48 @@ def _build_topics_from_row(row):
 
 
 def fetch_metadata_from_clickhouse(paper_ids):
-    """Recupera metadatos de works_flat en ClickHouse y los mapea a las columnas
-    esperadas por aggregate_metrics / save_disaggregated_parquets."""
-    if not paper_ids:
-        return pd.DataFrame()
-    clean_ids = [str(pid).split('/')[-1] for pid in paper_ids if pid]
+    """Recupera metadatos de works_flat en ClickHouse.
 
-    query = """
+    Neo4j puede guardar como paper_id tanto DOIs ('10.xxx') como OpenAlex IDs ('Wxxxxxxx').
+    Se clasifican y se consultan las dos columnas correspondientes en works_flat.
+    """
+    import re
+    if not paper_ids:
+        return pd.DataFrame(columns=['paper_id'])
+
+    _oa_re = re.compile(r'^W\d+$', re.IGNORECASE)
+    oa_ids, dois = [], []
+    key_to_orig: dict = {}   # clave normalizada -> paper_id original de Neo4j
+
+    for pid in paper_ids:
+        if not pid:
+            continue
+        short = str(pid).rstrip('/').split('/')[-1]
+        if _oa_re.match(short):
+            k = short.upper()
+            oa_ids.append(k)
+            key_to_orig[k] = pid
+        else:
+            doi_clean = (str(pid)
+                         .replace('https://doi.org/', '')
+                         .replace('http://doi.org/', '')
+                         .lower().strip('/'))
+            if doi_clean.startswith('10.'):
+                dois.append(doi_clean)
+                key_to_orig[doi_clean] = pid
+
+    if not oa_ids and not dois:
+        return pd.DataFrame(columns=['paper_id'])
+
+    conditions, params = [], {}
+    if oa_ids:
+        conditions.append('id IN %(oa_ids)s')
+        params['oa_ids'] = oa_ids
+    if dois:
+        conditions.append('doi IN %(dois)s')
+        params['dois'] = dois
+
+    query = f"""
     SELECT
         id, doi, title, publication_year AS year, cited_by_count AS citations,
         fwci, percentile AS citation_normalized_percentile,
@@ -158,35 +193,53 @@ def fetch_metadata_from_clickhouse(paper_ids):
         referenced_works_count, referenced_works,
         is_retracted, language, type
     FROM works_flat
-    WHERE id IN %(ids)s
+    WHERE {' OR '.join(conditions)}
     """
 
-    df = ch_client.query_df(query, parameters={'ids': clean_ids})
+    df = ch_client.query_df(query, parameters=params)
     if df.empty:
-        # Devolver DF vacío con paper_id definido para que el LEFT merge no falle
         return pd.DataFrame(columns=['paper_id'])
 
-    # --- Columna 'topics' compatible con compute_interdisciplinarity ---
+    # --- Resolver paper_id al valor original de Neo4j ---
+    df['doi_norm'] = df['doi'].apply(
+        lambda d: str(d).replace('https://doi.org/', '').replace('http://doi.org/', '')
+                        .lower().strip('/') if d else None
+    )
+
+    def _resolve_pid(row):
+        oa = str(row['id']).upper() if row['id'] else None
+        if oa and oa in key_to_orig:
+            return key_to_orig[oa]
+        doi = row['doi_norm']
+        if doi and doi in key_to_orig:
+            return key_to_orig[doi]
+        return doi or row['id']
+
+    df['paper_id'] = df.apply(_resolve_pid, axis=1)
+    df = df.drop_duplicates(subset=['paper_id'])
+
+    # --- Columna topics ---
     df['topics'] = df.apply(_build_topics_from_row, axis=1)
 
     # --- Alias de conveniencia ---
-    df['paper_id']  = df['id']
-    df['Title']     = df['title']
-    df['Source']    = df['source_id']
+    df['Title']       = df['title']
+    df['Source']      = df['source_id']
     df['has_oa_data'] = 1
-    df['ODS']       = df['sdgs']
-    df['countries'] = df['country_codes']
-
-    # DOI link
-    df['DOI'] = df['doi'].apply(
+    df['ODS']         = df['sdgs']
+    df['countries']   = df['country_codes']
+    df['DOI']         = df['doi'].apply(
         lambda d: f"https://doi.org/{d}" if d and str(d).startswith('10.') else d
     )
+    df['Link']        = df['DOI']
+    df['openalex_url'] = df['id'].apply(
+        lambda x: f"https://openalex.org/{x}" if x else None
+    )
 
-    # Columnas esperadas por aggregate_metrics que no vienen directas de CH
+    # Defaults seguros para columnas opcionales
     for col in ['apc_paid_usd', 'apc_list_usd']:
         if col not in df.columns:
             df[col] = 0.0
-    for col in ['counts_by_year', 'indexed_in', 'referenced_works']:
+    for col in ['counts_by_year', 'indexed_in']:
         if col not in df.columns:
             df[col] = [[] for _ in range(len(df))]
     for col in ['journal_is_in_doaj', 'journal_is_core', 'any_repository_has_fulltext']:
@@ -194,10 +247,9 @@ def fetch_metadata_from_clickhouse(paper_ids):
             df[col] = False
     if 'locations_count' not in df.columns:
         df['locations_count'] = 0
-    if 'openalex_url' not in df.columns:
-        df['openalex_url'] = df['id'].apply(lambda x: f"https://openalex.org/{x}" if x else None)
 
     return df
+
 
 def extract_academic_papers(academic_filter=None, entity_filter=None, source_filter='all'):
     graph_store = Neo4jGraphStore()
