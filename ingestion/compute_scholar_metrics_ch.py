@@ -173,33 +173,53 @@ def fetch_metadata_from_clickhouse(paper_ids):
     if not oa_ids and not dois:
         return pd.DataFrame(columns=['paper_id'])
 
-    conditions, params = [], {}
-    if oa_ids:
-        conditions.append('id IN %(oa_ids)s')
-        params['oa_ids'] = oa_ids
-    if dois:
-        conditions.append('doi IN %(dois)s')
-        # works_flat almacena DOIs como URL completa: 'https://doi.org/10.xxxx'
-        params['dois'] = [f'https://doi.org/{d}' for d in dois]
+    # Sub-batching interno: ClickHouse limita el tamaño de query (~256KB).
+    # Los oa_ids y dois se procesan en sub-lotes de 500 para no superar ese límite.
+    # Con DOIs como URLs completas cada lote de 50k supera ese límite.
+    # Procesamos en sub-lotes de 500 y concatenamos.
+    CH_SUB = 500
+    sub_dfs = []
 
-    query = f"""
-    SELECT
-        id, doi, title, publication_year AS year, cited_by_count AS citations,
-        fwci, percentile AS citation_normalized_percentile,
-        is_top_10 AS is_in_top_10_percent, is_top_1 AS is_in_top_1_percent,
-        source_id, source_type, is_oa, oa_status,
-        topic_id, subfield_name, field_name, domain_name,
-        all_topics, keywords, sdgs,
-        country_codes,
-        referenced_works_count, referenced_works,
-        is_retracted, language, type
-    FROM works_flat
-    WHERE {' OR '.join(conditions)}
-    """
+    # Crear índices de sub-lotes combinando oa_ids y dois en pares
+    for i in range(0, max(len(oa_ids), len(dois), 1), CH_SUB):
+        sub_oa  = oa_ids[i:i+CH_SUB]
+        sub_doi = dois[i:i+CH_SUB]
 
-    df = ch_client.query_df(query, parameters=params)
-    if df.empty:
+        sub_conds, sub_params = [], {}
+        if sub_oa:
+            sub_conds.append('id IN %(oa_ids)s')
+            sub_params['oa_ids'] = sub_oa
+        if sub_doi:
+            sub_conds.append('doi IN %(dois)s')
+            sub_params['dois'] = [f'https://doi.org/{d}' for d in sub_doi]
+        if not sub_conds:
+            continue
+
+        sub_query = f"""
+        SELECT
+            id, doi, title, publication_year AS year, cited_by_count AS citations,
+            fwci, percentile AS citation_normalized_percentile,
+            is_top_10 AS is_in_top_10_percent, is_top_1 AS is_in_top_1_percent,
+            source_id, source_type, is_oa, oa_status,
+            topic_id, subfield_name, field_name, domain_name,
+            all_topics, keywords, sdgs,
+            country_codes,
+            referenced_works_count, referenced_works,
+            is_retracted, language, type
+        FROM works_flat
+        WHERE {' OR '.join(sub_conds)}
+        """
+        try:
+            chunk = ch_client.query_df(sub_query, parameters=sub_params)
+            if not chunk.empty:
+                sub_dfs.append(chunk)
+        except Exception as e:
+            print(f"  ⚠️ Sub-lote CH falló: {e}")
+
+    if not sub_dfs:
         return pd.DataFrame(columns=['paper_id'])
+    df = pd.concat(sub_dfs, ignore_index=True).drop_duplicates(subset=['id'])
+
 
     # --- Resolver paper_id al valor original de Neo4j ---
     df['doi_norm'] = df['doi'].apply(
