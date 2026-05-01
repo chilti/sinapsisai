@@ -89,40 +89,50 @@ def _ensure_table(reset: bool = False):
     print(f"  ✅ Tabla {TABLE} lista.")
 
 
-def _extract_from_neo4j() -> pd.DataFrame:
-    """
-    Consulta Neo4j para obtener todas las relaciones Academic → Paper
-    con contexto de entidad e institución.
-    Retorna un DataFrame con las columnas de paper_author_map.
-    """
-    graph_store = Neo4jGraphStore()
-
-    query = """
-    MATCH (a:Academic)-[:AUTHORED]->(p:Paper)
-    OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
-    OPTIONAL MATCH (e)-[:PART_OF]->(inst:Institution)
-    RETURN
-        p.id                AS paper_id,
-        a.name              AS academic_name,
-        a.id                AS academic_id,
-        coalesce(a.orcid, '')           AS orcid,
-        coalesce(a.openalex_id, '')     AS openalex_id,
-        coalesce(e.name, 'Sin Entidad') AS entity,
-        coalesce(
-            inst.name,
-            CASE WHEN e:Institution THEN e.name ELSE 'Sin Institución' END
-        )                               AS institution,
-        coalesce(a.is_snii, false)      AS is_snii,
-        coalesce(a.siia_url, '')        AS siia_url,
-        coalesce(a.audit_verdict, '')   AS audit_verdict
-    """
-
-    print("  📡 Consultando Neo4j...")
+def _count_neo4j_relations(graph_store) -> int:
+    """Cuenta el total de relaciones Academic→Paper en Neo4j."""
     with graph_store.driver.session() as session:
-        records = [dict(r) for r in session.run(query)]
+        result = session.run("MATCH (a:Academic)-[:AUTHORED]->(p:Paper) RETURN count(*) AS n")
+        return result.single()["n"]
 
-    print(f"  ✅ {len(records):,} relaciones recuperadas de Neo4j.")
-    return pd.DataFrame(records)
+
+_NEO4J_QUERY = """
+MATCH (a:Academic)-[:AUTHORED]->(p:Paper)
+OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
+OPTIONAL MATCH (e)-[:PART_OF]->(inst:Institution)
+RETURN
+    p.id                AS paper_id,
+    a.name              AS academic_name,
+    a.id                AS academic_id,
+    coalesce(a.orcid, '')           AS orcid,
+    coalesce(a.openalex_id, '')     AS openalex_id,
+    coalesce(e.name, 'Sin Entidad') AS entity,
+    coalesce(
+        inst.name,
+        CASE WHEN e:Institution THEN e.name ELSE 'Sin Institución' END
+    )                               AS institution,
+    coalesce(a.is_snii, false)      AS is_snii,
+    coalesce(a.siia_url, '')        AS siia_url,
+    coalesce(a.audit_verdict, '')   AS audit_verdict
+ORDER BY a.name
+SKIP $skip LIMIT $limit
+"""
+
+
+def _stream_neo4j_pages(graph_store):
+    """
+    Genera páginas de BATCH_NEO filas desde Neo4j usando SKIP/LIMIT.
+    Mantiene el uso de RAM acotado a un lote a la vez.
+    """
+    skip = 0
+    while True:
+        with graph_store.driver.session() as session:
+            records = [dict(r) for r in session.run(
+                _NEO4J_QUERY, skip=skip, limit=BATCH_NEO)]
+        if not records:
+            break
+        yield pd.DataFrame(records)
+        skip += BATCH_NEO
 
 
 def _normalize_paper_id(pid: str) -> str:
@@ -187,51 +197,55 @@ def _run_final_optimize():
     print(f"  ✅ Filas finales en {TABLE}: {row['n']:,}")
 
 
-def materialize(reset: bool = False):
-    print("=" * 60)
-    print(" MATERIALIZANDO paper_author_map")
-    print("=" * 60)
-
-    # 1. Preparar tabla en CH
-    print("\n[1/4] Preparando tabla ClickHouse...")
-    _ensure_table(reset)
-
-    # 2. Extraer de Neo4j
-    print("\n[2/4] Extrayendo relaciones de Neo4j...")
-    df = _extract_from_neo4j()
-
+def _transform_page(df: pd.DataFrame) -> pd.DataFrame:
+    """Limpia y normaliza una página de filas de Neo4j."""
+    df = df.dropna(subset=['paper_id', 'academic_name']).copy()
+    df['paper_id'] = df['paper_id'].apply(_normalize_paper_id)
+    df = df[df['paper_id'] != '']   # descartar UUIDs generados cuando no había DOI
     if df.empty:
-        print("  ❌ No se encontraron relaciones Academic→Paper en Neo4j.")
-        return
-
-    # 3. Transformar
-    print("\n[3/4] Transformando datos...")
-    df = df.dropna(subset=['paper_id', 'academic_name'])
-    df['paper_id']    = df['paper_id'].apply(_normalize_paper_id)
-    df = df[df['paper_id'] != '']   # eliminar IDs vacíos/UUIDs sin DOI
-
-    df['is_snii']     = df['is_snii'].apply(lambda x: 1 if x else 0).astype('uint8')
-    df['source']      = df.apply(_determine_source, axis=1)
-
-    # Columnas finales (coinciden con el DDL)
+        return df
+    df['is_snii'] = df['is_snii'].apply(lambda x: 1 if x else 0)
+    df['source']  = df.apply(_determine_source, axis=1)
     df = df[[
         'paper_id', 'academic_name', 'academic_id',
         'orcid', 'openalex_id',
         'entity', 'institution',
         'is_snii', 'source', 'audit_verdict'
     ]].fillna('').astype(str)
-
     df['is_snii'] = df['is_snii'].astype('uint8')
+    return df
 
-    print(f"  ✅ {len(df):,} filas limpias | "
-          f"{df['institution'].nunique()} instituciones | "
-          f"{df['entity'].nunique()} entidades | "
-          f"{df['academic_name'].nunique():,} académicos")
 
-    # 4. Insertar en CH
-    print("\n[4/4] Insertando en ClickHouse...")
-    _insert_to_clickhouse(df)
-    _run_final_optimize()
+def materialize(reset: bool = False):
+    print("=" * 60)
+    print(" MATERIALIZANDO paper_author_map")
+    print("=" * 60)
+
+    # 1. Preparar tabla en CH
+    print("\n[1/3] Preparando tabla ClickHouse...")
+    _ensure_table(reset)
+
+    # 2. Streaming paginado Neo4j → transform → insert CH
+    graph_store = Neo4jGraphStore()
+    total_neo = _count_neo4j_relations(graph_store)
+    print(f"\n[2/3] Streaming {total_neo:,} relaciones de Neo4j "
+          f"(páginas de {BATCH_NEO:,})...")
+
+    inserted    = 0
+    page_num    = 0
+    total_pages = -(-total_neo // BATCH_NEO)  # ceiling division
+
+    for page_df in _stream_neo4j_pages(graph_store):
+        page_num += 1
+        clean = _transform_page(page_df)
+        if not clean.empty:
+            _insert_to_clickhouse(clean)
+            inserted += len(clean)
+        print(f"  Página {page_num}/{total_pages} — {inserted:,} filas insertadas")
+
+    if inserted == 0:
+        print("  ❌ No se insertaron filas. Verifica la conexión Neo4j.")
+        return
 
     # Resumen
     print("\n" + "=" * 60)
