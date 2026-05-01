@@ -134,28 +134,40 @@ def aggregate_metrics(df_papers: pd.DataFrame, group_cols: list) -> pd.DataFrame
 
 def _build_topics_from_row(row):
     """
-    Construye la lista de topics en formato dict compatible con compute_interdisciplinarity.
-    Prioriza all_topics (array de CH) sobre los campos del topic primario.
+    Construye la lista de topics en formato dict compatible con compute_interdisciplinarity
+    y el sunburst del dashboard (path=['domain','field','subfield','topic']).
+
+    - Si el JOIN con la tabla `topics` de CH funcionó, `primary_topic_name` tiene el
+      display_name real del tópico (máxima granularidad).
+    - Si no, cae en `subfield_name` como aproximación.
     """
-    # Preferir all_topics si es un array no vacío (viene de CH como lista de strings o dicts)
+    domain   = row.get('domain_name')   or 'Sin Dominio'
+    field    = row.get('field_name')    or 'Sin Campo'
+    subfield = row.get('subfield_name') or 'Sin Subcampo'
+    # topic_name: display_name real si vino del JOIN, si no: subfield_name
+    topic_name = row.get('primary_topic_name') or subfield
+
     all_t = row.get('all_topics')
     if isinstance(all_t, (list, np.ndarray)) and len(all_t) > 0:
-        result = []
-        for t in all_t:
-            if isinstance(t, dict):
-                result.append(t)
-            elif t:
-                result.append({'topic': str(t), 'domain': row.get('domain_name'), 'field': row.get('field_name'), 'subfield': row.get('subfield_name')})
-        return result
-    # Fallback al topic primario
+        # Solo tenemos el nombre del tópico PRIMARIO (topic_id = all_topics[0])
+        # Para los secundarios reutilizamos subfield como nivel de granularidad
+        entries = []
+        for idx, _ in enumerate(all_t):
+            t_name = topic_name if idx == 0 else subfield
+            entries.append({
+                'topic':    t_name,
+                'subfield': subfield,
+                'field':    field,
+                'domain':   domain,
+            })
+        return entries
+
+    # Fallback: sólo tópico primario
     if pd.notnull(row.get('topic_id')):
-        return [{
-            'topic': row['topic_id'],
-            'subfield': row.get('subfield_name'),
-            'field': row.get('field_name'),
-            'domain': row.get('domain_name'),
-        }]
+        return [{'topic': topic_name, 'subfield': subfield,
+                 'field': field, 'domain': domain}]
     return []
+
 
 
 def fetch_metadata_from_clickhouse(paper_ids):
@@ -199,41 +211,91 @@ def fetch_metadata_from_clickhouse(paper_ids):
     CH_SUB = 500
     sub_dfs = []
 
-    # Crear índices de sub-lotes combinando oa_ids y dois en pares
+    # Intentar JOIN con tabla `topics` para obtener el display_name del tópico primario.
+    # Si la tabla no existe en CH, fallback a query sin JOIN.
+    _topic_join = """
+        LEFT JOIN (
+            SELECT id, display_name AS primary_topic_name
+            FROM topics
+        ) t ON wf.topic_id = t.id
+    """
+    _topic_col  = "t.primary_topic_name,"
+    _topic_alias = "wf."  # prefijo para columnas de works_flat cuando hay JOIN
+
+    def _run_sub_query(sub_oa, sub_doi, use_join=True):
+        sub_conds, sub_params = [], {}
+        if sub_oa:
+            sub_conds.append(('wf.' if use_join else '') + 'id IN %(oa_ids)s')
+            sub_params['oa_ids'] = sub_oa
+        if sub_doi:
+            sub_conds.append(('wf.' if use_join else '') + 'doi IN %(dois)s')
+            sub_params['dois'] = [f'https://doi.org/{d}' for d in sub_doi]
+        if not sub_conds:
+            return None
+
+        if use_join:
+            q = f"""
+            SELECT
+                wf.id, wf.doi, wf.title, wf.publication_year AS year,
+                wf.cited_by_count AS citations,
+                wf.fwci, wf.percentile AS citation_normalized_percentile,
+                wf.is_top_10 AS is_in_top_10_percent, wf.is_top_1 AS is_in_top_1_percent,
+                wf.source_id, wf.source_type, wf.is_oa, wf.oa_status,
+                wf.topic_id, wf.subfield_name, wf.field_name, wf.domain_name,
+                wf.all_topics, wf.keywords, wf.sdgs,
+                wf.country_codes,
+                wf.referenced_works_count, wf.referenced_works,
+                wf.is_retracted, wf.language, wf.type,
+                t.primary_topic_name
+            FROM works_flat wf
+            LEFT JOIN (
+                SELECT id, display_name AS primary_topic_name
+                FROM topics
+            ) t ON wf.topic_id = t.id
+            WHERE {' OR '.join(sub_conds)}
+            """
+        else:
+            q = f"""
+            SELECT
+                id, doi, title, publication_year AS year, cited_by_count AS citations,
+                fwci, percentile AS citation_normalized_percentile,
+                is_top_10 AS is_in_top_10_percent, is_top_1 AS is_in_top_1_percent,
+                source_id, source_type, is_oa, oa_status,
+                topic_id, subfield_name, field_name, domain_name,
+                all_topics, keywords, sdgs,
+                country_codes,
+                referenced_works_count, referenced_works,
+                is_retracted, language, type
+            FROM works_flat
+            WHERE {' OR '.join(sub_conds)}
+            """
+        return ch_client.query_df(q, parameters=sub_params)
+
+    # Determinar si el JOIN con topics funciona (solo checar en el primer sub-lote)
+    _use_topic_join = None
+
     for i in range(0, max(len(oa_ids), len(dois), 1), CH_SUB):
         sub_oa  = oa_ids[i:i+CH_SUB]
         sub_doi = dois[i:i+CH_SUB]
-
-        sub_conds, sub_params = [], {}
-        if sub_oa:
-            sub_conds.append('id IN %(oa_ids)s')
-            sub_params['oa_ids'] = sub_oa
-        if sub_doi:
-            sub_conds.append('doi IN %(dois)s')
-            sub_params['dois'] = [f'https://doi.org/{d}' for d in sub_doi]
-        if not sub_conds:
+        if not sub_oa and not sub_doi:
             continue
-
-        sub_query = f"""
-        SELECT
-            id, doi, title, publication_year AS year, cited_by_count AS citations,
-            fwci, percentile AS citation_normalized_percentile,
-            is_top_10 AS is_in_top_10_percent, is_top_1 AS is_in_top_1_percent,
-            source_id, source_type, is_oa, oa_status,
-            topic_id, subfield_name, field_name, domain_name,
-            all_topics, keywords, sdgs,
-            country_codes,
-            referenced_works_count, referenced_works,
-            is_retracted, language, type
-        FROM works_flat
-        WHERE {' OR '.join(sub_conds)}
-        """
         try:
-            chunk = ch_client.query_df(sub_query, parameters=sub_params)
-            if not chunk.empty:
+            if _use_topic_join is None:
+                # Primer intento: con JOIN para obtener topic display_name
+                try:
+                    chunk = _run_sub_query(sub_oa, sub_doi, use_join=True)
+                    _use_topic_join = True
+                except Exception:
+                    _use_topic_join = False
+                    chunk = _run_sub_query(sub_oa, sub_doi, use_join=False)
+            else:
+                chunk = _run_sub_query(sub_oa, sub_doi, use_join=_use_topic_join)
+
+            if chunk is not None and not chunk.empty:
                 sub_dfs.append(chunk)
         except Exception as e:
             print(f"  ⚠️ Sub-lote CH falló: {e}")
+
 
     if not sub_dfs:
         return pd.DataFrame(columns=['paper_id'])
@@ -461,7 +523,12 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
                                     updated_files=updated_files)
 
     # ── 2. Papers raw por académico ────────────────────────────────────────────
-    _save(df_raw, 'papers_profesor.parquet', 'academic')
+    # Limpiar columnas internas de CH que no deben ir en papers_profesor
+    _CH_INTERNAL = ['doi_norm', 'id', 'all_topics', 'sdgs', 'topic_id',
+                    'source_id', 'source_type', 'subfield_name', 'field_name',
+                    'domain_name', 'country_codes', 'doi']
+    df_raw_clean = df_raw.drop(columns=[c for c in _CH_INTERNAL if c in df_raw.columns])
+    _save(df_raw_clean, 'papers_profesor.parquet', 'academic')
 
     # ── 3. Tópicos ────────────────────────────────────────────────────────────
     if 'topics' in df_raw.columns:
