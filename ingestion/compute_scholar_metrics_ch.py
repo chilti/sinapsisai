@@ -356,15 +356,74 @@ def fetch_metadata_from_clickhouse(paper_ids):
 def extract_academic_papers(academic_filter=None, entity_filter=None, source_filter='all'):
     graph_store = Neo4jGraphStore()
     
+    # Campos de auditoría del nodo Academic (SIIA + SNII LLM resolver)
+    _AUDIT_RETURN = """
+               a.siia_url AS siia_url,
+               a.audit_verdict AS audit_verdict,
+               a.audit_confidence AS audit_confidence,
+               a.audit_reason AS audit_reason,
+               a.audit_timestamp AS audit_timestamp,
+               a.match_reason AS match_reason,
+               a.discarded_candidates AS discarded_candidates"""
+
     if academic_filter:
-        query = "MATCH (a:Academic {name: $academic}) OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity) OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution) WITH a, collect(DISTINCT {ent: e.name, inst: CASE WHEN p_inst IS NOT NULL THEN p_inst.name ELSE (CASE WHEN e:Institution THEN e.name ELSE null END) END}) AS affiliations OPTIONAL MATCH (a)-[:AUTHORED]->(p:Paper) RETURN a.name AS academic_name, a.orcid AS orcid, a.scopus_id AS scopus_id, a.is_snii AS is_snii, affiliations, p.id AS paper_id"
-        params = {"academic": academic_filter}
+        query = f"""
+        MATCH (a:Academic {{name: $academic}})
+        OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
+        OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
+        WITH a, collect(DISTINCT {{
+            ent: e.name,
+            inst: CASE WHEN p_inst IS NOT NULL THEN p_inst.name
+                       ELSE (CASE WHEN e:Institution THEN e.name ELSE null END) END
+        }}) AS affiliations
+        OPTIONAL MATCH (a)-[:AUTHORED]->(p:Paper)
+        RETURN a.name AS academic_name,
+               a.orcid AS orcid,
+               a.scopus_id AS scopus_id,
+               a.is_snii AS is_snii,
+               affiliations,
+               p.id AS paper_id,
+               {_AUDIT_RETURN}
+        """
+        params = {{"academic": academic_filter}}
     elif entity_filter:
-        query = "MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic) OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution) WITH e, a, CASE WHEN p_inst IS NOT NULL THEN p_inst.name ELSE (CASE WHEN e:Institution THEN e.name ELSE null END) END AS inst_name WITH a, collect(DISTINCT {ent: e.name, inst: inst_name}) AS affiliations OPTIONAL MATCH (a)-[:AUTHORED]->(p:Paper) RETURN a.name AS academic_name, a.orcid AS orcid, a.scopus_id AS scopus_id, a.is_snii AS is_snii, affiliations, p.id AS paper_id"
-        params = {"entity": entity_filter}
+        query = f"""
+        MATCH (e:Entity {{name: $entity}})<-[:AFFILIATED_TO]-(a:Academic)
+        OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
+        WITH e, a,
+             CASE WHEN p_inst IS NOT NULL THEN p_inst.name
+                  ELSE (CASE WHEN e:Institution THEN e.name ELSE null END) END AS inst_name
+        WITH a, collect(DISTINCT {{ent: e.name, inst: inst_name}}) AS affiliations
+        OPTIONAL MATCH (a)-[:AUTHORED]->(p:Paper)
+        RETURN a.name AS academic_name,
+               a.orcid AS orcid,
+               a.scopus_id AS scopus_id,
+               a.is_snii AS is_snii,
+               affiliations,
+               p.id AS paper_id,
+               {_AUDIT_RETURN}
+        """
+        params = {{"entity": entity_filter}}
     else:
-        query = "MATCH (a:Academic) OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity) OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution) WITH a, collect(DISTINCT {ent: e.name, inst: CASE WHEN p_inst IS NOT NULL THEN p_inst.name ELSE (CASE WHEN e:Institution THEN e.name ELSE null END) END}) AS affiliations OPTIONAL MATCH (a)-[:AUTHORED]->(p:Paper) RETURN a.name AS academic_name, a.orcid AS orcid, a.scopus_id AS scopus_id, a.is_snii AS is_snii, affiliations, p.id AS paper_id"
-        params = {}
+        query = f"""
+        MATCH (a:Academic)
+        OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
+        OPTIONAL MATCH (e)-[:PART_OF]->(p_inst:Institution)
+        WITH a, collect(DISTINCT {{
+            ent: e.name,
+            inst: CASE WHEN p_inst IS NOT NULL THEN p_inst.name
+                       ELSE (CASE WHEN e:Institution THEN e.name ELSE null END) END
+        }}) AS affiliations
+        OPTIONAL MATCH (a)-[:AUTHORED]->(p:Paper)
+        RETURN a.name AS academic_name,
+               a.orcid AS orcid,
+               a.scopus_id AS scopus_id,
+               a.is_snii AS is_snii,
+               affiliations,
+               p.id AS paper_id,
+               {_AUDIT_RETURN}
+        """
+        params = {{}}
 
     with graph_store.driver.session() as session:
         neo_df = pd.DataFrame([dict(r) for r in session.run(query, **params)])
@@ -526,7 +585,10 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
     # Limpiar columnas internas de CH que no deben ir en papers_profesor
     _CH_INTERNAL = ['doi_norm', 'id', 'all_topics', 'sdgs', 'topic_id',
                     'source_id', 'source_type', 'subfield_name', 'field_name',
-                    'domain_name', 'country_codes', 'doi']
+                    'domain_name', 'country_codes', 'doi',
+                    'title',             # alias ya existe como 'Title'
+                    'primary_topic_name' # columna interna del JOIN topics
+                    ]
     df_raw_clean = df_raw.drop(columns=[c for c in _CH_INTERNAL if c in df_raw.columns])
     _save(df_raw_clean, 'papers_profesor.parquet', 'academic')
 
