@@ -423,7 +423,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                p.id AS paper_id,
                {_AUDIT_RETURN}
         """
-        params = {{}}
+        params = {}
 
     with graph_store.driver.session() as session:
         neo_df = pd.DataFrame([dict(r) for r in session.run(query, **params)])
