@@ -102,8 +102,7 @@ def fetch_metadata_from_clickhouse(paper_ids):
         all_topics, keywords, sdgs,
         country_codes,
         referenced_works_count, referenced_works,
-        is_retracted, language, type,
-        author_count, countries_distinct_count
+        is_retracted, language, type
     FROM works_flat
     WHERE id IN %(ids)s
     """
