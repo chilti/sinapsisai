@@ -158,7 +158,10 @@ def fetch_metadata_from_clickhouse(paper_ids):
     """
     
     df = ch_client.query_df(query, parameters={'ids': clean_ids})
-    if df.empty: return df
+    if df.empty:
+        # Asegurar que al menos tenga la columna para el merge
+        df['paper_id'] = pd.Series(dtype='object')
+        return df
 
     # Reconstrucción de topics para compatibilidad
     df['topics_list'] = df.apply(lambda r: [{
