@@ -149,8 +149,8 @@ def fetch_metadata_from_clickhouse(paper_ids):
         is_top_10 as is_in_top_10_percent, is_top_1 as is_in_top_1_percent,
         source_id, source_type, is_oa, oa_status,
         topic_id, subfield_name, field_name, domain_name,
-        all_topics, keywords, sdgs as ODS,
-        countries as country_codes,
+        all_topics, keywords, sdgs,
+        country_codes,
         referenced_works_count, referenced_works,
         is_retracted, language, type
     FROM works_flat
@@ -172,6 +172,8 @@ def fetch_metadata_from_clickhouse(paper_ids):
     df['Title'] = df['title']
     df['Source'] = df['source_id']
     df['has_oa_data'] = 1
+    df['ODS'] = df['sdgs']
+    df['countries'] = df['country_codes']
     
     # DOI link
     df['DOI'] = df['doi'].apply(lambda d: f"https://doi.org/{d}" if d and str(d).startswith("10.") else d)
