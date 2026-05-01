@@ -60,40 +60,57 @@ def normalize_name(text):
 def _ensure_ch_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
     Garantiza que el DataFrame tenga todas las columnas que aggregate_metrics
-    del script original accede incondicionalmente (tras el rename de agg_funcs).
-    Si una columna no existe se agrega con valor neutro.
+    accede incondicionalmente. Si la columna existe pero tiene NA (por LEFT join),
+    también la rellena con el valor por defecto.
     """
     # Columnas numéricas — NaN para que los promedios sean correctos
     for col in ['fwci', 'citation_normalized_percentile',
-                'is_in_top_10_percent', 'is_in_top_1_percent',
-                'citations']:
+                'is_in_top_10_percent', 'is_in_top_1_percent', 'citations']:
         if col not in df.columns:
             df[col] = np.nan
+        # No rellenar NaN numéricos: son datos genuinamente ausentes
 
-    # Columnas de OA — 0/closed como fallback conservador
-    if 'is_oa' not in df.columns:
-        df['is_oa'] = 0
+    # oa_status: necesita string, no NA (se compara con '== gold', etc.)
     if 'oa_status' not in df.columns:
         df['oa_status'] = 'closed'
+    else:
+        df['oa_status'] = df['oa_status'].fillna('closed')
+
+    # is_oa: necesita ser 0/1 entero
+    if 'is_oa' not in df.columns:
+        df['is_oa'] = 0
+    else:
+        df['is_oa'] = pd.to_numeric(df['is_oa'], errors='coerce').fillna(0).astype(int)
 
     # Columnas de listas — lista vacía por fila
     for col in ['counts_by_year', 'indexed_in']:
         if col not in df.columns:
             df[col] = [[] for _ in range(len(df))]
+        else:
+            df[col] = df[col].apply(lambda x: x if isinstance(x, list) else [])
 
-    # Columnas booleanas / enteras
+    # Columnas booleanas/enteras — 0 como fallback
     for col in ['is_retracted', 'journal_is_in_doaj', 'journal_is_core',
                 'any_repository_has_fulltext']:
         if col not in df.columns:
             df[col] = 0
+        else:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
 
     # Columnas de texto
     if 'language' not in df.columns:
         df['language'] = 'en'
+    else:
+        df['language'] = df['language'].fillna('en')
+
     if 'license' not in df.columns:
         df['license'] = None
+
     if 'has_oa_data' not in df.columns:
         df['has_oa_data'] = 0
+    else:
+        df['has_oa_data'] = df['has_oa_data'].fillna(0).astype(int)
+
     if 'openalex_url' not in df.columns:
         df['openalex_url'] = None
 
@@ -101,6 +118,8 @@ def _ensure_ch_columns(df: pd.DataFrame) -> pd.DataFrame:
     for col in ['apc_paid_usd', 'apc_list_usd']:
         if col not in df.columns:
             df[col] = 0.0
+        else:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
     return df
 
