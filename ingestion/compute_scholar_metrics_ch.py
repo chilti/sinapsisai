@@ -179,7 +179,8 @@ def fetch_metadata_from_clickhouse(paper_ids):
         params['oa_ids'] = oa_ids
     if dois:
         conditions.append('doi IN %(dois)s')
-        params['dois'] = dois
+        # works_flat almacena DOIs como URL completa: 'https://doi.org/10.xxxx'
+        params['dois'] = [f'https://doi.org/{d}' for d in dois]
 
     query = f"""
     SELECT
