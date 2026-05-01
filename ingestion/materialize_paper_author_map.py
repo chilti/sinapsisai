@@ -5,21 +5,28 @@ Extrae de Neo4j todas las relaciones Academic → Paper (AUTHORED) con su
 contexto de entidad/institución y las materializa en ClickHouse como la
 tabla `paper_author_map`.
 
-Esta tabla es la pieza clave del nuevo pipeline:
-    works_flat  JOIN  paper_author_map
-    ─────────────────────────────────
-    → cálculo directo en CH de métricas por académico/entidad/institución
-      sin necesidad de merge Python.
+Modos de uso:
+  --reset        Elimina y recrea la tabla completa (recarga total).
+                 Úsar cuando cambia el esquema o tras migraciones mayores.
+
+  --incremental  Solo inserta relaciones de papers añadidos después del
+                 último sync exitoso. Úsar después de correr
+                 snii_llm_identity_resolver.py o snii_ror_resolver.py.
+
+  (sin flags)    Inserta todas las relaciones actuales. ReplacingMergeTree
+                 elimina duplicados automáticamente. Seguro en cualquier
+                 momento pero más lento que --incremental.
+
+Flujo recomendado:
+  1. Primera vez:   python materialize_paper_author_map.py --reset
+  2. Periódicamente: python materialize_paper_author_map.py --incremental
+  3. Tras cambios de esquema: python materialize_paper_author_map.py --reset
 
 Fuentes en Neo4j:
   - (a:Academic)-[:AUTHORED]->(p:Paper)
-  - (a:Academic)-[:AFFILIATED_TO]->(e:Entity)-[:PART_OF]->(inst:Institution)
+  - (a)-[:AFFILIATED_TO]->(e:Entity)-[:PART_OF]->(inst:Institution)
   - Propiedades del nodo: a.id, a.name, a.orcid, a.openalex_id, a.is_snii,
                           a.siia_url, a.audit_verdict
-
-Uso:
-    python ingestion/materialize_paper_author_map.py [--reset]
-    --reset: elimina y recrea la tabla antes de insertar (útil para recarga completa)
 """
 import os
 import sys
@@ -38,11 +45,11 @@ from database.knowledge_graph import Neo4jGraphStore
 from database.clickhouse_db import ch_client
 
 # ── Constantes ─────────────────────────────────────────────────────────────
-TABLE     = 'paper_author_map'
-BATCH_NEO = 10_000   # filas a procesar por lote desde Neo4j
-BATCH_CH  = 5_000    # filas a insertar por lote en ClickHouse
+TABLE      = 'paper_author_map'
+META_TABLE = 'paper_author_map_meta'   # rastrea el último sync exitoso
+BATCH_NEO  = 10_000   # filas a procesar por lote desde Neo4j
+BATCH_CH   = 5_000    # filas a insertar por lote en ClickHouse
 
-# Regex para identificar OpenAlex Work IDs (W + dígitos)
 _OA_RE = re.compile(r'^W\d+$', re.IGNORECASE)
 
 
@@ -74,6 +81,18 @@ DDL_INDEXES = [
 ]
 
 
+DDL_META = f"""
+CREATE TABLE IF NOT EXISTS {META_TABLE} (
+    sync_ts     DateTime DEFAULT now(),
+    mode        String,
+    rows_synced UInt64,
+    ok          UInt8
+)
+ENGINE = MergeTree()
+ORDER BY sync_ts
+"""
+
+
 def _ensure_table(reset: bool = False):
     """Crea la tabla si no existe; si reset=True la elimina primero."""
     client = ch_client.get_client()
@@ -81,19 +100,40 @@ def _ensure_table(reset: bool = False):
         print(f"  ⚠️  --reset: eliminando tabla {TABLE}...")
         client.command(f"DROP TABLE IF EXISTS {TABLE}")
     client.command(DDL)
+    client.command(DDL_META)
     for idx_sql in DDL_INDEXES:
         try:
             client.command(idx_sql)
         except Exception:
-            pass  # índice ya existe o no soportado en esta versión
+            pass
     print(f"  ✅ Tabla {TABLE} lista.")
 
 
-def _count_neo4j_relations(graph_store) -> int:
-    """Cuenta el total de relaciones Academic→Paper en Neo4j."""
-    with graph_store.driver.session() as session:
-        result = session.run("MATCH (a:Academic)-[:AUTHORED]->(p:Paper) RETURN count(*) AS n")
-        return result.single()["n"]
+def _get_last_sync_ts() -> str:
+    """
+    Retorna el timestamp del último sync exitoso como string ISO,
+    o '1970-01-01 00:00:00' si nunca se ha sincronizado.
+    """
+    try:
+        df = ch_client.query_df(
+            f"SELECT max(sync_ts) AS ts FROM {META_TABLE} WHERE ok = 1")
+        ts = df['ts'].iloc[0]
+        if pd.isnull(ts) or str(ts) == 'NaT':
+            return '1970-01-01 00:00:00'
+        return str(ts)
+    except Exception:
+        return '1970-01-01 00:00:00'
+
+
+def _record_sync(mode: str, rows: int, ok: bool):
+    """Registra el resultado del sync en la tabla de metadatos."""
+    try:
+        ch_client.get_client().command(
+            f"INSERT INTO {META_TABLE} (mode, rows_synced, ok) "
+            f"VALUES ('{mode}', {rows}, {1 if ok else 0})"
+        )
+    except Exception as e:
+        print(f"  ⚠️ No se pudo registrar sync: {e}")
 
 
 _NEO4J_QUERY = """
@@ -119,16 +159,33 @@ SKIP $skip LIMIT $limit
 """
 
 
-def _stream_neo4j_pages(graph_store):
+_NEO4J_COUNT = """
+MATCH (a:Academic)-[:AUTHORED]->(p:Paper)
+WHERE p.created_at >= datetime($since) OR $since = '1970-01-01T00:00:00'
+RETURN count(*) AS n
+"""
+
+
+def _count_neo4j_relations(graph_store, since: str = '1970-01-01 00:00:00') -> int:
+    """Cuenta relaciones Academic→Paper en Neo4j, opcionalmente filtradas por fecha."""
+    # Convertir al formato de datetime de Cypher
+    since_cy = since.replace(' ', 'T')
+    with graph_store.driver.session() as session:
+        result = session.run(_NEO4J_COUNT, since=since_cy)
+        return result.single()["n"]
+
+
+def _stream_neo4j_pages(graph_store, since: str = '1970-01-01 00:00:00'):
     """
     Genera páginas de BATCH_NEO filas desde Neo4j usando SKIP/LIMIT.
-    Mantiene el uso de RAM acotado a un lote a la vez.
+    Si `since` no es la época, filtra solo papers agregados después de esa fecha.
     """
+    since_cy = since.replace(' ', 'T')
     skip = 0
     while True:
         with graph_store.driver.session() as session:
             records = [dict(r) for r in session.run(
-                _NEO4J_QUERY, skip=skip, limit=BATCH_NEO)]
+                _NEO4J_QUERY, since=since_cy, skip=skip, limit=BATCH_NEO)]
         if not records:
             break
         yield pd.DataFrame(records)
@@ -216,7 +273,7 @@ def _transform_page(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def materialize(reset: bool = False):
+def materialize(reset: bool = False, incremental: bool = False):
     print("=" * 60)
     print(" MATERIALIZANDO paper_author_map")
     print("=" * 60)
@@ -225,34 +282,64 @@ def materialize(reset: bool = False):
     print("\n[1/3] Preparando tabla ClickHouse...")
     _ensure_table(reset)
 
+    # Determinar desde cuándo sincronizar
+    if incremental:
+        # Obtener paper_ids ya existentes en CH para filtrar el diff
+        print("  🔄 Modo incremental: cargando paper_ids existentes en CH...")
+        existing_df = ch_client.query_df(
+            f"SELECT DISTINCT paper_id FROM {TABLE}")
+        existing_ids = set(existing_df['paper_id'].tolist()) if not existing_df.empty else set()
+        print(f"  ℹ️ {len(existing_ids):,} paper_ids ya en CH (se omitirán duplicados)")
+        mode = 'incremental'
+    else:
+        existing_ids = set()
+        mode = 'reset' if reset else 'full'
+
     # 2. Streaming paginado Neo4j → transform → insert CH
     graph_store = Neo4jGraphStore()
     total_neo = _count_neo4j_relations(graph_store)
     print(f"\n[2/3] Streaming {total_neo:,} relaciones de Neo4j "
           f"(páginas de {BATCH_NEO:,})...")
 
+    if total_neo == 0:
+        print("  ℹ️ Sin relaciones en Neo4j.")
+        _record_sync(mode, 0, ok=True)
+        return
+
     inserted    = 0
     page_num    = 0
-    total_pages = -(-total_neo // BATCH_NEO)  # ceiling division
+    total_pages = -(-total_neo // BATCH_NEO)
+    ok          = True
 
-    for page_df in _stream_neo4j_pages(graph_store):
-        page_num += 1
-        clean = _transform_page(page_df)
-        if not clean.empty:
-            _insert_to_clickhouse(clean)
-            inserted += len(clean)
-        print(f"  Página {page_num}/{total_pages} — {inserted:,} filas insertadas")
+    try:
+        for page_df in _stream_neo4j_pages(graph_store):
+            page_num += 1
+            clean = _transform_page(page_df)
+            # En modo incremental, filtrar rows cuyo paper_id ya existe en CH
+            if incremental and existing_ids and not clean.empty:
+                clean = clean[~clean['paper_id'].isin(existing_ids)]
+            if not clean.empty:
+                _insert_to_clickhouse(clean)
+                inserted += len(clean)
+            print(f"  Página {page_num}/{total_pages} — {inserted:,} filas nuevas")
+    except Exception as e:
+        print(f"  ❌ Error durante el streaming: {e}")
+        ok = False
 
-    if inserted == 0:
+    if inserted == 0 and not incremental:
         print("  ❌ No se insertaron filas. Verifica la conexión Neo4j.")
-        return
+        _record_sync(mode, 0, ok=False)
+        _run_final_optimize()
+    _record_sync(mode, inserted, ok=ok)
 
     # Resumen
     print("\n" + "=" * 60)
     print(" RESUMEN")
     print("=" * 60)
     sample = ch_client.query_df(f"""
-        SELECT institution, entity, count() AS papers, countDistinct(academic_name) AS academics
+        SELECT institution, entity,
+               count() AS papers,
+               countDistinct(academic_name) AS academics
         FROM {TABLE}
         GROUP BY institution, entity
         ORDER BY papers DESC
@@ -266,6 +353,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Materializa Neo4j Academic→Paper en ClickHouse paper_author_map')
     parser.add_argument('--reset', action='store_true',
-                        help='Eliminar y recrear la tabla antes de insertar')
+                        help='Eliminar y recrear la tabla antes de insertar (recarga completa)')
+    parser.add_argument('--incremental', action='store_true',
+                        help='Solo insertar relaciones nuevas desde el último sync exitoso')
     args = parser.parse_args()
-    materialize(reset=args.reset)
+
+    if args.reset and args.incremental:
+        print("Error: --reset y --incremental son mutuamente excluyentes.")
+        sys.exit(1)
+
+    materialize(reset=args.reset, incremental=args.incremental)
