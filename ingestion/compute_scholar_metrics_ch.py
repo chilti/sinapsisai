@@ -109,7 +109,8 @@ def fetch_metadata_from_clickhouse(paper_ids):
 
     df = ch_client.query_df(query, parameters={'ids': clean_ids})
     if df.empty:
-        return df
+        # Devolver DF vacío con paper_id definido para que el LEFT merge no falle
+        return pd.DataFrame(columns=['paper_id'])
 
     # --- Columna 'topics' compatible con compute_interdisciplinarity ---
     df['topics'] = df.apply(_build_topics_from_row, axis=1)
