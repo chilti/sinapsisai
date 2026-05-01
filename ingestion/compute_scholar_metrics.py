@@ -1007,7 +1007,11 @@ def save_disaggregated_parquets(df, base_name, group_level='academic', academics
                 # Ruta Jerárquica Exclusiva Alineada (2 Niveles Limpios)
                 target_dir = CACHE_DIR / safe_inst / safe_ent / safe_ac
                 target_dir.mkdir(parents=True, exist_ok=True)
-                grp.to_parquet(target_dir / base_name, index=False)
+                final_path = target_dir / base_name
+                grp.to_parquet(final_path, index=False)
+                
+                if updated_files is not None:
+                    updated_files.add(str(final_path.absolute()))
                 
     elif group_level == 'entity':
         # Aseguramos que todas las entidades sean procesadas si el df está incompleto
@@ -1612,12 +1616,13 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
 
     # --- FASE DE LIMPIEZA DE CACHÉ ---
     # Solo si el proceso terminó con éxito y tenemos archivos actualizados
-    if updated_files:
-        print(f"⏳ Limpiando archivos obsoletos en data/cache/...")
-        count_del = 0
-        # Si hay filtros, solo limpiamos dentro de las carpetas tocadas
-        # Si es un run completo, limpiamos todo el cache
         is_full_run = (not entity_filter and not academic_filter)
+        
+        # SEGURIDAD: Solo limpiar si es un run COMPLETO. 
+        # Si es un run filtrado, no tenemos la visión total y podríamos borrar por error.
+        if not is_full_run:
+            print("⏩ Saltando limpieza (Modo filtrado activo).")
+            return
         
         for root, dirs, files in os.walk(CACHE_DIR):
             for file in files:
