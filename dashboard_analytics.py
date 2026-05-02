@@ -134,7 +134,7 @@ def load_hierarchy():
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
                 hierarchy = json.load(f)
-            return {k: sorted(list(v)) for k, v in hierarchy.items()}
+                return json.load(f)
         except Exception as e:
             print(f"Error leyendo hierarchy.json: {e}")
 
@@ -143,18 +143,36 @@ def load_hierarchy():
     hierarchy = {}
     try:
         with store.driver.session() as session:
-            # 1. Búsqueda recursiva: cualquier Entidad que sea PART_OF de una Institución
-            # a cualquier nivel (Dependencia o Subdependencia)
+            # Consulta para obtener el árbol completo: Inst -> Dep -> Subdep
+            # Maneja tanto 2 como 3 niveles
             query = """
-            MATCH (e:Entity)-[:PART_OF*..3]->(i:Institution)
-            RETURN i.name AS inst, collect(DISTINCT e.name) AS entities
+            MATCH (i:Institution)
+            OPTIONAL MATCH (i)<-[:PART_OF]-(dep:Entity)
+            OPTIONAL MATCH (dep)<-[:PART_OF]-(sub:Entity)
+            RETURN i.name AS inst, dep.name AS dep, collect(DISTINCT sub.name) AS subs
             """
-            res = session.run(query)
-            for r in res:
-                inst = r['institution']
-                ent = r['entity']
-                if inst not in hierarchy: hierarchy[inst] = set()
-                hierarchy[inst].add(ent)
+            result = session.run(query)
+            for record in result:
+                inst = record["inst"]
+                dep = record["dep"]
+                subs = [s for s in record["subs"] if s]
+                
+                if inst not in hierarchy:
+                    hierarchy[inst] = {}
+                
+                if dep:
+                    # Si la dependencia ya existe y tiene subs, las unimos
+                    if dep not in hierarchy[inst]:
+                        hierarchy[inst][dep] = []
+                    hierarchy[inst][dep].extend(subs)
+            
+            # Limpiar duplicados en las listas de subs
+            for inst in hierarchy:
+                for dep in hierarchy[inst]:
+                    hierarchy[inst][dep] = sorted(list(set(hierarchy[inst][dep])))
+            
+            # Caso especial México: Lista de instituciones
+            hierarchy["MÉXICO"] = {inst: [] for inst in hierarchy.keys()}
             
             # 2. Complemento: Nodos que son Entity e Institution simultáneamente o huérfanos
             res = session.run("MATCH (e:Entity) RETURN e.name as name")

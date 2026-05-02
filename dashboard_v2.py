@@ -260,13 +260,11 @@ with st.sidebar:
     hierarchy = get_institution_hierarchy()
     instituciones = sorted(list(hierarchy.keys()))
     
-    # Default a UNAM si existe
+    # Selector 1: Institución
     default_inst_idx = 0
     unam_name = "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)"
     if unam_name in instituciones:
         default_inst_idx = instituciones.index(unam_name)
-    elif instituciones:
-        default_inst_idx = 0
         
     selected_institution = st.selectbox(
         "Institución de Acreditación",
@@ -275,20 +273,43 @@ with st.sidebar:
         key="selected_institution_sidebar"
     )
     
-    entidades_filtradas = hierarchy[selected_institution]
+    # Selector 2: Dependencia
+    dependencias = sorted(list(hierarchy.get(selected_institution, {}).keys()))
+    if not dependencias:
+        dependencias = [selected_institution] # Fallback si no hay dependencias
     
-    # Default a Facultad de Ciencias si está en la lista filtrada
-    default_ent_idx = 0
-    target_default = "FACULTAD DE CIENCIAS"
-    if target_default in entidades_filtradas:
-        default_ent_idx = entidades_filtradas.index(target_default)
+    # Default a SECRETARIA GENERAL si es UNAM
+    default_dep_idx = 0
+    if selected_institution == unam_name and "SECRETARIA GENERAL" in dependencias:
+        default_dep_idx = dependencias.index("SECRETARIA GENERAL")
         
-    selected_entity = st.selectbox(
-        "Subdependencia de Acreditación",
-        entidades_filtradas,
-        index=default_ent_idx,
-        key="selected_entity_sidebar"
+    selected_dep = st.selectbox(
+        "Dependencia de Acreditación",
+        dependencias,
+        index=default_dep_idx,
+        key="selected_dep_sidebar"
     )
+    
+    # Selector 3: Subdependencia (Dinamico)
+    subdependencias = hierarchy.get(selected_institution, {}).get(selected_dep, [])
+    
+    if subdependencias:
+        # Si hay subdependencias, mostramos el selector
+        default_sub_idx = 0
+        if "FACULTAD DE CIENCIAS" in subdependencias:
+            default_sub_idx = subdependencias.index("FACULTAD DE CIENCIAS")
+            
+        selected_sub = st.selectbox(
+            "Subdependencia de Acreditación",
+            subdependencias,
+            index=default_sub_idx,
+            key="selected_sub_sidebar"
+        )
+        # La entidad final para filtros es la subdependencia
+        selected_entity = selected_sub
+    else:
+        # Si no hay subdependencias, la entidad es la dependencia
+        selected_entity = selected_dep
     
     st.selectbox("Modelo", ["openai/gpt-oss-20b"], index=0)
 

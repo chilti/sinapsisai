@@ -139,22 +139,16 @@ def _record_sync(mode: str, rows: int, ok: bool):
 _NEO4J_QUERY = """
 MATCH (a:Academic)-[:AUTHORED]->(p:Paper)
 OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
-OPTIONAL MATCH (e)-[:PART_OF]->(inst:Institution)
-WITH a, p, e, inst
-ORDER BY a.name, inst.name
-WITH a, p, e,
-     head(collect(inst)) AS inst
+OPTIONAL MATCH path = (e)-[:PART_OF*..3]->(i:Institution)
+WITH a, p, e, i, [n in nodes(path) | n.name] AS hierarchy
 RETURN
     p.id                AS paper_id,
     a.name              AS academic_name,
     a.id                AS academic_id,
     coalesce(a.orcid, '')           AS orcid,
     coalesce(a.openalex_id, '')     AS openalex_id,
-    coalesce(e.name, 'Sin Entidad') AS entity,
-    coalesce(
-        inst.name,
-        CASE WHEN e:Institution THEN e.name ELSE 'Sin Institución' END
-    )                               AS institution,
+    coalesce(i.name, 'Sin Institución') AS institution,
+    hierarchy,
     coalesce(a.is_snii, false)      AS is_snii,
     coalesce(a.siia_url, '')        AS siia_url,
     coalesce(a.audit_verdict, '')   AS audit_verdict
@@ -259,22 +253,56 @@ def _run_final_optimize():
 
 
 def _transform_page(df: pd.DataFrame) -> pd.DataFrame:
-    """Limpia y normaliza una página de filas de Neo4j."""
+    """Limpia y normaliza una página de filas de Neo4j explotando la jerarquía."""
     df = df.dropna(subset=['paper_id', 'academic_name']).copy()
     df['paper_id'] = df['paper_id'].apply(_normalize_paper_id)
-    df = df[df['paper_id'] != '']   # descartar UUIDs generados cuando no había DOI
+    df = df[df['paper_id'] != '']
     if df.empty:
         return df
-    df['is_snii'] = df['is_snii'].apply(lambda x: 1 if x else 0)
-    df['source']  = df.apply(_determine_source, axis=1)
-    df = df[[
-        'paper_id', 'academic_name', 'academic_id',
-        'orcid', 'openalex_id',
-        'entity', 'institution',
-        'is_snii', 'source', 'audit_verdict'
-    ]].fillna('').astype(str)
-    df['is_snii'] = df['is_snii'].astype('uint8')
-    return df
+
+    rows = []
+    for _, r in df.iterrows():
+        # Datos base del académico
+        base = {
+            'paper_id': r['paper_id'],
+            'academic_name': r['academic_name'],
+            'academic_id': r['academic_id'],
+            'orcid': r['orcid'],
+            'openalex_id': r['openalex_id'],
+            'is_snii': 1 if r['is_snii'] else 0,
+            'source': _determine_source(r),
+            'audit_verdict': r['audit_verdict']
+        }
+        
+        inst = r['institution']
+        hierarchy = r.get('hierarchy', [])
+        if not isinstance(hierarchy, list): hierarchy = []
+        
+        # 1. Nivel Institucional puro
+        row_inst = base.copy()
+        row_inst['institution'] = inst
+        row_inst['entity'] = inst # En el nivel raíz, entidad = institución
+        rows.append(row_inst)
+        
+        # 2. Todos los niveles de la jerarquía (Dep, Subdep)
+        for entity_name in hierarchy:
+            if not entity_name or entity_name == inst: continue
+            row_ent = base.copy()
+            row_ent['institution'] = inst
+            row_ent['entity'] = entity_name
+            rows.append(row_ent)
+            
+        # 3. Nivel Nacional (México)
+        row_mex = base.copy()
+        row_mex['institution'] = 'MÉXICO'
+        row_mex['entity'] = inst # En el nivel México, la entidad es la Institución
+        rows.append(row_mex)
+
+    # Crear el nuevo dataframe expandido
+    expanded_df = pd.DataFrame(rows)
+    return expanded_df.fillna('').astype({
+        'is_snii': 'uint8'
+    })
 
 
 def materialize(reset: bool = False, incremental: bool = False):
