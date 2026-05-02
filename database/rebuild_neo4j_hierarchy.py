@@ -1,0 +1,147 @@
+"""
+rebuild_neo4j_hierarchy.py
+==========================
+Reconstruye la jerarquía de Neo4j usando las columnas de Acreditación del SNII 2025.
+Lógica: Institución -> Dependencia -> Subdependencia.
+Maneja casos de "SIN INSTITUCIÓN" y valores nulos/SIN INFORMACIÓN.
+"""
+import sys, os, json
+import pandas as pd
+from pathlib import Path
+from dotenv import load_dotenv
+
+sys.path.insert(0, '.')
+load_dotenv()
+
+from database.knowledge_graph import Neo4jGraphStore
+
+# ── Configuración ──────────────────────────────────────────────────────────
+EXCEL_PATH    = 'data/Investigadores_vigentes_2025.xlsx'
+ACADEMIC_JSON = 'data/snii_llm_verified_matches.json'
+ROR_JSON      = 'data/snii_ror_verified_matches.json'
+
+# Valores que consideramos como "vacíos"
+NULL_VALUES = ['SIN INFORMACIÓN', 'NO APLICA', 'SIN INSTITUCION', 'nan', 'None', '']
+
+def normalize(val):
+    s = str(val).strip()
+    if s.upper() in [v.upper() for v in NULL_VALUES] or not s:
+        return None
+    return s
+
+def rebuild():
+    gs = Neo4jGraphStore()
+    
+    print("🧹 Fase 1: Limpieza de jerarquía antigua...")
+    with gs.driver.session() as session:
+        session.run("MATCH (n:Entity) DETACH DELETE n")
+        session.run("MATCH (n:Institution) DETACH DELETE n")
+        print("   ✅ Nodos Entity e Institution eliminados.")
+
+    print("\n📂 Fase 2: Cargando archivos...")
+    # Cargar Excel (solo columnas necesarias para ahorrar memoria)
+    cols_to_read = [
+        'NOMBRE', 
+        'INSTITUCION DE ACREDITACION', 
+        'DEPENDENCIA DE ACREDITACIÓN', 
+        'SUBDEPENDENCIA DE ACREDITACIÓN'
+    ]
+    df_snii = pd.read_excel(EXCEL_PATH, usecols=cols_to_read)
+    
+    with open(ACADEMIC_JSON, 'r', encoding='utf-8') as f:
+        academic_matches = json.load(f)
+    with open(ROR_JSON, 'r', encoding='utf-8') as f:
+        ror_matches = json.load(f)
+
+    print("\n🏗️ Fase 3: Reconstruyendo Jerarquía y Vinculando Académicos...")
+    
+    # Agrupamos para procesar por jerarquías únicas
+    groups = df_snii.groupby([
+        'INSTITUCION DE ACREDITACION', 
+        'DEPENDENCIA DE ACREDITACIÓN', 
+        'SUBDEPENDENCIA DE ACREDITACIÓN'
+    ], dropna=False)
+
+    with gs.driver.session() as session:
+        total = len(groups)
+        for i, (hierarchy, group) in enumerate(groups, 1):
+            raw_inst, raw_dep, raw_sub = hierarchy
+            
+            # 1. Normalizar Institución
+            inst_name = normalize(raw_inst) or "SIN INSTITUCION"
+            
+            # Obtener ROR del JSON si existe
+            ror_key = f"{inst_name} || SIN INFORMACIÓN"
+            meta = ror_matches.get(ror_key, {})
+            ror_id = meta.get('parent_ror') or f"manual:{inst_name}"
+            
+            # Crear Institución
+            session.run("""
+                MERGE (i:Institution {id: $id})
+                SET i.name = $name, i.ror = $ror
+            """, id=ror_id, name=inst_name, ror=meta.get('parent_ror'))
+
+            # 2. Construir cadena de Entidades
+            curr_parent_id = ror_id
+            curr_parent_label = "Institution"
+            
+            dep_name = normalize(raw_dep)
+            sub_name = normalize(raw_sub)
+            
+            # Nivel Dependencia
+            if dep_name:
+                dep_id = f"dep:{dep_name}@{ror_id}"
+                session.run(f"""
+                    MATCH (p:{curr_parent_label} {{id: $p_id}})
+                    MERGE (e:Entity {{id: $uid}})
+                    SET e.name = $name, e.type = 'Dependencia'
+                    MERGE (e)-[:PART_OF]->(p)
+                """, p_id=curr_parent_id, uid=dep_id, name=dep_name)
+                curr_parent_id = dep_id
+                curr_parent_label = "Entity"
+
+            # Nivel Subdependencia
+            if sub_name:
+                sub_id = f"subdep:{sub_name}@{curr_parent_id}" # único respecto a su padre
+                session.run(f"""
+                    MATCH (p:{curr_parent_label} {{id: $p_id}})
+                    MERGE (e:Entity {{id: $uid}})
+                    SET e.name = $name, e.type = 'Subdependencia'
+                    MERGE (e)-[:PART_OF]->(p)
+                """, p_id=curr_parent_id, uid=sub_id, name=sub_name)
+                curr_parent_id = sub_id
+                curr_parent_label = "Entity"
+
+            # 3. Vincular Académicos
+            academic_names = group['NOMBRE'].tolist()
+            session.run("""
+                MATCH (target:{label} {{id: $target_id}})
+                MATCH (a:Academic)
+                WHERE a.name IN $names
+                MERGE (a)-[:AFFILIATED_TO]->(target)
+            """, label=curr_parent_label, target_id=curr_parent_id, names=academic_names)
+
+            if i % 100 == 0:
+                print(f"   Procesados {i}/{total} grupos...", end='\r')
+
+    print(f"\n   ✅ {total} combinaciones de jerarquía procesadas.")
+
+    print("\n🧬 Fase 4: Sincronizando IDs de OpenAlex verificados...")
+    with gs.driver.session() as session:
+        updated = 0
+        for m in academic_matches:
+            name = m.get('snii_author')
+            oa_id = m.get('matched_openalex_id')
+            if not oa_id: continue
+            
+            session.run("""
+                MATCH (a:Academic {name: $name})
+                SET a.openalex_id = $oa_id, a.orcid = $orcid, a.is_snii = true
+            """, name=name, oa_id=oa_id, orcid=m.get('matched_orcid'))
+            updated += 1
+        print(f"   ✅ {updated} académicos actualizados con meta LLM.")
+
+    print("\n✨ Proceso finalizado con éxito.")
+
+if __name__ == "__main__":
+    rebuild()

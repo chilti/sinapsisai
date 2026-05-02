@@ -140,6 +140,10 @@ _NEO4J_QUERY = """
 MATCH (a:Academic)-[:AUTHORED]->(p:Paper)
 OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
 OPTIONAL MATCH (e)-[:PART_OF]->(inst:Institution)
+WITH a, p, e, inst
+ORDER BY a.name, inst.name
+WITH a, p, e,
+     head(collect(inst)) AS inst
 RETURN
     p.id                AS paper_id,
     a.name              AS academic_name,
