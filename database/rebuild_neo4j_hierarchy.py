@@ -122,12 +122,12 @@ def rebuild():
 
             # 3. Vincular Académicos
             academic_names = group['NOMBRE'].tolist()
-            session.run("""
-                MATCH (target:{label} {{id: $target_id}})
+            session.run(f"""
+                MATCH (target:{curr_parent_label} {{id: $target_id}})
                 MATCH (a:Academic)
                 WHERE a.name IN $names
                 MERGE (a)-[:AFFILIATED_TO]->(target)
-            """, label=curr_parent_label, target_id=curr_parent_id, names=academic_names)
+            """, target_id=curr_parent_id, names=academic_names)
 
             if i % 100 == 0:
                 print(f"   Procesados {i}/{total} grupos...", end='\r')
