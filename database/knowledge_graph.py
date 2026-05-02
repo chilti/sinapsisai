@@ -35,11 +35,18 @@ class Neo4jGraphStore:
             "CREATE CONSTRAINT institution_id IF NOT EXISTS FOR (i:Institution) REQUIRE i.id IS UNIQUE",
             "CREATE CONSTRAINT concept_id IF NOT EXISTS FOR (c:Concept) REQUIRE c.id IS UNIQUE",
             "CREATE CONSTRAINT academic_id IF NOT EXISTS FOR (a:Academic) REQUIRE a.id IS UNIQUE",
-            "CREATE CONSTRAINT entity_id IF NOT EXISTS FOR (e:Entity) REQUIRE e.name IS UNIQUE",
+            # CAMBIO: Usamos ID en lugar de name para permitir facultades con nombres iguales
+            "CREATE CONSTRAINT entity_id_unique IF NOT EXISTS FOR (e:Entity) REQUIRE e.id IS UNIQUE",
             "CREATE CONSTRAINT funder_id IF NOT EXISTS FOR (f:Funder) REQUIRE f.name IS UNIQUE",
             "CREATE CONSTRAINT award_id IF NOT EXISTS FOR (aw:Award) REQUIRE aw.id IS UNIQUE"
         ]
         with self.driver.session() as session:
+            # Limpieza preventiva de la restricción antigua problemática
+            try:
+                session.run("DROP CONSTRAINT entity_id IF EXISTS")
+            except:
+                pass
+                
             for query in queries:
                 try:
                     session.run(query)
