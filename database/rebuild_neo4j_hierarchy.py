@@ -32,37 +32,32 @@ def normalize(val):
 def rebuild():
     gs = Neo4jGraphStore()
     
-    print("⛓️ Fase 0: Limpiando restricciones antiguas...")
-    with gs.driver.session() as session:
-        try:
-            # Obtener todas las restricciones
-            constraints = session.run("SHOW CONSTRAINTS").data()
-            for c in constraints:
-                # Buscar cualquier restricción que involucre a 'Entity' y 'name'
-                # Manejamos diferentes versiones de Neo4j (keys variadas)
-                props = c.get('properties', [])
-                labels = c.get('labels_or_types', c.get('labelsOrTypes', [c.get('entityType', '')]))
-                
-                is_entity = 'Entity' in labels or any('Entity' in str(l) for l in labels)
-                is_name = 'name' in props
-                
-                if is_entity and is_name:
-                    session.run(f"DROP CONSTRAINT {c['name']}")
-                    print(f"   ✅ Restricción {c['name']} eliminada.")
-        except Exception as e:
-            print(f"   ⚠️ Nota: No se pudo limpiar restricciones automáticamente: {e}")
-
-        # Asegurar restricción en ID (nuestra nueva clave primaria)
-        session.run("CREATE CONSTRAINT entity_id_unique IF NOT EXISTS FOR (e:Entity) REQUIRE e.id IS UNIQUE")
-        session.run("CREATE CONSTRAINT institution_id_unique IF NOT EXISTS FOR (i:Institution) REQUIRE i.id IS UNIQUE")
-
-    print("\n🧹 Fase 1: Limpieza de jerarquía antigua...")
+    print("🧹 Fase 1: Limpieza total de jerarquía antigua...")
     with gs.driver.session() as session:
         session.run("MATCH (n:Entity) DETACH DELETE n")
         session.run("MATCH (n:Institution) DETACH DELETE n")
         print("   ✅ Nodos Entity e Institution eliminados.")
 
-    print("\n📂 Fase 2: Cargando archivos...")
+    print("\n⛓️ Fase 2: Configurando nuevas restricciones...")
+    with gs.driver.session() as session:
+        try:
+            # Eliminar cualquier restricción vieja que use el campo 'name'
+            constraints = session.run("SHOW CONSTRAINTS").data()
+            for c in constraints:
+                props = c.get('properties', [])
+                labels = c.get('labels_or_types', c.get('labelsOrTypes', [c.get('entityType', '')]))
+                if ('Entity' in labels or 'Institution' in labels) and 'name' in props:
+                    session.run(f"DROP CONSTRAINT {c['name']}")
+                    print(f"   ✅ Restricción antigua {c['name']} eliminada.")
+        except Exception as e:
+            print(f"   ⚠️ Nota: No se pudo limpiar restricciones automáticamente: {e}")
+
+        # Crear nuestras nuevas restricciones sobre el campo 'id'
+        session.run("CREATE CONSTRAINT entity_id_unique IF NOT EXISTS FOR (e:Entity) REQUIRE e.id IS UNIQUE")
+        session.run("CREATE CONSTRAINT institution_id_unique IF NOT EXISTS FOR (i:Institution) REQUIRE i.id IS UNIQUE")
+        print("   ✅ Restricciones de unicidad por ID configuradas.")
+
+    print("\n📂 Fase 3: Cargando archivos...")
     # Columnas exactas encontradas en el archivo
     cols_to_read = [
         'NOMBRE DEL INVESTIGADOR', 
