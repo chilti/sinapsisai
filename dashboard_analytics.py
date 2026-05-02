@@ -141,18 +141,13 @@ def load_hierarchy():
     from database.knowledge_graph import Neo4jGraphStore
     store = Neo4jGraphStore()
     hierarchy = {}
-    
     try:
         with store.driver.session() as session:
-            # 1. Intentar estructura jerárquica primaria basada en PART_OF
+            # 1. Búsqueda recursiva: cualquier Entidad que sea PART_OF de una Institución
+            # a cualquier nivel (Dependencia o Subdependencia)
             query = """
-            MATCH (e:Entity)-[:PART_OF]->(i:Institution)
-            WHERE e.name <> i.name
-            RETURN DISTINCT i.name as institution, e.name as entity
-            UNION
-            MATCH (e:Entity)<-[:AFFILIATED_TO]-(a:Academic)-[:AFFILIATED_TO]->(i:Institution)
-            WHERE e.name <> i.name AND NOT e:Institution AND NOT EXISTS((e)-[:PART_OF]->())
-            RETURN DISTINCT i.name as institution, e.name as entity
+            MATCH (e:Entity)-[:PART_OF*..3]->(i:Institution)
+            RETURN i.name AS inst, collect(DISTINCT e.name) AS entities
             """
             res = session.run(query)
             for r in res:
