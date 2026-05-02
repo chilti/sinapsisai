@@ -34,21 +34,25 @@ def rebuild():
     
     print("⛓️ Fase 0: Limpiando restricciones antiguas...")
     with gs.driver.session() as session:
-        # Intentar borrar la restricción de nombre si existe
         try:
-            # En Neo4j 4.x/5.x el comando varía, probamos con el estándar
-            session.run("DROP CONSTRAINT entity_name_unique IF EXISTS")
-            session.run("DROP CONSTRAINT constraint_entity_name IF EXISTS") # Nombre común
-            # O simplemente buscarla y borrarla
+            # Obtener todas las restricciones
             constraints = session.run("SHOW CONSTRAINTS").data()
             for c in constraints:
-                if 'name' in c['properties'] and 'Entity' in c['labels_or_types']:
+                # Buscar cualquier restricción que involucre a 'Entity' y 'name'
+                # Manejamos diferentes versiones de Neo4j (keys variadas)
+                props = c.get('properties', [])
+                labels = c.get('labels_or_types', c.get('labelsOrTypes', [c.get('entityType', '')]))
+                
+                is_entity = 'Entity' in labels or any('Entity' in str(l) for l in labels)
+                is_name = 'name' in props
+                
+                if is_entity and is_name:
                     session.run(f"DROP CONSTRAINT {c['name']}")
                     print(f"   ✅ Restricción {c['name']} eliminada.")
         except Exception as e:
             print(f"   ⚠️ Nota: No se pudo limpiar restricciones automáticamente: {e}")
 
-        # Asegurar restricción en ID
+        # Asegurar restricción en ID (nuestra nueva clave primaria)
         session.run("CREATE CONSTRAINT entity_id_unique IF NOT EXISTS FOR (e:Entity) REQUIRE e.id IS UNIQUE")
         session.run("CREATE CONSTRAINT institution_id_unique IF NOT EXISTS FOR (i:Institution) REQUIRE i.id IS UNIQUE")
 
