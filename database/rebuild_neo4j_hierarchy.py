@@ -39,14 +39,22 @@ def rebuild():
         print("   ✅ Nodos Entity e Institution eliminados.")
 
     print("\n📂 Fase 2: Cargando archivos...")
-    # Cargar Excel (solo columnas necesarias para ahorrar memoria)
+    # Columnas exactas encontradas en el archivo
     cols_to_read = [
-        'NOMBRE', 
-        'INSTITUCION DE ACREDITACION', 
+        'NOMBRE DEL INVESTIGADOR', 
+        'INSTITUCIÓN DE ACREDITACIÓN', 
         'DEPENDENCIA DE ACREDITACIÓN', 
         'SUBDEPENDENCIA DE ACREDITACIÓN'
     ]
     df_snii = pd.read_excel(EXCEL_PATH, usecols=cols_to_read)
+    
+    # Renombrar para facilitar el manejo interno
+    df_snii = df_snii.rename(columns={
+        'NOMBRE DEL INVESTIGADOR': 'NOMBRE',
+        'INSTITUCIÓN DE ACREDITACIÓN': 'INSTITUCION',
+        'DEPENDENCIA DE ACREDITACIÓN': 'DEPENDENCIA',
+        'SUBDEPENDENCIA DE ACREDITACIÓN': 'SUBDEPENDENCIA'
+    })
     
     with open(ACADEMIC_JSON, 'r', encoding='utf-8') as f:
         academic_matches = json.load(f)
@@ -57,9 +65,9 @@ def rebuild():
     
     # Agrupamos para procesar por jerarquías únicas
     groups = df_snii.groupby([
-        'INSTITUCION DE ACREDITACION', 
-        'DEPENDENCIA DE ACREDITACIÓN', 
-        'SUBDEPENDENCIA DE ACREDITACIÓN'
+        'INSTITUCION', 
+        'DEPENDENCIA', 
+        'SUBDEPENDENCIA'
     ], dropna=False)
 
     with gs.driver.session() as session:
