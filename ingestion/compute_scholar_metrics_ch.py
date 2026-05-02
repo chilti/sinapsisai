@@ -530,12 +530,11 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
         df_inst = df_inst.drop_duplicates(subset=['paper_id', 'academic_name'])
         print(f"  📄 {len(df_inst):,} papers (Capacidad Instalada)")
 
-        # Procesar por académico
-        for ac_name, df_ac in df_inst.groupby('academic_name'):
-            entity = df_ac['entity'].iloc[0] if 'entity' in df_ac.columns else 'Sin Entidad'
-            _flush_academic(ac_name, df_ac.copy(), entity, inst_name, updated_files)
+        # Procesar por académico y entidad (ahora que un académico puede estar en varios niveles)
+        for (ac_name, ent_name), df_ac in df_inst.groupby(['academic_name', 'entity']):
+            _flush_academic(ac_name, df_ac.copy(), ent_name, inst_name, updated_files)
 
-        # Nivel entidad — guarda un parquet por cada entidad de esta institución
+        # Nivel entidad — guarda un parquet por cada entidad de esta institución (Dep y Subdep)
         ent_base = CACHE_DIR / safe_inst
         df_ent_all = df_inst.rename(columns={'entity': 'entity_name'})
         _save_inst_parquets(df_ent_all, ent_base, 'entity_name', updated_files)
