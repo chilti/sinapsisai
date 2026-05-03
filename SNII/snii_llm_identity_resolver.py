@@ -501,7 +501,12 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                 # Deduplicar al cargar
                 seen_keys = set()
                 for r in temp_data:
-                    key = (r["snii_author"], r.get("snii_institution", ""), r.get("snii_subdependency", ""))
+                    # Normalizar llave para el lookup
+                    k_name = normalize_text(r["snii_author"]).upper()
+                    k_inst = normalize_text(r.get("snii_institution", "")).upper()
+                    k_sub = normalize_text(r.get("snii_subdependency", "")).upper()
+                    key = (k_name, k_inst, k_sub)
+                    
                     if key not in seen_keys:
                         lookup[key] = len(verified_results)
                         verified_results.append(r)
@@ -552,7 +557,11 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                     final_inst = raw_inst
                     final_sub = raw_sub
 
-                key = (snii_name, final_inst, final_sub)
+                # Normalizar llave para comparación
+                k_name = normalize_text(snii_name).upper()
+                k_inst = normalize_text(final_inst).upper()
+                k_sub = normalize_text(final_sub).upper()
+                key = (k_name, k_inst, k_sub)
 
                 # Evitar procesar lo mismo dos veces en la misma corrida (duplicados en Excel)
                 if key in processed_in_this_run:
