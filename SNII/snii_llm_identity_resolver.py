@@ -570,15 +570,14 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                 raw_sub = str(row[sub_inst_col]).strip() if pd.notna(row[sub_inst_col]) else ""
                 raw_ent_final = str(row[ent_final_col]).strip() if pd.notna(row[ent_final_col]) else ""
 
-                if raw_inst.upper() in ["SIN INSTITUCIN", "SIN INSTITUCION"]:
-                    final_inst = "SIN INSTITUCIN"
+                if raw_inst.upper() in ["SIN INSTITUCION", "SIN INSTITUCIN", "DESCONOCIDO", ""]:
+                    final_inst = "SIN INSTITUCION"
+                    final_dep = "NO APLICA"
                     final_sub = "NO APLICA"
-                elif raw_sub.upper() in ["SIN INFORMACION", "SIN INFORMACIN", ""]:
-                    final_inst = raw_inst
-                    final_sub = raw_dep if raw_dep else raw_sub
                 else:
                     final_inst = raw_inst
-                    final_sub = raw_sub
+                    final_dep = raw_dep if raw_dep.upper() not in ["SIN INFORMACION", "SIN INFORMACIN", ""] else "NO APLICA"
+                    final_sub = raw_sub if raw_sub.upper() not in ["SIN INFORMACION", "SIN INFORMACIN", ""] else "NO APLICA"
 
                 # Intentar obtener CVU (puede llamarse 'CVU' o 'CVU padrón corregido')
                 cvu = ""
@@ -626,8 +625,9 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                 # Normalizar llave para comparación de forma robusta
                 k_name = clean_for_key(snii_name)
                 k_inst = clean_for_key(final_inst)
+                k_dep = clean_for_key(final_dep)
                 k_sub = clean_for_key(final_sub)
-                key = (k_name, k_inst, k_sub)
+                key = (k_name, k_inst, k_dep, k_sub)
 
                 # Evitar procesar lo mismo dos veces en la misma corrida (duplicados en Excel)
                 if key in processed_in_this_run:
@@ -838,6 +838,7 @@ Respuesta:"""
                 result_entry = {
                     "snii_author": snii_name,
                     "snii_institution": final_inst,
+                    "snii_dependency": final_dep,
                     "snii_subdependency": final_sub,
                     "snii_entidad_final": raw_ent_final,
                     "snii_cvu": cvu,

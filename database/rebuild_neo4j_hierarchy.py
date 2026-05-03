@@ -58,32 +58,67 @@ def rebuild():
         print("   ✅ Restricciones de unicidad por ID configuradas.")
 
     print("\n📂 Fase 3: Cargando archivos...")
-    # Columnas exactas encontradas en el archivo
-    cols_to_read = [
-        'NOMBRE DEL INVESTIGADOR', 
-        'INSTITUCIÓN DE ACREDITACIÓN', 
-        'DEPENDENCIA DE ACREDITACIÓN', 
-        'SUBDEPENDENCIA DE ACREDITACIÓN',
-        'ENTIDAD FINAL'
-    ]
-    df_snii = pd.read_excel(EXCEL_PATH, usecols=cols_to_read, sheet_name='4T_2025 (44,794)')
     
-    # Renombrar para facilitar el manejo interno
-    df_snii = df_snii.rename(columns={
-        'NOMBRE DEL INVESTIGADOR': 'NOMBRE',
-        'INSTITUCIÓN DE ACREDITACIÓN': 'INSTITUCION',
-        'DEPENDENCIA DE ACREDITACIÓN': 'DEPENDENCIA',
-        'SUBDEPENDENCIA DE ACREDITACIÓN': 'SUBDEPENDENCIA',
-        'ENTIDAD FINAL': 'ENTIDAD_FINAL'
-    })
+    # Cargar primero solo el header para mapear columnas dinámicamente
+    header_df = pd.read_excel(EXCEL_PATH, sheet_name='4T_2025 (44,794)', nrows=0)
+    original_cols = header_df.columns.tolist()
+    
+    # Mapeo de búsqueda (normalizado)
+    target_map = {
+        'NOMBRE': ['NOMBRE DEL INVESTIGADOR', 'NOMBRE'],
+        'INSTITUCION': ['INSTITUCION DE ACREDITACION', 'INSTITUCIÓN DE ACREDITACIÓN'],
+        'DEPENDENCIA': ['DEPENDENCIA DE ACREDITACION', 'DEPENDENCIA DE ACREDITACIÓN'],
+        'SUBDEPENDENCIA': ['SUBDEPENDENCIA DE ACREDITACION', 'SUBDEPENDENCIA DE ACREDITACIÓN'],
+        'ENTIDAD_FINAL': ['ENTIDAD FINAL']
+    }
+    
+    actual_cols_to_read = []
+    rename_dict = {}
+    
+    for canonical, variations in target_map.items():
+        found = False
+        for var in variations:
+            # Buscar coincidencia exacta o normalizada
+            for col in original_cols:
+                if col.strip() == var or normalize(col).upper() == normalize(var).upper():
+                    actual_cols_to_read.append(col)
+                    rename_dict[col] = canonical
+                    found = True
+                    break
+            if found: break
+        if not found:
+            print(f"⚠️ Advertencia: No se encontró columna para '{canonical}'")
+
+    df_snii = pd.read_excel(EXCEL_PATH, usecols=actual_cols_to_read, sheet_name='4T_2025 (44,794)')
+    df_snii = df_snii.rename(columns=rename_dict)
     
     with open(ACADEMIC_JSON, 'r', encoding='utf-8') as f:
         academic_matches = json.load(f)
-    with open(ROR_JSON, 'r', encoding='utf-8') as f:
-        ror_matches = json.load(f)
+    # Pre-normalización de la jerarquía
+    def normalize_hierarchy(row):
+        inst = normalize(row['INSTITUCION']) or "SIN INSTITUCION"
+        dep = normalize(row['DEPENDENCIA']) or "SIN INFORMACION"
+        sub = normalize(row['SUBDEPENDENCIA']) or "SIN INFORMACION"
+        
+        # REGLA DE ORO: Si no hay institución, no hay sub-niveles
+        if inst.upper() in ["SIN INSTITUCION", "SIN INSTITUCIN", "DESCONOCIDO", ""]:
+            return "SIN INSTITUCION", "NO APLICA", "NO APLICA"
+        
+        # Normalizar SIN INFORMACION a NO APLICA si es necesario
+        if dep.upper() in ["SIN INFORMACION", "SIN INFORMACIN", ""]:
+            dep = "NO APLICA"
+        if sub.upper() in ["SIN INFORMACION", "SIN INFORMACIN", ""]:
+            sub = "NO APLICA"
+            
+        return inst, dep, sub
 
     print("\n🏗️ Fase 3: Reconstruyendo Jerarquía y Vinculando Académicos...")
     
+    # Aplicar normalización a las columnas antes del groupby
+    df_snii[['INSTITUCION', 'DEPENDENCIA', 'SUBDEPENDENCIA']] = df_snii.apply(
+        lambda x: pd.Series(normalize_hierarchy(x)), axis=1
+    )
+
     # Agrupamos para procesar por jerarquías únicas
     groups = df_snii.groupby([
         'INSTITUCION', 
