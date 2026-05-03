@@ -170,53 +170,15 @@ def load_hierarchy():
                 for dep in hierarchy[inst]:
                     hierarchy[inst][dep] = sorted(list(set(hierarchy[inst][dep])))
             
-            # Caso especial México: Lista de instituciones
-            hierarchy["MÉXICO"] = {inst: [] for inst in hierarchy.keys()}
-            
-            # 2. Complemento: Nodos que son Entity e Institution simultáneamente o huérfanos
-            res = session.run("MATCH (e:Entity) RETURN e.name as name")
-            all_entities = [r['name'] for r in res]
-            
-            # UNAM es el default exacto de base de datos
-            unam_name = "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)"
-            if not hierarchy:
-                hierarchy[unam_name] = set(all_entities)
-            else:
-                # Asegurar que todas las entidades estén en alguna institución
-                assigned_entities = {ent for ents in hierarchy.values() for ent in ents}
-                for ent in all_entities:
-                    if ent not in assigned_entities:
-                        # Heurística simple para asignación por defecto
-                        if any(x in str(ent).lower() for x in ['ciencias', 'nucleares', 'unam']):
-                            target_inst = unam_name
-                        elif ent == "Mexico":
-                            target_inst = "Nacional (México)"
-                        else:
-                            target_inst = "Otras Instituciones"
-                            
-                        if target_inst not in hierarchy: hierarchy[target_inst] = set()
-                        hierarchy[target_inst].add(ent)
-            
-        # Asegurar que 'México' siempre aparezca como opción nacional principal
-        if "México" not in hierarchy:
-            hierarchy["México"] = {"Mexico"}
-        else:
-            hierarchy["México"].add("Mexico")
+            # Caso especial México: Sus "dependencias" son las Instituciones
+            hierarchy["MÉXICO"] = {inst: [] for inst in hierarchy.keys() if inst != "MÉXICO"}
 
     except Exception as e:
         print(f"Error cargando jerarquía: {e}")
-        hierarchy = {
-            "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)": {
-                "FACULTAD DE CIENCIAS", 
-                "INSTITUTO DE CIENCIAS NUCLEARES",
-                "INSTITUTO DE FISICA"
-            },
-            "México": {"Mexico"}
-        }
     finally:
         store.close()
     
-    return {k: sorted(list(v)) for k, v in hierarchy.items()}
+    return hierarchy
 
 # Alias de compatibilidad hacia atrás (dashboard_v2.py lo importa con el nombre anterior)
 get_institution_hierarchy = load_hierarchy
