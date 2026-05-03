@@ -30,10 +30,10 @@ def run_update():
         return
         
     print(f"📂 Cargando Excel: {EXCEL_PATH}...")
-    df = pd.read_excel(EXCEL_PATH, usecols=['NOMBRE DEL INVESTIGADOR', 'CVU'], sheet_name=0)
+    df = pd.read_excel(EXCEL_PATH, usecols=['NOMBRE DEL INVESTIGADOR', 'CVU padrón corregido'], sheet_name=0)
     df = df.rename(columns={
         'NOMBRE DEL INVESTIGADOR': 'nombre',
-        'CVU': 'cvu'
+        'CVU padrón corregido': 'cvu'
     })
     
     # Crear un diccionario para mapeo rápido {nombre: cvu}
