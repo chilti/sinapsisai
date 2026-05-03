@@ -127,7 +127,7 @@ SELECT
     wsm.source_id   AS Source,
     wsm.source_type,
     wsm.institution_rors
-FROM works_seed_mexico wsm
+FROM works_seed_mexico FINAL wsm
 {filter}
 """
 
