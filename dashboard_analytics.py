@@ -133,7 +133,6 @@ def load_hierarchy():
     if os.path.exists(json_path):
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
-                hierarchy = json.load(f)
                 return json.load(f)
         except Exception as e:
             print(f"Error leyendo hierarchy.json: {e}")
