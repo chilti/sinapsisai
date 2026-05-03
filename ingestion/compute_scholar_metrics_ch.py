@@ -478,7 +478,7 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
     print("🚀 Iniciando pipeline v3 (ClickHouse JOIN directo)...")
     updated_files = set()
 
-    # ── Obtener jerarquía completa desde Neo4j (fuente de verdad) ─────────
+    # ── Obtener jerarquía desde Neo4j (para saber qué entidades procesar) ──
     print("\n[1] Cargando jerarquía institucional desde Neo4j...")
     from database.knowledge_graph import Neo4jGraphStore
     gs = Neo4jGraphStore()
@@ -487,16 +487,9 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
     MATCH (i:Institution)
     OPTIONAL MATCH (i)<-[:PART_OF]-(dep:Entity)
     OPTIONAL MATCH (dep)<-[:PART_OF]-(sub:Entity)
-    OPTIONAL MATCH (dep)<-[:AFFILIATED_TO]-(a_dep:Academic)
-    OPTIONAL MATCH (sub)<-[:AFFILIATED_TO]-(a_sub:Academic)
-    RETURN
-        i.name   AS inst,
-        dep.name AS dep,
-        sub.name AS sub,
-        collect(DISTINCT a_dep.name) AS dep_academics,
-        collect(DISTINCT a_sub.name) AS sub_academics
+    RETURN i.name AS inst, dep.name AS dep, sub.name AS sub
     """
-    # Mapa: {inst: {entity: [academic_names]}}
+    # Mapa: {inst: {dep: [subs]}}
     hier = {}
     with gs.driver.session() as session:
         for r in session.run(_HIER_QUERY):
@@ -505,40 +498,21 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
             sub  = r["sub"]
             if not inst: continue
             if inst not in hier: hier[inst] = {}
-
-            # Nivel institución: todos los académicos de la institución (se acumula)
-            if inst not in hier[inst]: hier[inst][inst] = set()
-
             if dep:
-                if dep not in hier[inst]: hier[inst][dep] = set()
-                hier[inst][dep].update(a for a in r["dep_academics"] if a)
-                hier[inst][inst].update(a for a in r["dep_academics"] if a)
+                if dep not in hier[inst]: hier[inst][dep] = []
+                if sub and sub not in hier[inst][dep]:
+                    hier[inst][dep].append(sub)
 
-            if sub:
-                if sub not in hier[inst]: hier[inst][sub] = set()
-                hier[inst][sub].update(a for a in r["sub_academics"] if a)
-                hier[inst][inst].update(a for a in r["sub_academics"] if a)
-                if dep:
-                    hier[inst][dep].update(a for a in r["sub_academics"] if a)
-
-    # Filtrar a entidad específica si se pasó --entity
+    # Filtros opcionales
     if entity_filter:
-        hier = {i: {e: acs for e, acs in ents.items() if e == entity_filter}
+        hier = {i: {e: s for e, s in ents.items() if e == entity_filter}
                 for i, ents in hier.items() if entity_filter in ents}
 
-    # Filtrar a académico específico si se pasó --academic
-    if academic_filter:
-        hier = {i: {e: {academic_filter} for e, acs in ents.items() if academic_filter in acs}
-                for i, ents in hier.items()}
-        hier = {i: ents for i, ents in hier.items() if ents}
-
-    total_entities = sum(len(ents) for ents in hier.values())
-    print(f"  → {len(hier)} institución(es), {total_entities} entidad(es) a procesar")
+    total_entities = sum(1 + len(subs) for ents in hier.values() for subs in ents.values())
+    print(f"  → {len(hier)} institución(es) en jerarquía Neo4j")
 
     # Cargar mapa nombre → ROR para Producción Institucional
     ror_map = _get_institution_rors()
-
-    # Acumuladores para México (Capacidad Instalada)
     mx_cap_frames = []
     done = 0
 
@@ -547,61 +521,76 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
         safe_inst = _safe_name(inst_name)
         print(f"\n📍 {inst_name}")
 
-        for ent_name, ac_set in entities.items():
+        # ─ Nivel Institución (todos sus académicos) ───────────────────────
+        done += 1
+        where = "WHERE pm.institution = %(inst)s AND pm.entity = %(ent)s"
+        params = {'inst': inst_name, 'ent': inst_name}
+        df_inst = _query_cap(where, params)
+
+        if df_inst.empty:
+            print(f"  ⚠️ Sin papers para la institución")
+        else:
+            df_inst = df_inst.drop_duplicates(subset=['paper_id', 'academic_name'])
+            print(f"  📄 {len(df_inst):,} papers (nivel institución)")
+
+            # Académicos individuales
+            for ac_name, df_ac in df_inst.groupby('academic_name'):
+                _flush_academic(ac_name, df_ac.copy(), inst_name, inst_name, updated_files)
+
+            cap_dir = CACHE_DIR / safe_inst / 'capacidad_instalada'
+            _save_aggregate_parquets(df_inst, cap_dir, updated_files, label=inst_name)
+
+            cols_mx = ['paper_id', 'year', 'citations', 'fwci',
+                       'citation_normalized_percentile', 'is_in_top_10_percent',
+                       'is_in_top_1_percent', 'is_oa', 'oa_status',
+                       'topic_name', 'subfield_name', 'field_name', 'domain_name',
+                       'keywords', 'language', 'type']
+            mx_cap_frames.append(df_inst[[c for c in cols_mx if c in df_inst.columns]])
+
+        # Producción Institucional via ROR
+        rors = ror_map.get(inst_name, [])
+        if rors:
+            ror_list = ', '.join(f"'{r}'" for r in rors)
+            df_prod = _query_prod(f"WHERE hasAny(institution_rors, [{ror_list}])")
+            if not df_prod.empty:
+                prod_dir = CACHE_DIR / safe_inst / 'produccion_institucional'
+                _save_aggregate_parquets(df_prod, prod_dir, updated_files, label=inst_name)
+                print(f"  🏛️ {len(df_prod):,} papers (Prod. Institucional)")
+
+        # ─ Nivel Dependencia y Subdependencia ────────────────────────────
+        for dep_name, subs in entities.items():
+            safe_dep = _safe_name(dep_name)
             done += 1
-            safe_ent = _safe_name(ent_name)
-            ac_list = sorted(ac_set)
-            if not ac_list:
-                continue
 
-            print(f"  [{done}/{total_entities}] {ent_name} ({len(ac_list)} académicos)")
+            # Dependencia
+            df_dep = _query_cap(
+                "WHERE pm.institution = %(inst)s AND pm.entity = %(ent)s",
+                {'inst': inst_name, 'ent': dep_name})
+            if not df_dep.empty:
+                df_dep = df_dep.drop_duplicates(subset=['paper_id', 'academic_name'])
+                print(f"  ├─ {dep_name}: {len(df_dep):,} papers")
+                dep_dir = CACHE_DIR / safe_inst / safe_dep
+                _save_aggregate_parquets(df_dep, dep_dir, updated_files, label=dep_name)
 
-            # Consultar ClickHouse filtrando por lista de académicos
-            ac_params = ", ".join(f"'{a.replace(chr(39), '')}'" for a in ac_list)
-            where = f"WHERE pm.academic_name IN ({ac_params})"
-            df_ent = _query_cap(where)
-
-            if df_ent.empty:
-                print(f"    ⚠️ Sin papers en ClickHouse")
-                continue
-
-            df_ent = df_ent.drop_duplicates(subset=['paper_id', 'academic_name'])
-            print(f"    📄 {len(df_ent):,} papers")
-
-            # Nivel académico individual
-            if ent_name == inst_name:
-                # Solo guardamos académicos a nivel de la institución raíz para evitar duplicar
-                for ac_name, df_ac in df_ent.groupby('academic_name'):
-                    _flush_academic(ac_name, df_ac.copy(), ent_name, inst_name, updated_files)
-
-            # Nivel entidad (Dep o Subdep)
-            ent_dir = CACHE_DIR / safe_inst / safe_ent
-            _save_aggregate_parquets(df_ent, ent_dir, updated_files, label=ent_name)
-
-            # Si es el nivel institución, guardamos también en capacidad_instalada
-            if ent_name == inst_name:
-                cap_dir = CACHE_DIR / safe_inst / 'capacidad_instalada'
-                _save_aggregate_parquets(df_ent, cap_dir, updated_files, label=inst_name)
-
-                # Acumular para México
-                cols_mx = ['paper_id', 'year', 'citations', 'fwci',
-                           'citation_normalized_percentile', 'is_in_top_10_percent',
-                           'is_in_top_1_percent', 'is_oa', 'oa_status',
-                           'topic_name', 'subfield_name', 'field_name', 'domain_name',
-                           'keywords', 'language', 'type']
-                mx_cap_frames.append(df_ent[[c for c in cols_mx if c in df_ent.columns]])
-
-                # Producción Institucional via works_seed_mexico + ROR
-                rors = ror_map.get(inst_name, [])
-                if rors:
-                    ror_list = ', '.join(f"'{r}'" for r in rors)
-                    df_prod = _query_prod(f"WHERE hasAny(institution_rors, [{ror_list}])")
-                    if not df_prod.empty:
-                        prod_dir = CACHE_DIR / safe_inst / 'produccion_institucional'
-                        _save_aggregate_parquets(df_prod, prod_dir, updated_files, label=inst_name)
-                        print(f"    🏛️ {len(df_prod):,} papers (Prod. Institucional)")
-
-            del df_ent
+            # Subdependencias
+            for sub_name in subs:
+                safe_sub = _safe_name(sub_name)
+                df_sub = _query_cap(
+                    "WHERE pm.institution = %(inst)s AND pm.entity = %(ent)s",
+                    {'inst': inst_name, 'ent': sub_name})
+                if not df_sub.empty:
+                    df_sub = df_sub.drop_duplicates(subset=['paper_id', 'academic_name'])
+                    print(f"  │  └─ {sub_name}: {len(df_sub):,} papers")
+                    # Académicos a nivel subdependencia
+                    for ac_name, df_ac in df_sub.groupby('academic_name'):
+                        _flush_academic(ac_name, df_ac.copy(), sub_name, inst_name, updated_files)
+                    sub_dir = CACHE_DIR / safe_inst / safe_sub
+                    _save_aggregate_parquets(df_sub, sub_dir, updated_files, label=sub_name)
+                    del df_sub
+            if not df_dep.empty:
+                del df_dep
+        if 'df_inst' in dir() and df_inst is not None:
+            del df_inst
 
     # ── Nivel México — Capacidad Instalada ────────────────────────────────
     if mx_cap_frames and not academic_filter and not entity_filter:
