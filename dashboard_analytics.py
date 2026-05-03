@@ -22,7 +22,7 @@ except Exception:
 
 # Paths
 BASE_PATH = os.path.dirname(os.path.abspath(__file__))
-CACHE_DIR = os.path.join(BASE_PATH, 'data', 'cache')
+CACHE_DIR = os.path.join(BASE_PATH, 'data', 'cache_ch')
 
 @st.cache_data
 def load_cached_data(filename, entity_name=None, academic_name=None, institution_name=None, _mtime=None):
@@ -171,6 +171,7 @@ def load_hierarchy():
                     hierarchy[inst][dep] = sorted(list(set(hierarchy[inst][dep])))
             
             # Caso especial México: Sus "dependencias" son las Instituciones
+            # Nos aseguramos de que solo exista UNA entrada nacional
             hierarchy["MÉXICO"] = {inst: [] for inst in hierarchy.keys() if inst != "MÉXICO"}
 
     except Exception as e:

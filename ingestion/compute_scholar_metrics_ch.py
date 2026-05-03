@@ -483,21 +483,16 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
         inst_df = ch_client.query_df(
             "SELECT DISTINCT institution, entity FROM paper_author_map "
             "WHERE academic_name = %(n)s",
-            parameters={'n': academic_filter})
+        q_inst = "SELECT DISTINCT institution FROM paper_author_map WHERE academic_name = %(ac)s AND institution NOT LIKE '%MEXICO%'"
+        df_insts = ch_client.query_df(q_inst, parameters={'ac': academic_filter})
     elif entity_filter:
-        inst_df = ch_client.query_df(
-            "SELECT DISTINCT institution, entity FROM paper_author_map "
-            "WHERE entity = %(n)s",
-            parameters={'n': entity_filter})
+        q_inst = "SELECT DISTINCT institution FROM paper_author_map WHERE entity = %(ent)s AND institution NOT LIKE '%MEXICO%'"
+        df_insts = ch_client.query_df(q_inst, parameters={'ent': entity_filter})
     else:
-        inst_df = ch_client.query_df(
-            "SELECT DISTINCT institution FROM paper_author_map")
+        q_inst = "SELECT DISTINCT institution FROM paper_author_map WHERE institution NOT LIKE '%MEXICO%'"
+        df_insts = ch_client.query_df(q_inst)
 
-    if inst_df.empty:
-        print("❌ No se encontraron datos en paper_author_map.")
-        return
-
-    institutions = inst_df['institution'].unique().tolist()
+    institutions = df_insts['institution'].unique().tolist()
     print(f"  → {len(institutions)} institución(es) a procesar")
 
     # Cargar mapa nombre → ROR para Producción Institucional
