@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS {TABLE} (
     audit_verdict   String
 )
 ENGINE = ReplacingMergeTree()
-ORDER BY (paper_id, academic_id)
+ORDER BY (paper_id, academic_id, institution, entity)
 SETTINGS index_granularity = 8192
 """
 
