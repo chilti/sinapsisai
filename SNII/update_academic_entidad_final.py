@@ -30,14 +30,21 @@ def run_update():
         return
         
     print(f"📂 Cargando Excel: {EXCEL_PATH}...")
-    df = pd.read_excel(EXCEL_PATH, usecols=['NOMBRE DEL INVESTIGADOR', 'ENTIDAD FINAL'], sheet_name='4T_2025 (44,794)')
+    df = pd.read_excel(EXCEL_PATH, usecols=['NOMBRE DEL INVESTIGADOR', 'ENTIDAD FINAL', 'CVU'], sheet_name=0)
     df = df.rename(columns={
         'NOMBRE DEL INVESTIGADOR': 'nombre',
-        'ENTIDAD FINAL': 'entidad_final'
+        'ENTIDAD FINAL': 'entidad_final',
+        'CVU': 'cvu'
     })
     
-    # Crear un diccionario para mapeo rápido
-    entidad_map = {str(row['nombre']).strip(): normalize(row['entidad_final']) for _, row in df.iterrows()}
+    # Crear un diccionario para mapeo rápido {nombre: (ent_final, cvu)}
+    entidad_map = {
+        str(row['nombre']).strip(): {
+            "ent_final": normalize(row['entidad_final']),
+            "cvu": str(row['cvu']).strip() if pd.notna(row['cvu']) else ""
+        } 
+        for _, row in df.iterrows()
+    }
     print(f"✅ Se cargaron {len(entidad_map)} investigadores del Excel.")
 
     # 2. Actualizar Neo4j
@@ -52,12 +59,12 @@ def run_update():
         for i in range(0, len(names), batch_size):
             batch_names = names[i:i+batch_size]
             # Creamos una lista de dicts para la query
-            params = [{"name": n, "ent_final": entidad_map[n]} for n in batch_names]
+            params = [{"name": n, "ent_final": entidad_map[n]["ent_final"], "cvu": entidad_map[n]["cvu"]} for n in batch_names]
             
             res = session.run("""
                 UNWIND $data AS item
                 MATCH (a:Academic {name: item.name})
-                SET a.entidad_final = item.ent_final
+                SET a.entidad_final = item.ent_final, a.cvu = item.cvu
                 RETURN count(a) as count
             """, data=params).single()
             
@@ -76,7 +83,8 @@ def run_update():
         for entry in data:
             name = entry.get('snii_author')
             if name in entidad_map:
-                entry['snii_entidad_final'] = entidad_map[name]
+                entry['snii_entidad_final'] = entidad_map[name]["ent_final"]
+                entry['snii_cvu'] = entidad_map[name]["cvu"]
                 updated_json_count += 1
                 
         with open(JSON_PATH, 'w', encoding='utf-8') as f:
