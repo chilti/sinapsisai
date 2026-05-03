@@ -482,8 +482,9 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
     # 1. Obtener lista de instituciones (excluimos el nivel virtual MÉXICO del bucle principal)
     print("\n[1] Descubriendo instituciones en ClickHouse...")
     
-    # Filtro agresivo para excluir el nivel nacional de la lista de tareas
-    exclude_mex = "institution NOT IN ('MÉXICO', 'MEXICO') AND institution NOT ILIKE '%MÉXICO%' AND institution NOT ILIKE '%MEXICO%'"
+    # Excluir ÚNICAMENTE los identificadores virtuales del nivel nacional
+    # NO usar ILIKE '%MEXICO%' — excluiría a la UNAM cuyo nombre contiene "MEXICO"
+    exclude_mex = "institution NOT IN ('MÉXICO', 'MEXICO', 'SIN INSTITUCIÓN', 'SIN_INST')"
     
     if args.academic:
         q_inst = f"SELECT DISTINCT institution FROM paper_author_map WHERE academic_name = %(ac)s AND {exclude_mex}"
