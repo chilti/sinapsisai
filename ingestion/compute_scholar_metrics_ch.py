@@ -480,9 +480,6 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
 
     # ── Determinar lista de instituciones a procesar ──────────────────────
     if academic_filter:
-        inst_df = ch_client.query_df(
-            "SELECT DISTINCT institution, entity FROM paper_author_map "
-            "WHERE academic_name = %(n)s",
         q_inst = "SELECT DISTINCT institution FROM paper_author_map WHERE academic_name = %(ac)s AND institution NOT LIKE '%MEXICO%'"
         df_insts = ch_client.query_df(q_inst, parameters={'ac': academic_filter})
     elif entity_filter:
