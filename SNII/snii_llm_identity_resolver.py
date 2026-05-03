@@ -29,6 +29,7 @@ from ingest_snii_apis import ingest_researcher_data
 
 # Aadir path raz
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from database.knowledge_graph import Neo4jGraphStore
 from database.vector_store import QdrantStore
 from match_snii_orcid import normalize_text, get_client as get_ch_client, get_orcid_client, SNII_PATH, CH_DB, CH_DB_ORCID
 
@@ -490,6 +491,15 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
     df.columns = [normalize_text(c).upper() for c in df.columns]
 
     output_path = os.path.join("data", "snii_llm_verified_matches.json")
+    print("🧬 Cargando cache de investigadores ya procesados en Neo4j...")
+    gs = Neo4jGraphStore()
+    neo4j_cvu_cache = set()
+    with gs.driver.session() as session:
+        res = session.run("MATCH (a:Academic {is_snii: true}) WHERE a.cvu IS NOT NULL RETURN a.cvu as cvu")
+        for r in res:
+            neo4j_cvu_cache.add(str(r["cvu"]).strip())
+    print(f"✅ {len(neo4j_cvu_cache)} CVUs ya marcados en Neo4j.")
+
     verified_results = []
     lookup = {}  # (name, inst, sub) -> index
     processed_in_this_run = set()
@@ -563,6 +573,17 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                 else:
                     final_inst = raw_inst
                     final_sub = raw_sub
+
+                # Intentar obtener CVU (puede llamarse 'CVU' o 'CVU padrón corregido')
+                cvu = ""
+                cvu_col = 'CVU' if 'CVU' in row else ('CVU PADRON CORREGIDO' if 'CVU PADRON CORREGIDO' in row else None)
+                if cvu_col and pd.notna(row[cvu_col]):
+                    cvu = str(row[cvu_col]).strip()
+                
+                # --- NUEVA REGLA: Saltar si el CVU ya está en Neo4j ---
+                if cvu and cvu in neo4j_cvu_cache and not force:
+                    processed_in_this_run.add(key)
+                    continue
 
                 # Normalizar llave para comparación de forma robusta
                 k_name = clean_for_key(snii_name)
@@ -781,6 +802,7 @@ Respuesta:"""
                     "snii_institution": final_inst,
                     "snii_subdependency": final_sub,
                     "snii_entidad_final": raw_ent_final,
+                    "snii_cvu": cvu,
                     "match": False,
                     "matched_author": None,
                     "matched_author_ids": None,
