@@ -94,6 +94,8 @@ def rebuild():
     
     with open(ACADEMIC_JSON, 'r', encoding='utf-8') as f:
         academic_matches = json.load(f)
+    with open(ROR_JSON, 'r', encoding='utf-8') as f:
+        ror_matches = json.load(f)
     # Pre-normalización de la jerarquía
     def normalize_hierarchy(row):
         inst = normalize(row['INSTITUCION']) or "SIN INSTITUCION"
