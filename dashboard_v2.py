@@ -366,10 +366,11 @@ with tab_council:
     col_entity, col_info = st.columns([2, 2])
 
     with col_entity:
+        # Usamos la entidad seleccionada en el sidebar como opción principal
         council_entity = st.selectbox(
             "Entidad objetivo",
-            entidades_filtradas,
-            index=default_ent_idx,
+            [selected_entity],
+            index=0,
             key="council_entity_select",
         )
 
