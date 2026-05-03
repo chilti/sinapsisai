@@ -493,6 +493,13 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
     verified_results = []
     lookup = {}  # (name, inst, sub) -> index
     processed_in_this_run = set()
+    
+    def clean_for_key(text):
+        if not text: return ""
+        t = normalize_text(str(text)).upper().replace(",", "").strip()
+        if t in ["SIN INFORMACION", "SIN INFORMACIN", "NO APLICA", "SIN INSTITUCION", "SIN INSTITUCIN", "NAN", "NONE", "NULL"]:
+            return ""
+        return t
 
     if os.path.exists(output_path):
         try:
@@ -501,10 +508,10 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                 # Deduplicar al cargar
                 seen_keys = set()
                 for r in temp_data:
-                    # Normalizar llave para el lookup
-                    k_name = normalize_text(r["snii_author"]).upper()
-                    k_inst = normalize_text(r.get("snii_institution", "")).upper()
-                    k_sub = normalize_text(r.get("snii_subdependency", "")).upper()
+                    # Normalizar llave para el lookup de forma robusta
+                    k_name = clean_for_key(r["snii_author"])
+                    k_inst = clean_for_key(r.get("snii_institution", ""))
+                    k_sub = clean_for_key(r.get("snii_subdependency", ""))
                     key = (k_name, k_inst, k_sub)
                     
                     if key not in seen_keys:
@@ -557,10 +564,10 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                     final_inst = raw_inst
                     final_sub = raw_sub
 
-                # Normalizar llave para comparación
-                k_name = normalize_text(snii_name).upper()
-                k_inst = normalize_text(final_inst).upper()
-                k_sub = normalize_text(final_sub).upper()
+                # Normalizar llave para comparación de forma robusta
+                k_name = clean_for_key(snii_name)
+                k_inst = clean_for_key(final_inst)
+                k_sub = clean_for_key(final_sub)
                 key = (k_name, k_inst, k_sub)
 
                 # Evitar procesar lo mismo dos veces en la misma corrida (duplicados en Excel)
