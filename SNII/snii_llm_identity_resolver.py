@@ -491,14 +491,20 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
     df.columns = [normalize_text(c).upper() for c in df.columns]
 
     output_path = os.path.join("data", "snii_llm_verified_matches.json")
-    print("🧬 Cargando cache de investigadores ya procesados en Neo4j...")
+    # 1. Cargar cache de investigadores ya procesados en Neo4j con sus IDs
+    print("🧬 Cargando cache de investigadores desde Neo4j...")
     gs = Neo4jGraphStore()
-    neo4j_cvu_cache = set()
+    neo4j_id_cache = {} # CVU -> {oa_id, orcid, name}
     with gs.driver.session() as session:
-        res = session.run("MATCH (a:Academic {is_snii: true}) WHERE a.cvu IS NOT NULL RETURN a.cvu as cvu")
+        query = "MATCH (a:Academic {is_snii: true}) WHERE a.cvu IS NOT NULL RETURN a.cvu as cvu, a.openalex_id as oa_id, a.orcid as orcid, a.name as name"
+        res = session.run(query)
         for r in res:
-            neo4j_cvu_cache.add(str(r["cvu"]).strip())
-    print(f"✅ {len(neo4j_cvu_cache)} CVUs ya marcados en Neo4j.")
+            neo4j_id_cache[str(r["cvu"]).strip()] = {
+                "oa_id": r["oa_id"],
+                "orcid": r["orcid"],
+                "name": r["name"]
+            }
+    print(f"✅ {len(neo4j_id_cache)} investigadores recuperados de Neo4j.")
 
     verified_results = []
     lookup = {}  # (name, inst, sub) -> index
@@ -580,8 +586,40 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                 if cvu_col and pd.notna(row[cvu_col]):
                     cvu = str(row[cvu_col]).strip()
                 
-                # --- NUEVA REGLA: Saltar si el CVU ya está en Neo4j ---
-                if cvu and cvu in neo4j_cvu_cache and not force:
+                # --- NUEVA REGLA: Si el CVU está en Neo4j, reutilizamos identidad pero actualizamos afiliación ---
+                if cvu and cvu in neo4j_id_cache and not force:
+                    # Solo saltamos si la afiliación es idéntica a lo que ya tenemos en el JSON actual
+                    if key in lookup:
+                        processed_in_this_run.add(key)
+                        continue
+                    
+                    # Si el CVU es conocido pero es una afiliación nueva (o no está en el JSON)
+                    cached = neo4j_id_cache[cvu]
+                    print(f"   [Recuperado Neo4j] {snii_name} (CVU: {cvu}) -> Reutilizando IDs...")
+                    
+                    match_entry = {
+                        "snii_author": snii_name,
+                        "snii_institution": final_inst,
+                        "snii_subdependency": final_sub,
+                        "snii_entidad_final": raw_ent_final,
+                        "snii_cvu": cvu,
+                        "match": True,
+                        "matched_author": cached["name"],
+                        "matched_orcid": cached["orcid"],
+                        "matched_openalex_id": cached["oa_id"],
+                        "source": "Neo4j Cache (Identity Reused)",
+                        "reason": f"Investigador ya verificado por CVU. Actualizando afiliación a {final_inst} | {final_sub}",
+                        "confidence": 100
+                    }
+                    verified_results.append(match_entry)
+                    lookup[key] = len(verified_results) - 1
+                    
+                    # Guardado atómico
+                    temp_path = output_path + ".tmp"
+                    with open(temp_path, "w", encoding="utf-8") as f:
+                        json.dump(verified_results, f, ensure_ascii=False, indent=2)
+                    os.replace(temp_path, output_path)
+                    
                     processed_in_this_run.add(key)
                     continue
 
