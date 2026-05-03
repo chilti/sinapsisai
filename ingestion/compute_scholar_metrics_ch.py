@@ -107,27 +107,27 @@ LEFT JOIN topics t ON wf.topic_id = t.id
 # Producción Institucional: works_seed_mexico
 _Q_PROD = """
 SELECT
-    wsm.id          AS paper_id,
-    wsm.doi,
-    wsm.title       AS Title,
-    wsm.publication_year AS year,
-    wsm.cited_by_count   AS citations,
-    wsm.fwci,
-    wsm.percentile  AS citation_normalized_percentile,
-    wsm.is_top_10   AS is_in_top_10_percent,
-    wsm.is_top_1    AS is_in_top_1_percent,
-    wsm.is_oa,
-    wsm.oa_status,
-    wsm.topic       AS topic_name,
-    wsm.subfield    AS subfield_name,
-    wsm.field       AS field_name,
-    wsm.domain      AS domain_name,
-    wsm.language,
-    wsm.type,
-    wsm.source_id   AS Source,
-    wsm.source_type,
-    wsm.institution_rors
-FROM works_seed_mexico FINAL wsm
+    id          AS paper_id,
+    doi,
+    title       AS Title,
+    publication_year AS year,
+    cited_by_count   AS citations,
+    fwci,
+    percentile  AS citation_normalized_percentile,
+    is_top_10   AS is_in_top_10_percent,
+    is_top_1    AS is_in_top_1_percent,
+    is_oa,
+    oa_status,
+    topic       AS topic_name,
+    subfield    AS subfield_name,
+    field       AS field_name,
+    domain      AS domain_name,
+    language,
+    type,
+    source_id   AS Source,
+    source_type,
+    institution_rors
+FROM works_seed_mexico FINAL
 {filter}
 """
 
@@ -479,18 +479,24 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
     updated_files = set()
 
     # ── Determinar lista de instituciones a procesar ──────────────────────
-    if academic_filter:
-        q_inst = "SELECT DISTINCT institution FROM paper_author_map WHERE academic_name = %(ac)s AND institution NOT LIKE '%MEXICO%'"
+    # 1. Obtener lista de instituciones (excluimos el nivel virtual MÉXICO del bucle principal)
+    print("\n[1] Descubriendo instituciones en ClickHouse...")
+    
+    # Filtro agresivo para excluir el nivel nacional de la lista de tareas
+    exclude_mex = "institution NOT IN ('MÉXICO', 'MEXICO') AND institution NOT ILIKE '%MÉXICO%' AND institution NOT ILIKE '%MEXICO%'"
+    
+    if args.academic:
+        q_inst = f"SELECT DISTINCT institution FROM paper_author_map WHERE academic_name = %(ac)s AND {exclude_mex}"
         df_insts = ch_client.query_df(q_inst, parameters={'ac': academic_filter})
     elif entity_filter:
-        q_inst = "SELECT DISTINCT institution FROM paper_author_map WHERE entity = %(ent)s AND institution NOT LIKE '%MEXICO%'"
+        q_inst = f"SELECT DISTINCT institution FROM paper_author_map WHERE entity = %(ent)s AND {exclude_mex}"
         df_insts = ch_client.query_df(q_inst, parameters={'ent': entity_filter})
     else:
-        q_inst = "SELECT DISTINCT institution FROM paper_author_map WHERE institution NOT LIKE '%MEXICO%'"
+        q_inst = f"SELECT DISTINCT institution FROM paper_author_map WHERE {exclude_mex}"
         df_insts = ch_client.query_df(q_inst)
 
-    institutions = df_insts['institution'].unique().tolist()
-    print(f"  → {len(institutions)} institución(es) a procesar")
+    institutions = sorted(df_insts['institution'].unique().tolist())
+    print(f"  → {len(institutions)} institución(es) a procesar: {institutions}")
 
     # Cargar mapa nombre → ROR para Producción Institucional
     ror_map = _get_institution_rors()

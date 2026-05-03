@@ -274,32 +274,53 @@ def _transform_page(df: pd.DataFrame) -> pd.DataFrame:
             'audit_verdict': r['audit_verdict']
         }
         
-        inst = str(r['institution']).strip().upper()
+        root_inst = str(r['institution']).strip().upper()
         hierarchy = r.get('hierarchy', [])
         if not isinstance(hierarchy, list): hierarchy = []
         
-        # 1. Nivel Institucional puro
+        # Filtrar nombres vacíos y normalizar
+        hierarchy = [str(x).strip().upper() for x in hierarchy if x]
+        
+        # LÓGICA DE JERARQUÍA INTELIGENTE:
+        # Hierarchy suele ser: [Subdep, Dep, Universidad, MÉXICO]
+        # Queremos identificar la "Universidad" (Institución Real)
+        real_inst = root_inst
+        if root_inst == 'MÉXICO' and len(hierarchy) >= 2:
+            # En la jerarquía de 3-4 niveles: [Subdep, Dep, Universidad, MÉXICO]
+            # La universidad es la que está justo debajo de MÉXICO
+            real_inst = hierarchy[-2] # El penúltimo es la universidad
+        elif root_inst == 'MÉXICO' and len(hierarchy) == 1:
+            real_inst = hierarchy[0]
+
+        # 1. Filas para la Institución Real (UNAM, UAM, etc.)
+        # Esto permite que el dashboard las vea como instituciones independientes
         row_inst = base.copy()
-        row_inst['institution'] = inst
-        row_inst['entity'] = inst # En el nivel raíz, entidad = institución
+        row_inst['institution'] = real_inst
+        row_inst['entity'] = real_inst
         rows.append(row_inst)
         
-        # 2. Todos los niveles de la jerarquía (Dep, Subdep)
+        # 2. Filas para cada nivel de entidad bajo la Institución Real
         for entity_name in hierarchy:
-            if not entity_name: continue
-            name = str(entity_name).strip().upper()
-            if name == inst: continue
-            
+            if not entity_name or entity_name == root_inst: continue
+            # Solo agregamos como entidad si no es la propia universidad (ya agregada arriba)
+            # o si queremos verla dentro de la universidad
             row_ent = base.copy()
-            row_ent['institution'] = inst
-            row_ent['entity'] = name
+            row_ent['institution'] = real_inst
+            row_ent['entity'] = entity_name
             rows.append(row_ent)
             
-        # 3. Nivel Nacional (México)
+        # 3. Nivel Nacional (MÉXICO)
+        # Aquí la "entidad" es la universidad, para poder comparar entre ellas
         row_mex = base.copy()
         row_mex['institution'] = 'MÉXICO'
-        row_mex['entity'] = inst # En el nivel México, la entidad es la Institución
+        row_mex['entity'] = real_inst
         rows.append(row_mex)
+
+        # 4. Caso especial: "MÉXICO" puro para indicadores globales
+        row_mex_global = base.copy()
+        row_mex_global['institution'] = 'MÉXICO'
+        row_mex_global['entity'] = 'MÉXICO'
+        rows.append(row_mex_global)
 
     # Crear el nuevo dataframe expandido
     expanded_df = pd.DataFrame(rows)
