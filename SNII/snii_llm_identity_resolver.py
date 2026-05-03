@@ -45,7 +45,7 @@ MEX_KEYWORDS = [
 if os.path.exists(SNII_PATH):
     try:
         print("📡 Cargando instituciones desde SNII para expandir red de seguridad...")
-        df_snii = pd.read_excel(SNII_PATH)
+        df_snii = pd.read_excel(SNII_PATH, sheet_name='4T_2025 (44,794)')
         # Normalizar nombres de columnas para evitar KeyErrors por acentos/encoding
         df_snii.columns = [normalize_text(c).upper() for c in df_snii.columns]
         
@@ -464,7 +464,7 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
     # Flag global para evitar trabarnos si la API oficial nos bloquea
     api_oficial_bloqueada = False
 
-    df = pd.read_excel(SNII_PATH)
+    df = pd.read_excel(SNII_PATH, sheet_name='4T_2025 (44,794)')
 
     if target_name:
         mask = df['NOMBRE DEL INVESTIGADOR'].str.contains(target_name, case=False, na=False)

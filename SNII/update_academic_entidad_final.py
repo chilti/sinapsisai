@@ -30,7 +30,7 @@ def run_update():
         return
         
     print(f"📂 Cargando Excel: {EXCEL_PATH}...")
-    df = pd.read_excel(EXCEL_PATH, usecols=['NOMBRE DEL INVESTIGADOR', 'ENTIDAD FINAL'])
+    df = pd.read_excel(EXCEL_PATH, usecols=['NOMBRE DEL INVESTIGADOR', 'ENTIDAD FINAL'], sheet_name='4T_2025 (44,794)')
     df = df.rename(columns={
         'NOMBRE DEL INVESTIGADOR': 'nombre',
         'ENTIDAD FINAL': 'entidad_final'

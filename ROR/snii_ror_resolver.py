@@ -186,7 +186,7 @@ def resolve_rors(limit_test=None, force=False):
     print("\n🚀 Resolviendo RORs de SNII con LLM + ClickHouse Batch...")
 
     # 1. Cargar Padrón y extraer entidades únicas (Detalladas)
-    df = pd.read_excel(SNII_PATH)
+    df = pd.read_excel(SNII_PATH, sheet_name='4T_2025 (44,794)')
     inst_col = 'INSTITUCIÓN DE ACREDITACIÓN'
     dep_col = 'DEPENDENCIA DE ACREDITACIÓN'
     sub_col = 'SUBDEPENDENCIA DE ACREDITACIÓN'

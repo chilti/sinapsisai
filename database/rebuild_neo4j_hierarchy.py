@@ -66,7 +66,7 @@ def rebuild():
         'SUBDEPENDENCIA DE ACREDITACIÓN',
         'ENTIDAD FINAL'
     ]
-    df_snii = pd.read_excel(EXCEL_PATH, usecols=cols_to_read)
+    df_snii = pd.read_excel(EXCEL_PATH, usecols=cols_to_read, sheet_name='4T_2025 (44,794)')
     
     # Renombrar para facilitar el manejo interno
     df_snii = df_snii.rename(columns={
