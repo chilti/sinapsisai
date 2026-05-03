@@ -63,7 +63,8 @@ def rebuild():
         'NOMBRE DEL INVESTIGADOR', 
         'INSTITUCIÓN DE ACREDITACIÓN', 
         'DEPENDENCIA DE ACREDITACIÓN', 
-        'SUBDEPENDENCIA DE ACREDITACIÓN'
+        'SUBDEPENDENCIA DE ACREDITACIÓN',
+        'ENTIDAD FINAL'
     ]
     df_snii = pd.read_excel(EXCEL_PATH, usecols=cols_to_read)
     
@@ -72,7 +73,8 @@ def rebuild():
         'NOMBRE DEL INVESTIGADOR': 'NOMBRE',
         'INSTITUCIÓN DE ACREDITACIÓN': 'INSTITUCION',
         'DEPENDENCIA DE ACREDITACIÓN': 'DEPENDENCIA',
-        'SUBDEPENDENCIA DE ACREDITACIÓN': 'SUBDEPENDENCIA'
+        'SUBDEPENDENCIA DE ACREDITACIÓN': 'SUBDEPENDENCIA',
+        'ENTIDAD FINAL': 'ENTIDAD_FINAL'
     })
     
     with open(ACADEMIC_JSON, 'r', encoding='utf-8') as f:
@@ -139,14 +141,18 @@ def rebuild():
                 curr_parent_id = sub_id
                 curr_parent_label = "Entity"
 
-            # 3. Vincular Académicos
+            # 3. Vincular Académicos y guardar su Entidad Final
+            # Tomamos la entidad final del primer registro del grupo (es la misma para todos en este grupo)
+            ent_final = normalize(group['ENTIDAD_FINAL'].iloc[0]) or ""
             academic_names = group['NOMBRE'].tolist()
+            
             session.run(f"""
                 MATCH (target:{curr_parent_label} {{id: $target_id}})
                 MATCH (a:Academic)
                 WHERE a.name IN $names
+                SET a.entidad_final = $ent_final
                 MERGE (a)-[:AFFILIATED_TO]->(target)
-            """, target_id=curr_parent_id, names=academic_names)
+            """, target_id=curr_parent_id, names=academic_names, ent_final=ent_final)
 
             if i % 100 == 0:
                 print(f"   Procesados {i}/{total} grupos...", end='\r')

@@ -52,6 +52,7 @@ if os.path.exists(SNII_PATH):
         name_col = 'NOMBRE DEL INVESTIGADOR'
         inst_col = 'INSTITUCION DE ACREDITACION'
         sub_col = 'SUBDEPENDENCIA DE ACREDITACION'
+        ent_final_col = 'ENTIDAD FINAL'
 
         instituciones = df_snii[inst_col].dropna().unique().tolist()
         subdependencias = df_snii[sub_col].dropna().unique().tolist()
@@ -539,6 +540,7 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                 raw_inst = str(row[inst_col]).strip() if pd.notna(row[inst_col]) else ""
                 raw_dep = str(row[dep_inst_col]).strip() if pd.notna(row[dep_inst_col]) else ""
                 raw_sub = str(row[sub_inst_col]).strip() if pd.notna(row[sub_inst_col]) else ""
+                raw_ent_final = str(row[ent_final_col]).strip() if pd.notna(row[ent_final_col]) else ""
 
                 if raw_inst.upper() in ["SIN INSTITUCIN", "SIN INSTITUCION"]:
                     final_inst = "SIN INSTITUCIN"
@@ -593,6 +595,7 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                             "snii_author": snii_name,
                             "snii_institution": final_inst,
                             "snii_subdependency": final_sub,
+                            "snii_entidad_final": raw_ent_final,
                             "match": True,
                             "source": "OpenAlex DB (Auto)",
                             "openalex_id": best_oa['openalex_id'],
@@ -752,8 +755,10 @@ Respuesta:"""
                     "snii_author": snii_name,
                     "snii_institution": final_inst,
                     "snii_subdependency": final_sub,
+                    "snii_entidad_final": raw_ent_final,
                     "match": False,
                     "matched_author": None,
+                    "matched_author_ids": None,
                     "matched_orcid": None,
                     "reason": res_json.get("reason", "No match"),
                     "discarded_candidates": res_json.get("discarded_candidates", []),
