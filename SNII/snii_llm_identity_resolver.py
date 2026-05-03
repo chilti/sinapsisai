@@ -623,8 +623,12 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                             "reason": "Nombre e Institucion con coincidencia exacta (Heuristica)"
                         }
                         verified_results.append(match_result)
-                        with open(output_path, "w", encoding="utf-8") as f:
+                        # Guardado Atómico (Seguro)
+                        temp_path = output_path + ".tmp"
+                        with open(temp_path, "w", encoding="utf-8") as f:
                             json.dump(verified_results, f, ensure_ascii=False, indent=2)
+                        os.replace(temp_path, output_path)
+                        
                         processed_in_this_run.add(key)
                         continue
 
@@ -751,14 +755,19 @@ Respuesta:"""
                         if verbose:
                             print(f"--- RESPUESTA CRUDA LLM ---\n{res_text}\n---------------------------")
 
-                        # Limpiar posibles bloques de cdigo
+                        # Limpiar posibles bloques de código y caracteres extraños
+                        res_text = res_text.strip()
                         if "```json" in res_text:
                             res_text = res_text.split("```json")[1].split("```")[0].strip()
                         elif "```" in res_text:
                             res_text = res_text.split("```")[1].split("```")[0].strip()
+                        
+                        # Eliminar posibles prefijos o sufijos no-JSON (como "Aquí tienes el JSON:")
+                        if res_text.find('{') != -1:
+                            res_text = res_text[res_text.find('{'):res_text.rfind('}')+1]
 
                         res_json = json.loads(res_text)
-                        break # xito
+                        break # éxito
                     except Exception as e:
                         if attempt < max_retries - 1:
                             wait_time = (attempt + 1) * 10
@@ -891,13 +900,18 @@ Respuesta:"""
 
                 processed_in_this_run.add(key)
                 # Guardar progreso
-                with open(output_path, "w", encoding="utf-8") as f:
+                os.makedirs("data", exist_ok=True)
+                temp_path = output_path + ".tmp"
+                with open(temp_path, "w", encoding="utf-8") as f:
                     json.dump(verified_results, f, ensure_ascii=False, indent=2)
+                os.replace(temp_path, output_path)
 
     # Guardado final
     os.makedirs("data", exist_ok=True)
-    with open(output_path, "w", encoding="utf-8") as f:
+    temp_path = output_path + ".tmp"
+    with open(temp_path, "w", encoding="utf-8") as f:
         json.dump(verified_results, f, ensure_ascii=False, indent=2)
+    os.replace(temp_path, output_path)
 
     num_matches = sum(1 for r in verified_results if r.get('match') is True)
     print(f"\n Resolucin de identidades completada. {len(verified_results)} registros evaluados y guardados en {output_path}")
