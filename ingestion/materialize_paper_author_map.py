@@ -274,7 +274,7 @@ def _transform_page(df: pd.DataFrame) -> pd.DataFrame:
             'audit_verdict': r['audit_verdict']
         }
         
-        inst = r['institution']
+        inst = str(r['institution']).strip().upper()
         hierarchy = r.get('hierarchy', [])
         if not isinstance(hierarchy, list): hierarchy = []
         
@@ -286,10 +286,13 @@ def _transform_page(df: pd.DataFrame) -> pd.DataFrame:
         
         # 2. Todos los niveles de la jerarquía (Dep, Subdep)
         for entity_name in hierarchy:
-            if not entity_name or entity_name == inst: continue
+            if not entity_name: continue
+            name = str(entity_name).strip().upper()
+            if name == inst: continue
+            
             row_ent = base.copy()
             row_ent['institution'] = inst
-            row_ent['entity'] = entity_name
+            row_ent['entity'] = name
             rows.append(row_ent)
             
         # 3. Nivel Nacional (México)
