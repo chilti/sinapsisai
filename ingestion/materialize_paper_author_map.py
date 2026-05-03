@@ -238,6 +238,8 @@ def _run_neo4j_diagnostics(graph_store):
             print(f"   {r['institution'][:60]:<60} → {r['n']:>7,} relaciones")
     print()
 
+
+def _determine_source(row: dict) -> str:
     """Infiere la fuente de ingesta del académico."""
     if row.get('siia_url'):
         return 'siia'
