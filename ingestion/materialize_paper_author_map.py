@@ -218,7 +218,26 @@ def _normalize_paper_id(pid: str) -> str:
     return s
 
 
-def _determine_source(row: dict) -> str:
+_NEO4J_DIAG = """
+MATCH (a:Academic)-[:AUTHORED]->(p:Paper)
+OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
+OPTIONAL MATCH path = (e)-[:PART_OF*..5]->(i:Institution)
+RETURN
+    coalesce(i.name, 'SIN_INST') AS institution,
+    count(*) AS n
+ORDER BY n DESC
+LIMIT 15
+"""
+
+def _run_neo4j_diagnostics(graph_store):
+    """Muestra qué devuelve Neo4j para institution antes de materializar."""
+    print("\n🔍 Diagnóstico Neo4j — distribución de institution:")
+    with graph_store.driver.session() as session:
+        results = session.run(_NEO4J_DIAG)
+        for r in results:
+            print(f"   {r['institution'][:60]:<60} → {r['n']:>7,} relaciones")
+    print()
+
     """Infiere la fuente de ingesta del académico."""
     if row.get('siia_url'):
         return 'siia'
@@ -274,53 +293,39 @@ def _transform_page(df: pd.DataFrame) -> pd.DataFrame:
             'audit_verdict': r['audit_verdict']
         }
         
+        # root_inst es la Universidad real (UNAM, UAM...) — es el nodo i:Institution en Neo4j
+        # MÉXICO NO existe como nodo Institution; es un nivel virtual que añadimos aquí en Python
         root_inst = str(r['institution']).strip().upper()
         hierarchy = r.get('hierarchy', [])
         if not isinstance(hierarchy, list): hierarchy = []
         
-        # Filtrar nombres vacíos y normalizar
+        # Normalizar: eliminar vacíos, quitar el nodo raíz si aparece en la lista
+        # nodes(path) incluye e y todos los intermedios hasta i; el último == root_inst
         hierarchy = [str(x).strip().upper() for x in hierarchy if x]
-        
-        # LÓGICA DE JERARQUÍA INTELIGENTE:
-        # Hierarchy suele ser: [Subdep, Dep, Universidad, MÉXICO]
-        # Queremos identificar la "Universidad" (Institución Real)
-        real_inst = root_inst
-        if root_inst == 'MÉXICO' and len(hierarchy) >= 2:
-            # En la jerarquía de 3-4 niveles: [Subdep, Dep, Universidad, MÉXICO]
-            # La universidad es la que está justo debajo de MÉXICO
-            real_inst = hierarchy[-2] # El penúltimo es la universidad
-        elif root_inst == 'MÉXICO' and len(hierarchy) == 1:
-            real_inst = hierarchy[0]
+        # Eliminar duplicado del nodo institución si ya está al final del path
+        if hierarchy and hierarchy[-1] == root_inst:
+            hierarchy = hierarchy[:-1]  # Quitar la institución del path; ya la tenemos en root_inst
 
-        # 1. Filas para la Institución Real (UNAM, UAM, etc.)
-        # Esto permite que el dashboard las vea como instituciones independientes
+        # 1. Nivel Institución pura (UNAM, UAM, etc.) — entity = institución para KPIs globales de la uni
         row_inst = base.copy()
-        row_inst['institution'] = real_inst
-        row_inst['entity'] = real_inst
+        row_inst['institution'] = root_inst
+        row_inst['entity'] = root_inst
         rows.append(row_inst)
         
-        # 2. Filas para cada nivel de entidad bajo la Institución Real
+        # 2. Todos los niveles de entidad (Dependencia, Subdependencia)
         for entity_name in hierarchy:
             if not entity_name or entity_name == root_inst: continue
-            # Solo agregamos como entidad si no es la propia universidad (ya agregada arriba)
-            # o si queremos verla dentro de la universidad
             row_ent = base.copy()
-            row_ent['institution'] = real_inst
+            row_ent['institution'] = root_inst
             row_ent['entity'] = entity_name
             rows.append(row_ent)
             
-        # 3. Nivel Nacional (MÉXICO)
-        # Aquí la "entidad" es la universidad, para poder comparar entre ellas
+        # 3. Nivel Nacional (MÉXICO): la "entidad" es la Universidad
+        # Permite comparar UNAM vs UAM vs IPN dentro de la vista nacional
         row_mex = base.copy()
         row_mex['institution'] = 'MÉXICO'
-        row_mex['entity'] = real_inst
+        row_mex['entity'] = root_inst
         rows.append(row_mex)
-
-        # 4. Caso especial: "MÉXICO" puro para indicadores globales
-        row_mex_global = base.copy()
-        row_mex_global['institution'] = 'MÉXICO'
-        row_mex_global['entity'] = 'MÉXICO'
-        rows.append(row_mex_global)
 
     # Crear el nuevo dataframe expandido
     expanded_df = pd.DataFrame(rows)
@@ -354,6 +359,7 @@ def materialize(reset: bool = False, incremental: bool = False):
     # 2. Streaming paginado Neo4j → transform → insert CH
     graph_store = Neo4jGraphStore()
     total_neo = _count_neo4j_relations(graph_store)
+    _run_neo4j_diagnostics(graph_store)
     print(f"\n[2/3] Streaming {total_neo:,} relaciones de Neo4j "
           f"(páginas de {BATCH_NEO:,})...")
 

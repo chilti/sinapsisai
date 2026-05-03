@@ -127,7 +127,7 @@ SELECT
     source_id   AS Source,
     source_type,
     institution_rors
-FROM works_seed_mexico FINAL
+FROM works_seed_mexico
 {filter}
 """
 
