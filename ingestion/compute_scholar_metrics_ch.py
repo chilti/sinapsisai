@@ -726,9 +726,17 @@ def process_and_save(entity_filter=None, academic_filter=None,
             safe_dep = _safe_name(dep_name)
             
             # Dependencia: Capacidad Instalada (vía autores)
-            ids_to_query = [dep_id] + list(subs.values())
-            where_dep = "WHERE pm.institution_ror = %(ror)s AND pm.entity_id IN %(ids)s"
-            df_dep_cap = _query_cap(where_dep, {'ror': inst_ror, 'ids': ids_to_query})
+            ids_to_query = [i for i in ([dep_id] + list(subs.values())) if i and i != 'None']
+            names_to_query = [dep_name] + list(subs.keys())
+            
+            if not ids_to_query:
+                where_dep = "WHERE pm.institution_ror = %(ror)s AND pm.entity IN %(names)s"
+                params_dep = {'ror': inst_ror, 'names': names_to_query}
+            else:
+                where_dep = "WHERE pm.institution_ror = %(ror)s AND (pm.entity_id IN %(ids)s OR pm.entity IN %(names)s)"
+                params_dep = {'ror': inst_ror, 'ids': ids_to_query, 'names': names_to_query}
+                
+            df_dep_cap = _query_cap(where_dep, params_dep)
             
             if not df_dep_cap.empty:
                 df_dep_cap = df_dep_cap.drop_duplicates(subset=['paper_id', 'academic_name'])
@@ -753,10 +761,15 @@ def process_and_save(entity_filter=None, academic_filter=None,
             for sub_name, sub_id in subs.items():
                 safe_sub = _safe_name(sub_name)
                 
-                # Capacidad
-                df_sub_cap = _query_cap(
-                    "WHERE pm.institution_ror = %(ror)s AND pm.entity_id = %(id)s",
-                    {'ror': inst_ror, 'id': sub_id})
+                # Capacidad Instalada
+                if not sub_id or sub_id == 'None':
+                    where_sub = "WHERE pm.institution_ror = %(ror)s AND pm.entity = %(name)s"
+                    params_sub = {'ror': inst_ror, 'name': sub_name}
+                else:
+                    where_sub = "WHERE pm.institution_ror = %(ror)s AND (pm.entity_id = %(id)s OR pm.entity = %(name)s)"
+                    params_sub = {'ror': inst_ror, 'id': sub_id, 'name': sub_name}
+                    
+                df_sub_cap = _query_cap(where_sub, params_sub)
                 if not df_sub_cap.empty:
                     df_sub_cap = df_sub_cap.drop_duplicates(subset=['paper_id', 'academic_name'])
                     print(f"  │  └─ {sub_name}: {len(df_sub_cap):,} papers (Capacidad)")
