@@ -44,6 +44,11 @@ load_dotenv(str(_THIS.parent / '.env'))
 from database.knowledge_graph import Neo4jGraphStore
 from database.clickhouse_db import ch_client
 
+# Forzar UTF-8 en Windows para evitar errores con emojis
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+
 # ── Constantes ─────────────────────────────────────────────────────────────
 TABLE      = 'paper_author_map'
 META_TABLE = 'paper_author_map_meta'   # rastrea el último sync exitoso
@@ -141,7 +146,7 @@ def _record_sync(mode: str, rows: int, ok: bool):
 
 _NEO4J_QUERY = """
 MATCH (a:Academic)-[:AUTHORED]->(p:Paper)
-OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
+OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e)
 OPTIONAL MATCH path = (e)-[:PART_OF*..3]->(i:Institution)
 OPTIONAL MATCH (p)-[:ADDRESSES]->(s:SDG)
 WITH a, p, e, i, 

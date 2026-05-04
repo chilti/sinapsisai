@@ -632,8 +632,9 @@ def process_and_save(entity_filter=None, academic_filter=None,
     gs = Neo4jGraphStore()
 
     _HIER_QUERY = """
-    MATCH (i:Institution)<-[:PART_OF]-(dep:Entity)
-    OPTIONAL MATCH (dep)<-[:PART_OF]-(sub:Entity)
+    MATCH (i:Institution)
+    OPTIONAL MATCH (i)<-[:PART_OF]-(dep:Dependency)
+    OPTIONAL MATCH (dep)<-[:PART_OF]-(sub:Subdependency)
     RETURN 
         i.name AS inst, i.ror AS inst_ror, i.id AS inst_id,
         dep.name AS dep, dep.id AS dep_id,
@@ -663,9 +664,13 @@ def process_and_save(entity_filter=None, academic_filter=None,
 
     # Filtros opcionales
     if institution_filter:
-        hier = {k: v for k, v in hier.items() if k == institution_filter}
+        institution_filter_norm = institution_filter.strip().upper()
+        hier = {k: v for k, v in hier.items() if k.strip().upper() == institution_filter_norm}
         if not hier:
             print(f"⚠️ Institución '{institution_filter}' no encontrada en el grafo.")
+            # Diagnóstico: Mostrar que hay en el grafo
+            available = list(hier.keys())[:10]
+            print(f"   Disponibles (ejemplo): {available}")
             return
 
     if entity_filter:

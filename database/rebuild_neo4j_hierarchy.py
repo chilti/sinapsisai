@@ -120,9 +120,13 @@ def rebuild():
 
     print("\n🧹 Fase 0: Limpiando jerarquía anterior...")
     with gs.driver.session() as session:
-        # Solo borramos entidades y sus relaciones. 
-        # Académicos y Papers se mantienen intactos.
+        # Borramos etiquetas de jerarquía anteriores
         session.run("MATCH (e:Entity) DETACH DELETE e")
+        session.run("MATCH (d:Dependency) DETACH DELETE d")
+        session.run("MATCH (s:Subdependency) DETACH DELETE s")
+        # No borramos :Institution porque son nodos raíz, pero nos aseguramos de que estén limpios de PART_OF
+        session.run("MATCH (i:Institution) OPTIONAL MATCH (i)<-[r:PART_OF]-() DELETE r")
+        # Limpiar afiliaciones de académicos
         session.run("MATCH (a:Academic)-[r:AFFILIATED_TO]->() DELETE r")
     print("   ✅ Limpieza completada.")
 
@@ -146,12 +150,14 @@ def rebuild():
     if "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)" not in inst_to_ror:
         inst_to_ror["UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)"] = "https://ror.org/01tmp8f25"
 
-    # Agrupamos para procesar por jerarquías únicas
     groups = df_snii.groupby([
         'INSTITUCION', 
         'DEPENDENCIA', 
         'SUBDEPENDENCIA'
     ], dropna=False)
+
+    print(f"DEBUG: df_snii shape: {df_snii.shape}")
+    print(f"DEBUG: groups count: {len(groups)}")
 
     with gs.driver.session() as session:
         total = len(groups)
@@ -160,6 +166,8 @@ def rebuild():
             
             # 1. Normalizar Institución
             inst_name = normalize(raw_inst) or "SIN INSTITUCION"
+            if i < 50:
+                print(f"DEBUG: i={i} inst_name='{inst_name}'")
             
             # Obtener ROR del mapeo pre-calculado
             ror_id = inst_to_ror.get(inst_name) or f"manual:{inst_name}"
@@ -191,32 +199,43 @@ def rebuild():
             dep_name = normalize(raw_dep)
             sub_name = normalize(raw_sub)
             
-            # Nivel Dependencia
+            # --- NIVEL DEPENDENCIA ---
             if dep_name:
-                dep_id = f"dep:{dep_name}@{ror_id}"
+                key_dep = f"{inst_name} || {dep_name}"
+                meta_dep = ror_matches.get(key_dep, {})
+                dep_ror = meta_dep.get('matched_ror')
+                dep_uid = dep_ror if dep_ror else f"dep:{dep_name}@{ror_id}"
+                
                 session.run(f"""
                     MATCH (p:{curr_parent_label} {{id: $p_id}})
-                    MERGE (e:Entity {{id: $uid}})
-                    SET e.name = $name, e.type = 'Dependencia'
-                    MERGE (e)-[:PART_OF]->(p)
-                """, p_id=curr_parent_id, uid=dep_id, name=dep_name)
-                curr_parent_id = dep_id
-                curr_parent_label = "Entity"
-
-            # Nivel Subdependencia
-            if sub_name:
-                sub_id = f"subdep:{sub_name}@{curr_parent_id}" # único respecto a su padre
+                    MERGE (d:Dependency {{id: $id}})
+                    SET d.name = $name, d.ror = $ror, d.openalex_id = $oa
+                    MERGE (d)-[:PART_OF]->(p)
+                """, id=dep_uid, name=dep_name, ror=dep_ror, 
+                   oa=meta_dep.get('matched_openalex_id'), p_id=curr_parent_id)
+                
+                curr_parent_id = dep_uid
+                curr_parent_label = "Dependency"
+            
+            # --- NIVEL SUBDEPENDENCIA ---
+            if sub_name and sub_name != dep_name:
+                key_sub = f"{inst_name} || {sub_name}"
+                meta_sub = ror_matches.get(key_sub, {})
+                sub_ror = meta_sub.get('matched_ror')
+                sub_uid = sub_ror if sub_ror else f"subdep:{sub_name}@{curr_parent_id}"
+                
                 session.run(f"""
                     MATCH (p:{curr_parent_label} {{id: $p_id}})
-                    MERGE (e:Entity {{id: $uid}})
-                    SET e.name = $name, e.type = 'Subdependencia'
-                    MERGE (e)-[:PART_OF]->(p)
-                """, p_id=curr_parent_id, uid=sub_id, name=sub_name)
-                curr_parent_id = sub_id
-                curr_parent_label = "Entity"
+                    MERGE (s:Subdependency {{id: $id}})
+                    SET s.name = $name, s.ror = $ror, s.openalex_id = $oa
+                    MERGE (s)-[:PART_OF]->(p)
+                """, id=sub_uid, name=sub_name, ror=sub_ror,
+                   oa=meta_sub.get('matched_openalex_id'), p_id=curr_parent_id)
+                
+                curr_parent_id = sub_uid
+                curr_parent_label = "Subdependency"
 
             # 3. Vincular Académicos y guardar su Entidad Final
-            # Tomamos la entidad final del primer registro del grupo (es la misma para todos en este grupo)
             ent_final = normalize(group['ENTIDAD_FINAL'].iloc[0]) or ""
             academic_names = group['NOMBRE'].tolist()
             

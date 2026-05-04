@@ -33,10 +33,10 @@ class Neo4jGraphStore:
             "CREATE INDEX paper_oa_idx IF NOT EXISTS FOR (p:Paper) ON (p.openalex_id)",
             "CREATE CONSTRAINT author_id IF NOT EXISTS FOR (a:Author) REQUIRE a.id IS UNIQUE",
             "CREATE CONSTRAINT institution_id IF NOT EXISTS FOR (i:Institution) REQUIRE i.id IS UNIQUE",
+            "CREATE CONSTRAINT dependency_id IF NOT EXISTS FOR (d:Dependency) REQUIRE d.id IS UNIQUE",
+            "CREATE CONSTRAINT subdependency_id IF NOT EXISTS FOR (s:Subdependency) REQUIRE s.id IS UNIQUE",
             "CREATE CONSTRAINT concept_id IF NOT EXISTS FOR (c:Concept) REQUIRE c.id IS UNIQUE",
             "CREATE CONSTRAINT academic_id IF NOT EXISTS FOR (a:Academic) REQUIRE a.id IS UNIQUE",
-            # CAMBIO: Usamos ID en lugar de name para permitir facultades con nombres iguales
-            "CREATE CONSTRAINT entity_id_unique IF NOT EXISTS FOR (e:Entity) REQUIRE e.id IS UNIQUE",
             "CREATE CONSTRAINT funder_id IF NOT EXISTS FOR (f:Funder) REQUIRE f.name IS UNIQUE",
             "CREATE CONSTRAINT award_id IF NOT EXISTS FOR (aw:Award) REQUIRE aw.id IS UNIQUE"
         ]
@@ -44,6 +44,7 @@ class Neo4jGraphStore:
             # Limpieza preventiva de la restricción antigua problemática
             try:
                 session.run("DROP CONSTRAINT entity_id IF EXISTS")
+                session.run("DROP CONSTRAINT entity_id_unique IF EXISTS")
             except:
                 pass
                 
@@ -143,9 +144,8 @@ class Neo4jGraphStore:
         
         WITH p, author, a
         UNWIND (CASE WHEN author.institutions IS NOT NULL THEN author.institutions ELSE [] END) AS inst
-        // Priorizar MERGE por nombre para cumplir con restricción de Entity
-        MERGE (i:Entity {name: coalesce(inst.name, "Institución Desconocida")})
-        SET i:Institution
+        // Usamos la etiqueta base Institution para afiliaciones generales de papers
+        MERGE (i:Institution {name: coalesce(inst.name, "Institución Desconocida")})
         WITH p, a, i, inst
         // Solo asignar ID si el nodo no lo tiene y no existe conflicto con otro nodo
         // Esto evita el error Neo.ClientError.Schema.ConstraintValidationFailed
@@ -194,8 +194,7 @@ class Neo4jGraphStore:
     def upsert_institution_metadata(self, name: str, ror: str = None, inst_type: str = None, country_code: str = None):
         """Actualiza metadatos de una institución (ROR, tipo, país) sin borrar los existentes."""
         query = """
-        MERGE (i:Entity {name: $name})
-        SET i:Institution
+        MERGE (i:Institution {name: $name})
         SET i.ror = coalesce($ror, i.ror),
             i.type = coalesce($inst_type, i.type),
             i.country_code = coalesce($country_code, i.country_code)
@@ -209,8 +208,7 @@ class Neo4jGraphStore:
         MERGE (c:Country {name: $country_name})
         
         WITH c
-        MERGE (i:Entity {name: $inst_name})
-        SET i:Institution
+        MERGE (i:Institution {name: $inst_name})
         MERGE (i)-[:LOCATED_IN]->(c)
         
         WITH i, c, $state_name AS s_name
@@ -519,11 +517,10 @@ class Neo4jGraphStore:
             return
 
         query = """
-        MERGE (e:Entity {name: $entity_name})
-        SET e:Institution
-        WITH e
+        MERGE (i:Institution {name: $entity_name})
+        WITH i
         MATCH (p:Paper {doi: $doi})
-        MERGE (e)-[:HAS_PAPER]->(p)
+        MERGE (i)-[:HAS_PAPER]->(p)
         """
         with self.driver.session() as session:
             try:
@@ -556,11 +553,10 @@ class Neo4jGraphStore:
         Vincula un Academic con un Entity institucional.
         """
         query = """
-        MERGE (e:Entity {name: $entity_name})
-        SET e:Institution
-        WITH e
+        MERGE (i:Institution {name: $entity_name})
+        WITH i
         MATCH (a:Author {id: $academic_name})
-        MERGE (a)-[:AFFILIATED_TO]->(e)
+        MERGE (a)-[:AFFILIATED_TO]->(i)
         """
         with self.driver.session() as session:
             try:
@@ -589,17 +585,17 @@ class Neo4jGraphStore:
         MATCH (a:Author {id: $academic_name})
         // 1. Intentar encontrar la Institución
         MATCH (i:Institution) WHERE i.name = $inst_name
-        // 2. Buscar si hay una entidad (Dependencia o Subdependencia) con ese nombre que pertenezca a la institución
-        MATCH (e:Entity {name: $sub_name})-[:PART_OF*1..3]->(i)
+        // 2. Buscar si hay una dependencia o subdependencia
+        MATCH (e) WHERE (e:Dependency OR e:Subdependency) AND e.name = $sub_name
+        MATCH (e)-[:PART_OF*1..3]->(i)
         // 3. Vincular al académico
         MERGE (a)-[:AFFILIATED_TO]->(e)
         MERGE (a)-[:AFFILIATED_TO]->(i)
         """
-        # Fallback query por si la entidad no existe (evita crear duplicados a nivel raíz)
+        # Fallback query por si la entidad no existe
         fallback_query = """
         MERGE (i:Institution {name: $inst_name})
-        MERGE (s:Entity {name: $sub_name})
-        SET s:Subdependency
+        MERGE (s:Dependency {name: $sub_name})
         MERGE (s)-[:PART_OF]->(i)
         WITH s, i
         MATCH (a:Author {id: $academic_name})
@@ -796,7 +792,9 @@ class Neo4jGraphStore:
         Retorna artículos co-autoreados por investigadores de ambas entidades.
         """
         query = """
-        MATCH (e1:Entity {name: $entity1})<-[:AFFILIATED_TO]-(a1:Academic)-[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(a2:Academic)-[:AFFILIATED_TO]->(e2:Entity {name: $entity2})
+        MATCH (e1) WHERE (e1:Institution OR e1:Dependency OR e1:Subdependency) AND e1.name = $entity1
+        MATCH (e2) WHERE (e2:Institution OR e2:Dependency OR e2:Subdependency) AND e2.name = $entity2
+        MATCH (e1)<-[:AFFILIATED_TO]-(a1:Academic)-[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(a2:Academic)-[:AFFILIATED_TO]->(e2)
         WITH e1, e2, p, a1, a2 LIMIT 10
         UNWIND [[a1, 'AUTHORED', p], [a2, 'AUTHORED', p], [a1, 'AFFILIATED_TO', e1], [a2, 'AFFILIATED_TO', e2]] AS triple
         RETURN triple[0] AS n, triple[1] AS rel_type, triple[2] AS m
@@ -832,9 +830,11 @@ class Neo4jGraphStore:
                 # Si no hay colaboraciones directas, traer algunos de cada una para que no se vea vacío
                 if not edges:
                     query_fallback = """
-                    MATCH (e1:Entity {name: $entity1})<-[:HAS_PAPER|AFFILIATED_TO*1..2]-(n1)
+                    MATCH (e1) WHERE (e1:Institution OR e1:Dependency OR e1:Subdependency) AND e1.name = $entity1
+                    MATCH (e1)<-[:HAS_PAPER|AFFILIATED_TO*1..2]-(n1)
                     WITH e1, n1 LIMIT 20
-                    MATCH (e2:Entity {name: $entity2})<-[:HAS_PAPER|AFFILIATED_TO*1..2]-(n2)
+                    MATCH (e2) WHERE (e2:Institution OR e2:Dependency OR e2:Subdependency) AND e2.name = $entity2
+                    MATCH (e2)<-[:HAS_PAPER|AFFILIATED_TO*1..2]-(n2)
                     WITH e1, n1, e2, n2 LIMIT 40
                     RETURN e1, n1, e2, n2
                     """
@@ -848,7 +848,8 @@ class Neo4jGraphStore:
     def get_funder_sample_graph(self, entity_name: str, limit: int = 150) -> dict:
         """Extrae una sub-muestra del grafo para una entidad, enfocada en financiadores."""
         query = f"""
-        MATCH (e:Entity {{name: $entity_name}})<-[r0:AFFILIATED_TO]-(a:Academic)-[r1:AUTHORED]->(p:Paper)-[r2:FUNDED_BY]->(f:Funder)
+        MATCH (e) WHERE (e:Institution OR e:Dependency OR e:Subdependency) AND e.name = $entity_name
+        MATCH (e)<-[r0:AFFILIATED_TO]-(a:Academic)-[r1:AUTHORED]->(p:Paper)-[r2:FUNDED_BY]->(f:Funder)
         WITH e, a, p, f, r0, r1, r2 LIMIT {limit // 3}
         UNWIND [[a, r0, e], [a, r1, p], [p, r2, f]] AS triple
         RETURN triple[0] AS n, triple[1] AS r, triple[2] AS m
