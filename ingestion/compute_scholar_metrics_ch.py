@@ -634,7 +634,8 @@ def process_and_save(entity_filter=None, academic_filter=None,
     with gs.driver.session() as session:
         for r in session.run(_HIER_QUERY):
             inst = r["inst"]
-            ror  = r["inst_ror"] or r["inst_id"] # Fallback a ID si no hay ROR
+            inst_id = r["inst_id"]
+            ror  = r["inst_ror"] or inst_id # Fallback a ID si no hay ROR
             dep  = r["dep"]
             dep_id = r["dep_id"]
             sub  = r["sub"]
