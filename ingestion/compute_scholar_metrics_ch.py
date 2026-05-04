@@ -70,7 +70,7 @@ SELECT
     wf.topic_id AS topic, wf.subfield_name AS subfield, 
     wf.field_name AS field, wf.domain_name AS domain,
     wf.language, wf.type, wf.source_id AS Source, wf.source_type,
-    wf.is_retracted, wf.referenced_works_count, wf.keywords,
+    wf.is_retracted, wf.referenced_works_count, wf.keywords, wf.sdgs AS ODS,
     wf.author_ids AS author_names, wf.country_codes AS all_country_codes
 FROM works_flat wf
 JOIN paper_author_map pm ON wf.id = pm.paper_id
@@ -96,7 +96,7 @@ SELECT
     wf.topic_id AS topic, wf.subfield_name AS subfield, 
     wf.field_name AS field, wf.domain_name AS domain,
     wf.language, wf.type, wf.source_id AS Source, wf.source_type,
-    wf.is_retracted, wf.referenced_works_count, wf.keywords,
+    wf.is_retracted, wf.referenced_works_count, wf.keywords, wf.sdgs AS ODS,
     wf.author_ids AS author_names, wf.country_codes AS all_country_codes
 FROM works_flat wf
 JOIN paper_author_map pm ON wf.doi = pm.paper_id
@@ -126,6 +126,7 @@ SELECT
     type,
     source_id   AS Source,
     source_type,
+    sdg_ids     AS ODS,
     author_names,
     all_country_codes,
     institution_rors
