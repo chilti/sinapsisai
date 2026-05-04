@@ -152,7 +152,7 @@ RETURN
     coalesce(e.name, 'SIN_ENTIDAD') AS entity,
     coalesce(e.id, 'SIN_ID')        AS entity_id,
     coalesce(i.name, 'Sin Institución') AS institution,
-    coalesce(i.ror, 'SIN_ROR')      AS institution_ror,
+    coalesce(i.ror, i.id)           AS institution_ror,
     hierarchy,
     coalesce(a.is_snii, false)      AS is_snii,
     coalesce(a.siia_url, '')        AS siia_url,
