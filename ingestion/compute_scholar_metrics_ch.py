@@ -300,18 +300,25 @@ def _save_inst_parquets(df: pd.DataFrame, base_dir: Path,
         _save_parquet(grp, d / 'papers_institucion.parquet', updated_files)
 
         df_tot = aggregate_metrics(grp, [group_col])
+        if group_col != 'entity_name':
+            df_tot = df_tot.rename(columns={group_col: 'entity_name'})
         _save_parquet(df_tot, d / 'institucion_total.parquet', updated_files)
 
         df_yr = grp.dropna(subset=['year'])
         if not df_yr.empty:
             df_ann = aggregate_metrics(df_yr, [group_col, 'year'])
+            if group_col != 'entity_name':
+                df_ann = df_ann.rename(columns={group_col: 'entity_name'})
             _save_parquet(df_ann, d / 'institucion_annual.parquet', updated_files)
 
         df_t, df_te = _topics_agg(grp, group_col)
         if df_t is not None:
-            _save_parquet(df_t.rename(columns={group_col: group_col}),
-                          d / 'topics_institucion.parquet', updated_files)
+            if group_col != 'entity_name':
+                df_t = df_t.rename(columns={group_col: 'entity_name'})
+            _save_parquet(df_t, d / 'topics_institucion.parquet', updated_files)
         if df_te is not None:
+            if group_col != 'entity_name':
+                df_te = df_te.rename(columns={group_col: 'entity_name'})
             _save_parquet(df_te, d / 'thematic_evolution_institucion.parquet', updated_files)
 
         if 'keywords' in grp.columns:
@@ -323,7 +330,7 @@ def _save_inst_parquets(df: pd.DataFrame, base_dir: Path,
             if cnt:
                 kw_df = pd.DataFrame(cnt.most_common(1000),
                                      columns=['keyword', 'freq'])
-                kw_df[group_col] = name
+                kw_df['entity_name'] = name
                 _save_parquet(kw_df, d / 'keywords_institucion.parquet', updated_files)
 
 
