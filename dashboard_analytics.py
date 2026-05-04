@@ -481,6 +481,15 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
     df_total = load_cached_data("institucion_total.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
     df_topics = load_cached_data("topics_institucion.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
 
+    # Fallback si se pide Producción pero no hay datos (falta de IDs persistentes)
+    if view_mode == "produccion_institucional" and (df_total is None or df_total.empty):
+        st.warning("⚠️ No se identificaron IDs institucionales (como ROR) para calcular la **Producción Institucional** estricta de esta entidad. Se muestran a continuación las métricas correspondientes a su **Capacidad Instalada** (producción de sus académicos).")
+        view_mode = "capacidad_instalada"
+        df_annual = load_cached_data("institucion_annual.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
+        df_total = load_cached_data("institucion_total.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
+        df_topics = load_cached_data("topics_institucion.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
+
+
     if df_total is not None and not df_total.empty:
         if df_total.empty:
             st.warning(f"No hay métricas institucionales pre-calculadas para {entity_name}.")

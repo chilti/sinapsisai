@@ -282,6 +282,8 @@ with st.sidebar:
         
     if not dependencias:
         dependencias = [selected_institution] # Fallback si no hay dependencias
+    elif selected_institution not in dependencias:
+        dependencias = [selected_institution] + dependencias # Agregar institución como opción agregada
     
     # Default a SECRETARIA GENERAL si es UNAM
     default_dep_idx = 0
@@ -302,6 +304,11 @@ with st.sidebar:
         subdependencias = [] # En el formato antiguo no había subdependencias estructuradas así
     
     if subdependencias:
+        if isinstance(subdependencias, list):
+            subdependencias = list(subdependencias) # Copia por si es la referencia original
+            if selected_dep not in subdependencias:
+                subdependencias = [selected_dep] + subdependencias # Agregar dependencia como opción agregada
+                
         # Si hay subdependencias, mostramos el selector
         default_sub_idx = 0
         if "FACULTAD DE CIENCIAS" in subdependencias:
@@ -743,17 +750,8 @@ with tab_inst:
 # TAB 3: Vista por Investigador
 # =======================================================
 with tab_inv:
-    # En la vista de investigador usualmente queremos Capacidad Instalada (sus papers)
-    # pero permitimos el toggle por consistencia si se requiere.
-    view_mode_inv = st.radio(
-        "Lente de análisis",
-        ["Capacidad Instalada", "Producción Institucional"],
-        index=0,
-        horizontal=True,
-        key="view_mode_inv_tab",
-        label_visibility="collapsed"
-    )
-    v_mode_inv_code = "capacidad_instalada" if view_mode_inv == "Capacidad Instalada" else "produccion_institucional"
+    # La vista de investigador siempre es por Capacidad Instalada (sus propios papers)
+    v_mode_inv_code = "capacidad_instalada"
     
     render_investigador_view(selected_entity, institution_name=selected_institution, view_mode=v_mode_inv_code)
 

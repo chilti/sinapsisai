@@ -282,6 +282,8 @@ with st.sidebar:
         
     if not dependencias:
         dependencias = [selected_institution] # Fallback si no hay dependencias
+    elif selected_institution not in dependencias:
+        dependencias = [selected_institution] + dependencias # Agregar institución como opción agregada
     
     # Default a SECRETARIA GENERAL si es UNAM
     default_dep_idx = 0
@@ -302,6 +304,11 @@ with st.sidebar:
         subdependencias = [] # En el formato antiguo no había subdependencias estructuradas así
     
     if subdependencias:
+        if isinstance(subdependencias, list):
+            subdependencias = list(subdependencias)
+            if selected_dep not in subdependencias:
+                subdependencias = [selected_dep] + subdependencias
+                
         # Si hay subdependencias, mostramos el selector
         default_sub_idx = 0
         if "FACULTAD DE CIENCIAS" in subdependencias:
