@@ -698,8 +698,10 @@ def process_and_save(entity_filter=None, academic_filter=None,
             # Link para fallback del dashboard
             _save_aggregate_parquets(df_inst_cap, CACHE_DIR / safe_inst, updated_files, label=inst_name)
 
-        # ─ Nivel Institución: Producción Institucional (ROR Directo) ──
-        df_prod = _query_prod(f"WHERE has(institution_rors, '{inst_ror}')")
+        # ─ Nivel Institución: Producción Institucional (ROR o ID Directo) ──
+        inst_id = data.get('id', '')
+        filter_prod = f"WHERE has(institution_rors, '{inst_ror}') OR has(institution_ids, '{inst_id}')"
+        df_prod = _query_prod(filter_prod)
         if not df_prod.empty:
             prod_dir = CACHE_DIR / safe_inst / 'produccion_institucional'
             _save_aggregate_parquets(df_prod, prod_dir, updated_files, label=inst_name)
