@@ -701,19 +701,23 @@ def process_and_save(entity_filter=None, academic_filter=None,
 
         # ─ Nivel Institución: Producción Institucional (ROR o ID Directo) ──
         inst_id = data.get('id', '')
-        print(f"  🔍 Buscando Producción: ROR='{inst_ror}', ID='{inst_id}'")
         
         conditions = []
-        if inst_ror and inst_ror != 'None': conditions.append(f"has(institution_rors, '{inst_ror}')")
-        if inst_id and inst_id != 'None': conditions.append(f"has(institution_ids, '{inst_id}')")
+        if inst_ror and inst_ror != 'None' and not inst_ror.startswith('manual:'): 
+            conditions.append(f"has(institution_rors, '{inst_ror}')")
+        if inst_id and inst_id != 'None' and not inst_id.startswith('manual:'): 
+            conditions.append(f"has(institution_ids, '{inst_id}')")
         
         if conditions:
+            print(f"  🔍 Buscando Producción: {' OR '.join(conditions)}")
             filter_prod = f"WHERE {' OR '.join(conditions)}"
             df_prod = _query_prod(filter_prod)
             if not df_prod.empty:
                 prod_dir = CACHE_DIR / safe_inst / 'produccion_institucional'
                 _save_aggregate_parquets(df_prod, prod_dir, updated_files, label=inst_name)
                 print(f"  🏛️ {len(df_prod):,} papers (Producción)")
+        else:
+            print(f"  ⚠️ Sin IDs válidos (ROR/OpenAlex) para Producción Institucional.")
 
         # ─ Nivel Dependencia y Subdependencia ────────────────────────────
         for dep_name, dep_data in entities.items():
@@ -736,13 +740,14 @@ def process_and_save(entity_filter=None, academic_filter=None,
 
             # Dependencia: Producción Institucional (vía ID de OpenAlex de la entidad)
             # Buscamos papers donde el ID de la dependencia o sus subs aparezcan en las afiliaciones
-            dep_prod_ids = [dep_id] + list(subs.values())
-            ids_str = ", ".join([f"'{i}'" for i in dep_prod_ids])
-            df_dep_prod = _query_prod(f"WHERE hasAny(institution_ids, [{ids_str}])")
-            if not df_dep_prod.empty:
-                dep_dir_prod = CACHE_DIR / safe_inst / safe_dep / 'produccion_institucional'
-                _save_aggregate_parquets(df_dep_prod, dep_dir_prod, updated_files, label=dep_name)
-                print(f"  ├─ {dep_name}: {len(df_dep_prod):,} papers (Producción)")
+            dep_prod_ids = [i for i in ([dep_id] + list(subs.values())) if i and i != 'None' and not str(i).startswith('manual:')]
+            if dep_prod_ids:
+                ids_str = ", ".join([f"'{i}'" for i in dep_prod_ids])
+                df_dep_prod = _query_prod(f"WHERE hasAny(institution_ids, [{ids_str}])")
+                if not df_dep_prod.empty:
+                    dep_dir_prod = CACHE_DIR / safe_inst / safe_dep / 'produccion_institucional'
+                    _save_aggregate_parquets(df_dep_prod, dep_dir_prod, updated_files, label=dep_name)
+                    print(f"  ├─ {dep_name}: {len(df_dep_prod):,} papers (Producción)")
 
             # Subdependencias
             for sub_name, sub_id in subs.items():
@@ -761,11 +766,12 @@ def process_and_save(entity_filter=None, academic_filter=None,
                     _save_aggregate_parquets(df_sub_cap, CACHE_DIR / safe_inst / safe_sub, updated_files, label=sub_name)
 
                 # Producción
-                df_sub_prod = _query_prod(f"WHERE has(institution_ids, '{sub_id}')")
-                if not df_sub_prod.empty:
-                    sub_dir_prod = CACHE_DIR / safe_inst / safe_sub / 'produccion_institucional'
-                    _save_aggregate_parquets(df_sub_prod, sub_dir_prod, updated_files, label=sub_name)
-                    print(f"  │  └─ {sub_name}: {len(df_sub_prod):,} papers (Producción)")
+                if sub_id and sub_id != 'None' and not str(sub_id).startswith('manual:'):
+                    df_sub_prod = _query_prod(f"WHERE has(institution_ids, '{sub_id}')")
+                    if not df_sub_prod.empty:
+                        sub_dir_prod = CACHE_DIR / safe_inst / safe_sub / 'produccion_institucional'
+                        _save_aggregate_parquets(df_sub_prod, sub_dir_prod, updated_files, label=sub_name)
+                        print(f"  │  └─ {sub_name}: {len(df_sub_prod):,} papers (Producción)")
 
     # ── Nivel México — Capacidad Instalada ────────────────────────────────
     if mx_cap_frames and not academic_filter and not entity_filter:
