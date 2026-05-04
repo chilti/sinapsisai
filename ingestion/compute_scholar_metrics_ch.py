@@ -788,7 +788,7 @@ def process_and_save(entity_filter=None, academic_filter=None,
                         print(f"  │  └─ {sub_name}: {len(df_sub_prod):,} papers (Producción)")
 
     # ── Nivel México — Capacidad Instalada ────────────────────────────────
-    if mx_cap_frames and not academic_filter and not entity_filter:
+    if mx_cap_frames and not academic_filter and not entity_filter and not institution_filter:
         print("\n⏳ Calculando métricas de México (Capacidad Instalada)...")
         df_mx = pd.concat(mx_cap_frames, ignore_index=True).drop_duplicates(subset=['paper_id'])
         mx_cap_dir = CACHE_DIR / 'MEXICO' / 'capacidad_instalada'
@@ -796,7 +796,7 @@ def process_and_save(entity_filter=None, academic_filter=None,
         del df_mx
 
     # ── Nivel México — Producción Institucional ───────────────────────────
-    if not academic_filter and not entity_filter:
+    if not academic_filter and not entity_filter and not institution_filter:
         print("⏳ Calculando métricas de México (Producción Institucional)...")
         df_mx_prod = _query_prod("")  # sin WHERE = todos los papers mexicanos
         if not df_mx_prod.empty:
@@ -806,7 +806,7 @@ def process_and_save(entity_filter=None, academic_filter=None,
         del df_mx_prod
 
     # ── 5. PRECALCULO DE UMAP (Trayectorias) ──────────────────────────────────
-    if UMAP and institution_name and not academic_filter:
+    if UMAP and institution_filter and not academic_filter:
         print("\n⏳ Proyectando UMAP de Trayectorias (Desempeño Académico)...")
         # El DataFrame acumulado de investigadores para esta institución es df_inst (del loop principal)
         # Pero como se procesa por entidad, necesitamos recolectar los investigadores de la institución.
