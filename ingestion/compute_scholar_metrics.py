@@ -1652,12 +1652,75 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
 
     print("\n🎉 Todas las métricas y Parquets se han generado exitosamente en data/cache/")
 
+def get_hierarchy(institution_name):
+    """Obtiene la jerarquía de dependencias y subdependencias de una institución desde Neo4j."""
+    graph_store = Neo4jGraphStore()
+    hierarchy = {}
+    
+    with graph_store.driver.session() as session:
+        # 1. Buscar dependencias directas
+        query_deps = """
+        MATCH (i:Institution {name: $inst})<-[:PART_OF]-(d:Entity)
+        RETURN d.name as dep
+        """
+        deps = [r['dep'] for r in session.run(query_deps, inst=institution_name)]
+        
+        # 2. Buscar subdependencias de esas dependencias
+        for dep in deps:
+            query_subs = """
+            MATCH (d:Entity {name: $dep})<-[:PART_OF]-(s:Entity)
+            RETURN s.name as sub
+            """
+            subs = [r['sub'] for r in session.run(query_subs, dep=dep)]
+            hierarchy[dep] = subs
+            
+        # 3. Caso especial: Si no tiene dependencias (como BANCO DE MEXICO), 
+        # intentar buscar si la institución acredita académicos directamente.
+        if not deps:
+            query_direct = """
+            MATCH (i:Institution {name: $inst})<-[:AFFILIATED_TO]-(a:Academic)
+            RETURN count(a) as count
+            """
+            res = session.run(query_direct, inst=institution_name).single()
+            if res and res['count'] > 0:
+                # La institución actúa como su propia dependencia
+                hierarchy[institution_name] = []
+
+    return hierarchy
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Calcula y guarda métricas académicas en parquets.")
     parser.add_argument("--entity", type=str, help="Nombre de la entidad para filtrar")
     parser.add_argument("--academic", type=str, help="Nombre del académico para filtrar")
+    parser.add_argument("--institution", type=str, help="Nombre de la institución raíz para procesar jerarquía")
     parser.add_argument("--source", type=str, choices=['wos', 'openalex', 'all'], default='all', 
                         help="Fuente de indización (wos, openalex, all)")
     args = parser.parse_args()
     
-    process_and_save(entity_filter=args.entity, academic_filter=args.academic, source_filter=args.source)
+    if args.institution:
+        print(f"🔍 Procesando jerarquía para: {args.institution}")
+        hier = get_hierarchy(args.institution)
+        
+        if not hier:
+            print(f"⚠️ No se encontró jerarquía para '{args.institution}'. Intentando proceso simple.")
+            process_and_save(entity_filter=args.institution, source_filter=args.source)
+        else:
+            # Iterar sobre la jerarquía: Institución -> Dependencia -> Subdependencia
+            print(f"📊 Jerarquía detectada: {len(hier)} dependencias.")
+            
+            # 1. Primero procesar la institución completa (todos sus investigadores)
+            print(f"\n🏢 PROCESANDO INSTITUCIÓN: {args.institution}")
+            process_and_save(entity_filter=args.institution, source_filter=args.source)
+            
+            # 2. Procesar cada dependencia y sus subdependencias
+            for dep, subs in hier.items():
+                if dep == args.institution: continue # Ya procesada
+                
+                print(f"\n  📁 Dependencia: {dep}")
+                process_and_save(entity_filter=dep, source_filter=args.source)
+                
+                for sub in subs:
+                    print(f"    📄 Subdependencia: {sub}")
+                    process_and_save(entity_filter=sub, source_filter=args.source)
+    else:
+        process_and_save(entity_filter=args.entity, academic_filter=args.academic, source_filter=args.source)

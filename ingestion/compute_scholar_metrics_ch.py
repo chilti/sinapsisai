@@ -21,6 +21,11 @@ import pandas as pd
 from pathlib import Path
 from dotenv import load_dotenv
 import unicodedata
+from sklearn.preprocessing import StandardScaler
+try:
+    from umap import UMAP
+except ImportError:
+    UMAP = None
 
 warnings.filterwarnings('ignore')
 try:
@@ -67,20 +72,14 @@ SELECT
     wf.is_top_10    AS is_in_top_10_percent,
     wf.is_top_1     AS is_in_top_1_percent,
     wf.is_oa, wf.oa_status,
-    wf.topic_id AS topic, wf.subfield_name AS subfield, 
-    wf.field_name AS field, wf.domain_name AS domain,
+    wf.topic, wf.subfield, wf.field, wf.domain,
+    wf.language, wf.type, wf.source_id AS Source, wf.source_type,
     wf.is_retracted, wf.referenced_works_count, wf.keywords, wf.sdgs AS ODS,
-    wf.author_ids AS author_names, wf.country_codes AS all_country_codes,
-    JSONExtractFloat(w.raw_data, 'apc_paid', 'value_usd') AS apc_paid_usd,
-    JSONExtractFloat(w.raw_data, 'apc_list', 'value_usd') AS apc_list_usd,
-    JSONExtractRaw(w.raw_data, 'counts_by_year') AS counts_by_year,
-    JSONExtractString(w.raw_data, 'primary_location', 'license') AS license,
-    JSONExtractBool(w.raw_data, 'primary_location', 'source', 'is_in_doaj') AS journal_is_in_doaj,
-    JSONExtractBool(w.raw_data, 'primary_location', 'source', 'is_core') AS journal_is_core,
-    JSONExtractBool(w.raw_data, 'any_repository_has_fulltext') AS any_repository_has_fulltext
-FROM works_flat wf
+    wf.author_names, wf.all_country_codes,
+    wf.apc_paid_usd, wf.apc_list_usd, wf.counts_by_year, wf.license,
+    wf.journal_is_in_doaj, wf.journal_is_core, wf.any_repository_has_fulltext
+FROM works_seed_mexico wf
 JOIN paper_author_map pm ON wf.id = pm.paper_id
-LEFT JOIN works w ON wf.id = w.id
 {filter}
 """
 
@@ -99,20 +98,14 @@ SELECT
     wf.is_top_10    AS is_in_top_10_percent,
     wf.is_top_1     AS is_in_top_1_percent,
     wf.is_oa, wf.oa_status,
-    wf.topic_id AS topic, wf.subfield_name AS subfield, 
-    wf.field_name AS field, wf.domain_name AS domain,
+    wf.topic, wf.subfield, wf.field, wf.domain,
+    wf.language, wf.type, wf.source_id AS Source, wf.source_type,
     wf.is_retracted, wf.referenced_works_count, wf.keywords, wf.sdgs AS ODS,
-    wf.author_ids AS author_names, wf.country_codes AS all_country_codes,
-    JSONExtractFloat(w.raw_data, 'apc_paid', 'value_usd') AS apc_paid_usd,
-    JSONExtractFloat(w.raw_data, 'apc_list', 'value_usd') AS apc_list_usd,
-    JSONExtractRaw(w.raw_data, 'counts_by_year') AS counts_by_year,
-    JSONExtractString(w.raw_data, 'primary_location', 'license') AS license,
-    JSONExtractBool(w.raw_data, 'primary_location', 'source', 'is_in_doaj') AS journal_is_in_doaj,
-    JSONExtractBool(w.raw_data, 'primary_location', 'source', 'is_core') AS journal_is_core,
-    JSONExtractBool(w.raw_data, 'any_repository_has_fulltext') AS any_repository_has_fulltext
-FROM works_flat wf
-JOIN paper_author_map pm ON wf.doi = pm.paper_id
-LEFT JOIN works w ON wf.id = w.id
+    wf.author_names, wf.all_country_codes,
+    wf.apc_paid_usd, wf.apc_list_usd, wf.counts_by_year, wf.license,
+    wf.journal_is_in_doaj, wf.journal_is_core, wf.any_repository_has_fulltext
+FROM works_seed_mexico wf
+JOIN paper_author_map pm ON wf.doi = pm.doi
 {filter}
 """
 
@@ -142,13 +135,13 @@ SELECT
     author_names,
     all_country_codes,
     institution_rors,
-    JSONExtractFloat(raw_data, 'apc_paid', 'value_usd') AS apc_paid_usd,
-    JSONExtractFloat(raw_data, 'apc_list', 'value_usd') AS apc_list_usd,
-    JSONExtractRaw(raw_data, 'counts_by_year') AS counts_by_year,
-    JSONExtractString(raw_data, 'primary_location', 'license') AS license,
-    JSONExtractBool(raw_data, 'primary_location', 'source', 'is_in_doaj') AS journal_is_in_doaj,
-    JSONExtractBool(raw_data, 'primary_location', 'source', 'is_core') AS journal_is_core,
-    JSONExtractBool(raw_data, 'any_repository_has_fulltext') AS any_repository_has_fulltext
+    apc_paid_usd,
+    apc_list_usd,
+    counts_by_year,
+    license,
+    journal_is_in_doaj,
+    journal_is_core,
+    any_repository_has_fulltext
 FROM works_seed_mexico
 {filter}
 """
@@ -811,6 +804,42 @@ def process_and_save(entity_filter=None, academic_filter=None,
             _save_aggregate_parquets(df_mx_prod, mx_prod_dir, updated_files, label='MEXICO')
             print(f"  🇲🇽 {len(df_mx_prod):,} papers en works_seed_mexico")
         del df_mx_prod
+
+    # ── 5. PRECALCULO DE UMAP (Trayectorias) ──────────────────────────────────
+    if UMAP and institution_name and not academic_filter:
+        print("\n⏳ Proyectando UMAP de Trayectorias (Desempeño Académico)...")
+        # El DataFrame acumulado de investigadores para esta institución es df_inst (del loop principal)
+        # Pero como se procesa por entidad, necesitamos recolectar los investigadores de la institución.
+        # Por ahora, usaremos los parquets institucionales generados para reconstruir el UMAP.
+        try:
+            total_inst_path = cap_dir / 'institucion_total.parquet'
+            if total_inst_path.exists():
+                # Nota: UMAP requiere las métricas de CADA investigador, no el agregado institucional.
+                # Buscaremos todos los parquets de investigadores bajo la carpeta de la institución.
+                inv_files = list(cap_dir.glob('**/investigador_total.parquet'))
+                if len(inv_files) >= 3:
+                    inv_dfs = [pd.read_parquet(f) for f in inv_files]
+                    umap_df = pd.concat(inv_dfs).drop_duplicates(subset=['academic_name'])
+                    
+                    features = ['pct_top_10', 'pct_1', 'percentile_avg', 'fwci_avg']
+                    valid_df = umap_df.dropna(subset=features).copy()
+                    
+                    if len(valid_df) >= 3:
+                        scaler = StandardScaler()
+                        X_scaled = scaler.fit_transform(valid_df[features])
+                        nn = min(15, len(valid_df) - 1)
+                        reducer = UMAP(n_neighbors=nn, min_dist=0.1, random_state=42)
+                        embedding = reducer.fit_transform(X_scaled)
+                        valid_df['umap_x'] = embedding[:, 0]
+                        valid_df['umap_y'] = embedding[:, 1]
+                        
+                        umap_out = cap_dir / 'umap_investigadores.parquet'
+                        valid_df.to_parquet(umap_out, index=False)
+                        print(f"  ✅ UMAP Generado para {len(valid_df)} investigadores en {cap_dir.name}")
+                else:
+                    print("  ⚠ Insuficientes investigadores para generar UMAP.")
+        except Exception as e:
+            print(f"  ⚠ Error en pre-cálculo de UMAP: {e}")
 
     print(f"\n✅ Completado. {len(updated_files)} archivos actualizados.")
 

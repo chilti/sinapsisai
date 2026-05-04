@@ -21,40 +21,51 @@ class QdrantStore:
         
         self.host = host or os.getenv("QDRANT_HOST", "127.0.0.1")
         self.port = int(port or os.getenv("QDRANT_PORT", 6333))
-        self.client = QdrantClient(host=self.host, port=self.port)
         self.collection_name = collection_name
-        self.vector_size = 768 # Dimensión para nomic-embed-text (O usar 1024 para bge-large-en-v1.5)
+        self.vector_size = 768 # Dimensión para nomic-embed-text
         
-        self._ensure_collection_exists()
+        try:
+            self.client = QdrantClient(host=self.host, port=self.port, timeout=5)
+            self._ensure_collection_exists()
+            self.available = True
+        except Exception as e:
+            print(f"⚠️ Qdrant no disponible en {self.host}:{self.port} - {e}")
+            self.client = None
+            self.available = False
 
     def _ensure_collection_exists(self):
         """Verifica si la colección existe, si no, la crea. También asegura índices de payload."""
-        collections = self.client.get_collections().collections
-        exists = any(c.name == self.collection_name for c in collections)
-        
-        if not exists:
-            print(f"Creando colección en Qdrant: {self.collection_name}")
-            self.client.create_collection(
-                collection_name=self.collection_name,
-                vectors_config=VectorParams(size=self.vector_size, distance=Distance.COSINE),
-            )
-        
-        # Asegurar índices en campos clave para filtrado eficiente
-        fields_to_index = {
-            "entity": PayloadSchemaType.KEYWORD,
-            "doi": PayloadSchemaType.KEYWORD,
-            "year": PayloadSchemaType.INTEGER
-        }
-        
-        for field, schema in fields_to_index.items():
-            try:
-                self.client.create_payload_index(
+        if not self.client: return
+        try:
+            collections = self.client.get_collections().collections
+            exists = any(c.name == self.collection_name for c in collections)
+            
+            if not exists:
+                print(f"Creando colección en Qdrant: {self.collection_name}")
+                self.client.create_collection(
                     collection_name=self.collection_name,
-                    field_name=field,
-                    field_schema=schema
+                    vectors_config=VectorParams(size=self.vector_size, distance=Distance.COSINE),
                 )
-            except Exception:
-                pass 
+            
+            # Asegurar índices en campos clave para filtrado eficiente
+            fields_to_index = {
+                "entity": PayloadSchemaType.KEYWORD,
+                "doi": PayloadSchemaType.KEYWORD,
+                "year": PayloadSchemaType.INTEGER
+            }
+            
+            for field, schema in fields_to_index.items():
+                try:
+                    self.client.create_payload_index(
+                        collection_name=self.collection_name,
+                        field_name=field,
+                        field_schema=schema
+                    )
+                except Exception:
+                    pass 
+        except Exception as e:
+            print(f"⚠️ Error al verificar colección en Qdrant: {e}")
+            self.available = False
 
     def add_documents(self, documents: List[Dict[str, Any]], embeddings: List[List[float]]):
         """

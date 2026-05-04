@@ -22,7 +22,7 @@ except Exception:
 
 # Paths
 BASE_PATH = os.path.dirname(os.path.abspath(__file__))
-CACHE_DIR = os.path.join(BASE_PATH, 'data', 'cache_ch')
+CACHE_DIR = os.path.join(BASE_PATH, 'data', 'cache')
 
 @st.cache_data
 def load_cached_data(filename, entity_name=None, academic_name=None, institution_name=None, _mtime=None):
