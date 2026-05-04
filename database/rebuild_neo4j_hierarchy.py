@@ -6,6 +6,10 @@ Lógica: Institución -> Dependencia -> Subdependencia.
 Maneja casos de "SIN INSTITUCIÓN" y valores nulos/SIN INFORMACIÓN.
 """
 import sys, os, json
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except AttributeError:
+    pass
 import pandas as pd
 from pathlib import Path
 from dotenv import load_dotenv

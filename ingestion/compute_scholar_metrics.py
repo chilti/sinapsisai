@@ -206,7 +206,6 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
         OPTIONAL MATCH (a)-[:AUTHORED]->(p{label_filter})
         WITH a, affiliations, p
         
-        OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
         RETURN a.name AS academic_name,
                a.orcid AS orcid,
@@ -225,7 +224,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                p.year AS year,
                p.citations AS citations,
                p.raw_metadata AS raw_metadata,
-               collect(DISTINCT {id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs,
+               [] AS sdgs,
                collect(DISTINCT {topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}) AS graph_topics
         """.replace("{label_filter}", label_filter)
         params = {"academic": academic_filter}
@@ -240,7 +239,6 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
         OPTIONAL MATCH (a)-[:AUTHORED]->(p{label_filter})
         WITH a, affiliations, p
         
-        OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
         RETURN a.name AS academic_name,
                a.orcid AS orcid,
@@ -259,7 +257,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                p.year AS year,
                p.citations AS citations,
                p.raw_metadata AS raw_metadata,
-               collect(DISTINCT {id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs,
+               [] AS sdgs,
                collect(DISTINCT {topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}) AS graph_topics
         """.replace("{label_filter}", label_filter)
         params = {"entity": entity_filter}
@@ -274,7 +272,6 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
         OPTIONAL MATCH (a)-[:AUTHORED]->(p{label_filter})
         WITH a, affiliations, p
         
-        OPTIONAL MATCH (p)-[r:ADDRESSES]->(s:SDG)
         OPTIONAL MATCH (p)-[:HAS_TOPIC]->(t:Topic)
         RETURN a.name AS academic_name,
                a.orcid AS orcid,
@@ -291,7 +288,7 @@ def extract_academic_papers(academic_filter=None, entity_filter=None, source_fil
                p.year AS year,
                p.citations AS citations,
                p.raw_metadata AS raw_metadata,
-               collect(DISTINCT {id: s.id, name: s.name, confidence: r.confidence, reasoning: r.reasoning}) AS sdgs,
+               [] AS sdgs,
                collect(DISTINCT {topic: t.name, domain: t.domain, field: t.field, subfield: t.subfield}) AS graph_topics
         """.replace("{label_filter}", label_filter)
         params = {}
