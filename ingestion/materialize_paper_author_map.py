@@ -143,7 +143,7 @@ _NEO4J_QUERY = """
 MATCH (a:Academic)-[:AUTHORED]->(p:Paper)
 OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
 OPTIONAL MATCH path = (e)-[:PART_OF*..3]->(i:Institution)
-OPTIONAL MATCH (p)-[:RELATES_TO]->(s:SDG)
+OPTIONAL MATCH (p)-[:ADDRESSES]->(s:SDG)
 WITH a, p, e, i, [n in nodes(path) | n.name] AS hierarchy, collect(DISTINCT s.id) AS ods
 RETURN
     coalesce(p.openalex_id, p.id)    AS paper_id,
