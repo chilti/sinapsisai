@@ -689,12 +689,17 @@ def render_institucion_view(entity_name, institution_name=None):
         st.markdown("---")
         st.subheader("📜 Publicaciones")
         
+        # Seguridad: asegurar que existan las columnas para evitar KeyErrors
+        for c in ['ODS_Nombre', 'openalex_url']:
+            if c not in df_inst_p.columns:
+                df_inst_p[c] = None
+
         col_filtro1, col_filtro2 = st.columns(2)
         with col_filtro1:
             years_inst = np.flip(np.unique(df_inst_p['year'].dropna()))
             s_year_inst = st.selectbox("Filtrar por año:", options=["Todos"] + list(years_inst), key="inst_year")
         with col_filtro2:
-            ods_options_inst = sorted([str(ods) for ods in df_inst_p['ODS_Nombre'].dropna().unique() if str(ods).lower() != "null" and "x" not in str(ods).lower()])
+            ods_options_inst = sorted([str(ods) for ods in df_inst_p['ODS_Nombre'].dropna().unique() if ods and str(ods).lower() != "null" and "x" not in str(ods).lower()])
             s_ods_inst = st.selectbox("Filtrar por ODS:", options=["Todos"] + ods_options_inst, key="inst_ods")
         
         df_display_inst = df_inst_p.copy()
@@ -703,11 +708,8 @@ def render_institucion_view(entity_name, institution_name=None):
         if s_ods_inst != "Todos":
             df_display_inst = df_display_inst[df_display_inst['ODS_Nombre'] == s_ods_inst]
             
-        if "openalex_url" not in df_display_inst.columns:
-            df_display_inst["openalex_url"] = None
-            
-        df_display_inst = df_display_inst[[
-            "year", "Title", "Source", "citations", "DOI", "openalex_url", "ODS_Nombre"
+        cols_to_show = ["year", "Title", "Source", "citations", "DOI", "openalex_url", "ODS_Nombre"]
+        df_display_inst = df_display_inst[[c for c in cols_to_show if c in df_display_inst.columns]]
         ]].rename(columns={
             "year": "Año",
             "Title": "Título",
