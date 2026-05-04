@@ -62,13 +62,15 @@ CREATE TABLE IF NOT EXISTS {TABLE} (
     orcid           String,
     openalex_id     String,
     entity          String,
+    entity_id       String,
     institution     String,
+    institution_ror String,
     is_snii         UInt8,
     source          String,
     audit_verdict   String
 )
 ENGINE = ReplacingMergeTree()
-ORDER BY (paper_id, academic_id, institution, entity)
+ORDER BY (institution_ror, entity_id, paper_id, academic_id)
 SETTINGS index_granularity = 8192
 """
 
@@ -142,12 +144,15 @@ OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
 OPTIONAL MATCH path = (e)-[:PART_OF*..3]->(i:Institution)
 WITH a, p, e, i, [n in nodes(path) | n.name] AS hierarchy
 RETURN
-    p.id                AS paper_id,
-    a.name              AS academic_name,
-    a.id                AS academic_id,
+    coalesce(p.openalex_id, p.id)    AS paper_id,
+    a.name                          AS academic_name,
+    a.id                            AS academic_id,
     coalesce(a.orcid, '')           AS orcid,
     coalesce(a.openalex_id, '')     AS openalex_id,
+    coalesce(e.name, 'SIN_ENTIDAD') AS entity,
+    coalesce(e.id, 'SIN_ID')        AS entity_id,
     coalesce(i.name, 'Sin Institución') AS institution,
+    coalesce(i.ror, 'SIN_ROR')      AS institution_ror,
     hierarchy,
     coalesce(a.is_snii, false)      AS is_snii,
     coalesce(a.siia_url, '')        AS siia_url,
@@ -192,30 +197,27 @@ def _stream_neo4j_pages(graph_store, since: str = '1970-01-01 00:00:00'):
 
 def _normalize_paper_id(pid: str) -> str:
     """
-    Normaliza el paper_id para que coincida con works_flat:
-    - Si es OpenAlex Work ID (W + dígitos) → mayúsculas
-    - Si es DOI → normalizar a 'https://doi.org/10.xxx'
-    - Otro → retornar tal cual
+    Normaliza el paper_id para que coincida con works_seed_mexico (URL completa):
+    - Si es W... -> https://openalex.org/W...
+    - Si ya es URL -> retornar tal cual (asegurar https)
+    - Si es ORCID o basura -> retornar None para filtrar
     """
-    if not pid:
-        return ''
+    if not pid: return None
     s = str(pid).strip()
 
-    # OpenAlex ID corto (ej. "W2898934631")
-    short = s.rstrip('/').split('/')[-1]
-    if _OA_RE.match(short):
-        return short.upper()
+    # Si es un ORCID (común en errores de Neo4j), lo descartamos como ID de Paper
+    if re.match(r'^\d{4}-\d{4}-\d{4}-\d{3}[0-9X]$', s):
+        return None
 
-    # DOI completo o crudo
-    doi = (s
-           .replace('https://doi.org/', '')
-           .replace('http://doi.org/', '')
-           .lower()
-           .strip('/'))
-    if doi.startswith('10.'):
-        return f'https://doi.org/{doi}'
+    # Caso OpenAlex ID corto o largo
+    short = s.rstrip('/').split('/')[-1].upper()
+    if short.startswith('W') and short[1:].isdigit():
+        return f'https://openalex.org/{short}'
+    
+    if 'openalex.org/W' in s:
+        return s.replace('http://', 'https://')
 
-    return s
+    return None
 
 
 _NEO4J_DIAG = """
@@ -277,7 +279,7 @@ def _transform_page(df: pd.DataFrame) -> pd.DataFrame:
     """Limpia y normaliza una página de filas de Neo4j explotando la jerarquía."""
     df = df.dropna(subset=['paper_id', 'academic_name']).copy()
     df['paper_id'] = df['paper_id'].apply(_normalize_paper_id)
-    df = df[df['paper_id'] != '']
+    df = df[df['paper_id'].notna()].copy()
     if df.empty:
         return df
 
@@ -292,7 +294,8 @@ def _transform_page(df: pd.DataFrame) -> pd.DataFrame:
             'openalex_id': r['openalex_id'],
             'is_snii': 1 if r['is_snii'] else 0,
             'source': _determine_source(r),
-            'audit_verdict': r['audit_verdict']
+            'audit_verdict': r['audit_verdict'],
+            'institution_ror': r['institution_ror']
         }
         
         # root_inst es la Universidad real (UNAM, UAM...) — es el nodo i:Institution en Neo4j
@@ -322,11 +325,12 @@ def _transform_page(df: pd.DataFrame) -> pd.DataFrame:
             row_ent['entity'] = entity_name
             rows.append(row_ent)
             
-        # 3. Nivel Nacional (MÉXICO): la "entidad" es la Universidad
-        # Permite comparar UNAM vs UAM vs IPN dentro de la vista nacional
+        # 3. Nivel Nacional (MÉXICO)
         row_mex = base.copy()
         row_mex['institution'] = 'MÉXICO'
+        row_mex['institution_ror'] = 'MEXICO'
         row_mex['entity'] = root_inst
+        row_mex['entity_id'] = r['institution_ror'] # Usamos el ROR como ID de la entidad en la vista nacional
         rows.append(row_mex)
 
     # Crear el nuevo dataframe expandido

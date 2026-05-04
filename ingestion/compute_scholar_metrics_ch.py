@@ -627,19 +627,26 @@ def process_and_save(entity_filter=None, academic_filter=None,
     OPTIONAL MATCH (dep)<-[:PART_OF]-(sub:Entity)
     RETURN i.name AS inst, dep.name AS dep, sub.name AS sub
     """
-    # Mapa: {inst: {dep: [subs]}}
+    # Mapa: {inst_name: {'ror': ror, 'id': id, 'entities': {dep_name: {'id': id, 'subs': {sub_name: sub_id}}}}}
     hier = {}
     with gs.driver.session() as session:
         for r in session.run(_HIER_QUERY):
             inst = r["inst"]
+            ror  = r["inst_ror"] or r["inst_id"] # Fallback a ID si no hay ROR
             dep  = r["dep"]
+            dep_id = r["dep_id"]
             sub  = r["sub"]
+            sub_id = r["sub_id"]
+            
             if not inst: continue
-            if inst not in hier: hier[inst] = {}
+            if inst not in hier: 
+                hier[inst] = {'ror': ror, 'entities': {}}
+            
             if dep:
-                if dep not in hier[inst]: hier[inst][dep] = []
-                if sub and sub not in hier[inst][dep]:
-                    hier[inst][dep].append(sub)
+                if dep not in hier[inst]['entities']:
+                    hier[inst]['entities'][dep] = {'id': dep_id, 'subs': {}}
+                if sub:
+                    hier[inst]['entities'][dep]['subs'][sub] = sub_id
 
     # Filtros opcionales
     if institution_filter:
@@ -649,10 +656,14 @@ def process_and_save(entity_filter=None, academic_filter=None,
             return
 
     if entity_filter:
-        hier = {i: {e: s for e, s in ents.items() if e == entity_filter}
-                for i, ents in hier.items() if entity_filter in ents}
+        # Filtrar preservando la estructura
+        new_hier = {}
+        for inst, data in hier.items():
+            filtered_ents = {e: d for e, d in data['entities'].items() if e == entity_filter or entity_filter in d['subs']}
+            if filtered_ents:
+                new_hier[inst] = {'ror': data['ror'], 'entities': filtered_ents}
+        hier = new_hier
 
-    total_entities = sum(1 + len(subs) for ents in hier.values() for subs in ents.values())
     print(f"  → {len(hier)} institución(es) en jerarquía Neo4j")
 
     # Cargar mapa nombre → ROR para Producción Institucional
@@ -661,87 +672,65 @@ def process_and_save(entity_filter=None, academic_filter=None,
     done = 0
 
     # ── Procesar institución por institución ──────────────────────────────
-    for inst_name, entities in hier.items():
+    for inst_name, data in hier.items():
+        inst_ror = data['ror']
+        entities = data['entities']
         safe_inst = _safe_name(inst_name)
-        print(f"\n📍 {inst_name}")
+        print(f"\n📍 {inst_name} ({inst_ror})")
 
-        # ─ Nivel Institución (todos sus académicos) ───────────────────────
-        done += 1
-        # Traer TODO lo de la institución para el nivel raíz, sin importar la entidad
-        where = "WHERE pm.institution = %(inst)s"
-        params = {'inst': inst_name}
-        df_inst = _query_cap(where, params)
+        # ─ Nivel Institución: Capacidad Instalada ───────────────────────
+        where_cap = "WHERE pm.institution_ror = %(ror)s"
+        df_inst_cap = _query_cap(where_cap, {'ror': inst_ror})
 
-        if df_inst.empty:
-            print(f"  ⚠️ Sin papers para la institución")
+        if df_inst_cap.empty:
+            print(f"  ⚠️ Sin papers de Capacidad Instalada")
         else:
-            df_inst = df_inst.drop_duplicates(subset=['paper_id', 'academic_name'])
-            print(f"  📄 {len(df_inst):,} papers (nivel institución)")
+            df_inst_cap = df_inst_cap.drop_duplicates(subset=['paper_id', 'academic_name'])
+            print(f"  📄 {len(df_inst_cap):,} papers (Capacidad)")
 
-            # Académicos individuales
-            for ac_name, df_ac in df_inst.groupby('academic_name'):
+            for ac_name, df_ac in df_inst_cap.groupby('academic_name'):
                 _flush_academic(ac_name, df_ac.copy(), inst_name, inst_name, updated_files)
 
-            # Guardar en raíz de la institución (para el Dashboard)
-            inst_root_dir = CACHE_DIR / safe_inst
-            _save_aggregate_parquets(df_inst, inst_root_dir, updated_files, label=inst_name)
-            
-            # Y también en carpeta específica por si se requiere
-            cap_dir = inst_root_dir / 'capacidad_instalada'
-            _save_aggregate_parquets(df_inst, cap_dir, updated_files, label=inst_name)
+            cap_dir = CACHE_DIR / safe_inst / 'capacidad_instalada'
+            _save_aggregate_parquets(df_inst_cap, cap_dir, updated_files, label=inst_name)
+            # Link para fallback del dashboard
+            _save_aggregate_parquets(df_inst_cap, CACHE_DIR / safe_inst, updated_files, label=inst_name)
 
-            cols_mx = ['paper_id', 'year', 'citations', 'fwci',
-                       'citation_normalized_percentile', 'is_in_top_10_percent',
-                       'is_in_top_1_percent', 'is_oa', 'oa_status',
-                       'topic_name', 'subfield_name', 'field_name', 'domain_name',
-                       'keywords', 'language', 'type']
-            mx_cap_frames.append(df_inst[[c for c in cols_mx if c in df_inst.columns]])
-
-        # Producción Institucional via ROR
-        rors = ror_map.get(inst_name, [])
-        if rors:
-            ror_list = ', '.join(f"'{r}'" for r in rors)
-            df_prod = _query_prod(f"WHERE hasAny(institution_rors, [{ror_list}])")
-            if not df_prod.empty:
-                prod_dir = CACHE_DIR / safe_inst / 'produccion_institucional'
-                _save_aggregate_parquets(df_prod, prod_dir, updated_files, label=inst_name)
-                print(f"  🏛️ {len(df_prod):,} papers (Prod. Institucional)")
+        # ─ Nivel Institución: Producción Institucional (ROR Directo) ──
+        df_prod = _query_prod(f"WHERE has(institution_rors, '{inst_ror}')")
+        if not df_prod.empty:
+            prod_dir = CACHE_DIR / safe_inst / 'produccion_institucional'
+            _save_aggregate_parquets(df_prod, prod_dir, updated_files, label=inst_name)
+            print(f"  🏛️ {len(df_prod):,} papers (Producción)")
 
         # ─ Nivel Dependencia y Subdependencia ────────────────────────────
-        for dep_name, subs in entities.items():
+        for dep_name, dep_data in entities.items():
+            dep_id = dep_data['id']
+            subs = dep_data['subs']
             safe_dep = _safe_name(dep_name)
-            done += 1
-
-            # Dependencia (Incluye a sus subdependencias)
-            nodes_to_query = [dep_name] + subs
-            where_dep = "WHERE pm.institution = %(inst)s AND pm.entity IN %(nodes)s"
-            df_dep = _query_cap(where_dep, {'inst': inst_name, 'nodes': nodes_to_query})
+            
+            # Dependencia (Incluye a sus subdependencias via IDs)
+            ids_to_query = [dep_id] + list(subs.values())
+            where_dep = "WHERE pm.institution_ror = %(ror)s AND pm.entity_id IN %(ids)s"
+            df_dep = _query_cap(where_dep, {'ror': inst_ror, 'ids': ids_to_query})
             
             if not df_dep.empty:
                 df_dep = df_dep.drop_duplicates(subset=['paper_id', 'academic_name'])
-                print(f"  ├─ {dep_name}: {len(df_dep):,} papers (inc. subdeps)")
-                dep_dir = CACHE_DIR / safe_inst / safe_dep
+                print(f"  ├─ {dep_name}: {len(df_dep):,} papers (Capacidad)")
+                dep_dir = CACHE_DIR / safe_inst / safe_dep / 'capacidad_instalada'
                 _save_aggregate_parquets(df_dep, dep_dir, updated_files, label=dep_name)
 
             # Subdependencias (Individuales)
-            for sub_name in subs:
+            for sub_name, sub_id in subs.items():
                 safe_sub = _safe_name(sub_name)
                 df_sub = _query_cap(
-                    "WHERE pm.institution = %(inst)s AND pm.entity = %(ent)s",
-                    {'inst': inst_name, 'ent': sub_name})
+                    "WHERE pm.institution_ror = %(ror)s AND pm.entity_id = %(id)s",
+                    {'ror': inst_ror, 'id': sub_id})
                 if not df_sub.empty:
                     df_sub = df_sub.drop_duplicates(subset=['paper_id', 'academic_name'])
                     print(f"  │  └─ {sub_name}: {len(df_sub):,} papers")
-                    # Académicos a nivel subdependencia
-                    for ac_name, df_ac in df_sub.groupby('academic_name'):
-                        _flush_academic(ac_name, df_ac.copy(), sub_name, inst_name, updated_files)
-                    sub_dir = CACHE_DIR / safe_inst / safe_sub
+                    sub_dir = CACHE_DIR / safe_inst / safe_sub / 'capacidad_instalada'
                     _save_aggregate_parquets(df_sub, sub_dir, updated_files, label=sub_name)
-                    del df_sub
-            if not df_dep.empty:
-                del df_dep
-        if 'df_inst' in dir() and df_inst is not None:
-            del df_inst
 
     # ── Nivel México — Capacidad Instalada ────────────────────────────────
     if mx_cap_frames and not academic_filter and not entity_filter:
