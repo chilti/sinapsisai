@@ -351,19 +351,24 @@ def _save_aggregate_parquets(df: pd.DataFrame, out_dir: Path,
     df['_grp'] = label
 
     _save_parquet(df, out_dir / 'papers_institucion.parquet', updated_files)
-    _save_parquet(aggregate_metrics(df, ['_grp']),
+    
+    df_tot = aggregate_metrics(df, ['_grp'])
+    _save_parquet(df_tot.rename(columns={'_grp': 'entity_name'}),
                   out_dir / 'institucion_total.parquet', updated_files)
 
     df_yr = df.dropna(subset=['year'])
     if not df_yr.empty:
-        _save_parquet(aggregate_metrics(df_yr, ['_grp', 'year']),
+        df_ann = aggregate_metrics(df_yr, ['_grp', 'year'])
+        _save_parquet(df_ann.rename(columns={'_grp': 'entity_name'}),
                       out_dir / 'institucion_annual.parquet', updated_files)
 
     df_t, df_te = _topics_agg(df, '_grp')
     if df_t is not None:
-        _save_parquet(df_t, out_dir / 'topics_institucion.parquet', updated_files)
+        _save_parquet(df_t.rename(columns={'_grp': 'entity_name'}),
+                      out_dir / 'topics_institucion.parquet', updated_files)
     if df_te is not None:
-        _save_parquet(df_te, out_dir / 'thematic_evolution_institucion.parquet', updated_files)
+        _save_parquet(df_te.rename(columns={'_grp': 'entity_name'}),
+                      out_dir / 'thematic_evolution_institucion.parquet', updated_files)
 
     if 'keywords' in df.columns:
         from collections import Counter
