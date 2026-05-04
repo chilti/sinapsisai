@@ -79,7 +79,7 @@ SELECT
     wf.apc_paid_usd, wf.apc_list_usd, wf.counts_by_year, wf.license,
     wf.journal_is_in_doaj, wf.journal_is_core, wf.any_repository_has_fulltext
 FROM works_seed_mexico wf
-JOIN paper_author_map pm ON (wf.id = pm.paper_id OR wf.doi = pm.doi)
+JOIN paper_author_map pm ON wf.id = pm.paper_id
 {filter}
 """
 
