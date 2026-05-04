@@ -15,7 +15,7 @@ Jerarquía de parquets generados:
   cache_ch/MEXICO/capacidad_instalada/institucion_*.parquet
   cache_ch/MEXICO/produccion_institucional/institucion_*.parquet
 """
-import os, sys, argparse, importlib.util, warnings
+import os, sys, argparse, json, importlib.util, warnings
 import numpy as np
 import pandas as pd
 from pathlib import Path
