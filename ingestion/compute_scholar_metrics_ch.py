@@ -663,8 +663,9 @@ def process_and_save(entity_filter=None, academic_filter=None,
 
         # ─ Nivel Institución (todos sus académicos) ───────────────────────
         done += 1
-        where = "WHERE pm.institution = %(inst)s AND pm.entity = %(ent)s"
-        params = {'inst': inst_name, 'ent': inst_name}
+        # Traer TODO lo de la institución para el nivel raíz, sin importar la entidad
+        where = "WHERE pm.institution = %(inst)s"
+        params = {'inst': inst_name}
         df_inst = _query_cap(where, params)
 
         if df_inst.empty:
@@ -677,7 +678,12 @@ def process_and_save(entity_filter=None, academic_filter=None,
             for ac_name, df_ac in df_inst.groupby('academic_name'):
                 _flush_academic(ac_name, df_ac.copy(), inst_name, inst_name, updated_files)
 
-            cap_dir = CACHE_DIR / safe_inst / 'capacidad_instalada'
+            # Guardar en raíz de la institución (para el Dashboard)
+            inst_root_dir = CACHE_DIR / safe_inst
+            _save_aggregate_parquets(df_inst, inst_root_dir, updated_files, label=inst_name)
+            
+            # Y también en carpeta específica por si se requiere
+            cap_dir = inst_root_dir / 'capacidad_instalada'
             _save_aggregate_parquets(df_inst, cap_dir, updated_files, label=inst_name)
 
             cols_mx = ['paper_id', 'year', 'citations', 'fwci',
@@ -702,17 +708,18 @@ def process_and_save(entity_filter=None, academic_filter=None,
             safe_dep = _safe_name(dep_name)
             done += 1
 
-            # Dependencia
-            df_dep = _query_cap(
-                "WHERE pm.institution = %(inst)s AND pm.entity = %(ent)s",
-                {'inst': inst_name, 'ent': dep_name})
+            # Dependencia (Incluye a sus subdependencias)
+            nodes_to_query = [dep_name] + subs
+            where_dep = "WHERE pm.institution = %(inst)s AND pm.entity IN %(nodes)s"
+            df_dep = _query_cap(where_dep, {'inst': inst_name, 'nodes': nodes_to_query})
+            
             if not df_dep.empty:
                 df_dep = df_dep.drop_duplicates(subset=['paper_id', 'academic_name'])
-                print(f"  ├─ {dep_name}: {len(df_dep):,} papers")
+                print(f"  ├─ {dep_name}: {len(df_dep):,} papers (inc. subdeps)")
                 dep_dir = CACHE_DIR / safe_inst / safe_dep
                 _save_aggregate_parquets(df_dep, dep_dir, updated_files, label=dep_name)
 
-            # Subdependencias
+            # Subdependencias (Individuales)
             for sub_name in subs:
                 safe_sub = _safe_name(sub_name)
                 df_sub = _query_cap(
