@@ -820,7 +820,7 @@ def render_investigador_view(entity_name, institution_name=None):
         
         for path in test_paths:
             if os.path.exists(path):
-                f_inv = [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
+                f_inv = [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d)) and d not in ['capacidad_instalada', 'produccion_institucional']]
                 investigadores.extend(f_inv)
                 break
         investigadores = sorted(list(set(investigadores)))
