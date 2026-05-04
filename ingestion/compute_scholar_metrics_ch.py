@@ -454,7 +454,6 @@ def _save_aggregate_parquets(df: pd.DataFrame, out_dir: Path,
 
     if 'keywords' in df.columns:
         from collections import Counter
-        import json
         cnt = Counter()
         for kws in df['keywords']:
             if not kws: continue
