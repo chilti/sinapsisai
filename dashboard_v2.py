@@ -314,18 +314,6 @@ with st.sidebar:
     st.selectbox("Modelo", ["openai/gpt-oss-20b"], index=0)
 
     st.markdown("---")
-    st.markdown("### 📊 Perspectiva Analítica")
-    view_mode = st.radio(
-        "Lente de análisis",
-        ["Capacidad Instalada", "Producción Institucional"],
-        index=0,
-        help="Capacidad Instalada: Suma de la producción de tus académicos.\nProducción Institucional: Papers firmados explícitamente con tu ROR.",
-        key="view_mode_sidebar"
-    )
-    view_mode_code = "capacidad_instalada" if view_mode == "Capacidad Instalada" else "produccion_institucional"
-
-
-    st.markdown("---")
     st.markdown("### Capas de Datos Activas")
     st.markdown("- ✅ **Neo4j** (Grafos Local)")
     st.markdown("- ✅ **Qdrant** (Semántica Local)")    
@@ -730,13 +718,36 @@ with tab_test:
 # TAB 2: Vista de la Institución
 # =======================================================
 with tab_inst:
-    render_institucion_view(selected_entity, institution_name=selected_inst, view_mode=view_mode_code)
+    st.markdown("### 📊 Perspectiva Analítica")
+    view_mode_inst = st.radio(
+        "Lente de análisis",
+        ["Capacidad Instalada", "Producción Institucional"],
+        index=0,
+        horizontal=True,
+        help="Capacidad Instalada: Suma de la producción de tus académicos.\nProducción Institucional: Papers firmados explícitamente con tu ROR.",
+        key="view_mode_inst_tab"
+    )
+    v_mode_inst_code = "capacidad_instalada" if view_mode_inst == "Capacidad Instalada" else "produccion_institucional"
+    
+    render_institucion_view(selected_entity, institution_name=selected_inst, view_mode=v_mode_inst_code)
 
 # =======================================================
 # TAB 3: Vista por Investigador
 # =======================================================
 with tab_inv:
-    render_investigador_view(selected_entity, institution_name=selected_inst, view_mode=view_mode_code)
+    # En la vista de investigador usualmente queremos Capacidad Instalada (sus papers)
+    # pero permitimos el toggle por consistencia si se requiere.
+    view_mode_inv = st.radio(
+        "Lente de análisis",
+        ["Capacidad Instalada", "Producción Institucional"],
+        index=0,
+        horizontal=True,
+        key="view_mode_inv_tab",
+        label_visibility="collapsed"
+    )
+    v_mode_inv_code = "capacidad_instalada" if view_mode_inv == "Capacidad Instalada" else "produccion_institucional"
+    
+    render_investigador_view(selected_entity, institution_name=selected_inst, view_mode=v_mode_inv_code)
 
 # =======================================================
 
