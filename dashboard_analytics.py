@@ -709,8 +709,7 @@ def render_institucion_view(entity_name, institution_name=None):
             df_display_inst = df_display_inst[df_display_inst['ODS_Nombre'] == s_ods_inst]
             
         cols_to_show = ["year", "Title", "Source", "citations", "DOI", "openalex_url", "ODS_Nombre"]
-        df_display_inst = df_display_inst[[c for c in cols_to_show if c in df_display_inst.columns]]
-        ]].rename(columns={
+        df_display_inst = df_display_inst[[c for c in cols_to_show if c in df_display_inst.columns]].rename(columns={
             "year": "Año",
             "Title": "Título",
             "Source": "Revista/Publicación",
