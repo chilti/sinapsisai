@@ -642,7 +642,7 @@ def process_and_save(entity_filter=None, academic_filter=None,
             
             if not inst: continue
             if inst not in hier: 
-                hier[inst] = {'ror': ror, 'entities': {}}
+                hier[inst] = {'ror': ror, 'id': inst_id, 'entities': {}}
             
             if dep:
                 if dep not in hier[inst]['entities']:
@@ -700,12 +700,19 @@ def process_and_save(entity_filter=None, academic_filter=None,
 
         # ─ Nivel Institución: Producción Institucional (ROR o ID Directo) ──
         inst_id = data.get('id', '')
-        filter_prod = f"WHERE has(institution_rors, '{inst_ror}') OR has(institution_ids, '{inst_id}')"
-        df_prod = _query_prod(filter_prod)
-        if not df_prod.empty:
-            prod_dir = CACHE_DIR / safe_inst / 'produccion_institucional'
-            _save_aggregate_parquets(df_prod, prod_dir, updated_files, label=inst_name)
-            print(f"  🏛️ {len(df_prod):,} papers (Producción)")
+        print(f"  🔍 Buscando Producción: ROR='{inst_ror}', ID='{inst_id}'")
+        
+        conditions = []
+        if inst_ror and inst_ror != 'None': conditions.append(f"has(institution_rors, '{inst_ror}')")
+        if inst_id and inst_id != 'None': conditions.append(f"has(institution_ids, '{inst_id}')")
+        
+        if conditions:
+            filter_prod = f"WHERE {' OR '.join(conditions)}"
+            df_prod = _query_prod(filter_prod)
+            if not df_prod.empty:
+                prod_dir = CACHE_DIR / safe_inst / 'produccion_institucional'
+                _save_aggregate_parquets(df_prod, prod_dir, updated_files, label=inst_name)
+                print(f"  🏛️ {len(df_prod):,} papers (Producción)")
 
         # ─ Nivel Dependencia y Subdependencia ────────────────────────────
         for dep_name, dep_data in entities.items():
