@@ -67,7 +67,6 @@ SELECT
     wf.is_top_10    AS is_in_top_10_percent,
     wf.is_top_1     AS is_in_top_1_percent,
     wf.is_oa, wf.oa_status,
-    wf.is_oa, wf.oa_status,
     wf.topic_id AS topic, wf.subfield_name AS subfield, 
     wf.field_name AS field, wf.domain_name AS domain,
     wf.language, wf.type, wf.source_id AS Source, wf.source_type,
@@ -92,7 +91,6 @@ SELECT
     wf.percentile   AS citation_normalized_percentile,
     wf.is_top_10    AS is_in_top_10_percent,
     wf.is_top_1     AS is_in_top_1_percent,
-    wf.is_oa, wf.oa_status,
     wf.is_oa, wf.oa_status,
     wf.topic_id AS topic, wf.subfield_name AS subfield, 
     wf.field_name AS field, wf.domain_name AS domain,
@@ -199,7 +197,9 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
         if old in df.columns:
             df[new] = df[old].apply(lambda x: x if isinstance(x, (list, np.ndarray)) else [])
             
-    # Otras columnas necesarias para aggregate_metrics
+    # Columnas necesarias para aggregate_metrics (Legacy compatibility)
+    df['has_oa_data'] = 1
+    
     for c in ['keywords', 'ODS']:
         if c not in df.columns:
             df[c] = [[] for _ in range(len(df))]
