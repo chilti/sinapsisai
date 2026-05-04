@@ -323,6 +323,11 @@ def _render_choropleth_collab(df_papers, name_col, name_val, title="Países cola
 
 def _render_keywords_section(df_kw, name_col, name_val, title="Keywords principales", key_suffix="", return_fig=False):
     """Nube de palabras o barras horizontales de keywords."""
+    if df_kw is None or df_kw.empty or name_col not in df_kw.columns:
+        if df_kw is not None and not df_kw.empty:
+            print(f"⚠️ Alerta: Columna {name_col} no encontrada en keywords. Columnas disponibles: {df_kw.columns}")
+        return
+    
     df_k = df_kw[df_kw[name_col] == name_val].sort_values("freq", ascending=False).head(50)
     if df_k.empty:
         st.info("Sin keywords registrados.")
