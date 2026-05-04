@@ -57,8 +57,8 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Queries ClickHouse ─────────────────────────────────────────────────────
 
-# Capacidad Instalada — papers identificados por OpenAlex Work ID (W...)
-_Q_CAP_OA = """
+# Capacidad Instalada (Unificada)
+_Q_CAP = """
 SELECT
     pm.academic_name, pm.entity, pm.institution,
     pm.orcid, pm.openalex_id, pm.is_snii, pm.audit_verdict,
@@ -79,33 +79,7 @@ SELECT
     wf.apc_paid_usd, wf.apc_list_usd, wf.counts_by_year, wf.license,
     wf.journal_is_in_doaj, wf.journal_is_core, wf.any_repository_has_fulltext
 FROM works_seed_mexico wf
-JOIN paper_author_map pm ON wf.id = pm.paper_id
-{filter}
-"""
-
-# Capacidad Instalada — papers identificados por DOI
-_Q_CAP_DOI = """
-SELECT
-    pm.academic_name, pm.entity, pm.institution,
-    pm.orcid, pm.openalex_id, pm.is_snii, pm.audit_verdict,
-    wf.id           AS paper_id,
-    wf.doi,
-    wf.title        AS Title,
-    wf.publication_year AS year,
-    wf.cited_by_count   AS citations,
-    wf.fwci,
-    wf.percentile   AS citation_normalized_percentile,
-    wf.is_top_10    AS is_in_top_10_percent,
-    wf.is_top_1     AS is_in_top_1_percent,
-    wf.is_oa, wf.oa_status,
-    wf.topic, wf.subfield, wf.field, wf.domain,
-    wf.language, wf.type, wf.source_id AS Source, wf.source_type,
-    wf.is_retracted, wf.referenced_works_count, wf.keywords, wf.sdgs AS ODS,
-    wf.author_names, wf.all_country_codes,
-    wf.apc_paid_usd, wf.apc_list_usd, wf.counts_by_year, wf.license,
-    wf.journal_is_in_doaj, wf.journal_is_core, wf.any_repository_has_fulltext
-FROM works_seed_mexico wf
-JOIN paper_author_map pm ON wf.doi = pm.doi
+JOIN paper_author_map pm ON (wf.id = pm.paper_id OR wf.doi = pm.doi)
 {filter}
 """
 
@@ -131,7 +105,7 @@ SELECT
     type,
     source_id   AS Source,
     source_type,
-    sdg_ids     AS ODS,
+    sdgs        AS ODS,
     author_names,
     all_country_codes,
     institution_rors,
@@ -148,26 +122,8 @@ FROM works_seed_mexico
 
 
 def _query_cap(filter_sql: str, params: dict = None) -> pd.DataFrame:
-    """
-    Ejecuta las dos variantes del JOIN (por OA ID y por DOI) y las combina.
-    Esto es necesario porque paper_author_map puede contener tanto
-    OpenAlex Work IDs (W...) como DOIs (https://doi.org/...) como paper_id.
-    """
-    p = params or {}
-    frames = []
-    for q_tmpl in [_Q_CAP_OA, _Q_CAP_DOI]:
-        q = q_tmpl.format(filter=filter_sql)
-        try:
-            df = ch_client.query_df(q, parameters=p)
-            if not df.empty:
-                frames.append(df)
-        except Exception as e:
-            print(f"  \u26a0\ufe0f query CH: {e}")
-    if not frames:
-        return pd.DataFrame()
-    return pd.concat(frames, ignore_index=True).drop_duplicates(
-        subset=['paper_id', 'academic_name'])
-
+    query = _Q_CAP.format(filter=filter_sql)
+    return ch_client.query_df(query, parameters=params or {})
 
 
 def _query_prod(filter_sql: str, params: dict = None) -> pd.DataFrame:
