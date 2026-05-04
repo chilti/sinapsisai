@@ -70,7 +70,8 @@ SELECT
     wf.topic_id AS topic, wf.subfield_name AS subfield, 
     wf.field_name AS field, wf.domain_name AS domain,
     wf.language, wf.type, wf.source_id AS Source, wf.source_type,
-    wf.is_retracted, wf.author_ids AS author_names, wf.country_codes AS all_country_codes
+    wf.is_retracted, wf.referenced_works_count, wf.keywords,
+    wf.author_ids AS author_names, wf.country_codes AS all_country_codes
 FROM works_flat wf
 JOIN paper_author_map pm ON wf.id = pm.paper_id
 LEFT JOIN topics t ON wf.topic_id = t.id
@@ -95,7 +96,8 @@ SELECT
     wf.topic_id AS topic, wf.subfield_name AS subfield, 
     wf.field_name AS field, wf.domain_name AS domain,
     wf.language, wf.type, wf.source_id AS Source, wf.source_type,
-    wf.is_retracted, wf.author_ids AS author_names, wf.country_codes AS all_country_codes
+    wf.is_retracted, wf.referenced_works_count, wf.keywords,
+    wf.author_ids AS author_names, wf.country_codes AS all_country_codes
 FROM works_flat wf
 JOIN paper_author_map pm ON wf.doi = pm.paper_id
 LEFT JOIN topics t ON wf.topic_id = t.id
@@ -197,9 +199,36 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
         if old in df.columns:
             df[new] = df[old].apply(lambda x: x if isinstance(x, (list, np.ndarray)) else [])
             
-    # Columnas necesarias para aggregate_metrics (Legacy compatibility)
+    # Otras columnas necesarias para aggregate_metrics (Legacy compatibility)
     df['has_oa_data'] = 1
     
+    # 1. Autores y Países (Contar elementos si son listas)
+    # El dashboard a veces espera la lista, a veces el conteo. 
+    # El agregador original usa la lista para promediar len().
+    
+    # 2. Citas por año (Velocity fallback)
+    if 'citations' in df.columns and 'year' in df.columns:
+        # Calcular velocidad aproximada: citas / edad_del_paper
+        current_year = 2026
+        df['age'] = (current_year - df['year']).clip(lower=1)
+        df['velocity'] = df['citations'] / df['age']
+    
+    # 3. Citas últimos 3 años (Fallback a 0 si no hay counts_by_year)
+    df['recent_cites_3yr'] = 0
+    
+    # 4. Vida Media (Referenced works)
+    if 'referenced_works_count' not in df.columns:
+        df['referenced_works_count'] = 0
+    
+    # 5. ODS (Mapear IDs a nombres)
+    if 'ODS' in df.columns:
+        def _get_ods_names(x):
+            if not isinstance(x, (list, np.ndarray)): return []
+            return [ODS_MAP.get(str(i).split('/')[-1], str(i)) for i in x if i]
+        df['ODS_Nombre'] = df['ODS'].apply(lambda x: _get_ods_names(x)[0] if _get_ods_names(x) else None)
+    else:
+        df['ODS_Nombre'] = None
+
     for c in ['keywords', 'ODS']:
         if c not in df.columns:
             df[c] = [[] for _ in range(len(df))]
@@ -283,10 +312,10 @@ def _topics_as_list(df: pd.DataFrame) -> pd.Series:
     compute_interdisciplinarity, a partir de columnas planas.
     """
     def _row(r):
-        d = r.get('domain_name') or 'Sin Dominio'
-        f = r.get('field_name')  or 'Sin Campo'
-        s = r.get('subfield_name') or 'Sin Subcampo'
-        t = r.get('topic_name') or s
+        d = r.get('domain')   or 'Sin Dominio'
+        f = r.get('field')    or 'Sin Campo'
+        s = r.get('subfield') or 'Sin Subcampo'
+        t = r.get('topic')    or s
         return [{'domain': d, 'field': f, 'subfield': s, 'topic': t}]
     return df.apply(_row, axis=1)
 
@@ -378,10 +407,17 @@ def _save_aggregate_parquets(df: pd.DataFrame, out_dir: Path,
 
     # Añadir columna de agrupación para reutilizar aggregate_metrics
     df['_grp'] = label
+    df['topics'] = _topics_as_list(df)
 
     _save_parquet(df, out_dir / 'papers_institucion.parquet', updated_files)
     
     df_tot = aggregate_metrics(df, ['_grp'])
+    
+    # Calcular Gini temático para la institución
+    inter = compute_interdisciplinarity(df['topics'])
+    for k, v in inter.items():
+        df_tot[k] = v
+
     _save_parquet(df_tot.rename(columns={'_grp': 'entity_name'}),
                   out_dir / 'institucion_total.parquet', updated_files)
 
@@ -530,6 +566,18 @@ def _get_institution_rors() -> dict:
 
 
 # ── Pipeline principal ─────────────────────────────────────────────────────
+
+# ── Mapeo ODS ──────────────────────────────────────────────────────────────
+ODS_MAP = {
+    '1': '1. Fin de la pobreza', '2': '2. Hambre cero', '3': '3. Salud y bienestar',
+    '4': '4. Educación de calidad', '5': '5. Igualdad de género', '6': '6. Agua limpia y saneamiento',
+    '7': '7. Energía asequible y no contaminante', '8': '8. Trabajo decente y crecimiento económico',
+    '9': '9. Industria, innovación e infraestructura', '10': '10. Reducción de las desigualdades',
+    '11': '11. Ciudades y comunidades sostenibles', '12': '12. Producción y consumo responsables',
+    '13': '13. Acción por el clima', '14': '14. Vida submarina', '15': '15. Vida de ecosistemas terrestres',
+    '16': '16. Paz, justicia e instituciones sólidas', '17': '17. Alianzas para lograr los objetivos'
+}
+
 
 def process_and_save(entity_filter=None, academic_filter=None, 
                      source_filter='all', institution_filter=None):
