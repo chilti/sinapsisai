@@ -167,7 +167,6 @@ SKIP $skip LIMIT $limit
 
 _NEO4J_COUNT = """
 MATCH (a:Academic)-[:AUTHORED]->(p:Paper)
-WHERE p.created_at >= datetime($since) OR $since = '1970-01-01T00:00:00'
 RETURN count(*) AS n
 """
 
