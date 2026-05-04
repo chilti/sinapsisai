@@ -622,10 +622,12 @@ def process_and_save(entity_filter=None, academic_filter=None,
     gs = Neo4jGraphStore()
 
     _HIER_QUERY = """
-    MATCH (i:Institution)
-    OPTIONAL MATCH (i)<-[:PART_OF]-(dep:Entity)
+    MATCH (i:Institution)<-[:PART_OF]-(dep:Entity)
     OPTIONAL MATCH (dep)<-[:PART_OF]-(sub:Entity)
-    RETURN i.name AS inst, dep.name AS dep, sub.name AS sub
+    RETURN 
+        i.name AS inst, i.ror AS inst_ror, i.id AS inst_id,
+        dep.name AS dep, dep.id AS dep_id,
+        sub.name AS sub, sub.id AS sub_id
     """
     # Mapa: {inst_name: {'ror': ror, 'id': id, 'entities': {dep_name: {'id': id, 'subs': {sub_name: sub_id}}}}}
     hier = {}
