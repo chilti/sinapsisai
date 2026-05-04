@@ -570,16 +570,34 @@ class Neo4jGraphStore:
 
     def add_academic_full_affiliation(self, academic_name: str, inst_name: str, sub_name: str = None):
         """
-        Vincula un Academic con su Institución y Subdependencia (jerárquico).
+        Vincula un Academic con su Institución y Subdependencia (jerárquico),
+        respetando la estructura creada por rebuild_neo4j_hierarchy.py.
         """
-        # Si no hay subdependencia, usamos solo la institución
         if not sub_name or sub_name == "SIN INFORMACIÓN":
-            self.add_academic_affiliation(academic_name, inst_name)
+            # Si solo hay institución, buscar la Institution y afiliar
+            query = """
+            MATCH (a:Author {id: $academic_name})
+            MATCH (i:Institution) WHERE i.name = $inst_name
+            MERGE (a)-[:AFFILIATED_TO]->(i)
+            """
+            with self.driver.session() as session:
+                try: session.run(query, academic_name=academic_name, inst_name=inst_name)
+                except Exception: pass
             return
 
         query = """
-        MERGE (i:Entity {name: $inst_name})
-        SET i:Institution
+        MATCH (a:Author {id: $academic_name})
+        // 1. Intentar encontrar la Institución
+        MATCH (i:Institution) WHERE i.name = $inst_name
+        // 2. Buscar si hay una entidad (Dependencia o Subdependencia) con ese nombre que pertenezca a la institución
+        MATCH (e:Entity {name: $sub_name})-[:PART_OF*1..3]->(i)
+        // 3. Vincular al académico
+        MERGE (a)-[:AFFILIATED_TO]->(e)
+        MERGE (a)-[:AFFILIATED_TO]->(i)
+        """
+        # Fallback query por si la entidad no existe (evita crear duplicados a nivel raíz)
+        fallback_query = """
+        MERGE (i:Institution {name: $inst_name})
         MERGE (s:Entity {name: $sub_name})
         SET s:Subdependency
         MERGE (s)-[:PART_OF]->(i)
@@ -588,9 +606,15 @@ class Neo4jGraphStore:
         MERGE (a)-[:AFFILIATED_TO]->(s)
         MERGE (a)-[:AFFILIATED_TO]->(i)
         """
+        
         with self.driver.session() as session:
             try:
-                session.run(query, academic_name=academic_name, inst_name=inst_name, sub_name=sub_name)
+                # Intentamos la versión limpia primero
+                result = session.run(query, academic_name=academic_name, inst_name=inst_name, sub_name=sub_name)
+                summary = result.consume()
+                if summary.counters.relationships_created == 0 and summary.counters.properties_set == 0:
+                    # Si no hizo nada, corremos el fallback
+                    session.run(fallback_query, academic_name=academic_name, inst_name=inst_name, sub_name=sub_name)
             except Exception as e:
                 print(f"Error en full affiliation para {academic_name}: {e}")
 

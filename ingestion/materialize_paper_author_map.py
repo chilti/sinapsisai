@@ -67,7 +67,8 @@ CREATE TABLE IF NOT EXISTS {TABLE} (
     institution_ror String,
     is_snii         UInt8,
     source          String,
-    audit_verdict   String
+    audit_verdict   String,
+    ODS             Array(String)
 )
 ENGINE = ReplacingMergeTree()
 ORDER BY (institution_ror, entity_id, paper_id, academic_id)
@@ -142,7 +143,8 @@ _NEO4J_QUERY = """
 MATCH (a:Academic)-[:AUTHORED]->(p:Paper)
 OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
 OPTIONAL MATCH path = (e)-[:PART_OF*..3]->(i:Institution)
-WITH a, p, e, i, [n in nodes(path) | n.name] AS hierarchy
+OPTIONAL MATCH (p)-[:RELATES_TO]->(s:SDG)
+WITH a, p, e, i, [n in nodes(path) | n.name] AS hierarchy, collect(DISTINCT s.id) AS ods
 RETURN
     coalesce(p.openalex_id, p.id)    AS paper_id,
     a.name                          AS academic_name,
@@ -156,7 +158,8 @@ RETURN
     hierarchy,
     coalesce(a.is_snii, false)      AS is_snii,
     coalesce(a.siia_url, '')        AS siia_url,
-    coalesce(a.audit_verdict, '')   AS audit_verdict
+    coalesce(a.audit_verdict, '')   AS audit_verdict,
+    ods                             AS ODS
 ORDER BY a.name
 SKIP $skip LIMIT $limit
 """
@@ -295,7 +298,8 @@ def _transform_page(df: pd.DataFrame) -> pd.DataFrame:
             'is_snii': 1 if r['is_snii'] else 0,
             'source': _determine_source(r),
             'audit_verdict': r['audit_verdict'],
-            'institution_ror': r['institution_ror']
+            'institution_ror': r['institution_ror'],
+            'ODS': r.get('ODS', [])
         }
         
         # root_inst es la Universidad real (UNAM, UAM...) — es el nodo i:Institution en Neo4j

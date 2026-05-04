@@ -599,6 +599,7 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                     match_entry = {
                         "snii_author": snii_name,
                         "snii_institution": final_inst,
+                        "snii_dependency": final_dep,
                         "snii_subdependency": final_sub,
                         "snii_entidad_final": raw_ent_final,
                         "snii_cvu": cvu,
@@ -669,6 +670,7 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                         match_result = {
                             "snii_author": snii_name,
                             "snii_institution": final_inst,
+                            "snii_dependency": final_dep,
                             "snii_subdependency": final_sub,
                             "snii_entidad_final": raw_ent_final,
                             "match": True,
@@ -979,6 +981,80 @@ Respuesta:"""
     print(f" Total de investigadores con match confirmado: {num_matches} ({num_matches / max(1, len(verified_results)) * 100:.1f}%)")
 
 
+def fix_json_hierarchy():
+    """
+    Parchea el archivo snii_llm_verified_matches.json inyectando los datos jerárquicos faltantes
+    (DEPENDENCIA, SUBDEPENDENCIA, ENTIDAD FINAL) directamente desde el Excel oficial del SNII.
+    """
+    output_path = os.path.join("data", "snii_llm_verified_matches.json")
+    if not os.path.exists(output_path):
+        print(f"❌ No se encontró el archivo JSON en {output_path}")
+        return
+    
+    if not os.path.exists(SNII_PATH):
+        print(f"❌ No se encontró el archivo Excel del SNII en {SNII_PATH}")
+        return
+
+    print("📊 Cargando padrón SNII desde Excel para extraer jerarquías correctas...")
+    df_snii = pd.read_excel(SNII_PATH, sheet_name='4T_2025 (44,794)')
+    
+    col_map = {normalize_text(c).upper(): c for c in df_snii.columns}
+    
+    name_col = col_map.get('NOMBRE DEL INVESTIGADOR') or col_map.get('NOMBRE')
+    inst_col = col_map.get('INSTITUCION DE ACREDITACION') or col_map.get('INSTITUCION')
+    dep_col = col_map.get('DEPENDENCIA DE ACREDITACION') or col_map.get('DEPENDENCIA')
+    sub_col = col_map.get('SUBDEPENDENCIA DE ACREDITACION') or col_map.get('SUBDEPENDENCIA')
+    ent_final_col = col_map.get('ENTIDAD FINAL')
+
+    hierarchy_map = {}
+    for _, row in df_snii.iterrows():
+        name = str(row[name_col]).strip()
+        if not name or name == 'nan': continue
+        
+        raw_inst = str(row[inst_col]).strip() if pd.notna(row[inst_col]) else ""
+        raw_dep = str(row[dep_col]).strip() if pd.notna(row[dep_col]) else ""
+        raw_sub = str(row[sub_col]).strip() if pd.notna(row[sub_col]) else ""
+        raw_ent = str(row[ent_final_col]).strip() if pd.notna(row[ent_final_col]) else ""
+        
+        if raw_inst.upper() in ["SIN INSTITUCION", "SIN INSTITUCIN", "DESCONOCIDO", ""]:
+            final_inst, final_dep, final_sub = "SIN INSTITUCION", "NO APLICA", "NO APLICA"
+        else:
+            final_inst = raw_inst
+            final_dep = raw_dep if raw_dep.upper() not in ["SIN INFORMACION", "SIN INFORMACIN", ""] else "NO APLICA"
+            final_sub = raw_sub if raw_sub.upper() not in ["SIN INFORMACION", "SIN INFORMACIN", ""] else "NO APLICA"
+            
+        hierarchy_map[name] = {
+            "snii_institution": final_inst,
+            "snii_dependency": final_dep,
+            "snii_subdependency": final_sub,
+            "snii_entidad_final": raw_ent
+        }
+        
+    print(f"✅ Mapeo construido para {len(hierarchy_map)} investigadores.")
+    print("🛠️ Aplicando correcciones al JSON...")
+    
+    with open(output_path, 'r', encoding='utf-8') as f:
+        registros = json.load(f)
+        
+    modificados = 0
+    for r in registros:
+        name = r.get("snii_author")
+        if name in hierarchy_map:
+            h = hierarchy_map[name]
+            r["snii_institution"] = h["snii_institution"]
+            r["snii_dependency"] = h["snii_dependency"]
+            r["snii_subdependency"] = h["snii_subdependency"]
+            r["snii_entidad_final"] = h["snii_entidad_final"]
+            modificados += 1
+            
+    temp_path = output_path + ".tmp"
+    with open(temp_path, "w", encoding="utf-8") as f:
+        json.dump(registros, f, ensure_ascii=False, indent=2)
+    os.replace(temp_path, output_path)
+    
+    print(f"🎉 Corrección completada! Se actualizaron {modificados} registros en el JSON.")
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Resuelve identidades SNII contra OpenAlex/ORCID usando LLM.")
@@ -988,6 +1064,10 @@ if __name__ == "__main__":
     parser.add_argument("--ingest", action="store_true", help="Cargar automticamente los trabajos al confirmar match")
     parser.add_argument("--force-ingest", action="store_true", help="Forzar carga de trabajos incluso si ya existen")
     parser.add_argument("--verbose", action="store_true", help="Muestra el prompt y respuesta detallada del LLM")
+    parser.add_argument("--fix-hierarchy", action="store_true", help="Parchea el JSON corrigiendo Dependencia y Entidad Final desde el Excel")
     args = parser.parse_args()
 
-    resolve_snii_identities(limit_test=args.limit, target_name=args.name, force=args.force, ingest=args.ingest, force_ingest=args.force_ingest, verbose=args.verbose)
+    if args.fix_hierarchy:
+        fix_json_hierarchy()
+    else:
+        resolve_snii_identities(limit_test=args.limit, target_name=args.name, force=args.force, ingest=args.ingest, force_ingest=args.force_ingest, verbose=args.verbose)

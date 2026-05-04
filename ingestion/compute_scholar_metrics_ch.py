@@ -74,7 +74,7 @@ SELECT
     wf.is_oa, wf.oa_status,
     wf.topic, wf.subfield, wf.field, wf.domain,
     wf.language, wf.type, wf.source_id AS Source, wf.source_type,
-    wf.is_retracted, wf.referenced_works_count, wf.keywords, wf.sdgs AS ODS,
+    wf.is_retracted, wf.referenced_works_count, wf.keywords, pm.ODS AS ODS,
     wf.author_names, wf.all_country_codes,
     wf.apc_paid_usd, wf.apc_list_usd, wf.counts_by_year, wf.license,
     wf.journal_is_in_doaj, wf.journal_is_core, wf.any_repository_has_fulltext
@@ -86,37 +86,42 @@ JOIN paper_author_map pm ON wf.id = pm.paper_id
 # Producción Institucional: works_seed_mexico
 _Q_PROD = """
 SELECT
-    id          AS paper_id,
-    doi,
-    title       AS Title,
-    publication_year AS year,
-    cited_by_count   AS citations,
-    fwci,
-    percentile  AS citation_normalized_percentile,
-    is_top_10   AS is_in_top_10_percent,
-    is_top_1    AS is_in_top_1_percent,
-    is_oa,
-    oa_status,
-    topic,
-    subfield,
-    field,
-    domain,
-    language,
-    type,
-    source_id   AS Source,
-    source_type,
-    sdgs        AS ODS,
-    author_names,
-    all_country_codes,
-    institution_rors,
-    apc_paid_usd,
-    apc_list_usd,
-    counts_by_year,
-    license,
-    journal_is_in_doaj,
-    journal_is_core,
-    any_repository_has_fulltext
-FROM works_seed_mexico
+    wf.id          AS paper_id,
+    wf.doi,
+    wf.title       AS Title,
+    wf.publication_year AS year,
+    wf.cited_by_count   AS citations,
+    wf.fwci,
+    wf.percentile  AS citation_normalized_percentile,
+    wf.is_top_10   AS is_in_top_10_percent,
+    wf.is_top_1    AS is_in_top_1_percent,
+    wf.is_oa,
+    wf.oa_status,
+    wf.topic,
+    wf.subfield,
+    wf.field,
+    wf.domain,
+    wf.language,
+    wf.type,
+    wf.source_id   AS Source,
+    wf.source_type,
+    coalesce(pm.ODS, wf.sdgs) AS ODS,
+    wf.author_names,
+    wf.all_country_codes,
+    wf.institution_rors,
+    wf.apc_paid_usd,
+    wf.apc_list_usd,
+    wf.counts_by_year,
+    wf.license,
+    wf.journal_is_in_doaj,
+    wf.journal_is_core,
+    wf.any_repository_has_fulltext
+FROM works_seed_mexico wf
+LEFT JOIN (
+    SELECT paper_id, any(ODS) as ODS 
+    FROM paper_author_map 
+    GROUP BY paper_id
+) pm ON wf.id = pm.paper_id
 {filter}
 """
 
@@ -229,7 +234,12 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     if 'ODS' in df.columns:
         def _get_ods_names(x):
             if not isinstance(x, (list, np.ndarray)): return []
-            return [ODS_MAP.get(str(i).split('/')[-1], str(i)) for i in x if i]
+            res = []
+            for i in x:
+                if not i: continue
+                key = str(i).split('/')[-1].replace('SDG ', '').strip()
+                res.append(ODS_MAP.get(key, str(i)))
+            return res
         df['ODS_Nombre'] = df['ODS'].apply(lambda x: _get_ods_names(x)[0] if _get_ods_names(x) else None)
     else:
         df['ODS_Nombre'] = None
