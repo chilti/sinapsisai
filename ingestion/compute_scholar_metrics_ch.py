@@ -69,9 +69,8 @@ SELECT
     wf.is_oa, wf.oa_status,
     coalesce(t.display_name, wf.subfield_name) AS topic_name,
     wf.subfield_name, wf.field_name, wf.domain_name,
-    wf.keywords, wf.sdgs AS ODS, wf.country_codes AS countries,
     wf.language, wf.type, wf.source_id AS Source, wf.source_type,
-    wf.is_retracted, wf.referenced_works_count, wf.authors, wf.counts_by_year
+    wf.is_retracted
 FROM works_flat wf
 JOIN paper_author_map pm ON wf.id = pm.paper_id
 LEFT JOIN topics t ON wf.topic_id = t.id
@@ -95,9 +94,8 @@ SELECT
     wf.is_oa, wf.oa_status,
     coalesce(t.display_name, wf.subfield_name) AS topic_name,
     wf.subfield_name, wf.field_name, wf.domain_name,
-    wf.keywords, wf.sdgs AS ODS, wf.country_codes AS countries,
     wf.language, wf.type, wf.source_id AS Source, wf.source_type,
-    wf.is_retracted, wf.referenced_works_count, wf.authors, wf.counts_by_year
+    wf.is_retracted
 FROM works_flat wf
 JOIN paper_author_map pm ON wf.doi = pm.paper_id
 LEFT JOIN topics t ON wf.topic_id = t.id
@@ -122,16 +120,10 @@ SELECT
     subfield    AS subfield_name,
     field       AS field_name,
     domain      AS domain_name,
-    keywords,
-    sdgs        AS ODS,
-    country_codes AS countries,
     language,
     type,
     source_id   AS Source,
     source_type,
-    referenced_works_count,
-    authors,
-    counts_by_year,
     institution_rors
 FROM works_seed_mexico
 {filter}
