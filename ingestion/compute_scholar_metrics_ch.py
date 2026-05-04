@@ -692,7 +692,8 @@ def process_and_save(entity_filter=None, academic_filter=None,
             print(f"  📄 {len(df_inst_cap):,} papers (Capacidad)")
 
             for ac_name, df_ac in df_inst_cap.groupby('academic_name'):
-                _flush_academic(ac_name, df_ac.copy(), inst_name, inst_name, updated_files)
+                entity_val = df_ac['entity'].iloc[0] if 'entity' in df_ac.columns else inst_name
+                _flush_academic(ac_name, df_ac.copy(), entity_val, inst_name, updated_files)
 
             cap_dir = CACHE_DIR / safe_inst / 'capacidad_instalada'
             _save_aggregate_parquets(df_inst_cap, cap_dir, updated_files, label=inst_name)

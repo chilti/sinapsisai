@@ -481,8 +481,12 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
     df_total = load_cached_data("institucion_total.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
     df_topics = load_cached_data("topics_institucion.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
 
-    # Fallback si se pide Producción pero no hay datos (falta de IDs persistentes)
-    if view_mode == "produccion_institucional" and (df_total is None or df_total.empty):
+    # Fallback explícito: Comprobamos si existe físicamente el directorio de producción
+    safe_inst = str(institution_name).replace('/', '_').replace('\\', '_') if institution_name else "MEXICO"
+    safe_ent = str(entity_name).replace('/', '_').replace('\\', '_') if entity_name and entity_name != institution_name else ""
+    prod_path = os.path.join(CACHE_DIR, safe_inst, safe_ent, "produccion_institucional") if safe_ent else os.path.join(CACHE_DIR, safe_inst, "produccion_institucional")
+
+    if view_mode == "produccion_institucional" and not os.path.exists(prod_path):
         st.warning("⚠️ No se identificaron IDs institucionales (como ROR) para calcular la **Producción Institucional** estricta de esta entidad. Se muestran a continuación las métricas correspondientes a su **Capacidad Instalada** (producción de sus académicos).")
         view_mode = "capacidad_instalada"
         df_annual = load_cached_data("institucion_annual.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
