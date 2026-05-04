@@ -729,7 +729,7 @@ with tab_inst:
     )
     v_mode_inst_code = "capacidad_instalada" if view_mode_inst == "Capacidad Instalada" else "produccion_institucional"
     
-    render_institucion_view(selected_entity, institution_name=selected_inst, view_mode=v_mode_inst_code)
+    render_institucion_view(selected_entity, institution_name=selected_institution, view_mode=v_mode_inst_code)
 
 # =======================================================
 # TAB 3: Vista por Investigador
@@ -747,7 +747,7 @@ with tab_inv:
     )
     v_mode_inv_code = "capacidad_instalada" if view_mode_inv == "Capacidad Instalada" else "produccion_institucional"
     
-    render_investigador_view(selected_entity, institution_name=selected_inst, view_mode=v_mode_inv_code)
+    render_investigador_view(selected_entity, institution_name=selected_institution, view_mode=v_mode_inv_code)
 
 # =======================================================
 
