@@ -30,3 +30,4 @@ reports/
 temp_*.txt
 schemas.txt
 temp_schemas.txt
+scratch/

@@ -118,6 +118,14 @@ def rebuild():
             
         return inst, dep, sub
 
+    print("\n🧹 Fase 0: Limpiando jerarquía anterior...")
+    with gs.driver.session() as session:
+        # Solo borramos entidades y sus relaciones. 
+        # Académicos y Papers se mantienen intactos.
+        session.run("MATCH (e:Entity) DETACH DELETE e")
+        session.run("MATCH (a:Academic)-[r:AFFILIATED_TO]->() DELETE r")
+    print("   ✅ Limpieza completada.")
+
     print("\n🏗️ Fase 3: Reconstruyendo Jerarquía y Vinculando Académicos...")
     
     # Aplicar normalización a las columnas antes del groupby
@@ -162,10 +170,19 @@ def rebuild():
             parent_ror = meta.get('parent_ror') or inst_to_ror.get(inst_name)
             
             # Crear Institución
+            # Crear/Merge Institución (por ID, pero actualizando nombre)
             session.run("""
                 MERGE (i:Institution {id: $id})
                 SET i.name = $name, i.ror = $ror
             """, id=ror_id, name=inst_name, ror=parent_ror)
+            
+            # Asegurar que no haya otra institución con el mismo nombre pero ID manual viejo
+            if not ror_id.startswith("manual:"):
+                session.run("""
+                    MATCH (i:Institution {name: $name})
+                    WHERE i.id <> $id
+                    DETACH DELETE i
+                """, name=inst_name, id=ror_id)
 
             # 2. Construir cadena de Entidades
             curr_parent_id = ror_id
