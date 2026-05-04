@@ -577,7 +577,8 @@ def render_institucion_view(entity_name, institution_name=None):
 
             # --- Evolución Histórica Institucional ---
             df_evol_inst = get_cached_data("thematic_evolution_institucion.parquet", entity_name=entity_name, institution_name=institution_name)
-            _render_thematic_evolution(df_evol_inst, 'entity_name', entity_name, key_suffix=f"inst_{entity_name}")
+            if df_evol_inst is not None and not df_evol_inst.empty:
+                _render_thematic_evolution(df_evol_inst, 'entity_name', entity_name, key_suffix=f"inst_{entity_name}")
 
     # ── Vocabulario Científico (WordCloud) ────────────────────────────────────────
     df_kw_inst = get_cached_data("keywords_institucion.parquet", entity_name=entity_name, institution_name=institution_name)

@@ -237,18 +237,27 @@ def _topics_agg(df: pd.DataFrame, group_col: str) -> tuple:
     base['subfield'] = base['subfield'].fillna('Sin Subcampo')
     base['topic']    = base['topic'].fillna('Sin Tópico')
 
+    # Definir estructura base por si no hay datos
+    cols_tot = [group_col, 'domain', 'field', 'subfield', 'topic', 'value']
+    cols_evo = [group_col, 'year', 'domain', 'field', 'subfield', 'topic', 'value']
+    
+    if base.empty:
+        return pd.DataFrame(columns=cols_tot), pd.DataFrame(columns=cols_evo)
+
     df_tot = (base.groupby([group_col, 'domain', 'field', 'subfield', 'topic'])
               .size().reset_index(name='value'))
 
     base_yr = base.dropna(subset=['year'])
     base_yr = base_yr[base_yr['year'].apply(
         lambda y: str(y).isdigit() if pd.notna(y) else False)]
-    df_evo = None
+    
     if not base_yr.empty:
         base_yr['year'] = base_yr['year'].astype(int)
         df_evo = (base_yr
                   .groupby([group_col, 'year', 'domain', 'field', 'subfield', 'topic'])
                   .size().reset_index(name='value'))
+    else:
+        df_evo = pd.DataFrame(columns=cols_evo)
 
     return df_tot, df_evo
 
