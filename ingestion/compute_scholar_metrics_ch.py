@@ -711,28 +711,51 @@ def process_and_save(entity_filter=None, academic_filter=None,
             subs = dep_data['subs']
             safe_dep = _safe_name(dep_name)
             
-            # Dependencia (Incluye a sus subdependencias via IDs)
+            # Dependencia: Capacidad Instalada (vía autores)
             ids_to_query = [dep_id] + list(subs.values())
             where_dep = "WHERE pm.institution_ror = %(ror)s AND pm.entity_id IN %(ids)s"
-            df_dep = _query_cap(where_dep, {'ror': inst_ror, 'ids': ids_to_query})
+            df_dep_cap = _query_cap(where_dep, {'ror': inst_ror, 'ids': ids_to_query})
             
-            if not df_dep.empty:
-                df_dep = df_dep.drop_duplicates(subset=['paper_id', 'academic_name'])
-                print(f"  ├─ {dep_name}: {len(df_dep):,} papers (Capacidad)")
-                dep_dir = CACHE_DIR / safe_inst / safe_dep / 'capacidad_instalada'
-                _save_aggregate_parquets(df_dep, dep_dir, updated_files, label=dep_name)
+            if not df_dep_cap.empty:
+                df_dep_cap = df_dep_cap.drop_duplicates(subset=['paper_id', 'academic_name'])
+                print(f"  ├─ {dep_name}: {len(df_dep_cap):,} papers (Capacidad)")
+                dep_dir_cap = CACHE_DIR / safe_inst / safe_dep / 'capacidad_instalada'
+                _save_aggregate_parquets(df_dep_cap, dep_dir_cap, updated_files, label=dep_name)
+                # Fallback link
+                _save_aggregate_parquets(df_dep_cap, CACHE_DIR / safe_inst / safe_dep, updated_files, label=dep_name)
 
-            # Subdependencias (Individuales)
+            # Dependencia: Producción Institucional (vía ID de OpenAlex de la entidad)
+            # Buscamos papers donde el ID de la dependencia o sus subs aparezcan en las afiliaciones
+            dep_prod_ids = [dep_id] + list(subs.values())
+            ids_str = ", ".join([f"'{i}'" for i in dep_prod_ids])
+            df_dep_prod = _query_prod(f"WHERE hasAny(institution_ids, [{ids_str}])")
+            if not df_dep_prod.empty:
+                dep_dir_prod = CACHE_DIR / safe_inst / safe_dep / 'produccion_institucional'
+                _save_aggregate_parquets(df_dep_prod, dep_dir_prod, updated_files, label=dep_name)
+                print(f"  ├─ {dep_name}: {len(df_dep_prod):,} papers (Producción)")
+
+            # Subdependencias
             for sub_name, sub_id in subs.items():
                 safe_sub = _safe_name(sub_name)
-                df_sub = _query_cap(
+                
+                # Capacidad
+                df_sub_cap = _query_cap(
                     "WHERE pm.institution_ror = %(ror)s AND pm.entity_id = %(id)s",
                     {'ror': inst_ror, 'id': sub_id})
-                if not df_sub.empty:
-                    df_sub = df_sub.drop_duplicates(subset=['paper_id', 'academic_name'])
-                    print(f"  │  └─ {sub_name}: {len(df_sub):,} papers")
-                    sub_dir = CACHE_DIR / safe_inst / safe_sub / 'capacidad_instalada'
-                    _save_aggregate_parquets(df_sub, sub_dir, updated_files, label=sub_name)
+                if not df_sub_cap.empty:
+                    df_sub_cap = df_sub_cap.drop_duplicates(subset=['paper_id', 'academic_name'])
+                    print(f"  │  └─ {sub_name}: {len(df_sub_cap):,} papers (Capacidad)")
+                    sub_dir_cap = CACHE_DIR / safe_inst / safe_sub / 'capacidad_instalada'
+                    _save_aggregate_parquets(df_sub_cap, sub_dir_cap, updated_files, label=sub_name)
+                    # Fallback link
+                    _save_aggregate_parquets(df_sub_cap, CACHE_DIR / safe_inst / safe_sub, updated_files, label=sub_name)
+
+                # Producción
+                df_sub_prod = _query_prod(f"WHERE has(institution_ids, '{sub_id}')")
+                if not df_sub_prod.empty:
+                    sub_dir_prod = CACHE_DIR / safe_inst / safe_sub / 'produccion_institucional'
+                    _save_aggregate_parquets(df_sub_prod, sub_dir_prod, updated_files, label=sub_name)
+                    print(f"  │  └─ {sub_name}: {len(df_sub_prod):,} papers (Producción)")
 
     # ── Nivel México — Capacidad Instalada ────────────────────────────────
     if mx_cap_frames and not academic_filter and not entity_filter:
