@@ -234,13 +234,12 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
         if c not in df.columns:
             df[c] = [[] for _ in range(len(df))]
 
-    if 'referenced_works_count' not in df.columns:
-        df['referenced_works_count'] = 0
-
-    if 'counts_by_year' not in df.columns:
-        df['counts_by_year'] = [[] for _ in range(len(df))]
-
-    return df
+    # 6. Forzar tipos numéricos para el agregador
+    cols_num = ['citations', 'year', 'fwci', 'percentile', 'is_in_top_10_percent', 
+                'is_in_top_1_percent', 'is_oa', 'referenced_works_count', 'velocity']
+    for c in cols_num:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0)
 
     for c in ['apc_paid_usd', 'apc_list_usd']:
         if c not in df.columns:
@@ -249,6 +248,11 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     for c in ['journal_is_in_doaj', 'journal_is_core', 'any_repository_has_fulltext']:
         if c not in df.columns:
             df[c] = 0
+
+    if 'counts_by_year' not in df.columns:
+        df['counts_by_year'] = [[] for _ in range(len(df))]
+
+    return df
 
     if 'language' not in df.columns:
         df['language'] = 'en'
@@ -410,7 +414,8 @@ def _save_aggregate_parquets(df: pd.DataFrame, out_dir: Path,
     if 'year' in df.columns:
         df['year'] = pd.to_numeric(df['year'], errors='coerce')
 
-    # Añadir columna de agrupación para reutilizar aggregate_metrics
+    # Añadir columna de agrupación para reutilizar aggregate_metrics y para el dashboard
+    df['entity_name'] = label
     df['_grp'] = label
     df['topics'] = _topics_as_list(df)
 
@@ -422,6 +427,13 @@ def _save_aggregate_parquets(df: pd.DataFrame, out_dir: Path,
     inter = compute_interdisciplinarity(df['topics'])
     for k, v in inter.items():
         df_tot[k] = v
+
+    # Inyectar lista de académicos para el selector del dashboard
+    if 'academic_name' in df.columns:
+        ac_list = sorted([str(a) for a in df['academic_name'].dropna().unique() if a])
+        df_tot['academics_list'] = json.dumps(ac_list)
+    else:
+        df_tot['academics_list'] = "[]"
 
     _save_parquet(df_tot.rename(columns={'_grp': 'entity_name'}),
                   out_dir / 'institucion_total.parquet', updated_files)
@@ -442,12 +454,24 @@ def _save_aggregate_parquets(df: pd.DataFrame, out_dir: Path,
 
     if 'keywords' in df.columns:
         from collections import Counter
+        import json
         cnt = Counter()
         for kws in df['keywords']:
-            if isinstance(kws, list):
-                cnt.update([k for k in kws if k])
+            if not kws: continue
+            if isinstance(kws, str):
+                try: kws = json.loads(kws)
+                except: continue
+            if isinstance(kws, (list, np.ndarray)):
+                # Algunos formatos traen [ {"keyword": "...", "score": ...} ]
+                for k in kws:
+                    if isinstance(k, dict):
+                        name = k.get('keyword') or k.get('display_name')
+                        if name: cnt[name] += 1
+                    elif k:
+                        cnt[str(k)] += 1
         if cnt:
             kw_df = pd.DataFrame(cnt.most_common(1000), columns=['keyword', 'freq'])
+            kw_df['entity_name'] = label  # <-- CRITICAL: Required by dashboard to filter
             _save_parquet(kw_df, out_dir / 'keywords_institucion.parquet', updated_files)
 
 
