@@ -67,10 +67,11 @@ SELECT
     wf.is_top_10    AS is_in_top_10_percent,
     wf.is_top_1     AS is_in_top_1_percent,
     wf.is_oa, wf.oa_status,
-    coalesce(t.display_name, wf.subfield_name) AS topic_name,
-    wf.subfield_name, wf.field_name, wf.domain_name,
+    wf.is_oa, wf.oa_status,
+    wf.topic_id AS topic, wf.subfield_name AS subfield, 
+    wf.field_name AS field, wf.domain_name AS domain,
     wf.language, wf.type, wf.source_id AS Source, wf.source_type,
-    wf.is_retracted
+    wf.is_retracted, wf.author_ids AS author_names, wf.country_codes AS all_country_codes
 FROM works_flat wf
 JOIN paper_author_map pm ON wf.id = pm.paper_id
 LEFT JOIN topics t ON wf.topic_id = t.id
@@ -92,10 +93,11 @@ SELECT
     wf.is_top_10    AS is_in_top_10_percent,
     wf.is_top_1     AS is_in_top_1_percent,
     wf.is_oa, wf.oa_status,
-    coalesce(t.display_name, wf.subfield_name) AS topic_name,
-    wf.subfield_name, wf.field_name, wf.domain_name,
+    wf.is_oa, wf.oa_status,
+    wf.topic_id AS topic, wf.subfield_name AS subfield, 
+    wf.field_name AS field, wf.domain_name AS domain,
     wf.language, wf.type, wf.source_id AS Source, wf.source_type,
-    wf.is_retracted
+    wf.is_retracted, wf.author_ids AS author_names, wf.country_codes AS all_country_codes
 FROM works_flat wf
 JOIN paper_author_map pm ON wf.doi = pm.paper_id
 LEFT JOIN topics t ON wf.topic_id = t.id
@@ -116,14 +118,16 @@ SELECT
     is_top_1    AS is_in_top_1_percent,
     is_oa,
     oa_status,
-    topic       AS topic_name,
-    subfield    AS subfield_name,
-    field       AS field_name,
-    domain      AS domain_name,
+    topic,
+    subfield,
+    field,
+    domain,
     language,
     type,
     source_id   AS Source,
     source_type,
+    author_names,
+    all_country_codes,
     institution_rors
 FROM works_seed_mexico
 {filter}
@@ -185,23 +189,28 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
         else:
             df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0).astype(int)
 
-    for c in ['keywords', 'ODS', 'countries', 'authors']:
+    # Columnas de listas/arrays (Normalizar a nombres comunes para aggregate_metrics)
+    # ClickHouse nos da author_names o author_ids y all_country_codes o country_codes
+    mapping = {
+        'author_names': 'authors',
+        'all_country_codes': 'countries'
+    }
+    for old, new in mapping.items():
+        if old in df.columns:
+            df[new] = df[old].apply(lambda x: x if isinstance(x, (list, np.ndarray)) else [])
+            
+    # Otras columnas necesarias para aggregate_metrics
+    for c in ['keywords', 'ODS']:
         if c not in df.columns:
             df[c] = [[] for _ in range(len(df))]
-        else:
-            df[c] = df[c].apply(lambda x: x if isinstance(x, (list, np.ndarray)) else [])
+
+    if 'referenced_works_count' not in df.columns:
+        df['referenced_works_count'] = 0
 
     if 'counts_by_year' not in df.columns:
         df['counts_by_year'] = [[] for _ in range(len(df))]
-    else:
-        # Normalizar counts_by_year de ClickHouse (lista de strings/dicts) a formato OpenAlex
-        def _norm_counts(x):
-            if not x: return []
-            if isinstance(x, str):
-                try: x = json.loads(x)
-                except: return []
-            return x if isinstance(x, list) else []
-        df['counts_by_year'] = df['counts_by_year'].apply(_norm_counts)
+
+    return df
 
     for c in ['apc_paid_usd', 'apc_list_usd']:
         if c not in df.columns:
@@ -231,17 +240,13 @@ def _topics_agg(df: pd.DataFrame, group_col: str) -> tuple:
     Agrega tópicos desde columnas planas (domain_name, field_name, subfield_name, topic_name).
     Retorna (df_totales, df_evolucion_temporal).
     """
-    needed = ['domain_name', 'field_name', 'subfield_name', 'topic_name']
+    needed = ['domain', 'field', 'subfield', 'topic']
     if not all(c in df.columns for c in needed):
         return None, None
 
-    base = df[[group_col, 'year', 'domain_name', 'field_name',
-               'subfield_name', 'topic_name']].copy()
-    base = base.dropna(subset=['domain_name'])
-    base = base.rename(columns={
-        'domain_name': 'domain', 'field_name': 'field',
-        'subfield_name': 'subfield', 'topic_name': 'topic'
-    })
+    base = df[[group_col, 'year', 'domain', 'field',
+               'subfield', 'topic']].copy()
+    base = base.dropna(subset=['domain'])
     base['domain']   = base['domain'].fillna('Sin Dominio')
     base['field']    = base['field'].fillna('Sin Campo')
     base['subfield'] = base['subfield'].fillna('Sin Subcampo')
