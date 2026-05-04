@@ -69,12 +69,18 @@ SELECT
     wf.is_oa, wf.oa_status,
     wf.topic_id AS topic, wf.subfield_name AS subfield, 
     wf.field_name AS field, wf.domain_name AS domain,
-    wf.language, wf.type, wf.source_id AS Source, wf.source_type,
     wf.is_retracted, wf.referenced_works_count, wf.keywords, wf.sdgs AS ODS,
-    wf.author_ids AS author_names, wf.country_codes AS all_country_codes
+    wf.author_ids AS author_names, wf.country_codes AS all_country_codes,
+    JSONExtractFloat(w.raw_data, 'apc_paid', 'value_usd') AS apc_paid_usd,
+    JSONExtractFloat(w.raw_data, 'apc_list', 'value_usd') AS apc_list_usd,
+    JSONExtractRaw(w.raw_data, 'counts_by_year') AS counts_by_year,
+    JSONExtractString(w.raw_data, 'primary_location', 'license') AS license,
+    JSONExtractBool(w.raw_data, 'primary_location', 'source', 'is_in_doaj') AS journal_is_in_doaj,
+    JSONExtractBool(w.raw_data, 'primary_location', 'source', 'is_core') AS journal_is_core,
+    JSONExtractBool(w.raw_data, 'any_repository_has_fulltext') AS any_repository_has_fulltext
 FROM works_flat wf
 JOIN paper_author_map pm ON wf.id = pm.paper_id
-LEFT JOIN topics t ON wf.topic_id = t.id
+LEFT JOIN works w ON wf.id = w.id
 {filter}
 """
 
@@ -95,12 +101,18 @@ SELECT
     wf.is_oa, wf.oa_status,
     wf.topic_id AS topic, wf.subfield_name AS subfield, 
     wf.field_name AS field, wf.domain_name AS domain,
-    wf.language, wf.type, wf.source_id AS Source, wf.source_type,
     wf.is_retracted, wf.referenced_works_count, wf.keywords, wf.sdgs AS ODS,
-    wf.author_ids AS author_names, wf.country_codes AS all_country_codes
+    wf.author_ids AS author_names, wf.country_codes AS all_country_codes,
+    JSONExtractFloat(w.raw_data, 'apc_paid', 'value_usd') AS apc_paid_usd,
+    JSONExtractFloat(w.raw_data, 'apc_list', 'value_usd') AS apc_list_usd,
+    JSONExtractRaw(w.raw_data, 'counts_by_year') AS counts_by_year,
+    JSONExtractString(w.raw_data, 'primary_location', 'license') AS license,
+    JSONExtractBool(w.raw_data, 'primary_location', 'source', 'is_in_doaj') AS journal_is_in_doaj,
+    JSONExtractBool(w.raw_data, 'primary_location', 'source', 'is_core') AS journal_is_core,
+    JSONExtractBool(w.raw_data, 'any_repository_has_fulltext') AS any_repository_has_fulltext
 FROM works_flat wf
 JOIN paper_author_map pm ON wf.doi = pm.paper_id
-LEFT JOIN topics t ON wf.topic_id = t.id
+LEFT JOIN works w ON wf.id = w.id
 {filter}
 """
 
@@ -129,7 +141,14 @@ SELECT
     sdg_ids     AS ODS,
     author_names,
     all_country_codes,
-    institution_rors
+    institution_rors,
+    JSONExtractFloat(raw_data, 'apc_paid', 'value_usd') AS apc_paid_usd,
+    JSONExtractFloat(raw_data, 'apc_list', 'value_usd') AS apc_list_usd,
+    JSONExtractRaw(raw_data, 'counts_by_year') AS counts_by_year,
+    JSONExtractString(raw_data, 'primary_location', 'license') AS license,
+    JSONExtractBool(raw_data, 'primary_location', 'source', 'is_in_doaj') AS journal_is_in_doaj,
+    JSONExtractBool(raw_data, 'primary_location', 'source', 'is_core') AS journal_is_core,
+    JSONExtractBool(raw_data, 'any_repository_has_fulltext') AS any_repository_has_fulltext
 FROM works_seed_mexico
 {filter}
 """
@@ -207,20 +226,56 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     # El dashboard a veces espera la lista, a veces el conteo. 
     # El agregador original usa la lista para promediar len().
     
-    # 2. Citas por año (Velocity fallback)
-    if 'citations' in df.columns and 'year' in df.columns:
-        # Calcular velocidad aproximada: citas / edad_del_paper
-        current_year = 2026
-        df['age'] = (current_year - df['year']).clip(lower=1)
-        df['velocity'] = df['citations'] / df['age']
+    # 2. Citas por año (Trayectorias)
+    if 'counts_by_year' in df.columns and 'year' in df.columns:
+        # Reutilizar la función compute_citation_velocity del script original si es necesario,
+        # pero aquí la implementamos compacta para eficiencia.
+        def _calc_traj(row):
+            counts = row.get('counts_by_year')
+            if not isinstance(counts, (list, np.ndarray)) or not counts:
+                return pd.Series([row['citations']/max(1, 2026-row['year']), 0, 0, 0])
+            
+            # Formato ClickHouse puede ser lista de JSONs o lista de Strings
+            import json
+            parsed = []
+            for c in counts:
+                if isinstance(c, str):
+                    try: parsed.append(json.loads(c))
+                    except: continue
+                else: parsed.append(c)
+            
+            total = sum(c.get('cited_by_count', 0) for c in parsed)
+            recent = sum(c.get('cited_by_count', 0) for c in parsed if c.get('year', 0) >= 2023)
+            early = sum(c.get('cited_by_count', 0) for c in parsed if c.get('year', 0) <= row['year'] + 1)
+            
+            # Half life aproximado
+            hl = 0
+            if total > 0:
+                sorted_c = sorted(parsed, key=lambda x: x.get('year', 0))
+                cum = 0
+                for c in sorted_c:
+                    cum += c.get('cited_by_count', 0)
+                    if cum >= total / 2:
+                        hl = 2026 - c.get('year', 2026)
+                        break
+            return pd.Series([total/max(1, 2026-row['year']), recent, early, hl])
+
+        df[['velocity', 'recent_cites_3yr', 'early_impact', 'half_life']] = df.apply(_calc_traj, axis=1)
     
-    # 3. Citas últimos 3 años (Fallback a 0 si no hay counts_by_year)
-    df['recent_cites_3yr'] = 0
-    
-    # 4. Vida Media (Referenced works)
-    if 'referenced_works_count' not in df.columns:
-        df['referenced_works_count'] = 0
-    
+    # 3. Visibilidad e Indexación
+    for c in ['journal_is_in_doaj', 'journal_is_core', 'any_repository_has_fulltext']:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0).astype(int)
+        else:
+            df[c] = 0
+
+    # 4. APC y Otros
+    for c in ['apc_paid_usd', 'apc_list_usd']:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0)
+        else:
+            df[c] = 0.0
+
     # 5. ODS (Mapear IDs a nombres)
     if 'ODS' in df.columns:
         def _get_ods_names(x):
