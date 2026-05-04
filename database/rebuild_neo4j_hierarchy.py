@@ -125,6 +125,19 @@ def rebuild():
         lambda x: pd.Series(normalize_hierarchy(x)), axis=1
     )
 
+    # 2.5 Pre-calcular mapeo de Institución -> ROR para evitar fallos por subdependencia
+    # Recorremos el JSON para encontrar el ROR de cada institución padre
+    inst_to_ror = {}
+    for key, meta in ror_matches.items():
+        p_name = meta.get('parent_name')
+        p_ror = meta.get('parent_ror')
+        if p_name and p_ror:
+            inst_to_ror[normalize(p_name)] = p_ror
+    
+    # Agregar casos especiales manuales si es necesario
+    if "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)" not in inst_to_ror:
+        inst_to_ror["UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)"] = "https://ror.org/01tmp8f25"
+
     # Agrupamos para procesar por jerarquías únicas
     groups = df_snii.groupby([
         'INSTITUCION', 
@@ -140,16 +153,19 @@ def rebuild():
             # 1. Normalizar Institución
             inst_name = normalize(raw_inst) or "SIN INSTITUCION"
             
-            # Obtener ROR del JSON si existe
-            ror_key = f"{inst_name} || SIN INFORMACIÓN"
+            # Obtener ROR del mapeo pre-calculado
+            ror_id = inst_to_ror.get(inst_name) or f"manual:{inst_name}"
+            
+            # Intentar obtener meta del JSON para este grupo específico (si existe)
+            ror_key = f"{inst_name} || {normalize(raw_sub) or 'SIN INFORMACIÓN'}"
             meta = ror_matches.get(ror_key, {})
-            ror_id = meta.get('parent_ror') or f"manual:{inst_name}"
+            parent_ror = meta.get('parent_ror') or inst_to_ror.get(inst_name)
             
             # Crear Institución
             session.run("""
                 MERGE (i:Institution {id: $id})
                 SET i.name = $name, i.ror = $ror
-            """, id=ror_id, name=inst_name, ror=meta.get('parent_ror'))
+            """, id=ror_id, name=inst_name, ror=parent_ror)
 
             # 2. Construir cadena de Entidades
             curr_parent_id = ror_id

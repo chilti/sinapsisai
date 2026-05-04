@@ -144,7 +144,10 @@ MATCH (a:Academic)-[:AUTHORED]->(p:Paper)
 OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
 OPTIONAL MATCH path = (e)-[:PART_OF*..3]->(i:Institution)
 OPTIONAL MATCH (p)-[:ADDRESSES]->(s:SDG)
-WITH a, p, e, i, [n in nodes(path) | n.name] AS hierarchy, collect(DISTINCT s.id) AS ods
+WITH a, p, e, i, 
+     [n in nodes(path) | n.name] AS hierarchy_names, 
+     [n in nodes(path) | n.id] AS hierarchy_ids, 
+     collect(DISTINCT s.id) AS ods
 RETURN
     coalesce(p.openalex_id, p.id)    AS paper_id,
     a.name                          AS academic_name,
@@ -155,7 +158,8 @@ RETURN
     coalesce(e.id, 'SIN_ID')        AS entity_id,
     coalesce(i.name, 'Sin Institución') AS institution,
     coalesce(i.ror, i.id)           AS institution_ror,
-    hierarchy,
+    hierarchy_names,
+    hierarchy_ids,
     coalesce(a.is_snii, false)      AS is_snii,
     coalesce(a.siia_url, '')        AS siia_url,
     coalesce(a.audit_verdict, '')   AS audit_verdict,
@@ -303,29 +307,28 @@ def _transform_page(df: pd.DataFrame) -> pd.DataFrame:
         
         # root_inst es la Universidad real (UNAM, UAM...) — es el nodo i:Institution en Neo4j
         # MÉXICO NO existe como nodo Institution; es un nivel virtual que añadimos aquí en Python
-        root_inst = str(r['institution']).strip().upper()
-        hierarchy = r.get('hierarchy', [])
-        if not isinstance(hierarchy, list): hierarchy = []
+        root_inst = str(r['institution']).strip()
+        h_names = r.get('hierarchy_names', [])
+        h_ids = r.get('hierarchy_ids', [])
         
-        # Normalizar: eliminar vacíos, quitar el nodo raíz si aparece en la lista
-        # nodes(path) incluye e y todos los intermedios hasta i; el último == root_inst
-        hierarchy = [str(x).strip().upper() for x in hierarchy if x]
-        # Eliminar duplicado del nodo institución si ya está al final del path
-        if hierarchy and hierarchy[-1] == root_inst:
-            hierarchy = hierarchy[:-1]  # Quitar la institución del path; ya la tenemos en root_inst
+        if not isinstance(h_names, list): h_names = []
+        if not isinstance(h_ids, list): h_ids = []
 
         # 1. Nivel Institución pura (UNAM, UAM, etc.) — entity = institución para KPIs globales de la uni
         row_inst = base.copy()
         row_inst['institution'] = root_inst
         row_inst['entity'] = root_inst
+        row_inst['entity_id'] = r['institution_ror']
         rows.append(row_inst)
         
         # 2. Todos los niveles de entidad (Dependencia, Subdependencia)
-        for entity_name in hierarchy:
-            if not entity_name or entity_name == root_inst: continue
+        # nodes(path) incluye desde la entidad 'e' hasta 'i'.
+        for ent_name, ent_id in zip(h_names, h_ids):
+            if not ent_name or ent_name == root_inst: continue
             row_ent = base.copy()
             row_ent['institution'] = root_inst
-            row_ent['entity'] = entity_name
+            row_ent['entity'] = ent_name
+            row_ent['entity_id'] = ent_id
             rows.append(row_ent)
             
         # 3. Nivel Nacional (MÉXICO)
