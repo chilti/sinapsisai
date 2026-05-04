@@ -402,6 +402,10 @@ def _save_aggregate_parquets(df: pd.DataFrame, out_dir: Path,
     """
     if df is None or df.empty:
         return
+        
+    # Normalizar columnas ANTES de guardar nada
+    df = _ensure_columns(df)
+    
     df = df.drop_duplicates(subset=['paper_id'])
     if 'year' in df.columns:
         df['year'] = pd.to_numeric(df['year'], errors='coerce')
