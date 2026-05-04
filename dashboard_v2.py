@@ -274,7 +274,12 @@ with st.sidebar:
     )
     
     # Selector 2: Dependencia
-    dependencias = sorted(list(hierarchy.get(selected_institution, {}).keys()))
+    dep_data = hierarchy.get(selected_institution, {})
+    if isinstance(dep_data, dict):
+        dependencias = sorted(list(dep_data.keys()))
+    else:
+        dependencias = sorted(list(dep_data))
+        
     if not dependencias:
         dependencias = [selected_institution] # Fallback si no hay dependencias
     
@@ -291,7 +296,10 @@ with st.sidebar:
     )
     
     # Selector 3: Subdependencia (Dinamico)
-    subdependencias = hierarchy.get(selected_institution, {}).get(selected_dep, [])
+    if isinstance(dep_data, dict):
+        subdependencias = dep_data.get(selected_dep, [])
+    else:
+        subdependencias = [] # En el formato antiguo no había subdependencias estructuradas así
     
     if subdependencias:
         # Si hay subdependencias, mostramos el selector
