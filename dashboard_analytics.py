@@ -25,11 +25,11 @@ BASE_PATH = os.path.dirname(os.path.abspath(__file__))
 CACHE_DIR = os.path.join(BASE_PATH, 'data', 'cache_ch')
 
 @st.cache_data
-def load_cached_data(filename, entity_name=None, academic_name=None, institution_name=None, _mtime=None):
+def load_cached_data(filename, entity_name=None, academic_name=None, institution_name=None, view_mode="capacidad_instalada", _mtime=None):
     """Carga un parquet del cache jerárquico. Soporta estructura:
     data/cache/[Institution]/[Entity]/[Academic]/filename
-    con fallback a la estructura plana original:
-    data/cache/[Entity]/[Academic]/filename
+    con soporte para vista dual:
+    data/cache/[Institution]/[ViewMode]/filename
     """
     path = None
     
@@ -40,30 +40,34 @@ def load_cached_data(filename, entity_name=None, academic_name=None, institution
         else:
             safe_inst = str(institution_name).replace('/', '_').replace('\\', '_')
 
+        # Directorio base de la vista
+        view_dir = "capacidad_instalada" if view_mode == "capacidad_instalada" else "produccion_institucional"
+
         if entity_name and academic_name:
             safe_ent = str(entity_name).replace('/', '_').replace('\\', '_')
             safe_ac = str(academic_name).replace('/', '_').replace('\\', '_')
             path = os.path.join(CACHE_DIR, safe_inst, safe_ent, safe_ac, filename)
-            # Fallback 1: Si no está en Entidad/Académico, buscar en Institución/Académico
+            # Fallback a carpeta de capacidad si no está en raíz (por compatibilidad)
             if not os.path.exists(path):
-                path = os.path.join(CACHE_DIR, safe_inst, safe_ac, filename)
+                 path = os.path.join(CACHE_DIR, safe_inst, safe_ent, safe_ac, "capacidad_instalada", filename)
         elif entity_name and entity_name != institution_name:
             safe_ent = str(entity_name).replace('/', '_').replace('\\', '_')
-            path = os.path.join(CACHE_DIR, safe_inst, safe_ent, filename)
-            # Fallback 2: Si no está en subcarpeta de entidad, buscar en raíz de institución
+            # Intentar primero en la subcarpeta de la vista seleccionada
+            path = os.path.join(CACHE_DIR, safe_inst, safe_ent, view_dir, filename)
             if not os.path.exists(path):
-                path = os.path.join(CACHE_DIR, safe_inst, filename)
+                # Fallback a raíz de entidad
+                path = os.path.join(CACHE_DIR, safe_inst, safe_ent, filename)
         else:
-            # Caso especial: Sin entidad o Entidad == Institución (ej. México)
-            path = os.path.join(CACHE_DIR, safe_inst, filename)
-            # Fallback 3: Buscar en una subcarpeta con el mismo nombre (ej. BANCO DE MEXICO/BANCO DE MEXICO/)
+            # Nivel Institución: Intentar en la carpeta de la vista
+            path = os.path.join(CACHE_DIR, safe_inst, view_dir, filename)
             if not os.path.exists(path):
-                path = os.path.join(CACHE_DIR, safe_inst, safe_inst, filename)
+                # Fallback a raíz de institución
+                path = os.path.join(CACHE_DIR, safe_inst, filename)
             
         if path and os.path.exists(path):
             return pd.read_parquet(path)
 
-    # 2. Fallback a estructura original (Legacy)
+    # 2. Fallback a estructura original (Legacy / Académicos fuera de ROR)
     if entity_name and academic_name:
         safe_ent = str(entity_name).replace('/', '_').replace('\\', '_')
         safe_ac = str(academic_name).replace('/', '_').replace('\\', '_')
@@ -78,11 +82,11 @@ def load_cached_data(filename, entity_name=None, academic_name=None, institution
         return pd.read_parquet(path)
     return None
 
-def get_cached_data(filename, entity_name=None, academic_name=None, institution_name=None):
+def get_cached_data(filename, entity_name=None, academic_name=None, institution_name=None, view_mode="capacidad_instalada"):
     """Wrapper que pasa el mtime del archivo para invalidar el cache de Streamlit automáticamente."""
     path = None
+    view_dir = "capacidad_instalada" if view_mode == "capacidad_instalada" else "produccion_institucional"
     
-    # Lógica de detección de path para mtime (debe coincidir con la de load_cached_data)
     if institution_name:
         if str(institution_name).upper() in ["MEXICO", "MÉXICO"]:
             safe_inst = "MEXICO"
@@ -95,21 +99,20 @@ def get_cached_data(filename, entity_name=None, academic_name=None, institution_
             path = os.path.join(CACHE_DIR, safe_inst, safe_ent, safe_ac, filename)
         elif entity_name:
             safe_ent = str(entity_name).replace('/', '_').replace('\\', '_')
-            path = os.path.join(CACHE_DIR, safe_inst, safe_ent, filename)
+            path = os.path.join(CACHE_DIR, safe_inst, safe_ent, view_dir, filename)
+            if not os.path.exists(path):
+                 path = os.path.join(CACHE_DIR, safe_inst, safe_ent, filename)
+        else:
+            path = os.path.join(CACHE_DIR, safe_inst, view_dir, filename)
+            if not os.path.exists(path):
+                path = os.path.join(CACHE_DIR, safe_inst, filename)
             
     if not path or not os.path.exists(path):
-        if entity_name and academic_name:
-            safe_ent = str(entity_name).replace('/', '_').replace('\\', '_')
-            safe_ac = str(academic_name).replace('/', '_').replace('\\', '_')
-            path = os.path.join(CACHE_DIR, safe_ent, safe_ac, filename)
-        elif entity_name:
-            safe_ent = str(entity_name).replace('/', '_').replace('\\', '_')
-            path = os.path.join(CACHE_DIR, safe_ent, filename)
-        else:
-            path = os.path.join(CACHE_DIR, filename)
-            
-    mtime = os.path.getmtime(path) if path and os.path.exists(path) else None
-    return load_cached_data(filename, entity_name, academic_name, institution_name, _mtime=mtime)
+        mtime = None
+    else:
+        mtime = os.path.getmtime(path)
+        
+    return load_cached_data(filename, entity_name, academic_name, institution_name, view_mode=view_mode, _mtime=mtime)
 
 def cargar_lista_academicos(ruta_json="ingestion/profesores_Instituto_de_Ciencias_Nucleares.json"):
     path = os.path.join(BASE_PATH, ruta_json)
@@ -437,7 +440,7 @@ def _render_thematic_evolution(df_evol, name_col, name_val, key_suffix=""):
     st.dataframe(df_pivot, use_container_width=True)
 
 
-def render_institucion_view(entity_name, institution_name=None):
+def render_institucion_view(entity_name, institution_name=None, view_mode="capacidad_instalada"):
     # Inyectar CSS global para estilizar st.metric como las tarjetas doradas del reporte
     st.markdown("""
         <style>
@@ -474,9 +477,9 @@ def render_institucion_view(entity_name, institution_name=None):
     st.header(f"🏢 Vista de la Institución: {entity_name}")
     st.markdown(f"Panorama Analítico de la Producción de **{entity_name}**.")
 
-    df_annual = load_cached_data("institucion_annual.parquet", entity_name=entity_name, institution_name=institution_name)
-    df_total = load_cached_data("institucion_total.parquet", entity_name=entity_name, institution_name=institution_name)
-    df_topics = load_cached_data("topics_institucion.parquet", entity_name=entity_name, institution_name=institution_name)
+    df_annual = load_cached_data("institucion_annual.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
+    df_total = load_cached_data("institucion_total.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
+    df_topics = load_cached_data("topics_institucion.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
 
     if df_total is not None and not df_total.empty:
         if df_total.empty:
@@ -590,7 +593,7 @@ def render_institucion_view(entity_name, institution_name=None):
             st.plotly_chart(fig_sun, width="stretch")
 
             # --- Evolución Histórica Institucional ---
-            df_evol_inst = get_cached_data("thematic_evolution_institucion.parquet", entity_name=entity_name, institution_name=institution_name)
+            df_evol_inst = get_cached_data("thematic_evolution_institucion.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
             if df_evol_inst is not None and not df_evol_inst.empty:
                 _render_thematic_evolution(df_evol_inst, 'entity_name', entity_name, key_suffix=f"inst_{entity_name}")
 
@@ -795,7 +798,27 @@ def render_investigador_view(entity_name, institution_name=None):
     """, unsafe_allow_html=True)
     st.header(f"👤 Vista por Investigador ({entity_name})")
 
-    df_inst_tot = get_cached_data("institucion_total.parquet", entity_name=entity_name, institution_name=institution_name)
+def render_investigador_view(entity_name, institution_name=None, view_mode="capacidad_instalada"):
+    # Reutilizar el CSS de métricas
+    st.markdown("""
+        <style>
+        [data-testid="stMetric"] {
+            background-color: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            text-align: center;
+            border-top: 4px solid #D4AF37;
+            border-bottom: 1px solid #eaeaea;
+            border-left: 1px solid #eaeaea;
+            border-right: 1px solid #eaeaea;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.header(f"👤 Vista por Investigador: {entity_name}")
+
+    df_inst_tot = get_cached_data("institucion_total.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
 
     if df_inst_tot is None or df_inst_tot.empty:
         # Si no hay df_inst_tot, buscaremos los investigadores físicamente en las carpetas (caso "Sin Entidad")
@@ -834,13 +857,13 @@ def render_investigador_view(entity_name, institution_name=None):
     selected_inv = st.selectbox("Seleccione un Académico:", investigadores)
     
     # Ya teniendo el investigador y entidad, cargamos sus archivos únicos ultra-ligeros
-    df_inv_tot = get_cached_data("investigador_total.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
-    df_inv_ann = get_cached_data("investigador_annual.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
-    df_topics  = get_cached_data("topics_investigador.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
-    df_umap    = get_cached_data("umap_investigadores.parquet", institution_name=institution_name) # UMAP si se mantiene global o por inst
+    df_inv_tot = get_cached_data("investigador_total.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name, view_mode=view_mode)
+    df_inv_ann = get_cached_data("investigador_annual.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name, view_mode=view_mode)
+    df_topics  = get_cached_data("topics_investigador.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name, view_mode=view_mode)
+    df_umap    = get_cached_data("umap_investigadores.parquet", institution_name=institution_name, view_mode=view_mode) # UMAP si se mantiene global o por inst
     
     # Cargar papers globales del investigador y preinicializar df_prof
-    df_profesores_papers = load_cached_data("papers_profesor.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
+    df_profesores_papers = load_cached_data("papers_profesor.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name, view_mode=view_mode)
     if df_profesores_papers is not None and not df_profesores_papers.empty:
         df_prof = df_profesores_papers
     else:
@@ -940,7 +963,7 @@ def render_investigador_view(entity_name, institution_name=None):
     
 
     # ── WordCloud de Keywords ─────────────────────────────────────────────────────
-    df_kw_inv = get_cached_data("keywords_investigador.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
+    df_kw_inv = get_cached_data("keywords_investigador.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name, view_mode=view_mode)
     if df_kw_inv is not None and not df_kw_inv.empty:
         st.markdown("---")
         st.subheader("🔑 Vocabulario Científico")
@@ -968,7 +991,7 @@ def render_investigador_view(entity_name, institution_name=None):
             st.plotly_chart(fig_sun_inv, width="stretch")
 
             # --- Evolución Histórica Investigador ---
-            df_evol_inv = get_cached_data("thematic_evolution_investigador.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name)
+            df_evol_inv = get_cached_data("thematic_evolution_investigador.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name, view_mode=view_mode)
             _render_thematic_evolution(df_evol_inv, 'academic_name', selected_inv, key_suffix=f"inv_{selected_inv}")
 
 

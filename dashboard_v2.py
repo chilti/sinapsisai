@@ -313,6 +313,17 @@ with st.sidebar:
     
     st.selectbox("Modelo", ["openai/gpt-oss-20b"], index=0)
 
+    st.markdown("---")
+    st.markdown("### 📊 Perspectiva Analítica")
+    view_mode = st.radio(
+        "Lente de análisis",
+        ["Capacidad Instalada", "Producción Institucional"],
+        index=0,
+        help="Capacidad Instalada: Suma de la producción de tus académicos.\nProducción Institucional: Papers firmados explícitamente con tu ROR.",
+        key="view_mode_sidebar"
+    )
+    view_mode_code = "capacidad_instalada" if view_mode == "Capacidad Instalada" else "produccion_institucional"
+
 
     st.markdown("---")
     st.markdown("### Capas de Datos Activas")
@@ -719,13 +730,13 @@ with tab_test:
 # TAB 2: Vista de la Institución
 # =======================================================
 with tab_inst:
-    render_institucion_view(selected_entity, institution_name=selected_institution)
+    render_institucion_view(selected_entity, institution_name=selected_inst, view_mode=view_mode_code)
 
 # =======================================================
 # TAB 3: Vista por Investigador
 # =======================================================
 with tab_inv:
-    render_investigador_view(selected_entity, institution_name=selected_institution)
+    render_investigador_view(selected_entity, institution_name=selected_inst, view_mode=view_mode_code)
 
 # =======================================================
 
