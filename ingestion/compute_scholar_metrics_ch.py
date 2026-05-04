@@ -66,12 +66,12 @@ SELECT
     wf.percentile   AS citation_normalized_percentile,
     wf.is_top_10    AS is_in_top_10_percent,
     wf.is_top_1     AS is_in_top_1_percent,
-    wf.is_oa, wf.oa_status,
+    wf.is_oa, wf.oa_status, wf.apc_paid_usd, wf.apc_list_usd,
     coalesce(t.display_name, wf.subfield_name) AS topic_name,
     wf.subfield_name, wf.field_name, wf.domain_name,
     wf.keywords, wf.sdgs AS ODS, wf.country_codes AS countries,
     wf.language, wf.type, wf.source_id AS Source, wf.source_type,
-    wf.is_retracted, wf.referenced_works_count
+    wf.is_retracted, wf.referenced_works_count, wf.authors, wf.counts_by_year
 FROM works_flat wf
 JOIN paper_author_map pm ON wf.id = pm.paper_id
 LEFT JOIN topics t ON wf.topic_id = t.id
@@ -92,12 +92,12 @@ SELECT
     wf.percentile   AS citation_normalized_percentile,
     wf.is_top_10    AS is_in_top_10_percent,
     wf.is_top_1     AS is_in_top_1_percent,
-    wf.is_oa, wf.oa_status,
+    wf.is_oa, wf.oa_status, wf.apc_paid_usd, wf.apc_list_usd,
     coalesce(t.display_name, wf.subfield_name) AS topic_name,
     wf.subfield_name, wf.field_name, wf.domain_name,
     wf.keywords, wf.sdgs AS ODS, wf.country_codes AS countries,
     wf.language, wf.type, wf.source_id AS Source, wf.source_type,
-    wf.is_retracted, wf.referenced_works_count
+    wf.is_retracted, wf.referenced_works_count, wf.authors, wf.counts_by_year
 FROM works_flat wf
 JOIN paper_author_map pm ON wf.doi = pm.paper_id
 LEFT JOIN topics t ON wf.topic_id = t.id
@@ -118,14 +118,22 @@ SELECT
     is_top_1    AS is_in_top_1_percent,
     is_oa,
     oa_status,
+    apc_paid_usd,
+    apc_list_usd,
     topic       AS topic_name,
     subfield    AS subfield_name,
     field       AS field_name,
     domain      AS domain_name,
+    keywords,
+    sdgs        AS ODS,
+    country_codes AS countries,
     language,
     type,
     source_id   AS Source,
     source_type,
+    referenced_works_count,
+    authors,
+    counts_by_year,
     institution_rors
 FROM works_seed_mexico
 {filter}
@@ -187,11 +195,23 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
         else:
             df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0).astype(int)
 
-    for c in ['keywords', 'ODS', 'countries', 'counts_by_year', 'indexed_in']:
+    for c in ['keywords', 'ODS', 'countries', 'authors']:
         if c not in df.columns:
             df[c] = [[] for _ in range(len(df))]
         else:
-            df[c] = df[c].apply(lambda x: x if isinstance(x, list) else [])
+            df[c] = df[c].apply(lambda x: x if isinstance(x, (list, np.ndarray)) else [])
+
+    if 'counts_by_year' not in df.columns:
+        df['counts_by_year'] = [[] for _ in range(len(df))]
+    else:
+        # Normalizar counts_by_year de ClickHouse (lista de strings/dicts) a formato OpenAlex
+        def _norm_counts(x):
+            if not x: return []
+            if isinstance(x, str):
+                try: x = json.loads(x)
+                except: return []
+            return x if isinstance(x, list) else []
+        df['counts_by_year'] = df['counts_by_year'].apply(_norm_counts)
 
     for c in ['apc_paid_usd', 'apc_list_usd']:
         if c not in df.columns:
@@ -343,6 +363,9 @@ def _save_inst_parquets(df: pd.DataFrame, base_dir: Path,
                                      columns=['keyword', 'freq'])
                 kw_df['entity_name'] = name
                 _save_parquet(kw_df, d / 'keywords_institucion.parquet', updated_files)
+        
+        # Guardar académicos de esta unidad
+        _save_academic_parquets(grp, d / 'academic', updated_files)
 
 
 def _save_aggregate_parquets(df: pd.DataFrame, out_dir: Path,
@@ -390,6 +413,22 @@ def _save_aggregate_parquets(df: pd.DataFrame, out_dir: Path,
         if cnt:
             kw_df = pd.DataFrame(cnt.most_common(1000), columns=['keyword', 'freq'])
             _save_parquet(kw_df, out_dir / 'keywords_institucion.parquet', updated_files)
+
+
+def _save_academic_parquets(df: pd.DataFrame, out_dir: Path, updated_files: set = None):
+    """Agrupa por académico y guarda sus parquets individuales."""
+    if 'academic_name' not in df.columns:
+        return
+        
+    for ac_name, grp in df.groupby('academic_name'):
+        if not ac_name or str(ac_name).lower() == 'none':
+            continue
+            
+        # Extraer entidad e institución de este grupo (usamos el primero)
+        entity = grp['entity'].iloc[0] if 'entity' in grp.columns else "Desconocido"
+        institution = grp['institution'].iloc[0] if 'institution' in grp.columns else "Desconocido"
+        
+        _flush_academic(ac_name, grp, entity, institution, updated_files)
 
 
 # ── Procesamiento por académico ────────────────────────────────────────────
@@ -497,7 +536,8 @@ def _get_institution_rors() -> dict:
 
 # ── Pipeline principal ─────────────────────────────────────────────────────
 
-def process_and_save(entity_filter=None, academic_filter=None, source_filter='all'):
+def process_and_save(entity_filter=None, academic_filter=None, 
+                     source_filter='all', institution_filter=None):
     print("🚀 Iniciando pipeline v3 (ClickHouse JOIN directo)...")
     updated_files = set()
 
@@ -527,6 +567,12 @@ def process_and_save(entity_filter=None, academic_filter=None, source_filter='al
                     hier[inst][dep].append(sub)
 
     # Filtros opcionales
+    if institution_filter:
+        hier = {k: v for k, v in hier.items() if k == institution_filter}
+        if not hier:
+            print(f"⚠️ Institución '{institution_filter}' no encontrada en el grafo.")
+            return
+
     if entity_filter:
         hier = {i: {e: s for e, s in ents.items() if e == entity_filter}
                 for i, ents in hier.items() if entity_filter in ents}
@@ -641,9 +687,11 @@ if __name__ == '__main__':
         description='Calcula métricas bibliométricas desde ClickHouse (v3)')
     parser.add_argument('--entity',   help='Filtrar por entidad específica')
     parser.add_argument('--academic', help='Filtrar por académico específico')
+    parser.add_argument('--institution', help='Filtrar por institución raíz')
     parser.add_argument('--source',   default='all')
     args = parser.parse_args()
     process_and_save(
         entity_filter=args.entity,
         academic_filter=args.academic,
+        institution_filter=args.institution,
         source_filter=args.source)
