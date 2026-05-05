@@ -703,11 +703,33 @@ def process_and_save(entity_filter=None, academic_filter=None,
         if df_inst_cap.empty:
             print(f"  ⚠️ Sin papers de Capacidad Instalada")
         else:
-            df_inst_cap = df_inst_cap.drop_duplicates(subset=['paper_id', 'academic_name'])
-            print(f"  📄 {len(df_inst_cap):,} papers (Capacidad)")
+            # 1. Determinar el nivel de mayor profundidad por académico
+            depth_map = {inst_name: 1}
+            for dep_name, dep_data in entities.items():
+                depth_map[dep_name] = 2
+                for sub_name in dep_data.get('subs', {}):
+                    depth_map[sub_name] = 3
 
+            best_entity_per_academic = {}
+            for ac_name, grp in df_inst_cap.groupby('academic_name'):
+                ac_entities = grp['entity'].unique()
+                best_ent = inst_name
+                max_depth = 1
+                for e in ac_entities:
+                    d = depth_map.get(e, 1)
+                    if d > max_depth:
+                        max_depth = d
+                        best_ent = e
+                best_entity_per_academic[ac_name] = best_ent
+
+            # 2. Ahora sí eliminar duplicados (evita métricas infladas por join multinivel)
+            df_inst_cap = df_inst_cap.drop_duplicates(subset=['paper_id', 'academic_name'])
+            ac_count = df_inst_cap['academic_name'].nunique() if 'academic_name' in df_inst_cap.columns else 0
+            print(f"  📄 {len(df_inst_cap):,} papers (Capacidad) | 👨‍🔬 {ac_count} SNIIs")
+
+            # 3. Flushear académicos usando su entidad más profunda
             for ac_name, df_ac in df_inst_cap.groupby('academic_name'):
-                entity_val = df_ac['entity'].iloc[0] if 'entity' in df_ac.columns else inst_name
+                entity_val = best_entity_per_academic.get(ac_name, inst_name)
                 _flush_academic(ac_name, df_ac.copy(), entity_val, inst_name, updated_files)
 
             cap_dir = CACHE_DIR / safe_inst / 'capacidad_instalada'
@@ -756,7 +778,8 @@ def process_and_save(entity_filter=None, academic_filter=None,
             
             if not df_dep_cap.empty:
                 df_dep_cap = df_dep_cap.drop_duplicates(subset=['paper_id', 'academic_name'])
-                print(f"  ├─ {dep_name}: {len(df_dep_cap):,} papers (Capacidad)")
+                ac_count = df_dep_cap['academic_name'].nunique() if 'academic_name' in df_dep_cap.columns else 0
+                print(f"  ├─ {dep_name}: {len(df_dep_cap):,} papers (Capacidad) | 👨‍🔬 {ac_count} SNIIs")
                 dep_dir_cap = CACHE_DIR / safe_inst / safe_dep / 'capacidad_instalada'
                 _save_aggregate_parquets(df_dep_cap, dep_dir_cap, updated_files, label=dep_name)
                 # Fallback link
@@ -788,7 +811,8 @@ def process_and_save(entity_filter=None, academic_filter=None,
                 df_sub_cap = _query_cap(where_sub, params_sub)
                 if not df_sub_cap.empty:
                     df_sub_cap = df_sub_cap.drop_duplicates(subset=['paper_id', 'academic_name'])
-                    print(f"  │  └─ {sub_name}: {len(df_sub_cap):,} papers (Capacidad)")
+                    ac_count = df_sub_cap['academic_name'].nunique() if 'academic_name' in df_sub_cap.columns else 0
+                    print(f"  │  └─ {sub_name}: {len(df_sub_cap):,} papers (Capacidad) | 👨‍🔬 {ac_count} SNIIs")
                     sub_dir_cap = CACHE_DIR / safe_inst / safe_sub / 'capacidad_instalada'
                     _save_aggregate_parquets(df_sub_cap, sub_dir_cap, updated_files, label=sub_name)
                     # Fallback link

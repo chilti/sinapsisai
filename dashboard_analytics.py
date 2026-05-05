@@ -158,8 +158,8 @@ def load_hierarchy():
             # Maneja tanto 2 como 3 niveles
             query = """
             MATCH (i:Institution)
-            OPTIONAL MATCH (i)<-[:PART_OF]-(dep:Entity)
-            OPTIONAL MATCH (dep)<-[:PART_OF]-(sub:Entity)
+            OPTIONAL MATCH (i)<-[:PART_OF]-(dep:Dependency)
+            OPTIONAL MATCH (dep)<-[:PART_OF]-(sub:Subdependency)
             RETURN i.name AS inst, dep.name AS dep, collect(DISTINCT sub.name) AS subs
             """
             result = session.run(query)

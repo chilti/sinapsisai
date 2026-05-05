@@ -253,15 +253,25 @@ class RORIngestor:
                 
             if ror_id not in ror_groups: ror_groups[ror_id] = []
             
-            parts = key.split(' || ')
-            inst = parts[0]
-            sub = parts[-1] if len(parts) > 1 else "SIN INFORMACIÓN"
+            parts = [p.strip() for p in key.split('||')]
+            if len(parts) == 3:
+                inst, dep, sub = parts
+            else:
+                inst = parts[0] if len(parts) > 0 else "SIN INFORMACIÓN"
+                dep = parts[1] if len(parts) > 1 else "SIN INFORMACIÓN"
+                sub = parts[2] if len(parts) > 2 else "SIN INFORMACIÓN"
             
-            # Es específico si el ROR es distinto al del padre 
-            # O si la entidad misma es la institución (sub es SIN INFORMACIÓN)
-            is_specific = (ror_id != parent_ror) or (sub == "SIN INFORMACIÓN")
+            # Guardamos todos los datos necesarios para la metadata
+            matched_oa = data.get('matched_openalex_id')
+            parent_oa = data.get('parent_openalex_id')
+            is_sub_match = data.get('is_subdependency_match', False)
             
-            ror_groups[ror_id].append((inst, sub, is_specific))
+            ror_groups[ror_id].append({
+                "inst": inst, "dep": dep, "sub": sub,
+                "parent_ror": parent_ror, "parent_oa": parent_oa,
+                "matched_ror": ror_id, "matched_oa": matched_oa,
+                "is_sub_match": is_sub_match
+            })
 
         print(f"🎯 Identificados {len(ror_groups)} RORs únicos para procesar.")
         
@@ -269,7 +279,7 @@ class RORIngestor:
         for ror_id, entities in ror_groups.items():
             if limit and count >= limit: break
             
-            main_inst = entities[0][0]
+            main_inst = entities[0]['inst']
             print(f"\n🚀 Procesando ROR {ror_id} ({main_inst})")
             
             try:
@@ -283,11 +293,35 @@ class RORIngestor:
             count += 1
 
     def _process_works_batch_multi(self, works, entities, ror_id):
-        """Procesa trabajos vinculándolos solo a las entidades con ID específico."""
+        """Procesa trabajos vinculándolos a los 3 niveles y actualizando metadata."""
         batch_payloads = []
         batch_texts = []
         batch_seen = set()
         
+        # 1. Actualizar metadata de las entidades primero
+        if works:
+            for ent in entities:
+                inst, dep, sub = ent['inst'], ent['dep'], ent['sub']
+                p_ror, p_oa = ent['parent_ror'], ent['parent_oa']
+                m_ror, m_oa = ent['matched_ror'], ent['matched_oa']
+                is_sub = ent['is_sub_match']
+                
+                # Inst
+                if p_ror or p_oa:
+                    self.graph_store.upsert_entity_level_metadata(inst, 'Institution', p_ror, p_oa)
+                # Dep
+                if dep != "SIN INFORMACIÓN":
+                    if not is_sub and (m_ror or m_oa):
+                        self.graph_store.upsert_entity_level_metadata(dep, 'Dependency', m_ror, m_oa)
+                    elif p_ror or p_oa:
+                        self.graph_store.upsert_entity_level_metadata(dep, 'Dependency', p_ror, p_oa)
+                # Sub
+                if sub != "SIN INFORMACIÓN":
+                    if is_sub and (m_ror or m_oa):
+                        self.graph_store.upsert_entity_level_metadata(sub, 'Subdependency', m_ror, m_oa)
+                    elif p_ror or p_oa:
+                        self.graph_store.upsert_entity_level_metadata(sub, 'Subdependency', p_ror, p_oa)
+
         for work in works:
             doi_raw = work.get('doi')
             if not doi_raw: continue
@@ -298,10 +332,13 @@ class RORIngestor:
 
             # 1. Si ya se procesó en este run, solo actualizamos links
             if doi in self.processed_dois:
-                for inst_name, sub_name, is_specific in entities:
-                    self.graph_store.add_entity_paper_link(inst_name, doi)
-                    if sub_name and sub_name != "SIN INFORMACIÓN" and is_specific:
-                        self.graph_store.add_entity_paper_link(sub_name, doi)
+                for ent in entities:
+                    inst, dep, sub = ent['inst'], ent['dep'], ent['sub']
+                    self.graph_store.add_flexible_entity_paper_link(inst, 'Institution', doi)
+                    if dep != "SIN INFORMACIÓN":
+                        self.graph_store.add_flexible_entity_paper_link(dep, 'Dependency', doi)
+                    if sub != "SIN INFORMACIÓN":
+                        self.graph_store.add_flexible_entity_paper_link(sub, 'Subdependency', doi)
                 continue
 
             # 2. Verificar existencia en bases
@@ -323,14 +360,14 @@ class RORIngestor:
             self.graph_store.mark_paper_as_indexed(doi, 'openalex')
             self.graph_store.set_paper_openalex_id(doi, work.get('id'))
 
-            # VINCULACIÓN RESTRINGIDA (Regla del Usuario)
-            for inst_name, sub_name, is_specific in entities:
-                # 1. Siempre a la Institución
-                self.graph_store.add_entity_paper_link(inst_name, doi)
-                
-                # 2. Solo a la Subdependencia si el ROR es específico para ella
-                if sub_name and sub_name != "SIN INFORMACIÓN" and is_specific:
-                    self.graph_store.add_entity_paper_link(sub_name, doi)
+            # VINCULACIÓN 3 NIVELES
+            for ent in entities:
+                inst, dep, sub = ent['inst'], ent['dep'], ent['sub']
+                self.graph_store.add_flexible_entity_paper_link(inst, 'Institution', doi)
+                if dep != "SIN INFORMACIÓN":
+                    self.graph_store.add_flexible_entity_paper_link(dep, 'Dependency', doi)
+                if sub != "SIN INFORMACIÓN":
+                    self.graph_store.add_flexible_entity_paper_link(sub, 'Subdependency', doi)
                 
             if not exists_qdrant:
                 self._prepare_for_qdrant_multi(work, entities, batch_texts, batch_payloads)
@@ -345,16 +382,20 @@ class RORIngestor:
             except: pass
 
     def _prepare_for_qdrant_multi(self, work, entities, batch_texts, batch_payloads):
-        ref_inst, ref_sub, _ = entities[0]
+        ent = entities[0]
+        ref_inst, ref_dep, ref_sub = ent['inst'], ent['dep'], ent['sub']
         title = work.get('display_name') or "Sin Título"
         abstract = deconstruct_abstract(work.get('abstract_inverted_index'))
         doi = work.get('doi', '').replace("https://doi.org/", "").lower()
+        
+        # Escoger la entidad mas especifica para Qdrant
+        entity_qdrant = ref_sub if ref_sub != "SIN INFORMACIÓN" else (ref_dep if ref_dep != "SIN INFORMACIÓN" else ref_inst)
         
         text_content = f"Title: {title}\nAbstract: {abstract or ''}".strip()
         batch_texts.append(text_content)
         batch_payloads.append({
             "paper_id": doi, "title": title, "doi": doi,
-            "entity": ref_sub if ref_sub != "SIN INFORMACIÓN" else ref_inst,
+            "entity": entity_qdrant,
             "text": text_content
         })
 

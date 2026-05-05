@@ -509,6 +509,29 @@ class Neo4jGraphStore:
                 session.run(query, id_raw=doi, doi_clean=doi_clean, oa_id=openalex_url)
             except Exception: pass
 
+
+    def upsert_entity_level_metadata(self, name: str, label: str, ror: str = None, openalex_id: str = None):
+        if not name or not label: return
+        query = f"""
+        MATCH (e:{label} {{name: $name}})
+        SET e.ror = coalesce($ror, e.ror),
+            e.openalex_id = coalesce($openalex_id, e.openalex_id)
+        """
+        with self.driver.session() as session:
+            session.run(query, name=name, ror=ror, openalex_id=openalex_id)
+
+    def add_flexible_entity_paper_link(self, entity_name: str, label: str, doi: str):
+        if not doi or not entity_name: return
+        query = f"""
+        MATCH (e:{label} {{name: $entity_name}})
+        WITH e
+        MATCH (p:Paper {{doi: $doi}})
+        MERGE (e)-[:HAS_PAPER]->(p)
+        """
+        with self.driver.session() as session:
+            try: session.run(query, entity_name=entity_name, doi=doi)
+            except: pass
+
     def add_entity_paper_link(self, entity_name: str, doi: str):
         """
         Vincula un Entity institucional con un Paper utilizando su DOI.
