@@ -21,6 +21,7 @@ milvus_data/
 .idea/
 
 data/
+data_r
 ingestion/*.json
 ROR/*.json
 SNII/*.json

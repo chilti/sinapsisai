@@ -458,7 +458,7 @@ def search_openalex_authors(name: str, institution: str, limit: int = 5, verbose
     return res.get(name, [])
 
 
-def resolve_snii_identities(limit_test=None, target_name=None, force=False, ingest=False, force_ingest=False, verbose=False):
+def resolve_snii_identities(limit_test=None, target_name=None, institution_filter=None, dependency_filter=None, force=False, ingest=False, force_ingest=False, verbose=False):
     """Pipeline principal: SNII -> candidatos multi-fuente -> verificacion LLM -> JSON de resultados."""
     print("\n Resolviendo identidades SNII con LLM (busqueda semantica + reranking)...")
 
@@ -467,13 +467,34 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
 
     df = pd.read_excel(SNII_PATH, sheet_name='4T_2025 (44,794)')
 
-    if target_name:
-        mask = df['NOMBRE DEL INVESTIGADOR'].str.contains(target_name, case=False, na=False)
-        df = df[mask].reset_index(drop=True)
-        if df.empty:
-            print(f"     No se encontr ningn investigador que coincida con '{target_name}' en el padrn SNII.")
-            return
-        print(f"    Modo bsqueda individual: {len(df)} registro(s) encontrado(s) para '{target_name}'.")
+    # Buscador robusto de columnas
+    cols = df.columns.tolist()
+    def find_col(keywords):
+        for c in cols:
+            norm = normalize_text(c).lower()
+            if any(k in norm for k in keywords):
+                return c
+        return None
+
+    NAME_COL = find_col(["nombre del investigador", "nombre"])
+    INST_COL = find_col(["institucion de acreditacion", "institucion"])
+    DEP_COL  = find_col(["dependencia de acreditacion", "dependencia"])
+
+    if target_name and NAME_COL:
+        df = df[df[NAME_COL].str.contains(target_name, case=False, na=False)]
+    if institution_filter and INST_COL:
+        df = df[df[INST_COL].str.contains(institution_filter, case=False, na=False)]
+    if dependency_filter and DEP_COL:
+        df = df[df[DEP_COL].str.contains(dependency_filter, case=False, na=False)]
+    
+    df = df.reset_index(drop=True)
+
+    if df.empty:
+        print(f"     No se encontró ningún investigador con los filtros aplicados en el padrón SNII.")
+        return
+    
+    if target_name or institution_filter or dependency_filter:
+        print(f"    Filtrado activo: {len(df)} registro(s) encontrado(s).")
 
     if limit_test and not target_name:
         df = df.head(limit_test)
@@ -766,7 +787,8 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                 candidates_str = ""
                 if not all_candidates:
                     if verbose:
-                        print("       No se encontraron candidatos en ninguna fuente.")
+                        print("       No se encontraron candidatos en ninguna fuente. Saltando LLM.")
+                    res_json = {"match": False, "reason": "No se encontraron candidatos en ninguna fuente (OpenAlex/ORCID/Local)"}
                 else:
                     if verbose:
                         print(f"       {len(all_candidates)} candidato(s) encontrado(s):")
@@ -777,7 +799,7 @@ def resolve_snii_identities(limit_test=None, target_name=None, force=False, inge
                             print(f"         {i+1}. {cand_info}")
                         candidates_str += f"{i+1}. {cand_info}\n"
 
-                prompt = f"""Eres un experto investigador bibliogrfico. Tu tarea es identificar si alguno de los candidatos recuperados coincide exactamente con el investigador del SNII.
+                    prompt = f"""Eres un experto investigador bibliogrfico. Tu tarea es identificar si alguno de los candidatos recuperados coincide exactamente con el investigador del SNII.
 
 Investigador SNII buscado:
 {snii_info}
@@ -799,43 +821,45 @@ Instrucciones vitales:
     "discarded_candidates": [
         {{"index": int, "name": "...", "orcid": "...", "reason": "razn breve del descarte"}}
     ]
-}}. No agregues markdown de bloques de cdigo.
+}} No agregues markdown de bloques de cdigo.
 
 Respuesta:"""
 
-                max_retries = 3
-                res_json = {}
-                for attempt in range(max_retries):
-                    try:
-                        if verbose:
-                            print(f"\n--- PROMPT ENVIADO AL LLM ---\n{prompt}\n----------------------------")
-                        
-                        response = llm.invoke([HumanMessage(content=prompt)])
-                        res_text = response.content.strip()
-                        
-                        if verbose:
-                            print(f"--- RESPUESTA CRUDA LLM ---\n{res_text}\n---------------------------")
+                    max_retries = 3
+                    res_json = {}
+                    for attempt in range(max_retries):
+                        try:
+                            if verbose:
+                                print(f"\n--- PROMPT ENVIADO AL LLM ---\n{prompt}\n----------------------------")
+                            
+                            response = llm.invoke([HumanMessage(content=prompt)])
+                            res_text = response.content.strip()
+                            
+                            if verbose:
+                                print(f"--- RESPUESTA CRUDA LLM ---\n{res_text}\n---------------------------")
 
-                        # Limpiar posibles bloques de código y caracteres extraños
-                        res_text = res_text.strip()
-                        if "```json" in res_text:
-                            res_text = res_text.split("```json")[1].split("```")[0].strip()
-                        elif "```" in res_text:
-                            res_text = res_text.split("```")[1].split("```")[0].strip()
-                        
-                        # Eliminar posibles prefijos o sufijos no-JSON (como "Aquí tienes el JSON:")
-                        if res_text.find('{') != -1:
-                            res_text = res_text[res_text.find('{'):res_text.rfind('}')+1]
+                            # Limpiar posibles bloques de código y caracteres extraños
+                            res_text = res_text.strip()
+                            if "```json" in res_text:
+                                res_text = res_text.split("```json")[1].split("```")[0].strip()
+                            elif "```" in res_text:
+                                res_text = res_text.split("```")[1].split("```")[0].strip()
+                            
+                            # Eliminar posibles prefijos o sufijos no-JSON (como "Aquí tienes el JSON:")
+                            if res_text.find('{') != -1:
+                                res_text = res_text[res_text.find('{'):res_text.rfind('}')+1]
 
-                        res_json = json.loads(res_text)
-                        break # éxito
-                    except Exception as e:
-                        if attempt < max_retries - 1:
-                            wait_time = (attempt + 1) * 10
-                            print(f"       Error LLM/JSON (intento {attempt+1}/{max_retries}): {e}. Reintentando en {wait_time}s...")
-                            time.sleep(wait_time)
-                        else:
-                            raise e
+                            res_json = json.loads(res_text)
+                            break # éxito
+                        except Exception as e:
+                            if attempt < max_retries - 1:
+                                wait_time = (attempt + 1) * 10
+                                print(f"       Error LLM/JSON (intento {attempt+1}/{max_retries}): {e}. Reintentando en {wait_time}s...")
+                                time.sleep(wait_time)
+                            else:
+                                print(f"       [ERROR] LLM fall tras {max_retries} intentos. Saltando match.")
+                                res_json = {"match": False, "reason": f"Error LLM: {e}"}
+                                break
 
                 result_entry = {
                     "snii_author": snii_name,
@@ -917,8 +941,11 @@ Respuesta:"""
                     lookup[key] = len(verified_results)
                     verified_results.append(result_entry)
                     
-                if result_entry.get("match") is True and ingest:
-                    print(f"       [Auto-Ingest] Iniciando carga de trabajos para {snii_name}...")
+                if ingest:
+                    if result_entry.get("match") is True:
+                        print(f"       [Auto-Ingest] Iniciando carga de trabajos para {snii_name}...")
+                    else:
+                        print(f"       [Auto-Ingest] Registrando investigador sin match: {snii_name}...")
                     try:
                         ingest_researcher_data(result_entry, force=force_ingest, force_local=True)
                     except Exception as e:
@@ -1059,9 +1086,11 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Resuelve identidades SNII contra OpenAlex/ORCID usando LLM.")
     parser.add_argument("--limit", type=int, help="Lmite de registros del padrn completo para pruebas (opcional).")
-    parser.add_argument("--name", type=str, help="Filtra el padrn SNII por nombre de investigador.")
-    parser.add_argument("--force", action="store_true", help="Fuerza la re-verificacin incluso si ya existe match.")
-    parser.add_argument("--ingest", action="store_true", help="Cargar automticamente los trabajos al confirmar match")
+    parser.add_argument("--name", type=str, help="Filtra el padrón SNII por nombre de investigador.")
+    parser.add_argument("--institution", type=str, help="Filtra el padrón SNII por nombre de institución.")
+    parser.add_argument("--dependency", type=str, help="Filtra el padrón SNII por nombre de dependencia.")
+    parser.add_argument("--force", action="store_true", help="Fuerza la re-verificación incluso si ya existe match.")
+    parser.add_argument("--ingest", action="store_true", help="Cargar automáticamente los trabajos al confirmar match")
     parser.add_argument("--force-ingest", action="store_true", help="Forzar carga de trabajos incluso si ya existen")
     parser.add_argument("--verbose", action="store_true", help="Muestra el prompt y respuesta detallada del LLM")
     parser.add_argument("--fix-hierarchy", action="store_true", help="Parchea el JSON corrigiendo Dependencia y Entidad Final desde el Excel")
@@ -1070,4 +1099,13 @@ if __name__ == "__main__":
     if args.fix_hierarchy:
         fix_json_hierarchy()
     else:
-        resolve_snii_identities(limit_test=args.limit, target_name=args.name, force=args.force, ingest=args.ingest, force_ingest=args.force_ingest, verbose=args.verbose)
+        resolve_snii_identities(
+            limit_test=args.limit, 
+            target_name=args.name, 
+            institution_filter=args.institution,
+            dependency_filter=args.dependency,
+            force=args.force, 
+            ingest=args.ingest, 
+            force_ingest=args.force_ingest, 
+            verbose=args.verbose
+        )

@@ -284,7 +284,8 @@ def ingest_researcher_data(data, force=False, force_local=False):
             audit_timestamp=audit.get('timestamp'),
             match_reason=data.get('reason'),
             discarded_candidates=data.get('discarded_candidates'),
-            is_snii=True
+            is_snii=True,
+            entity_name=sub_name if sub_name != "SIN INFORMACIÓN" else inst_name
         )
     else:
         graph_store.set_academic_snii(academic_name, True)

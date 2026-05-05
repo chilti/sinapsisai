@@ -60,7 +60,7 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 # Capacidad Instalada (Unificada)
 _Q_CAP = """
 SELECT
-    pm.academic_name, pm.entity, pm.institution,
+    pm.academic_name, pm.institution, pm.dependency, pm.subdependency,
     pm.orcid, pm.openalex_id, pm.is_snii, pm.audit_verdict,
     wf.id           AS paper_id,
     wf.doi,
@@ -704,25 +704,26 @@ def process_and_save(entity_filter=None, academic_filter=None,
             print(f"  ⚠️ Sin papers de Capacidad Instalada")
         else:
             # 1. Determinar el nivel de mayor profundidad por académico
-            depth_map = {inst_name: 1}
-            for dep_name, dep_data in entities.items():
-                depth_map[dep_name] = 2
-                for sub_name in dep_data.get('subs', {}):
-                    depth_map[sub_name] = 3
-
             best_entity_per_academic = {}
             for ac_name, grp in df_inst_cap.groupby('academic_name'):
-                ac_entities = grp['entity'].unique()
-                best_ent = inst_name
-                max_depth = 1
-                for e in ac_entities:
-                    d = depth_map.get(e, 1)
-                    if d > max_depth:
-                        max_depth = d
-                        best_ent = e
-                best_entity_per_academic[ac_name] = best_ent
+                # En la nueva tabla columnar, la profundidad está implícita:
+                # Subdependency > Dependency > Institution
+                # Pero un académico puede estar en varias filas si tiene varios papers.
+                # Queremos su entidad "hoja" más frecuente o simplemente la más profunda encontrada.
+                potential_entities = []
+                for _, row_ac in grp.iterrows():
+                    if row_ac['subdependency']: potential_entities.append((row_ac['subdependency'], 3))
+                    elif row_ac['dependency']: potential_entities.append((row_ac['dependency'], 2))
+                    else: potential_entities.append((row_ac['institution'], 1))
+                
+                # Quedarnos con la de mayor profundidad
+                potential_entities.sort(key=lambda x: x[1], reverse=True)
+                best_entity_per_academic[ac_name] = potential_entities[0][0] if potential_entities else inst_name
 
-            # 2. Ahora sí eliminar duplicados (evita métricas infladas por join multinivel)
+            # 2. Sintetizar columna 'entity' para compatibilidad con el resto del script
+            df_inst_cap['entity'] = df_inst_cap['academic_name'].map(best_entity_per_academic)
+
+            # 3. Ahora sí eliminar duplicados (evita métricas infladas por join multinivel)
             df_inst_cap = df_inst_cap.drop_duplicates(subset=['paper_id', 'academic_name'])
             ac_count = df_inst_cap['academic_name'].nunique() if 'academic_name' in df_inst_cap.columns else 0
             print(f"  📄 {len(df_inst_cap):,} papers (Capacidad) | 👨‍🔬 {ac_count} SNIIs")
@@ -768,10 +769,10 @@ def process_and_save(entity_filter=None, academic_filter=None,
             names_to_query = [dep_name] + list(subs.keys())
             
             if not ids_to_query:
-                where_dep = "WHERE pm.institution_ror = %(ror)s AND pm.entity IN %(names)s"
+                where_dep = "WHERE pm.institution_ror = %(ror)s AND pm.dependency IN %(names)s"
                 params_dep = {'ror': inst_ror, 'names': names_to_query}
             else:
-                where_dep = "WHERE pm.institution_ror = %(ror)s AND (pm.entity_id IN %(ids)s OR pm.entity IN %(names)s)"
+                where_dep = "WHERE pm.institution_ror = %(ror)s AND (pm.dependency_id IN %(ids)s OR pm.dependency IN %(names)s)"
                 params_dep = {'ror': inst_ror, 'ids': ids_to_query, 'names': names_to_query}
                 
             df_dep_cap = _query_cap(where_dep, params_dep)
@@ -802,10 +803,10 @@ def process_and_save(entity_filter=None, academic_filter=None,
                 
                 # Capacidad Instalada
                 if not sub_id or sub_id == 'None':
-                    where_sub = "WHERE pm.institution_ror = %(ror)s AND pm.entity = %(name)s"
+                    where_sub = "WHERE pm.institution_ror = %(ror)s AND pm.subdependency = %(name)s"
                     params_sub = {'ror': inst_ror, 'name': sub_name}
                 else:
-                    where_sub = "WHERE pm.institution_ror = %(ror)s AND (pm.entity_id = %(id)s OR pm.entity = %(name)s)"
+                    where_sub = "WHERE pm.institution_ror = %(ror)s AND (pm.subdependency_id = %(id)s OR pm.subdependency = %(name)s)"
                     params_sub = {'ror': inst_ror, 'id': sub_id, 'name': sub_name}
                     
                 df_sub_cap = _query_cap(where_sub, params_sub)

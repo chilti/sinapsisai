@@ -61,29 +61,31 @@ _OA_RE = re.compile(r'^W\d+$', re.IGNORECASE)
 # ── DDL ────────────────────────────────────────────────────────────────────
 DDL = f"""
 CREATE TABLE IF NOT EXISTS {TABLE} (
-    paper_id        String,
-    academic_name   String,
-    academic_id     String,
-    orcid           String,
-    openalex_id     String,
-    entity          String,
-    entity_id       String,
-    institution     String,
-    institution_ror String,
-    is_snii         UInt8,
-    source          String,
-    audit_verdict   String,
-    ODS             Array(String)
+    paper_id          String,
+    academic_name     String,
+    academic_id       String,
+    orcid             String,
+    openalex_id       String,
+    institution       String,
+    institution_ror   String,
+    dependency        String,
+    dependency_id     String,
+    subdependency     String,
+    subdependency_id  String,
+    is_snii           UInt8,
+    source            String,
+    audit_verdict     String,
+    ODS               Array(String)
 )
 ENGINE = ReplacingMergeTree()
-ORDER BY (institution_ror, entity_id, paper_id, academic_id)
+ORDER BY (institution_ror, paper_id, academic_id)
 SETTINGS index_granularity = 8192
 """
 
 # Índices para acelerar los JOINs y filtros del dashboard
 DDL_INDEXES = [
     f"ALTER TABLE {TABLE} ADD INDEX IF NOT EXISTS idx_academic (academic_name) TYPE bloom_filter(0.01) GRANULARITY 1",
-    f"ALTER TABLE {TABLE} ADD INDEX IF NOT EXISTS idx_entity   (entity)        TYPE bloom_filter(0.01) GRANULARITY 1",
+    f"ALTER TABLE {TABLE} ADD INDEX IF NOT EXISTS idx_dep      (dependency)    TYPE bloom_filter(0.01) GRANULARITY 1",
     f"ALTER TABLE {TABLE} ADD INDEX IF NOT EXISTS idx_inst     (institution)   TYPE bloom_filter(0.01) GRANULARITY 1",
     f"ALTER TABLE {TABLE} ADD INDEX IF NOT EXISTS idx_orcid    (orcid)         TYPE bloom_filter(0.01) GRANULARITY 1",
 ]
@@ -150,8 +152,8 @@ OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e)
 OPTIONAL MATCH path = (e)-[:PART_OF*0..3]->(i:Institution)
 OPTIONAL MATCH (p)-[:ADDRESSES]->(s:SDG)
 WITH a, p, e, i, 
-     [n in nodes(path) | n.name] AS hierarchy_names, 
-     [n in nodes(path) | n.id] AS hierarchy_ids, 
+     [n in nodes(path) | n.name] AS h_names, 
+     [n in nodes(path) | n.id] AS h_ids, 
      collect(DISTINCT s.id) AS ods
 RETURN
     coalesce(p.openalex_id, p.id)    AS paper_id,
@@ -159,12 +161,9 @@ RETURN
     a.id                            AS academic_id,
     coalesce(a.orcid, '')           AS orcid,
     coalesce(a.openalex_id, '')     AS openalex_id,
-    coalesce(e.name, 'SIN_ENTIDAD') AS entity,
-    coalesce(e.id, 'SIN_ID')        AS entity_id,
-    coalesce(i.name, 'Sin Institución') AS institution,
     coalesce(i.ror, i.id)           AS institution_ror,
-    hierarchy_names,
-    hierarchy_ids,
+    h_names,
+    h_ids,
     coalesce(a.is_snii, false)      AS is_snii,
     coalesce(a.siia_url, '')        AS siia_url,
     coalesce(a.audit_verdict, '')   AS audit_verdict,
@@ -287,7 +286,7 @@ def _run_final_optimize():
 
 
 def _transform_page(df: pd.DataFrame) -> pd.DataFrame:
-    """Limpia y normaliza una página de filas de Neo4j explotando la jerarquía."""
+    """Limpia y normaliza una página de filas de Neo4j usando la jerarquía en columnas."""
     df = df.dropna(subset=['paper_id', 'academic_name']).copy()
     df['paper_id'] = df['paper_id'].apply(_normalize_paper_id)
     df = df[df['paper_id'].notna()].copy()
@@ -296,59 +295,35 @@ def _transform_page(df: pd.DataFrame) -> pd.DataFrame:
 
     rows = []
     for _, r in df.iterrows():
-        # Datos base del académico
-        base = {
-            'paper_id': r['paper_id'],
-            'academic_name': r['academic_name'],
-            'academic_id': r['academic_id'],
-            'orcid': r['orcid'],
-            'openalex_id': r['openalex_id'],
-            'is_snii': 1 if r['is_snii'] else 0,
-            'source': _determine_source(r),
-            'audit_verdict': r['audit_verdict'],
+        # Nodes(path) devuelve el camino desde la Entidad (e) hasta la Institución (i)
+        # p.ej. [Subdependency, Dependency, Institution]
+        raw_names = r.get('h_names')
+        raw_ids   = r.get('h_ids')
+        
+        h_names = list(reversed(raw_names)) if isinstance(raw_names, list) else []
+        h_ids   = list(reversed(raw_ids))   if isinstance(raw_ids, list)   else []
+        
+        row = {
+            'paper_id':         r['paper_id'],
+            'academic_name':    r['academic_name'],
+            'academic_id':      r['academic_id'],
+            'orcid':           r['orcid'],
+            'openalex_id':     r['openalex_id'],
+            'is_snii':         1 if r['is_snii'] else 0,
+            'source':          _determine_source(r),
+            'audit_verdict':   r['audit_verdict'],
             'institution_ror': r['institution_ror'],
-            'ODS': r.get('ODS', [])
+            'ODS':             r.get('ODS', []),
+            'institution':      h_names[0] if len(h_names) > 0 else 'Sin Institución',
+            'dependency':       h_names[1] if len(h_names) > 1 else '',
+            'dependency_id':    h_ids[1]   if len(h_ids) > 1 else '',
+            'subdependency':    h_names[2] if len(h_names) > 2 else '',
+            'subdependency_id': h_ids[2]   if len(h_ids) > 2 else '',
         }
-        
-        # root_inst es la Universidad real (UNAM, UAM...) — es el nodo i:Institution en Neo4j
-        # MÉXICO NO existe como nodo Institution; es un nivel virtual que añadimos aquí en Python
-        root_inst = str(r['institution']).strip()
-        h_names = r.get('hierarchy_names', [])
-        h_ids = r.get('hierarchy_ids', [])
-        
-        if not isinstance(h_names, list): h_names = []
-        if not isinstance(h_ids, list): h_ids = []
+        rows.append(row)
 
-        # 1. Nivel Institución pura (UNAM, UAM, etc.) — entity = institución para KPIs globales de la uni
-        row_inst = base.copy()
-        row_inst['institution'] = root_inst
-        row_inst['entity'] = root_inst
-        row_inst['entity_id'] = r['institution_ror']
-        rows.append(row_inst)
-        
-        # 2. Todos los niveles de entidad (Dependencia, Subdependencia)
-        # nodes(path) incluye desde la entidad 'e' hasta 'i'.
-        for ent_name, ent_id in zip(h_names, h_ids):
-            if not ent_name or ent_name == root_inst: continue
-            row_ent = base.copy()
-            row_ent['institution'] = root_inst
-            row_ent['entity'] = ent_name
-            row_ent['entity_id'] = ent_id
-            rows.append(row_ent)
-            
-        # 3. Nivel Nacional (MÉXICO)
-        row_mex = base.copy()
-        row_mex['institution'] = 'MÉXICO'
-        row_mex['institution_ror'] = 'MEXICO'
-        row_mex['entity'] = root_inst
-        row_mex['entity_id'] = r['institution_ror'] # Usamos el ROR como ID de la entidad en la vista nacional
-        rows.append(row_mex)
-
-    # Crear el nuevo dataframe expandido
     expanded_df = pd.DataFrame(rows)
-    return expanded_df.fillna('').astype({
-        'is_snii': 'uint8'
-    })
+    return expanded_df.fillna('').astype({'is_snii': 'uint8'})
 
 
 def materialize(reset: bool = False, incremental: bool = False):
@@ -416,11 +391,11 @@ def materialize(reset: bool = False, incremental: bool = False):
     print(" RESUMEN")
     print("=" * 60)
     sample = ch_client.query_df(f"""
-        SELECT institution, entity,
+        SELECT institution, dependency, subdependency,
                count() AS papers,
                countDistinct(academic_name) AS academics
         FROM {TABLE}
-        GROUP BY institution, entity
+        GROUP BY institution, dependency, subdependency
         ORDER BY papers DESC
         LIMIT 15
     """)

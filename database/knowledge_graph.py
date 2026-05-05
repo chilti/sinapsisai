@@ -682,12 +682,21 @@ class Neo4jGraphStore:
                                   audit_verdict: str = None, audit_reason: str = None, 
                                   audit_confidence: int = None, audit_timestamp: str = None,
                                   match_reason: str = None, is_snii: bool = True,
-                                  discarded_candidates: list = None):
+                                  discarded_candidates: list = None,
+                                  entity_name: str = None):
         """
         Actualiza metadatos de un académico (ORCID, auditoría, SNII) sin necesidad de papers.
+        Si no hay ORCID, genera un ID basado en el nombre y la entidad para evitar colisiones.
         """
         import json
-        system_id = orcid if orcid else academic_name
+        
+        # Generar ID robusto: ORCID > Name@Entity > Name
+        if orcid:
+            system_id = orcid
+        elif entity_name:
+            system_id = f"{academic_name}@{entity_name}"
+        else:
+            system_id = academic_name
         
         query = """
         MERGE (a:Author {id: $system_id})

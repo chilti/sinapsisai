@@ -25,6 +25,17 @@ BASE_PATH = os.path.dirname(os.path.abspath(__file__))
 CACHE_DIR = os.path.join(BASE_PATH, 'data', 'cache_ch')
 
 @st.cache_data
+def load_official_snii_counts():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'official_snii_counts.json')
+    if os.path.exists(path):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+@st.cache_data
 def load_cached_data(filename, entity_name=None, academic_name=None, institution_name=None, view_mode="capacidad_instalada", _mtime=None):
     """Carga un parquet del cache jerárquico. Soporta estructura:
     data/cache/[Institution]/[Entity]/[Academic]/filename
@@ -512,9 +523,19 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
             except Exception:
                 pass
                 
+        official_counts = load_official_snii_counts()
+        # Intentamos buscar por entidad, si no, por institución
+        official_count = official_counts.get(entity_name)
+        if official_count is None and institution_name:
+            official_count = official_counts.get(institution_name)
+        
+        snii_val = f"{snii_count:,}"
+        if official_count is not None:
+            snii_val = f"{snii_count:,} / {official_count:,}"
+
         c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("Doc. Totales", f"{int(total.get('num_documents',0)):,}")
-        c2.metric("Investigadores (SNII)", f"{snii_count:,}")
+        c2.metric("Investigadores (SNII)", snii_val, help="Identificados / Total Oficial (Padrón 2025)")
         c3.metric("Citas Acumuladas", f"{int(total.get('citations',0)):,}")
         c4.metric("FWCI Promedio", f"{total.get('fwci_avg',0):.2f}")
         c5.metric("% Open Access", f"{total.get('pct_open_access',0):.1f}%")

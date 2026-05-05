@@ -43,7 +43,7 @@ NEO4J_PASS = os.getenv("NEO4J_PASS")
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 SEED_PATH = os.path.join(SCRIPT_DIR, "..", "data", "authors_mexico_seed.json")
-SNII_PATH = os.path.join(SCRIPT_DIR, "Investigadores_vigentes_2025.xlsx")
+SNII_PATH = os.path.join(SCRIPT_DIR, "..", "data", "Investigadores_vigentes_2025.xlsx")
 EXCEL_FILES = [
     os.path.join(SCRIPT_DIR, "..", "data", "C3-autores.xlsx"),
     os.path.join(SCRIPT_DIR, "..", "data", "ListadoICN-ORCID.xlsx")
