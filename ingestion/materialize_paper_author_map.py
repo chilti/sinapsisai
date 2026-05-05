@@ -147,7 +147,7 @@ def _record_sync(mode: str, rows: int, ok: bool):
 _NEO4J_QUERY = """
 MATCH (a:Academic)-[:AUTHORED]->(p:Paper)
 OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e)
-OPTIONAL MATCH path = (e)-[:PART_OF*..3]->(i:Institution)
+OPTIONAL MATCH path = (e)-[:PART_OF*0..3]->(i:Institution)
 OPTIONAL MATCH (p)-[:ADDRESSES]->(s:SDG)
 WITH a, p, e, i, 
      [n in nodes(path) | n.name] AS hierarchy_names, 
@@ -233,8 +233,8 @@ def _normalize_paper_id(pid: str) -> str:
 
 _NEO4J_DIAG = """
 MATCH (a:Academic)-[:AUTHORED]->(p:Paper)
-OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e:Entity)
-OPTIONAL MATCH path = (e)-[:PART_OF*..5]->(i:Institution)
+OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(e)
+OPTIONAL MATCH path = (e)-[:PART_OF*0..5]->(i:Institution)
 RETURN
     coalesce(i.name, 'SIN_INST') AS institution,
     count(*) AS n
