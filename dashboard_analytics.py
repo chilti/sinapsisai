@@ -502,11 +502,22 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
         total = df_total.iloc[0]
         # KPIs (Fila 1)
         st.markdown("##### Métricas Generales")
-        c1, c2, c3, c4 = st.columns(4)
+        
+        snii_count = 0
+        if 'academics_list' in total and isinstance(total['academics_list'], str):
+            try:
+                import json
+                snii_list = json.loads(total['academics_list'])
+                snii_count = len(snii_list)
+            except Exception:
+                pass
+                
+        c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("Doc. Totales", f"{int(total.get('num_documents',0)):,}")
-        c2.metric("Citas Acumuladas", f"{int(total.get('citations',0)):,}")
-        c3.metric("FWCI Promedio", f"{total.get('fwci_avg',0):.2f}")
-        c4.metric("% Open Access", f"{total.get('pct_open_access',0):.1f}%")
+        c2.metric("Investigadores (SNII)", f"{snii_count:,}")
+        c3.metric("Citas Acumuladas", f"{int(total.get('citations',0)):,}")
+        c4.metric("FWCI Promedio", f"{total.get('fwci_avg',0):.2f}")
+        c5.metric("% Open Access", f"{total.get('pct_open_access',0):.1f}%")
         
         # KPIs (Fila 2)
         st.markdown("##### Métricas de Excelencia")
