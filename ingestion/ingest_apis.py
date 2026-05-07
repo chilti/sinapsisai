@@ -23,6 +23,7 @@ except AttributeError:
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.vector_store import QdrantStore
 from database.knowledge_graph import Neo4jGraphStore
+from database.clickhouse_db import ch_client
 from ingestion import openalex_utils
 
 # Es preferible que inicialice si están las librerías
@@ -338,13 +339,25 @@ def obtener_metadatos_de_openalex_autor(openalex_author_id: str, force_local: bo
 
 # --- Lógica principal de ingesta ---
 
-def process_and_ingest_academics(json_path, force=False, force_local=False, target_name=None, is_snii=False, limit_acads=None, override_entity=None, institution_name="UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)"):
+def process_and_ingest_academics(json_path, force=False, force_local=False, target_name=None, is_snii=False, limit_acads=None, override_entity=None, institution_name=None, dependency_name=None, subdependency_name=None, save_to_ch=False, source_override=None):
     if not os.path.exists(json_path):
         print(f"No se encontró el archivo: {json_path}")
         return
         
     with open(json_path, 'r', encoding='utf-8') as f:
         academicos = json.load(f)
+
+    # Cargar padrón SNII para verificación de estatus
+    from match_snii_orcid import SNII_PATH, normalize_text
+    snii_names = set()
+    if os.path.exists(SNII_PATH):
+        try:
+            df_snii = pd.read_excel(SNII_PATH, sheet_name='4T_2025 (44,794)')
+            # Usar columna de nombre robusta
+            name_col = next((c for c in df_snii.columns if 'NOMBRE' in c.upper()), df_snii.columns[0])
+            snii_names = {normalize_text(str(n)).upper() for n in df_snii[name_col].dropna()}
+        except Exception as e:
+            print(f"⚠️ No se pudo cargar el padrón SNII para validación: {e}")
 
     count = 0
     for academic_name, data in academicos.items():
@@ -360,27 +373,63 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
         entity_name = override_entity or data.get('entity', 'UNAM')
         
         # Lógica de Integridad SNII
-        node_exists = hasattr(graph_store, 'check_academic_node_exists') and graph_store.check_academic_node_exists(academic_name)
+        norm_name = normalize_text(academic_name).upper()
+        in_snii_catalog = norm_name in snii_names
         
-        if is_snii:
-            print(f"🧬 [{academic_name}] Marcando/confirmando como SNII: true...")
+        if is_snii or in_snii_catalog:
+            print(f"🧬 [{academic_name}] Confirmado como SNII (Catálogo o Fuente)...")
             graph_store.set_academic_snii(academic_name, True)
-        elif not node_exists:
-            print(f"📝 [{academic_name}] Nuevo ingreso no-SNII. Marcando explícitamente SNII: false...")
+            current_is_snii = True
+        else:
+            print(f"📝 [{academic_name}] No detectado en SNII. Registrando como Personal Académico Extra...")
             graph_store.set_academic_snii(academic_name, False)
-        # Si NO es SNII pero YA EXISTE, no tocamos la propiedad (preservar estatus previo)
+            current_is_snii = False
+            
+            # Tarea 1.3: Agregar a extra_academics_matches.json si no es SNII
+            extra_path = os.path.join("data", "extra_academics_matches.json")
+            extra_data = []
+            if os.path.exists(extra_path):
+                with open(extra_path, "r", encoding="utf-8") as ef:
+                    try: extra_data = json.load(ef)
+                    except: extra_data = []
+            
+            # Verificar si ya existe en el extra JSON
+            if not any(normalize_text(r.get('snii_author', '')).upper() == norm_name for r in extra_data):
+                extra_entry = {
+                    "snii_author": academic_name,
+                    "snii_institution": institution_name,
+                    "snii_dependency": dependency_name or entity_name,
+                    "snii_subdependency": subdependency_name or "NO APLICA",
+                    "snii_cvu": data.get('cvu', ''),
+                    "match": True if data.get('orcid') or data.get('openalex_id') or data.get('scopus') else False,
+                    "matched_orcid": data.get('orcid'),
+                    "matched_openalex_id": data.get('openalex_id'),
+                    "scopus_ids": data.get('scopus'),
+                    "source": "Manual Ingestion (Non-SNII)",
+                    "is_snii": False
+                }
+                extra_data.append(extra_entry)
+                with open(extra_path, "w", encoding="utf-8") as ef:
+                    json.dump(extra_data, ef, ensure_ascii=False, indent=2)
 
         # 1. Checar flag previas
         if data.get('already_in_db', False) and not force:
             mapped_name = data.get('mapped_name', academic_name)
             print(f"\n[{academic_name}] Ya existe como '{mapped_name}' (cached en excel). Saltar recoleccion.")
-            graph_store.add_academic_full_affiliation(mapped_name, institution_name, entity_name)
+            graph_store.add_academic_full_affiliation(mapped_name, institution_name, dependency_name, subdependency_name)
             continue
             
         # 2. Checar base de datos directo (por si se interrumpió y se vuelve a correr)
-        if hasattr(graph_store, 'check_academic_exists') and graph_store.check_academic_exists(academic_name) and not force:
-            print(f"\n[{academic_name}] Ya existe en Neo4j con papers. Saltando recopilación API y agregando afiliación a '{entity_name}'.")
-            graph_store.add_academic_full_affiliation(academic_name, institution_name, entity_name)
+        # Si ya es SNII en Neo4j, respetamos ese estatus y solo actualizamos afiliación
+        is_already_snii = False
+        if hasattr(graph_store, 'get_academic_ids'):
+            meta = graph_store.get_academic_ids(academic_name)
+            if meta and meta.get('is_snii'):
+                is_already_snii = True
+
+        if (is_already_snii or (hasattr(graph_store, 'check_academic_exists') and graph_store.check_academic_exists(academic_name))) and not force:
+            print(f"\n[{academic_name}] Ya existe en Neo4j (SNII={is_already_snii}). Saltando recopilación API y asegurando afiliación.")
+            graph_store.add_academic_full_affiliation(academic_name, institution_name, dependency_name, subdependency_name)
             continue
 
         scopus_id = data.get('scopus', [])
@@ -632,6 +681,10 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
 
         # --- Inserción en lote en Neo4j ---
         if neo4j_batch:
+            # Sincronización con ClickHouse (Dual Write)
+            if save_to_ch:
+                _sync_to_clickhouse(neo4j_batch, institution_name, dependency_name, subdependency_name, current_is_snii, source_override=source_override)
+
             if hasattr(graph_store, 'add_api_papers_batch'):
                 print(f"      🗄️ Insertando lote de {len(neo4j_batch)} artículos en Neo4j...")
                 graph_store.add_api_papers_batch(neo4j_batch)
@@ -644,8 +697,8 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                                               orcid=item["orcid"], scopus_id=item["scopus_id"],
                                               siia_url=item["siia_url"], entity_name=item["entity_name"])
 
-        # Afiliación del académico a su Entidad e Institución
-        graph_store.add_academic_full_affiliation(academic_name, institution_name, entity_name)
+        # Afiliación del académico a su Entidad e Institución (3 niveles)
+        graph_store.add_academic_full_affiliation(academic_name, institution_name, dependency_name, subdependency_name)
             
         # Vectorización e inserción en Qdrant
         if batch_texts:
@@ -665,20 +718,104 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
 
 
 
+def _sync_to_clickhouse(batch_data, inst, dep, sub, is_snii, source_override=None):
+    """Sincroniza los artículos con las tablas paper_author_map y paper_entity_map de ClickHouse."""
+    try:
+        import pandas as pd
+        ch = ch_client.get_client()
+        author_rows = []
+        entity_rows = []
+        
+        for item in batch_data:
+            doi = item['doi']
+            raw = json.loads(item['raw_metadata'])
+            ids = raw.get('ids', {})
+            
+            # Determinar banderas de indización
+            src_ov = str(source_override).lower() if source_override else ""
+            is_wos = 1 if (src_ov == 'wos' or 'wos' in ids or 'wos' in str(raw.get('indexed_in', [])).lower()) else 0
+            is_scopus = 1 if (src_ov == 'scopus' or 'scopus' in ids or 'scopus' in str(raw.get('indexed_in', [])).lower()) else 0
+            is_pubmed = 1 if (src_ov == 'pubmed' or 'pmid' in ids) else 0
+            is_doaj = 1 if (src_ov == 'doaj' or raw.get('journal_is_in_doaj')) else 0
+
+            # 1. Preparar fila para paper_author_map (Capacidad Instalada)
+            author_rows.append({
+                'paper_id': doi,
+                'academic_name': item['academic_name'],
+                'cvu': item.get('cvu', ''),
+                'orcid': item['orcid'] or '',
+                'openalex_id': item['openalex_id'] or '',
+                'institution': inst or '',
+                'institution_ror': '',
+                'dependency': dep or '',
+                'dependency_id': '',
+                'subdependency': sub or '',
+                'subdependency_id': '',
+                'paper_title': item['title'],
+                'paper_year': int(item['year']),
+                'citations': int(item['citations']),
+                'is_snii': 1 if is_snii else 0,
+                'is_wos': is_wos,
+                'is_scopus': is_scopus,
+                'is_pubmed': is_pubmed,
+                'is_openalex': 1,
+                'is_doaj': is_doaj,
+                'is_semantic_scholar': 1 if 'mag' in ids else 0,
+                'is_dimensions': 1 if 'mag' in ids else 0,
+                'is_lens': 1 if 'mag' in ids or 'pmid' in ids else 0,
+                'source': f'Ingest_APIs_{source_override}' if source_override else 'Ingest_APIs_Dual'
+            })
+            
+            # 2. Preparar fila para paper_entity_map (Producción Institucional)
+            entity_rows.append({
+                'paper_id': doi,
+                'institution': inst or '',
+                'institution_ror': '',
+                'dependency': dep or '',
+                'dependency_id': '',
+                'subdependency': sub or '',
+                'subdependency_id': '',
+                'paper_title': item['title'],
+                'paper_year': int(item['year']),
+                'citations': int(item['citations']),
+                'is_wos': is_wos,
+                'is_scopus': is_scopus,
+                'is_pubmed': is_pubmed,
+                'is_openalex': 1,
+                'is_doaj': is_doaj,
+                'is_semantic_scholar': 1 if 'mag' in ids else 0,
+                'is_dimensions': 1 if 'mag' in ids else 0,
+                'is_lens': 1 if 'mag' in ids or 'pmid' in ids else 0,
+                'source': f'Entity_Sync_{source_override}' if source_override else 'Ingest_APIs_Entity_Sync'
+            })
+            
+        if author_rows:
+            ch.insert_df('paper_author_map', pd.DataFrame(author_rows))
+        if entity_rows:
+            ch.insert_df('paper_entity_map', pd.DataFrame(entity_rows))
+            
+        print(f"      📊 [ClickHouse] {len(author_rows)} registros sincronizados (Dual Write).")
+    except Exception as e:
+        print(f"      [WARN] Error sincronizando con ClickHouse: {e}")
+
 if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="Ingesta de metadatos desde APIs para académicos UNAM-SNII")
     parser.add_argument("input", nargs="?", help="Archivo JSON o DIRECTORIO a procesar")
-    parser.add_argument("--subdependency", type=str, help="Filtrar archivos por nombre de subdependencia")
     parser.add_argument("--limit_acads", type=int, help="Límite de académicos por entidad (pruebas)")
     parser.add_argument("--name", type=str, help="Filtrar por un académico específico")
     parser.add_argument("--force", action="store_true", help="Re-ingestar académicos existentes")
     parser.add_argument("--local", action="store_true", help="Usar SDK nativa de lmstudio para embeddings")
-    parser.add_argument("--entity", type=str, help="Nombre de la entidad/subdependencia para forzar en el grafo")
-    parser.add_argument("--institution", type=str, default="UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", help="Nombre de la institución para forzar en el grafo")
+    parser.add_argument("--ch", action="store_true", help="Sincronizar con ClickHouse (Dual Write)")
+    parser.add_argument("--source", type=str, help="Forzar origen de indización (wos, scopus, pubmed, doaj)")
+    parser.add_argument("--hierarchy", type=str, help="Jerarquía completa: Institución || Dependencia || Subdependencia")
     
     args = parser.parse_args()
+
+    # Validación: Si se pide un nombre específico, DEBE haber jerarquía
+    if args.name and not args.hierarchy:
+        parser.error("La opción --name requiere --hierarchy para asignar la afiliación correcta.")
     
     # Directorio base por defecto
     unam_data_dir = os.path.join("data", "UNAM")
@@ -695,12 +832,6 @@ if __name__ == "__main__":
         # Escaneo automático del directorio estándar
         if os.path.exists(unam_data_dir):
             input_paths = [os.path.join(unam_data_dir, f) for f in os.listdir(unam_data_dir) if f.startswith("profesores_SNII_") and f.endswith(".json")]
-    
-    # Filtrar por subdependencia si se solicita
-    if args.subdependency:
-        input_paths = [p for p in input_paths if args.subdependency.lower() in p.lower()]
-        print(f"🔎 Filtrando archivos por '{args.subdependency}': {len(input_paths)} encontrados.")
-    
     if not input_paths:
         print("❌ No se encontraron archivos para procesar. Verifica el directorio 'data/UNAM/'.")
         sys.exit(1)
@@ -708,6 +839,14 @@ if __name__ == "__main__":
     print(f"🚀 Iniciando procesamiento de {len(input_paths)} archivos de entidad...")
     
     try:
+        # Parsear jerarquía si se proporciona
+        h_inst, h_dep, h_sub = "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", None, None
+        if args.hierarchy:
+            h_parts = [p.strip() for p in args.hierarchy.split("||")]
+            h_inst = h_parts[0] if len(h_parts) > 0 else h_inst
+            h_dep = h_parts[1] if len(h_parts) > 1 else None
+            h_sub = h_parts[2] if len(h_parts) > 2 else h_sub
+
         for json_file in input_paths:
             print(f"\n📂 ************************************************************")
             print(f"📂 PROCESANDO ENTIDAD: {os.path.basename(json_file)}")
@@ -724,8 +863,12 @@ if __name__ == "__main__":
                 target_name=args.name,
                 is_snii=is_snii_file,
                 limit_acads=args.limit_acads,
-                override_entity=args.entity,
-                institution_name=args.institution
+                override_entity=h_sub,
+                institution_name=h_inst,
+                dependency_name=h_dep,
+                subdependency_name=h_sub,
+                save_to_ch=args.ch,
+                source_override=args.source
             )
             
     except KeyboardInterrupt:

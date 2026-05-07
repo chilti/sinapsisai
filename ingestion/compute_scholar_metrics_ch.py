@@ -37,6 +37,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env')))
 
 from database.clickhouse_db import ch_client
+from scripts.generate_snii_counts import generate_official_snii_counts
 
 # ── Importar helpers del script original ───────────────────────────────────
 _THIS_DIR  = Path(os.path.abspath(os.path.dirname(__file__)))
@@ -69,16 +70,17 @@ SELECT
     wf.cited_by_count   AS citations,
     wf.fwci,
     wf.percentile   AS citation_normalized_percentile,
-    wf.is_top_10    AS is_in_top_10_percent,
-    wf.is_top_1     AS is_in_top_1_percent,
+    wf.is_top_10 AS is_in_top_10_percent,
+    wf.is_top_1 AS is_in_top_1_percent,
     wf.is_oa, wf.oa_status,
     wf.topic, wf.subfield, wf.field, wf.domain,
-    wf.language, wf.type, wf.source_id AS Source, wf.source_type,
+    wf.language, wf.type,
+    wf.source_id AS Source, wf.source_type,
     wf.is_retracted, wf.referenced_works_count, wf.keywords, pm.ODS AS ODS,
     wf.author_names, wf.all_country_codes,
     wf.apc_paid_usd, wf.apc_list_usd, wf.counts_by_year, wf.license,
     wf.journal_is_in_doaj, wf.journal_is_core, wf.any_repository_has_fulltext
-FROM works_seed_mexico wf
+FROM works_academic_all wf
 JOIN paper_author_map pm ON wf.id = pm.paper_id
 {filter}
 """
@@ -116,7 +118,8 @@ SELECT
     wf.journal_is_in_doaj,
     wf.journal_is_core,
     wf.any_repository_has_fulltext
-FROM works_seed_mexico wf
+FROM works_academic_all wf
+JOIN paper_entity_map pe ON wf.id = pe.paper_id
 LEFT JOIN (
     SELECT paper_id, any(ODS) as ODS 
     FROM paper_author_map 
@@ -217,7 +220,11 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
         df[['velocity', 'recent_cites_3yr', 'early_impact', 'half_life']] = df.apply(_calc_traj, axis=1)
     
     # 3. Visibilidad e Indexación
-    for c in ['journal_is_in_doaj', 'journal_is_core', 'any_repository_has_fulltext']:
+    index_cols = [
+        'journal_is_in_doaj', 'journal_is_core', 'any_repository_has_fulltext',
+        'is_wos', 'is_scopus', 'is_pubmed', 'is_openalex', 'is_doaj'
+    ]
+    for c in index_cols:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0).astype(int)
         else:
@@ -449,6 +456,18 @@ def _save_aggregate_parquets(df: pd.DataFrame, out_dir: Path,
     else:
         df_tot['academics_list'] = "[]"
 
+    # Inyectar conteo oficial SNII 2025
+    path_counts = BASE_PATH / 'data' / 'official_snii_counts.json'
+    if path_counts.exists():
+        try:
+            with open(path_counts, 'r', encoding='utf-8') as f:
+                official_counts = json.load(f)
+            df_tot['official_snii_count'] = official_counts.get(label, 0)
+        except:
+            df_tot['official_snii_count'] = 0
+    else:
+        df_tot['official_snii_count'] = 0
+
     _save_parquet(df_tot.rename(columns={'_grp': 'entity_name'}),
                   out_dir / 'institucion_total.parquet', updated_files)
 
@@ -620,214 +639,167 @@ ODS_MAP = {
     '16': '16. Paz, justicia e instituciones sólidas', '17': '17. Alianzas para lograr los objetivos'
 }
 
+# ── Funciones de carga de jerarquía y censo ──────────────────────────────
 
-def process_and_save(entity_filter=None, academic_filter=None, 
-                     source_filter='all', institution_filter=None):
-    print("🚀 Iniciando pipeline v3 (ClickHouse JOIN directo)...")
-    updated_files = set()
+AUDIT_PATH = BASE_PATH / 'data' / 'snii_llm_verified_matches.json'
 
-    # ── Obtener jerarquía desde Neo4j (para saber qué entidades procesar) ──
-    print("\n[1] Cargando jerarquía institucional desde Neo4j...")
-    from database.knowledge_graph import Neo4jGraphStore
-    gs = Neo4jGraphStore()
-
-    _HIER_QUERY = """
-    MATCH (i:Institution)
-    OPTIONAL MATCH (i)<-[:PART_OF]-(dep:Dependency)
-    OPTIONAL MATCH (dep)<-[:PART_OF]-(sub:Subdependency)
-    RETURN 
-        i.name AS inst, i.ror AS inst_ror, i.id AS inst_id,
-        dep.name AS dep, dep.id AS dep_id,
-        sub.name AS sub, sub.id AS sub_id
-    """
-    # Mapa: {inst_name: {'ror': ror, 'id': id, 'entities': {dep_name: {'id': id, 'subs': {sub_name: sub_id}}}}}
-    hier = {}
-    with gs.driver.session() as session:
-        for r in session.run(_HIER_QUERY):
-            inst = r["inst"]
-            inst_id = r["inst_id"]
-            ror  = r["inst_ror"] or inst_id # Fallback a ID si no hay ROR
-            dep  = r["dep"]
-            dep_id = r["dep_id"]
-            sub  = r["sub"]
-            sub_id = r["sub_id"]
+def _count_official_census():
+    """Calcula y guarda conteos oficiales desde el JSON de auditoría."""
+    try:
+        if not AUDIT_PATH.exists(): return
+        
+        with open(AUDIT_PATH, 'r', encoding='utf-8') as f:
+            data = json.load(f)
             
+        # Agrupar por Institución, Dependencia y Subdependencia
+        counts = {}
+        for r in data:
+            inst = r.get('snii_institution')
+            dep = r.get('snii_dependency', 'SIN INFORMACIÓN')
+            sub = r.get('snii_subdependency', 'SIN INFORMACIÓN')
             if not inst: continue
-            if inst not in hier: 
-                hier[inst] = {'ror': ror, 'id': inst_id, 'entities': {}}
             
-            if dep:
-                if dep not in hier[inst]['entities']:
-                    hier[inst]['entities'][dep] = {'id': dep_id, 'subs': {}}
-                if sub:
-                    hier[inst]['entities'][dep]['subs'][sub] = sub_id
+            key = f"{inst} || {dep} || {sub}"
+            counts[key] = counts.get(key, 0) + 1
+            
+        output_path = BASE_PATH / 'data' / 'official_snii_counts.json'
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(counts, f, indent=4, ensure_ascii=False)
+        print(f"  → Conteos oficiales guardados en {output_path.name}")
+    except Exception as e:
+        print(f"  ⚠️ Error calculando censo oficial: {e}")
 
-    # Filtros opcionales
-    if institution_filter:
-        institution_filter_norm = institution_filter.strip().upper()
-        hier = {k: v for k, v in hier.items() if k.strip().upper() == institution_filter_norm}
-        if not hier:
-            print(f"⚠️ Institución '{institution_filter}' no encontrada en el grafo.")
-            # Diagnóstico: Mostrar que hay en el grafo
-            available = list(hier.keys())[:10]
-            print(f"   Disponibles (ejemplo): {available}")
-            return
+def _load_hierarchy_from_json(institution_filter=None):
+    """Carga la jerarquía institucional desde el JSON de auditoría."""
+    AUDIT_PATH = BASE_PATH / 'data' / 'snii_llm_verified_matches.json'
+    if not AUDIT_PATH.exists():
+        print(f"❌ No existe {AUDIT_PATH}")
+        return {}
+        
+    hier = {}
+    with open(AUDIT_PATH, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+        for r in data:
+            inst = r.get('snii_institution')
+            if not inst: continue
+            
+            if institution_filter and institution_filter not in inst:
+                continue
 
-    if entity_filter:
-        # Filtrar preservando la estructura
-        new_hier = {}
-        for inst, data in hier.items():
-            filtered_ents = {e: d for e, d in data['entities'].items() if e == entity_filter or entity_filter in d['subs']}
-            if filtered_ents:
-                new_hier[inst] = {'ror': data['ror'], 'entities': filtered_ents}
-        hier = new_hier
+            ror = r.get('matched_ror') or ''
+            # Fallback para RORs mal formados
+            if 'orcid.org' in ror or not ror.startswith('http'):
+                if 'UNAM' in inst: ror = 'https://ror.org/01tmp8f25'
+                else: ror = ''
+                
+            dep = r.get('snii_dependency', 'SIN INFORMACIÓN')
+            sub = r.get('snii_subdependency', 'SIN INFORMACIÓN')
 
-    print(f"  → {len(hier)} institución(es) en jerarquía Neo4j")
+            if inst not in hier:
+                hier[inst] = {'ror': ror, 'entities': {}}
+            if dep not in hier[inst]['entities']:
+                hier[inst]['entities'][dep] = {'subs': set()}
+            if sub and sub != 'NO APLICA':
+                hier[inst]['entities'][dep]['subs'].add(sub)
+                
+    # Convertir sets a listas
+    for inst in hier:
+        for dep in hier[inst]['entities']:
+            hier[inst]['entities'][dep]['subs'] = list(hier[inst]['entities'][dep]['subs'])
+            
+    return hier
 
-    # Cargar mapa nombre → ROR para Producción Institucional
-    ror_map = _get_institution_rors()
+
+def process_and_save(entity_filter=None, academic_filter=None, institution_filter=None, source_filter='all'):
+    """
+    Orquestador principal. Carga jerarquía, consulta ClickHouse y guarda Parquets.
+    """
+    updated_files = set()
+    
+    # ── [0] Conteos oficiales SNII 2025 ──
+    print("\n[0] Actualizando conteos oficiales SNII 2025...")
+    _count_official_census()
+
+    # ── [1] Cargar jerarquía desde el JSON ──
+    print(f"\n[1] Cargando jerarquía institucional desde {AUDIT_PATH.name}...")
+    hier = _load_hierarchy_from_json(institution_filter)
+    if not hier:
+        print("❌ No se cargó ninguna institución.")
+        return
+
     mx_cap_frames = []
-    done = 0
 
-    # ── Procesar institución por institución ──────────────────────────────
+    # ── [2] Procesar institución por institución ──────────────────────────────
     for inst_name, data in hier.items():
         inst_ror = data['ror']
         entities = data['entities']
         safe_inst = _safe_name(inst_name)
         print(f"\n📍 {inst_name} ({inst_ror})")
 
-        # ─ Nivel Institución: Capacidad Instalada ───────────────────────
-        where_cap = "WHERE pm.institution_ror = %(ror)s"
-        df_inst_cap = _query_cap(where_cap, {'ror': inst_ror})
+        # 1. Obtener TODA la capacidad instalada de la institución
+        where_cap = "WHERE (pm.institution_ror = %(ror)s OR pm.institution ILIKE '%%AUTONOMA%%MEXICO%%')"
+        df_full_cap = _query_cap(where_cap, {'ror': inst_ror})
 
-        if df_inst_cap.empty:
-            print(f"  ⚠️ Sin papers de Capacidad Instalada")
-        else:
-            # 1. Determinar el nivel de mayor profundidad por académico
-            best_entity_per_academic = {}
-            for ac_name, grp in df_inst_cap.groupby('academic_name'):
-                # En la nueva tabla columnar, la profundidad está implícita:
-                # Subdependency > Dependency > Institution
-                # Pero un académico puede estar en varias filas si tiene varios papers.
-                # Queremos su entidad "hoja" más frecuente o simplemente la más profunda encontrada.
-                potential_entities = []
-                for _, row_ac in grp.iterrows():
-                    if row_ac['subdependency']: potential_entities.append((row_ac['subdependency'], 3))
-                    elif row_ac['dependency']: potential_entities.append((row_ac['dependency'], 2))
-                    else: potential_entities.append((row_ac['institution'], 1))
-                
-                # Quedarnos con la de mayor profundidad
-                potential_entities.sort(key=lambda x: x[1], reverse=True)
-                best_entity_per_academic[ac_name] = potential_entities[0][0] if potential_entities else inst_name
+        if df_full_cap.empty:
+            print(f"  ⚠️ Sin papers en paper_author_map para {inst_name}. Probando fallback por nombre...")
+            where_cap = "WHERE pm.institution = %(inst)s"
+            df_full_cap = _query_cap(where_cap, {'inst': inst_name})
+            
+        if df_full_cap.empty:
+            print(f"  ❌ No se encontró capacidad instalada.")
+            continue
 
-            # 2. Sintetizar columna 'entity' para compatibilidad con el resto del script
-            df_inst_cap['entity'] = df_inst_cap['academic_name'].map(best_entity_per_academic)
-
-            # 3. Ahora sí eliminar duplicados (evita métricas infladas por join multinivel)
-            df_inst_cap = df_inst_cap.drop_duplicates(subset=['paper_id', 'academic_name'])
-            ac_count = df_inst_cap['academic_name'].nunique() if 'academic_name' in df_inst_cap.columns else 0
-            print(f"  📄 {len(df_inst_cap):,} papers (Capacidad) | 👨‍🔬 {ac_count} SNIIs")
-
-            # 3. Flushear académicos usando su entidad más profunda
-            for ac_name, df_ac in df_inst_cap.groupby('academic_name'):
-                entity_val = best_entity_per_academic.get(ac_name, inst_name)
-                _flush_academic(ac_name, df_ac.copy(), entity_val, inst_name, updated_files)
-
-            cap_dir = CACHE_DIR / safe_inst / 'capacidad_instalada'
-            _save_aggregate_parquets(df_inst_cap, cap_dir, updated_files, label=inst_name)
-            # Link para fallback del dashboard
-            _save_aggregate_parquets(df_inst_cap, CACHE_DIR / safe_inst, updated_files, label=inst_name)
-
-        # ─ Nivel Institución: Producción Institucional (ROR o ID Directo) ──
-        inst_id = data.get('id', '')
+        print(f"  📊 {len(df_full_cap):,} registros recuperados. Iniciando agregación...")
         
-        conditions = []
-        if inst_ror and inst_ror != 'None' and not inst_ror.startswith('manual:'): 
-            conditions.append(f"has(institution_rors, '{inst_ror}')")
-        if inst_id and inst_id != 'None' and not inst_id.startswith('manual:'): 
-            conditions.append(f"has(institution_ids, '{inst_id}')")
+        # 2. Visibilidad e Indexación
+        for c in ['is_wos', 'is_scopus', 'is_pubmed', 'is_openalex', 'is_doaj']:
+            if c in df_full_cap.columns:
+                df_full_cap[c] = pd.to_numeric(df_full_cap[c], errors='coerce').fillna(0).astype(int)
+
+        # 3. Nivel Académico
+        df_full_cap['entity'] = df_full_cap['subdependency'].fillna(df_full_cap['dependency']).fillna(df_full_cap['institution'])
+        for ac_name, df_ac in df_full_cap.groupby('academic_name'):
+            ac_entity = df_ac['entity'].mode()[0] if not df_ac['entity'].empty else inst_name
+            _flush_academic(ac_name, df_ac.copy(), ac_entity, inst_name, updated_files)
+
+        # 4. Agregación Bottom-Up (Dependencias y Subdependencias)
+        # Capacidad por Dependencia
+        if 'dependency' in df_full_cap.columns:
+            for dep_name, df_dep in df_full_cap[df_full_cap['dependency'] != 'SIN INFORMACIÓN'].groupby('dependency'):
+                d_dep = CACHE_DIR / safe_inst / _safe_name(dep_name)
+                _save_aggregate_parquets(df_dep, d_dep, updated_files, label=dep_name)
+
+        # Capacidad por Subdependencia
+        if 'subdependency' in df_full_cap.columns:
+            for sub_name, df_sub in df_full_cap[df_full_cap['subdependency'] != 'SIN INFORMACIÓN'].groupby('subdependency'):
+                d_sub = CACHE_DIR / safe_inst / _safe_name(sub_name)
+                _save_aggregate_parquets(df_sub, d_sub, updated_files, label=sub_name)
+
+        # Capacidad Institución (Total)
+        cap_dir = CACHE_DIR / safe_inst / 'capacidad_instalada'
+        _save_aggregate_parquets(df_full_cap, cap_dir, updated_files, label=inst_name)
+        _save_aggregate_parquets(df_full_cap, CACHE_DIR / safe_inst, updated_files, label=inst_name)
         
-        if conditions:
-            print(f"  🔍 Buscando Producción: {' OR '.join(conditions)}")
-            filter_prod = f"WHERE {' OR '.join(conditions)}"
-            df_prod = _query_prod(filter_prod)
-            if not df_prod.empty:
-                prod_dir = CACHE_DIR / safe_inst / 'produccion_institucional'
-                _save_aggregate_parquets(df_prod, prod_dir, updated_files, label=inst_name)
-                print(f"  🏛️ {len(df_prod):,} papers (Producción)")
-        else:
-            print(f"  ⚠️ Sin IDs válidos (ROR/OpenAlex) para Producción Institucional.")
+        mx_cap_frames.append(df_full_cap)
 
-        # ─ Nivel Dependencia y Subdependencia ────────────────────────────
-        for dep_name, dep_data in entities.items():
-            dep_id = dep_data['id']
-            subs = dep_data['subs']
-            safe_dep = _safe_name(dep_name)
-            
-            # Dependencia: Capacidad Instalada (vía autores)
-            ids_to_query = [i for i in ([dep_id] + list(subs.values())) if i and i != 'None']
-            names_to_query = [dep_name] + list(subs.keys())
-            
-            if not ids_to_query:
-                where_dep = "WHERE pm.institution_ror = %(ror)s AND pm.dependency IN %(names)s"
-                params_dep = {'ror': inst_ror, 'names': names_to_query}
-            else:
-                where_dep = "WHERE pm.institution_ror = %(ror)s AND (pm.dependency_id IN %(ids)s OR pm.dependency IN %(names)s)"
-                params_dep = {'ror': inst_ror, 'ids': ids_to_query, 'names': names_to_query}
-                
-            df_dep_cap = _query_cap(where_dep, params_dep)
-            
-            if not df_dep_cap.empty:
-                df_dep_cap = df_dep_cap.drop_duplicates(subset=['paper_id', 'academic_name'])
-                ac_count = df_dep_cap['academic_name'].nunique() if 'academic_name' in df_dep_cap.columns else 0
-                print(f"  ├─ {dep_name}: {len(df_dep_cap):,} papers (Capacidad) | 👨‍🔬 {ac_count} SNIIs")
-                dep_dir_cap = CACHE_DIR / safe_inst / safe_dep / 'capacidad_instalada'
-                _save_aggregate_parquets(df_dep_cap, dep_dir_cap, updated_files, label=dep_name)
-                # Fallback link
-                _save_aggregate_parquets(df_dep_cap, CACHE_DIR / safe_inst / safe_dep, updated_files, label=dep_name)
+        # 5. Producción Institucional (Firma / ROR)
+        where_prod = "WHERE (pe.institution_ror = %(ror)s OR pe.institution ILIKE '%%AUTONOMA%%MEXICO%%')"
+        df_prod = _query_prod(where_prod, {'ror': inst_ror})
+        
+        if not df_prod.empty:
+            prod_dir = CACHE_DIR / safe_inst / 'produccion_institucional'
+            _save_aggregate_parquets(df_prod, prod_dir, updated_files, label=inst_name)
+            print(f"  🏛️ {len(df_prod):,} papers (Producción Institucional)")
 
-            # Dependencia: Producción Institucional (vía ID de OpenAlex de la entidad)
-            # Buscamos papers donde el ID de la dependencia o sus subs aparezcan en las afiliaciones
-            dep_prod_ids = [i for i in ([dep_id] + list(subs.values())) if i and i != 'None' and not str(i).startswith('manual:')]
-            if dep_prod_ids:
-                ids_str = ", ".join([f"'{i}'" for i in dep_prod_ids])
-                df_dep_prod = _query_prod(f"WHERE hasAny(institution_ids, [{ids_str}])")
-                if not df_dep_prod.empty:
-                    dep_dir_prod = CACHE_DIR / safe_inst / safe_dep / 'produccion_institucional'
-                    _save_aggregate_parquets(df_dep_prod, dep_dir_prod, updated_files, label=dep_name)
-                    print(f"  ├─ {dep_name}: {len(df_dep_prod):,} papers (Producción)")
+            # Producción por Dependencia
+            if 'dependency' in df_prod.columns:
+                for dep_name, df_dep_p in df_prod[df_prod['dependency'] != 'SIN INFORMACIÓN'].groupby('dependency'):
+                    p_dep = CACHE_DIR / safe_inst / _safe_name(dep_name) / 'produccion_institucional'
+                    _save_aggregate_parquets(df_dep_p, p_dep, updated_files, label=dep_name)
 
-            # Subdependencias
-            for sub_name, sub_id in subs.items():
-                safe_sub = _safe_name(sub_name)
-                
-                # Capacidad Instalada
-                if not sub_id or sub_id == 'None':
-                    where_sub = "WHERE pm.institution_ror = %(ror)s AND pm.subdependency = %(name)s"
-                    params_sub = {'ror': inst_ror, 'name': sub_name}
-                else:
-                    where_sub = "WHERE pm.institution_ror = %(ror)s AND (pm.subdependency_id = %(id)s OR pm.subdependency = %(name)s)"
-                    params_sub = {'ror': inst_ror, 'id': sub_id, 'name': sub_name}
-                    
-                df_sub_cap = _query_cap(where_sub, params_sub)
-                if not df_sub_cap.empty:
-                    df_sub_cap = df_sub_cap.drop_duplicates(subset=['paper_id', 'academic_name'])
-                    ac_count = df_sub_cap['academic_name'].nunique() if 'academic_name' in df_sub_cap.columns else 0
-                    print(f"  │  └─ {sub_name}: {len(df_sub_cap):,} papers (Capacidad) | 👨‍🔬 {ac_count} SNIIs")
-                    sub_dir_cap = CACHE_DIR / safe_inst / safe_sub / 'capacidad_instalada'
-                    _save_aggregate_parquets(df_sub_cap, sub_dir_cap, updated_files, label=sub_name)
-                    # Fallback link
-                    _save_aggregate_parquets(df_sub_cap, CACHE_DIR / safe_inst / safe_sub, updated_files, label=sub_name)
+        print(f"  ✅ Agregación completada para {inst_name}")
 
-                # Producción
-                if sub_id and sub_id != 'None' and not str(sub_id).startswith('manual:'):
-                    df_sub_prod = _query_prod(f"WHERE has(institution_ids, '{sub_id}')")
-                    if not df_sub_prod.empty:
-                        sub_dir_prod = CACHE_DIR / safe_inst / safe_sub / 'produccion_institucional'
-                        _save_aggregate_parquets(df_sub_prod, sub_dir_prod, updated_files, label=sub_name)
-                        print(f"  │  └─ {sub_name}: {len(df_sub_prod):,} papers (Producción)")
-
-    # ── Nivel México — Capacidad Instalada ────────────────────────────────
+    # ── [3] Nivel México ──
     if mx_cap_frames and not academic_filter and not entity_filter and not institution_filter:
         print("\n⏳ Calculando métricas de México (Capacidad Instalada)...")
         df_mx = pd.concat(mx_cap_frames, ignore_index=True).drop_duplicates(subset=['paper_id'])
@@ -896,4 +868,5 @@ if __name__ == '__main__':
         entity_filter=args.entity,
         academic_filter=args.academic,
         institution_filter=args.institution,
-        source_filter=args.source)
+        source_filter=args.source
+    )
