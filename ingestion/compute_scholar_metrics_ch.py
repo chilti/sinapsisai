@@ -736,14 +736,21 @@ def process_and_save(entity_filter=None, academic_filter=None, institution_filte
         safe_inst = _safe_name(inst_name)
         print(f"\n📍 {inst_name} ({inst_ror})")
 
-        # 1. Obtener TODA la capacidad instalada de la institución
+        # 1. Obtener capacidad instalada (con filtro de académico si existe)
+        params = {'ror': inst_ror}
         where_cap = "WHERE (pm.institution_ror = %(ror)s OR pm.institution ILIKE '%%AUTONOMA%%MEXICO%%')"
-        df_full_cap = _query_cap(where_cap, {'ror': inst_ror})
+        if academic_filter:
+            where_cap += " AND pm.academic_name = %(ac)s"
+            params['ac'] = academic_filter
+
+        df_full_cap = _query_cap(where_cap, params)
 
         if df_full_cap.empty:
             print(f"  ⚠️ Sin papers en paper_author_map para {inst_name}. Probando fallback por nombre...")
             where_cap = "WHERE pm.institution = %(inst)s"
-            df_full_cap = _query_cap(where_cap, {'inst': inst_name})
+            if academic_filter:
+                where_cap += " AND pm.academic_name = %(ac)s"
+            df_full_cap = _query_cap(where_cap, params | {'inst': inst_name})
             
         if df_full_cap.empty:
             print(f"  ❌ No se encontró capacidad instalada.")
@@ -763,6 +770,11 @@ def process_and_save(entity_filter=None, academic_filter=None, institution_filte
             _flush_academic(ac_name, df_ac.copy(), ac_entity, inst_name, updated_files)
 
         # 4. Agregación Bottom-Up (Dependencias y Subdependencias)
+        # Solo si NO hay filtro de académico para no corromper agregados parciales
+        if academic_filter:
+            print(f"  ℹ️ Saltando agregaciones institucionales (filtro académico activo)")
+            continue
+
         # Capacidad por Dependencia
         if 'dependency' in df_full_cap.columns:
             for dep_name, df_dep in df_full_cap[df_full_cap['dependency'] != 'SIN INFORMACIÓN'].groupby('dependency'):
