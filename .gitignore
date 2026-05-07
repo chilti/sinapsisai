@@ -32,3 +32,9 @@ temp_*.txt
 schemas.txt
 temp_schemas.txt
 scratch/
+# Informes y salidas
+agent/council/output/
+agent/council/scripts/
+*.png
+*.csv
+query_test.py
