@@ -91,7 +91,7 @@ def _backoff_get(url: str, params: dict = None,
 # ─────────────────────────────────────────────────────────────────
 def get_work(doi: str = None, title: str = None,
              email: str = None, api_key: str = None,
-             local_only: bool = False) -> dict | None:
+             local_only: bool = False, quiet: bool = False) -> dict | None:
     """
     Busca un trabajo en OpenAlex.
     Orden: API local → API oficial.
@@ -102,23 +102,13 @@ def get_work(doi: str = None, title: str = None,
     # ── 1. API LOCAL ─────────────────────────────────────────
     if doi:
         clean_doi = doi.replace("https://doi.org/", "").strip()
-        # Nuevo path directo: /works/doi:10.xxx
         url = f"{LOCAL_BASE}/works/doi:{clean_doi}"
         resp = _backoff_get(url)
         if resp and resp.status_code == 200:
             data = resp.json()
-            # Respuesta directa (single work) o lista
             if isinstance(data, dict) and data.get("id"):
-                print(f"      ✅ [Local] Encontrado por DOI directo: {clean_doi}")
+                if not quiet: print(f"      ✅ [Local] Encontrado por DOI directo: {clean_doi}")
                 return data
-            # Fallback con filtro (por si el servidor local usa otro estilo)
-            resp2 = _backoff_get(f"{LOCAL_BASE}/works",
-                                 {"filter": f"doi:https://doi.org/{clean_doi}", "per_page": 1})
-            if resp2 and resp2.status_code == 200:
-                results = resp2.json().get("results", [])
-                if results:
-                    print(f"      ✅ [Local] Encontrado por filtro DOI: {clean_doi}")
-                    return results[0]
 
     if title and len(title) > 10:
         resp = _backoff_get(f"{LOCAL_BASE}/works",
@@ -130,7 +120,7 @@ def get_work(doi: str = None, title: str = None,
                     None, _clean_title(title), _clean_title(results[0].get("title"))
                 ).ratio()
                 if ratio > 0.95:
-                    print(f"      ✅ [Local] Encontrado por título (sim={ratio:.2f}): {title[:60]}")
+                    if not quiet: print(f"      ✅ [Local] Encontrado por título (sim={ratio:.2f}): {title[:60]}")
                     return results[0]
 
     if local_only:
@@ -144,11 +134,10 @@ def get_work(doi: str = None, title: str = None,
 
     if doi:
         clean_doi = doi.replace("https://doi.org/", "").strip()
-        # Nuevo path directo documentado: GET /works/doi:10.xxx
         url = f"{OFFICIAL_BASE}/works/doi:{clean_doi}"
         resp = _backoff_get(url, auth)
         if resp and resp.status_code == 200:
-            print(f"      ✅ [Oficial] Encontrado por DOI: {clean_doi}")
+            if not quiet: print(f"      ✅ [Oficial] Encontrado por DOI: {clean_doi}")
             return resp.json()
         if resp and resp.status_code in (403, 429):
             OFFICIAL_API_BLOCKED = True
@@ -164,7 +153,7 @@ def get_work(doi: str = None, title: str = None,
                     None, _clean_title(title), _clean_title(results[0].get("title"))
                 ).ratio()
                 if ratio > 0.95:
-                    print(f"      ✅ [Oficial] Encontrado por título (sim={ratio:.2f}): {title[:60]}")
+                    if not quiet: print(f"      ✅ [Oficial] Encontrado por título (sim={ratio:.2f}): {title[:60]}")
                     return results[0]
         if resp and resp.status_code in (403, 429):
             OFFICIAL_API_BLOCKED = True
@@ -178,19 +167,25 @@ def get_work(doi: str = None, title: str = None,
 def get_works_batch(dois: list, email: str = None,
                     local_only: bool = False) -> dict:
     """
-    Busca hasta 50 DOIs usando filter=doi:a|b|c.
+    Busca múltiples DOIs usando filter=doi:a|b|c.
+    Procesa en fragmentos de 50 para evitar URLs demasiado largas.
     Retorna dict {doi_clean: work_dict}.
-    Prioridad: local → oficial.
     """
     global OFFICIAL_API_BLOCKED
     if not dois:
         return {}
 
     results_dict = {}
-
-    def _fetch(base_url: str, clean_dois: list, extra_params: dict = None) -> list:
-        doi_filter = "|".join([f"https://doi.org/{d}" for d in clean_dois])
-        params = {"filter": f"doi:{doi_filter}", "per_page": len(clean_dois)}
+    
+    # Normalizar DOIs de entrada
+    clean_input_dois = [d.replace("https://doi.org/", "").strip().lower() for d in dois if d]
+    
+    def _fetch_chunk(base_url: str, chunk: list, extra_params: dict = None, is_global: bool = False) -> list:
+        doi_filter = "|".join([f"https://doi.org/{d}" for d in chunk])
+        # skip_count='true' evita que ClickHouse haga un SELECT count() extra, ahorrando tiempo
+        params = {"filter": f"doi:{doi_filter}", "per_page": len(chunk), "skip_count": "true"}
+        if is_global:
+            params["global"] = "true"
         if extra_params:
             params.update(extra_params)
         resp = _backoff_get(f"{base_url}/works", params)
@@ -198,22 +193,39 @@ def get_works_batch(dois: list, email: str = None,
             return resp.json().get("results", [])
         return []
 
-    # 1. Local
-    works = _fetch(LOCAL_BASE, dois)
-    for w in works:
-        d_key = (w.get("doi") or "").replace("https://doi.org/", "").strip().lower()
-        if d_key:
-            results_dict[d_key] = w
+    # Procesar por trozos de 50
+    chunk_size = 50
+    for i in range(0, len(clean_input_dois), chunk_size):
+        chunk = clean_input_dois[i:i+chunk_size]
+        
+        # 1. Local (Seed Mexico)
+        works = _fetch_chunk(LOCAL_BASE, chunk)
+        
+        # 1.1 Fallback Local (Global) si el seed no devolvió todo
+        missing_after_seed = [d for d in chunk if d not in [ (w.get("doi") or "").replace("https://doi.org/", "").strip().lower() for w in works ]]
+        if missing_after_seed:
+            works_global = _fetch_chunk(LOCAL_BASE, missing_after_seed, is_global=True)
+            works.extend(works_global)
 
-    # 2. Oficial para los faltantes
-    missing = [d for d in dois if d.lower() not in results_dict]
-    if missing and not local_only and not OFFICIAL_API_BLOCKED:
-        auth = _auth_params()
-        works = _fetch(OFFICIAL_BASE, missing, auth)
         for w in works:
             d_key = (w.get("doi") or "").replace("https://doi.org/", "").strip().lower()
             if d_key:
                 results_dict[d_key] = w
+
+        # 2. Oficial (solo si faltan y no estamos bloqueados)
+        missing_in_chunk = [d for d in chunk if d not in results_dict]
+        if missing_in_chunk and not local_only and not OFFICIAL_API_BLOCKED:
+            auth = _auth_params()
+            works_off = _fetch_chunk(OFFICIAL_BASE, missing_in_chunk, auth)
+            for w in works_off:
+                d_key = (w.get("doi") or "").replace("https://doi.org/", "").strip().lower()
+                if d_key:
+                    results_dict[d_key] = w
+            
+            # Verificar si nos bloquearon tras este chunk
+            if len(missing_in_chunk) > 0 and len(works_off) == 0:
+                # Podría ser bloqueo o simplemente que no existen, pero _backoff_get ya marca OFFICIAL_API_BLOCKED
+                pass
 
     return results_dict
 

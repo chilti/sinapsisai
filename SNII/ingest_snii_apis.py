@@ -22,6 +22,8 @@ except AttributeError:
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.vector_store import QdrantStore
 from database.knowledge_graph import Neo4jGraphStore
+from database.clickhouse_db import ch_client
+import pandas as pd
 from ingestion import openalex_utils
 
 # Es preferible que inicialice si están las librerías
@@ -201,35 +203,39 @@ def obtener_metadatos_de_openalex_autor(openalex_author_id, force_local=False):
     local_api = os.getenv("OPENALEX_LOCAL_API", "http://localhost:5012")
     
     # --- Intento 1: API Local ---
-    if not force_local:
-        try:
-            url = f"{local_api}/works"
-            params = {"filter": f"author.id:{oa_id_clean}", "per_page": 200}
-            with httpx.Client(verify=False, timeout=30) as client:
-                resp = client.get(url, params=params)
-                if resp.status_code == 200:
-                    works = resp.json().get('results', [])
-                    for w in works:
-                        doi = w.get('doi') or w.get('id')
-                        if doi:
-                            doi_clean = str(doi).replace('https://doi.org/', '').replace('http://doi.org/', '').strip('/')
-                            if doi_clean and doi_clean not in metadatos:
-                                metadatos[doi_clean] = {
-                                    'Title': w.get('title', 'Sin Título'),
-                                    'Year': w.get('publication_year', 0),
-                                    'DOI': doi_clean,
-                                    'Source': 'OpenAlex_AuthorID_Local',
-                                    'Authors': None,
-                                    'Cited_by': w.get('cited_by_count', 0),
-                                    'Abstract': None,
-                                    'openalex_url': w.get('id'), # Persistir ID de OpenAlex
-                                    '_raw_oa': w  # Conservar raw para enriquecimiento posterior
-                                }
-                    if metadatos:
-                        print(f"    [OpenAlex Local] Author {oa_id_clean}: {len(metadatos)} trabajos.")
-                        return metadatos
-        except Exception as e:
-            print(f"    [WARN] Error API Local OpenAlex Author: {e}")
+    # Intentar siempre local primero por eficiencia
+    try:
+        url = f"{local_api}/works"
+        params = {"filter": f"author.id:{oa_id_clean}", "per_page": 200}
+        with httpx.Client(verify=False, timeout=30) as client:
+            resp = client.get(url, params=params)
+            if resp.status_code == 200:
+                works = resp.json().get('results', [])
+                for w in works:
+                    doi = w.get('doi') or w.get('id')
+                    if doi:
+                        doi_clean = str(doi).replace('https://doi.org/', '').replace('http://doi.org/', '').strip('/')
+                        if doi_clean and doi_clean not in metadatos:
+                            metadatos[doi_clean] = {
+                                'Title': w.get('title', 'Sin Título'),
+                                'Year': w.get('publication_year', 0),
+                                'DOI': doi_clean,
+                                'Source': 'OpenAlex_AuthorID_Local',
+                                'Authors': None,
+                                'Cited_by': w.get('cited_by_count', 0),
+                                'Abstract': None,
+                                'openalex_url': w.get('id'),
+                                '_raw_oa': w
+                            }
+                if metadatos:
+                    print(f"    [OpenAlex Local] Author {oa_id_clean}: {len(metadatos)} trabajos.")
+                    return metadatos
+    except Exception as e:
+        print(f"    [WARN] Error API Local OpenAlex Author: {e}")
+    
+    # Si force_local es True y llegamos aquí, no intentamos la oficial
+    if force_local:
+        return {}
     
     # --- Intento 2: API Oficial (pyalex) ---
     try:
@@ -260,22 +266,27 @@ def obtener_metadatos_de_openalex_autor(openalex_author_id, force_local=False):
 
 
 
-def ingest_researcher_data(data, force=False, force_local=False):
+def ingest_researcher_data(data, force=False, force_local=False, current_idx=None, total=None, save_to_ch=False):
     """Procesa e ingesta los datos de un único investigador."""
     academic_name = data.get('snii_author')
     if not academic_name: return
     
     inst_name = data.get('snii_institution', 'INSTITUCIÓN DESCONOCIDA')
+    dep_name = data.get('snii_dependency', 'SIN INFORMACIÓN')
     sub_name = data.get('snii_subdependency', 'SIN INFORMACIÓN')
     orcid = data.get('matched_orcid')
     
     # 1. Actualizar metadatos básicos y auditoría directamente
     audit = data.get('audit', {})
-    print(f"\n🏷️ [{academic_name}] Actualizando metadatos y afiliación...")
+    if current_idx and total:
+        print(f"\n🏷️ [{current_idx}/{total}] [{academic_name}] Actualizando metadatos y afiliación...")
+    else:
+        print(f"\n🏷️ [{academic_name}] Actualizando metadatos y afiliación...")
     
     if hasattr(graph_store, 'update_academic_metadata'):
         graph_store.update_academic_metadata(
             academic_name=academic_name,
+            cvu=data.get('snii_cvu'),
             orcid=orcid if data.get('match') is True and audit.get('verdict') != 'FALSE_POSITIVE' else None,
             scopus_id=data.get('scopus_ids'),
             audit_verdict=audit.get('verdict'),
@@ -285,13 +296,14 @@ def ingest_researcher_data(data, force=False, force_local=False):
             match_reason=data.get('reason'),
             discarded_candidates=data.get('discarded_candidates'),
             is_snii=True,
-            entity_name=sub_name if sub_name != "SIN INFORMACIÓN" else inst_name
+            entity_name=sub_name if sub_name != "SIN INFORMACIÓN" else (dep_name if dep_name != "SIN INFORMACIÓN" else inst_name)
         )
     else:
         graph_store.set_academic_snii(academic_name, True)
 
     # 2. Asegurar afiliación jerárquica
-    graph_store.add_academic_full_affiliation(academic_name, inst_name, sub_name)
+    graph_store.add_academic_full_affiliation(academic_name, inst_name, dep_name, sub_name)
+
 
     # --- Enriquecer con IDs desde Neo4j ---
     neo4j_ids = {"orcid": None, "openalex_id": None}
@@ -372,10 +384,22 @@ def ingest_researcher_data(data, force=False, force_local=False):
     batch_payloads = []
     batch_texts = []
 
+    # Optimización: Filtrar documentos que ya existen en Qdrant por lote
+    ids_to_check = [{"doi": d, "title": r.get("Title")} for d, r in meta_unificada.items()]
+    missing_dois_in_qdrant = set()
+    if hasattr(vector_store, 'filter_existing_ids'):
+        missing_dois_in_qdrant = set(vector_store.filter_existing_ids(ids_to_check))
+    else:
+        # Fallback si el método no existe aún en el objeto instanciado
+        missing_dois_in_qdrant = {d for d in meta_unificada.keys()}
+
+    print(f"      🔍 Qdrant Check: {len(meta_unificada)} trabajos totales. {len(meta_unificada) - len(missing_dois_in_qdrant)} ya existen, {len(missing_dois_in_qdrant)} nuevos para vectorizar.")
+
     for doi, record in meta_unificada.items():
         text_for_embedding = f"Title: {record.get('Title')}\n"
         work = None
         
+        # (Lógica de OpenAlex ya procesada en batch_results)
         _doi_clean = doi if not doi.startswith('orcid-work:') else None
         _doi_key = _doi_clean.lower() if _doi_clean else None
         
@@ -383,7 +407,7 @@ def ingest_researcher_data(data, force=False, force_local=False):
             work = batch_results[_doi_key]
         elif not _doi_clean or _doi_key not in batch_results:
             try:
-                work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'), local_only=openalex_blocked)
+                work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'), local_only=openalex_blocked, quiet=True)
             except:
                 work = None
 
@@ -397,9 +421,9 @@ def ingest_researcher_data(data, force=False, force_local=False):
             record['Cited_by'] = work.get('cited_by_count', record.get('Cited_by', 0))
             record['Source'] += ' + OpenAlex'
 
-        qdrant_exists = False
-        if hasattr(vector_store, 'check_document_exists'):
-            qdrant_exists = vector_store.check_document_exists(doi=doi, title=record.get("Title"))
+        # Verificar existencia en Qdrant usando el set pre-calculado
+        u_str = doi if doi and str(doi).strip().lower() != "none" else record.get("Title")
+        qdrant_exists = u_str not in missing_dois_in_qdrant
             
         if not qdrant_exists:
             if record.get('Abstract'):
@@ -452,6 +476,48 @@ def ingest_researcher_data(data, force=False, force_local=False):
         
     graph_store.add_academic_full_affiliation(academic_name, inst_name, sub_name)
         
+    # --- DUAL WRITE TO CLICKHOUSE ---
+    if save_to_ch and neo4j_batch:
+        try:
+            ch = ch_client.get_client()
+            rows_ch = []
+            for item in neo4j_batch:
+                # Recuperar metadatos crudos para detectar bases
+                raw_data = json.loads(item['raw_metadata'])
+                oa_data = raw_data.get('_raw_oa', {})
+                oa_ids_dict = oa_data.get('ids', {})
+                
+                rows_ch.append({
+                    'paper_id': item['doi'],
+                    'academic_name': item['academic_name'],
+                    'cvu': str(data.get('cvu', '')),
+                    'orcid': item['orcid'] or '',
+                    'openalex_id': item['openalex_id'] or '',
+                    'institution': inst_name,
+                    'institution_ror': '',
+                    'dependency': dep_name,
+                    'subdependency': sub_name,
+                    'paper_title': item['title'],
+                    'paper_year': int(item['year']),
+                    'citations': int(item['citations']),
+                    'is_wos': 1 if 'wos' in oa_ids_dict else 0,
+                    'is_scopus': 1 if 'scopus' in oa_ids_dict else 0,
+                    'is_pubmed': 1 if 'pmid' in oa_ids_dict else 0,
+                    'is_openalex': 1,
+                    'is_doaj': 1 if oa_data.get('is_oa') and 'doaj' in str(oa_data.get('locations', [])).lower() else 0,
+                    'is_semantic_scholar': 1 if 'mag' in oa_ids_dict else 0,
+                    'is_dimensions': 1 if 'mag' in oa_ids_dict else 0,
+                    'is_lens': 1 if 'mag' in oa_ids_dict or 'pmid' in oa_ids_dict else 0,
+                    'is_snii': 1,
+                    'source': 'SNII_Dual_Ingest',
+                    'audit_verdict': item.get('audit_verdict') or 'UNVERIFIED'
+                })
+            if rows_ch:
+                ch.insert_df('paper_author_map', pd.DataFrame(rows_ch))
+                print(f"      📊 [ClickHouse] {len(rows_ch)} registros sincronizados con índices (WoS/Scopus/etc).")
+        except Exception as e:
+            print(f"      [WARN] Error al sincronizar con ClickHouse: {e}")
+
     if batch_texts:
         print(f"  -> Vectorizando {len(batch_texts)} artículos...")
         try:
@@ -465,7 +531,7 @@ def ingest_researcher_data(data, force=False, force_local=False):
             print(f"  ❌ Error en vectores: {e}")
 
 
-def process_and_ingest_snii(json_path, force=False, force_local=False, target_name=None, limit_acads=None, confirmed_only=False, offset=0):
+def process_and_ingest_snii(json_path, force=False, force_local=False, target_name=None, limit_acads=None, confirmed_only=False, offset=0, save_to_ch=False):
     if not os.path.exists(json_path):
         print(f"No se encontró el archivo: {json_path}")
         return
@@ -508,7 +574,7 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
             continue
             
         count += 1
-        ingest_researcher_data(data, force=force, force_local=force_local)
+        ingest_researcher_data(data, force=force, force_local=force_local, current_idx=count, total=len(registros_to_process), save_to_ch=save_to_ch)
 
 if __name__ == "__main__":
     import argparse
@@ -520,6 +586,7 @@ if __name__ == "__main__":
     parser.add_argument("--local", action="store_true", help="Usar recursos locales (OpenAlex y Embeddings) para evitar límites de API")
     parser.add_argument("--confirmed-only", action="store_true", help="Procesar solo los auditados como CONFIRMED")
     parser.add_argument("--offset", type=int, default=0, help="Empezar desde el registro N")
+    parser.add_argument("--ch", action="store_true", help="Sincronizar simultáneamente con ClickHouse (paper_author_map)")
     args = parser.parse_args()
     
     try:
@@ -530,8 +597,11 @@ if __name__ == "__main__":
             target_name=args.name, 
             limit_acads=args.limit,
             confirmed_only=args.confirmed_only,
-            offset=args.offset
+            offset=args.offset,
+            save_to_ch=args.ch
         )
+    except KeyboardInterrupt:
+        print("\n\n🛑 Proceso interrumpido por el usuario. Cerrando conexiones...")
     finally:
         graph_store.close()
         print("\n🎉 Proceso completado.")

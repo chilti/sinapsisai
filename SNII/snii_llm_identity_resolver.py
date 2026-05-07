@@ -458,7 +458,7 @@ def search_openalex_authors(name: str, institution: str, limit: int = 5, verbose
     return res.get(name, [])
 
 
-def resolve_snii_identities(limit_test=None, target_name=None, institution_filter=None, dependency_filter=None, force=False, ingest=False, force_ingest=False, verbose=False):
+def resolve_snii_identities(limit_test=None, target_name=None, institution_filter=None, dependency_filter=None, force=False, ingest=False, force_ingest=False, verbose=False, save_to_ch=False):
     """Pipeline principal: SNII -> candidatos multi-fuente -> verificacion LLM -> JSON de resultados."""
     print("\n Resolviendo identidades SNII con LLM (busqueda semantica + reranking)...")
 
@@ -655,18 +655,24 @@ def resolve_snii_identities(limit_test=None, target_name=None, institution_filte
                 if key in processed_in_this_run:
                     continue
 
-                # Si ya existe match confirmado y no forzamos, saltar
+                # Si ya existe registro y no forzamos, saltar
                 if key in lookup and not force:
                     existing_record = verified_results[lookup[key]]
-                    if existing_record.get("match") is True:
-                        if ingest:
-                            print(f"       [Auto-Ingest] Usando match previo para {snii_name}...")
-                            try:
-                                ingest_researcher_data(existing_record, force=force_ingest, force_local=True)
-                            except Exception as e:
-                                print(f"       Error en Auto-Ingest previo: {e}")
-                        processed_in_this_run.add(key)
-                        continue
+                    if ingest and existing_record.get("match") is True:
+                        print(f"       [Auto-Ingest] Usando match previo para {snii_name}...")
+                        try:
+                            ingest_researcher_data(existing_record, force=force_ingest, force_local=True)
+                        except Exception as e:
+                            print(f"       Error en Auto-Ingest previo: {e}")
+                    elif ingest:
+                         print(f"       [Auto-Ingest] Usando registro previo (sin match) para {snii_name}...")
+                         try:
+                             ingest_researcher_data(existing_record, force=force_ingest, force_local=True, save_to_ch=save_to_ch)
+                         except Exception as e:
+                             print(f"       Error en Auto-Ingest previo (no match): {e}")
+                    
+                    processed_in_this_run.add(key)
+                    continue
 
                 snii_info = f"Nombre: {snii_name} | Institucin: {final_inst} | Subdependencia: {final_sub}"
 
@@ -947,7 +953,7 @@ Respuesta:"""
                     else:
                         print(f"       [Auto-Ingest] Registrando investigador sin match: {snii_name}...")
                     try:
-                        ingest_researcher_data(result_entry, force=force_ingest, force_local=True)
+                        ingest_researcher_data(result_entry, force=force_ingest, force_local=True, save_to_ch=save_to_ch)
                     except Exception as e:
                         print(f"       Error en Auto-Ingest: {e}")
 
@@ -985,7 +991,7 @@ Respuesta:"""
                 if error_entry.get("match") is True and ingest:
                     print(f"       [Auto-Ingest] Iniciando carga (va Safety Match) para {snii_name}...")
                     try:
-                        ingest_researcher_data(error_entry, force=force_ingest, force_local=True)
+                        ingest_researcher_data(error_entry, force=force_ingest, force_local=True, save_to_ch=save_to_ch)
                     except: pass
 
                 processed_in_this_run.add(key)
@@ -1094,6 +1100,7 @@ if __name__ == "__main__":
     parser.add_argument("--force-ingest", action="store_true", help="Forzar carga de trabajos incluso si ya existen")
     parser.add_argument("--verbose", action="store_true", help="Muestra el prompt y respuesta detallada del LLM")
     parser.add_argument("--fix-hierarchy", action="store_true", help="Parchea el JSON corrigiendo Dependencia y Entidad Final desde el Excel")
+    parser.add_argument("--ch", action="store_true", help="Sincronizar simultáneamente con ClickHouse (paper_author_map)")
     args = parser.parse_args()
 
     if args.fix_hierarchy:
@@ -1107,5 +1114,6 @@ if __name__ == "__main__":
             force=args.force, 
             ingest=args.ingest, 
             force_ingest=args.force_ingest, 
-            verbose=args.verbose
+            verbose=args.verbose,
+            save_to_ch=args.ch
         )

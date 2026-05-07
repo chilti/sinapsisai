@@ -36,5 +36,17 @@ Objetivo: Migrar el motor de métricas a la nueva lógica basada en el Padrón.
 ## Fase 5: Visualización y Dashboard
 Objetivo: Exponer las nuevas métricas y filtros al usuario final.
 
-- [ ] **Tarea 5.1**: Actualizar `dashboard_analytics.py` para soportar filtros de "Censo Total" vs "Solo SNII".
+- [ ] **Tarea 5.1**: Actualizar `dashboard_analytics.py` para soportar filtros de "Censo Total" vs "Solo SNII" y limpiar selectores de instituciones extranjeras.
 - [ ] **Tarea 5.2**: Modificar la UI para mostrar claramente la distinción entre **Capacidad Instalada** y **Producción Institucional**.
+
+## Fase 6: Inteligencia Bibliométrica (Embeddings y Clustering)
+Objetivo: Generar representaciones vectoriales multidimensionales para proyecciones atlas y análisis semántico.
+
+- [ ] **Tarea 6.1**: Completar Grafo Nacional (Neo4j 7687). Finalizar la ingesta de la producción mexicana total para asegurar que el FastRP refleje la red completa.
+- [ ] **Tarea 6.2**: Motor de Embeddings Multimodal. Desarrollar el orquestador que consolide:
+    - **Semántico (Nomic)**: Recuperar desde Qdrant.
+    - **Científico (SPECTER2)**: Generar para el 100% de la producción en ClickHouse.
+    - **Estructural (FastRP)**: Calcular en Neo4j (7687) y sincronizar.
+- [ ] **Tarea 6.3**: Perfiles Semánticos de Académicos. Calcular el vector promedio (centroide) para cada investigador basado en su producción individual.
+- [ ] **Tarea 6.4**: Proyección y Clustering Atlas. Implementar la reducción de dimensionalidad (UMAP) para visualizar el mapa de la ciencia mexicana y los clusters de expertise académica.
+- [ ] **Tarea 6.5**: Sincronización Maestra a ClickHouse. Poblar las columnas de embeddings en `works_academic_all` y `academics_all` para su explotación en el Dashboard.

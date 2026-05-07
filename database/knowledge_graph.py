@@ -510,6 +510,45 @@ class Neo4jGraphStore:
             except Exception: pass
 
 
+    def upsert_hierarchical_entity_metadata(self, inst_name: str, dep_name: str, sub_name: str, label: str, ror: str = None, openalex_id: str = None):
+        """
+        Actualiza metadatos de una entidad asegurando que pertenece a la jerarquía correcta.
+        Utiliza MERGE para asegurar que la ruta jerárquica exista.
+        """
+        if not inst_name: return
+        
+        # Determinar el nodo objetivo y su jerarquía
+        if label == 'Institution':
+            query = """
+            MERGE (e:Institution {name: $inst_name})
+            SET e.ror = coalesce($ror, e.ror),
+                e.openalex_id = coalesce($openalex_id, e.openalex_id)
+            """
+        elif label == 'Dependency':
+            query = """
+            MERGE (i:Institution {name: $inst_name})
+            MERGE (i)<-[:PART_OF]-(e:Dependency {name: $dep_name})
+            SET e.ror = coalesce($ror, e.ror),
+                e.openalex_id = coalesce($openalex_id, e.openalex_id)
+            """
+        elif label == 'Subdependency':
+            query = """
+            MERGE (i:Institution {name: $inst_name})
+            MERGE (i)<-[:PART_OF]-(d:Dependency {name: $dep_name})
+            MERGE (d)<-[:PART_OF]-(e:Subdependency {name: $sub_name})
+            SET e.ror = coalesce($ror, e.ror),
+                e.openalex_id = coalesce($openalex_id, e.openalex_id)
+            """
+        else:
+            return
+
+        with self.driver.session() as session:
+            try:
+                session.run(query, inst_name=inst_name, dep_name=dep_name, sub_name=sub_name, ror=ror, openalex_id=openalex_id)
+            except Exception as e:
+                print(f"Error Neo4j en upsert_hierarchical_entity_metadata ({label}): {e}")
+
+
     def upsert_entity_level_metadata(self, name: str, label: str, ror: str = None, openalex_id: str = None):
         if not name or not label: return
         query = f"""
@@ -520,7 +559,45 @@ class Neo4jGraphStore:
         with self.driver.session() as session:
             session.run(query, name=name, ror=ror, openalex_id=openalex_id)
 
+    def add_hierarchical_entity_paper_link(self, inst_name: str, dep_name: str, sub_name: str, label: str, doi: str):
+        """
+        Vincula un Paper a una entidad (Inst/Dep/Sub) asegurando el contexto jerárquico.
+        Evita vincular a la 'Facultad de Ciencias' equivocada.
+        """
+        if not doi or not inst_name: return
+        
+        # Determinar el MATCH jerárquico según el label
+        if label == 'Institution':
+            query = """
+            MATCH (e:Institution {name: $inst_name})
+            MATCH (p:Paper {doi: $doi})
+            MERGE (e)-[:HAS_PAPER]->(p)
+            """
+        elif label == 'Dependency':
+            query = """
+            MATCH (i:Institution {name: $inst_name})<-[:PART_OF]-(e:Dependency {name: $dep_name})
+            MATCH (p:Paper {doi: $doi})
+            MERGE (e)-[:HAS_PAPER]->(p)
+            """
+        elif label == 'Subdependency':
+            query = """
+            MATCH (i:Institution {name: $inst_name})<-[:PART_OF]-(d:Dependency {name: $dep_name})<-[:PART_OF]-(e:Subdependency {name: $sub_name})
+            MATCH (p:Paper {doi: $doi})
+            MERGE (e)-[:HAS_PAPER]->(p)
+            """
+        else:
+            return
+
+        with self.driver.session() as session:
+            try:
+                session.run(query, inst_name=inst_name, dep_name=dep_name, sub_name=sub_name, doi=doi)
+            except Exception as e:
+                print(f"Error Neo4j en add_hierarchical_entity_paper_link ({label}): {e}")
+
     def add_flexible_entity_paper_link(self, entity_name: str, label: str, doi: str):
+        """
+        Versión simplificada para compatibilidad. Si es posible, usar add_hierarchical_entity_paper_link.
+        """
         if not doi or not entity_name: return
         query = f"""
         MATCH (e:{label} {{name: $entity_name}})
@@ -531,6 +608,7 @@ class Neo4jGraphStore:
         with self.driver.session() as session:
             try: session.run(query, entity_name=entity_name, doi=doi)
             except: pass
+
 
     def add_entity_paper_link(self, entity_name: str, doi: str):
         """
@@ -587,55 +665,74 @@ class Neo4jGraphStore:
             except Exception as e:
                 pass
 
-    def add_academic_full_affiliation(self, academic_name: str, inst_name: str, sub_name: str = None):
+    def add_academic_full_affiliation(self, academic_name: str, inst_name: str, dep_name: str = None, sub_name: str = None):
         """
-        Vincula un Academic con su Institución y Subdependencia (jerárquico),
-        respetando la estructura creada por rebuild_neo4j_hierarchy.py.
+        Vincula un Academic con su Institución, Dependencia y Subdependencia (jerárquico),
+        respetando la estructura de tres niveles.
         """
-        if not sub_name or sub_name == "SIN INFORMACIÓN":
-            # Si solo hay institución, buscar la Institution y afiliar
+        # Limpieza de valores nulos o "SIN INFORMACION"
+        def _is_valid(val):
+            return val and str(val).upper() not in ["SIN INFORMACIÓN", "SIN INFORMACIN", "NO APLICA", "SIN INSTITUCION", "SIN INSTITUCIN", "NAN", "NONE", "NULL"]
+
+        inst = inst_name if _is_valid(inst_name) else "SIN INSTITUCION"
+        dep = dep_name if _is_valid(dep_name) else None
+        sub = sub_name if _is_valid(sub_name) else None
+
+        # Caso 1: Solo Institución
+        if not dep and not sub:
             query = """
-            MATCH (a:Author {id: $academic_name})
-            MATCH (i:Institution) WHERE i.name = $inst_name
+            MATCH (a:Author) WHERE a.id = $academic_name OR a.name = $academic_name
+            MERGE (i:Institution {name: $inst})
             MERGE (a)-[:AFFILIATED_TO]->(i)
             """
             with self.driver.session() as session:
-                try: session.run(query, academic_name=academic_name, inst_name=inst_name)
+                try: session.run(query, academic_name=academic_name, inst=inst)
                 except Exception: pass
             return
 
+        # Caso 2: Jerarquía completa o parcial
+        # Intentamos encontrar la entidad más específica ya existente en Neo4j
+        # Si no existe, la creamos colgando de la institución
         query = """
-        MATCH (a:Author {id: $academic_name})
-        // 1. Intentar encontrar la Institución
-        MATCH (i:Institution) WHERE i.name = $inst_name
-        // 2. Buscar si hay una dependencia o subdependencia
-        MATCH (e) WHERE (e:Dependency OR e:Subdependency) AND e.name = $sub_name
-        MATCH (e)-[:PART_OF*1..3]->(i)
-        // 3. Vincular al académico
-        MERGE (a)-[:AFFILIATED_TO]->(e)
-        MERGE (a)-[:AFFILIATED_TO]->(i)
-        """
-        # Fallback query por si la entidad no existe
-        fallback_query = """
-        MERGE (i:Institution {name: $inst_name})
-        MERGE (s:Dependency {name: $sub_name})
-        MERGE (s)-[:PART_OF]->(i)
-        WITH s, i
-        MATCH (a:Author {id: $academic_name})
-        MERGE (a)-[:AFFILIATED_TO]->(s)
+        MATCH (a:Author) WHERE a.id = $academic_name OR a.name = $academic_name
+        MERGE (i:Institution {name: $inst})
+        
+        WITH a, i
+        CALL (a, i) {
+            // Si hay subdependencia, intentar vincular a ella
+            WITH a, i WHERE $sub IS NOT NULL
+            MERGE (s:Subdependency {name: $sub})
+            // Si hay dependencia, asegurar que la subdependencia cuelga de ella
+            FOREACH (d_name IN CASE WHEN $dep IS NOT NULL THEN [$dep] ELSE [] END |
+                MERGE (d:Dependency {name: d_name})
+                MERGE (d)-[:PART_OF]->(i)
+                MERGE (s)-[:PART_OF]->(d)
+            )
+            // Si NO hay dependencia pero hay subdependencia, colgar sub de inst
+            FOREACH (_ IN CASE WHEN $dep IS NULL THEN [1] ELSE [] END |
+                MERGE (s)-[:PART_OF]->(i)
+            )
+            MERGE (a)-[:AFFILIATED_TO]->(s)
+            RETURN count(*) AS sub_c
+        }
+        CALL (a, i) {
+            // Si hay dependencia pero NO subdependencia
+            WITH a, i WHERE $dep IS NOT NULL AND $sub IS NULL
+            MERGE (d:Dependency {name: $dep})
+            MERGE (d)-[:PART_OF]->(i)
+            MERGE (a)-[:AFFILIATED_TO]->(d)
+            RETURN count(*) AS dep_c
+        }
+        // Siempre vincular a la institución raíz para facilitar filtros globales
         MERGE (a)-[:AFFILIATED_TO]->(i)
         """
         
         with self.driver.session() as session:
             try:
-                # Intentamos la versión limpia primero
-                result = session.run(query, academic_name=academic_name, inst_name=inst_name, sub_name=sub_name)
-                summary = result.consume()
-                if summary.counters.relationships_created == 0 and summary.counters.properties_set == 0:
-                    # Si no hizo nada, corremos el fallback
-                    session.run(fallback_query, academic_name=academic_name, inst_name=inst_name, sub_name=sub_name)
+                session.run(query, academic_name=academic_name, inst=inst, dep=dep, sub=sub)
             except Exception as e:
                 print(f"Error en full affiliation para {academic_name}: {e}")
+
 
     def check_academic_exists(self, academic_name: str) -> bool:
         """
@@ -678,14 +775,14 @@ class Neo4jGraphStore:
             except Exception as e:
                 print(f"Error marcando SNII para {academic_name}: {e}")
 
-    def update_academic_metadata(self, academic_name: str, orcid: str = None, scopus_id: str = None,
+    def update_academic_metadata(self, academic_name: str, cvu: str = None, orcid: str = None, scopus_id: str = None,
                                   audit_verdict: str = None, audit_reason: str = None, 
                                   audit_confidence: int = None, audit_timestamp: str = None,
                                   match_reason: str = None, is_snii: bool = True,
                                   discarded_candidates: list = None,
                                   entity_name: str = None):
         """
-        Actualiza metadatos de un académico (ORCID, auditoría, SNII) sin necesidad de papers.
+        Actualiza metadatos de un académico (CVU, ORCID, auditoría, SNII) sin necesidad de papers.
         Si no hay ORCID, genera un ID basado en el nombre y la entidad para evitar colisiones.
         """
         import json
@@ -702,6 +799,10 @@ class Neo4jGraphStore:
         MERGE (a:Author {id: $system_id})
         SET a:Academic, a.name = $academic_name
         WITH a
+        CALL (a) {
+            WITH a WHERE $cvu IS NOT NULL
+            SET a.cvu = $cvu
+        }
         CALL (a) {
             WITH a WHERE $orcid IS NOT NULL
             SET a.orcid = $orcid
@@ -730,6 +831,7 @@ class Neo4jGraphStore:
         params = {
             "system_id": system_id,
             "academic_name": academic_name,
+            "cvu": cvu,
             "orcid": orcid,
             "scopus_id": scopus_id,
             "audit_verdict": audit_verdict,
