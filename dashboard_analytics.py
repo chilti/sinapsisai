@@ -150,8 +150,46 @@ def load_snii_matches():
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def load_hierarchy():
-    """Carga jerarquía instituciones -> entidades desde hierarchy.json o fallback a Grafo"""
+    """Carga jerarquía instituciones -> entidades desde el Padrón SNII (JSON)"""
     import json
+    
+    # Intentar primero desde el JSON del Padrón (Fuente de verdad)
+    padron_path = os.path.join(BASE_PATH, 'data', 'snii_llm_verified_matches.json')
+    hierarchy = {}
+    
+    if os.path.exists(padron_path):
+        try:
+            with open(padron_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                for r in data:
+                    inst = r.get('snii_institution')
+                    if not inst: continue
+                    
+                    dep = r.get('snii_dependency', 'SIN INFORMACIÓN')
+                    sub = r.get('snii_subdependency', 'SIN INFORMACIÓN')
+
+                    if inst not in hierarchy:
+                        hierarchy[inst] = {}
+                    
+                    if dep not in hierarchy[inst]:
+                        hierarchy[inst][dep] = set()
+                    
+                    if sub and sub != 'NO APLICA':
+                        hierarchy[inst][dep].add(sub)
+            
+            # Convertir sets a listas ordenadas
+            for inst in hierarchy:
+                for dep in hierarchy[inst]:
+                    hierarchy[inst][dep] = sorted(list(hierarchy[inst][dep]))
+            
+            # Caso especial México: Agregador Nacional
+            hierarchy["MÉXICO"] = {inst: [] for inst in hierarchy.keys() if inst != "MÉXICO"}
+            return hierarchy
+            
+        except Exception as e:
+            print(f"Error procesando padrón para jerarquía: {e}")
+
+    # Fallback a hierarchy.json en cache si el padrón falla
     json_path = os.path.join(CACHE_DIR, 'hierarchy.json')
     if os.path.exists(json_path):
         try:
@@ -160,49 +198,7 @@ def load_hierarchy():
         except Exception as e:
             print(f"Error leyendo hierarchy.json: {e}")
 
-    from database.knowledge_graph import Neo4jGraphStore
-    store = Neo4jGraphStore()
-    hierarchy = {}
-    try:
-        with store.driver.session() as session:
-            # Consulta para obtener el árbol completo: Inst -> Dep -> Subdep
-            # Maneja tanto 2 como 3 niveles
-            query = """
-            MATCH (i:Institution)
-            OPTIONAL MATCH (i)<-[:PART_OF]-(dep:Dependency)
-            OPTIONAL MATCH (dep)<-[:PART_OF]-(sub:Subdependency)
-            RETURN i.name AS inst, dep.name AS dep, collect(DISTINCT sub.name) AS subs
-            """
-            result = session.run(query)
-            for record in result:
-                inst = record["inst"]
-                dep = record["dep"]
-                subs = [s for s in record["subs"] if s]
-                
-                if inst not in hierarchy:
-                    hierarchy[inst] = {}
-                
-                if dep:
-                    # Si la dependencia ya existe y tiene subs, las unimos
-                    if dep not in hierarchy[inst]:
-                        hierarchy[inst][dep] = []
-                    hierarchy[inst][dep].extend(subs)
-            
-            # Limpiar duplicados en las listas de subs
-            for inst in hierarchy:
-                for dep in hierarchy[inst]:
-                    hierarchy[inst][dep] = sorted(list(set(hierarchy[inst][dep])))
-            
-            # Caso especial México: Sus "dependencias" son las Instituciones
-            # Nos aseguramos de que solo exista UNA entrada nacional
-            hierarchy["MÉXICO"] = {inst: [] for inst in hierarchy.keys() if inst != "MÉXICO"}
-
-    except Exception as e:
-        print(f"Error cargando jerarquía: {e}")
-    finally:
-        store.close()
-    
-    return hierarchy
+    return {}
 
 # Alias de compatibilidad hacia atrás (dashboard_v2.py lo importa con el nombre anterior)
 get_institution_hierarchy = load_hierarchy
