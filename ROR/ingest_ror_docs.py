@@ -1,6 +1,7 @@
 """
 ingest_ror_docs.py
-Toma el mapeo ROR/snii_ror_mapping.json y para cada ROR idenfiticado,
+==================
+Toma el mapeo data/snii_ror_verified_matches.json y para cada ROR identificado,
 descarga los artículos de OpenAlex, los vectoriza y los guarda/marca en las bases.
 Asegura que todos queden etiquetados como :IndexedOpenAlex.
 """
@@ -23,6 +24,7 @@ except AttributeError:
 from ingestion import openalex_utils
 from database.vector_store import QdrantStore
 from database.knowledge_graph import Neo4jGraphStore
+from database.clickhouse_db import ch_client
 from langchain_openai import OpenAIEmbeddings
 
 # Cargar .env de la raíz
@@ -95,7 +97,7 @@ class RORIngestor:
         return authors, concepts
         
     def load_mapping(self):
-        path = 'ROR/snii_ror_mapping.json'
+        path = os.path.join('data', 'snii_ror_verified_matches.json')
         if not os.path.exists(path):
             print(f"❌ No se encontró el mapeo: {path}")
             return {}
@@ -111,7 +113,7 @@ class RORIngestor:
         try:
             processed_count = 0
             for page in openalex_utils.get_works_by_ror(ror_id, per_page=100, local_only=local_only):
-                self._process_works_batch(page, institution_name, subdependency_name)
+                self._process_works_batch(page, entities)
                 processed_count += len(page)
             
             if processed_count > 0:
@@ -122,12 +124,13 @@ class RORIngestor:
         except Exception as e:
             print(f"   ❌ Error durante la recuperación de OpenAlex: {e}")
 
-    def _process_works_batch(self, works, inst_name, sub_name):
+    def _process_works_batch(self, works, entities):
         batch_payloads = []
         batch_texts = []
         
         # Enriquecer metadatos de la institución (Entity) con el primer work válido de la página
         if works:
+            inst_name = entities[0]['inst']
             print(f"   📂 Procesando bloque de {len(works)} trabajos para [{inst_name}]...")
             first_work = works[0]
             for auth in first_work.get('authorships', []):
@@ -238,7 +241,8 @@ class RORIngestor:
             "text":     text_content
         })
 
-    def run(self, limit=None, local_only=False):
+    def run(self, limit=None, local_only=False, save_to_ch=False):
+        self.save_to_ch = save_to_ch
         mapping = self.load_mapping()
         print(f"📊 Cargados {len(mapping)} registros del mapeo ROR.")
         
@@ -276,11 +280,12 @@ class RORIngestor:
         print(f"🎯 Identificados {len(ror_groups)} RORs únicos para procesar.")
         
         count = 0
+        total_rors = len(ror_groups)
         for ror_id, entities in ror_groups.items():
             if limit and count >= limit: break
-            
+            count += 1
             main_inst = entities[0]['inst']
-            print(f"\n🚀 Procesando ROR {ror_id} ({main_inst})")
+            print(f"\n🚀 [{count}/{total_rors}] Procesando ROR {ror_id} ({main_inst})")
             
             try:
                 processed_count = 0
@@ -290,7 +295,6 @@ class RORIngestor:
                 print(f"   ✅ Finalizado: {processed_count} trabajos.")
             except Exception as e:
                 print(f"   ❌ Error: {e}")
-            count += 1
 
     def _process_works_batch_multi(self, works, entities, ror_id):
         """Procesa trabajos vinculándolos a los 3 niveles y actualizando metadata."""
@@ -308,42 +312,51 @@ class RORIngestor:
                 
                 # Inst
                 if p_ror or p_oa:
-                    self.graph_store.upsert_entity_level_metadata(inst, 'Institution', p_ror, p_oa)
+                    self.graph_store.upsert_hierarchical_entity_metadata(inst, dep, sub, 'Institution', p_ror, p_oa)
                 # Dep
                 if dep != "SIN INFORMACIÓN":
                     if not is_sub and (m_ror or m_oa):
-                        self.graph_store.upsert_entity_level_metadata(dep, 'Dependency', m_ror, m_oa)
+                        self.graph_store.upsert_hierarchical_entity_metadata(inst, dep, sub, 'Dependency', m_ror, m_oa)
                     elif p_ror or p_oa:
-                        self.graph_store.upsert_entity_level_metadata(dep, 'Dependency', p_ror, p_oa)
+                        self.graph_store.upsert_hierarchical_entity_metadata(inst, dep, sub, 'Dependency', p_ror, p_oa)
                 # Sub
                 if sub != "SIN INFORMACIÓN":
                     if is_sub and (m_ror or m_oa):
-                        self.graph_store.upsert_entity_level_metadata(sub, 'Subdependency', m_ror, m_oa)
+                        self.graph_store.upsert_hierarchical_entity_metadata(inst, dep, sub, 'Subdependency', m_ror, m_oa)
                     elif p_ror or p_oa:
-                        self.graph_store.upsert_entity_level_metadata(sub, 'Subdependency', p_ror, p_oa)
+                        self.graph_store.upsert_hierarchical_entity_metadata(inst, dep, sub, 'Subdependency', p_ror, p_oa)
+
+        # Optimización: Filtrar documentos que ya existen en Qdrant por lote
+        ids_to_check = [{"doi": (w.get('doi') or '').replace("https://doi.org/", "").lower(), "title": w.get('display_name')} for w in works]
+        missing_dois_in_qdrant = set()
+        if hasattr(self.vector_store, 'filter_existing_ids'):
+            missing_dois_in_qdrant = set(self.vector_store.filter_existing_ids(ids_to_check))
+        else:
+            missing_dois_in_qdrant = {(w.get('doi') or '').replace("https://doi.org/", "").lower() for w in works}
+
+        print(f"      🔍 Qdrant: {len(works)} trabajos encontrados. {len(works) - len(missing_dois_in_qdrant)} ya existen, {len(missing_dois_in_qdrant)} nuevos para vectorizar.")
 
         for work in works:
-            doi_raw = work.get('doi')
-            if not doi_raw: continue
-            doi = doi_raw.replace("https://doi.org/", "").strip().lower()
+            doi = (work.get('doi') or '').replace("https://doi.org/", "").lower()
+            if not doi: continue
             
-            if doi in batch_seen: continue
-            batch_seen.add(doi)
-
             # 1. Si ya se procesó en este run, solo actualizamos links
             if doi in self.processed_dois:
                 for ent in entities:
                     inst, dep, sub = ent['inst'], ent['dep'], ent['sub']
-                    self.graph_store.add_flexible_entity_paper_link(inst, 'Institution', doi)
+                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Institution', doi)
                     if dep != "SIN INFORMACIÓN":
-                        self.graph_store.add_flexible_entity_paper_link(dep, 'Dependency', doi)
+                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Dependency', doi)
                     if sub != "SIN INFORMACIÓN":
-                        self.graph_store.add_flexible_entity_paper_link(sub, 'Subdependency', doi)
+                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Subdependency', doi)
                 continue
 
             # 2. Verificar existencia en bases
             exists_graph = self.graph_store.check_paper_exists(doi)
-            exists_qdrant = self.vector_store.check_document_exists(doi)
+            
+            # Usar el set pre-calculado para Qdrant
+            u_str = doi if doi and str(doi).strip().lower() != "none" else work.get('display_name')
+            exists_qdrant = u_str not in missing_dois_in_qdrant
 
             if not exists_graph:
                 authors, concepts = self._extract_authors_and_concepts(work)
@@ -363,16 +376,19 @@ class RORIngestor:
             # VINCULACIÓN 3 NIVELES
             for ent in entities:
                 inst, dep, sub = ent['inst'], ent['dep'], ent['sub']
-                self.graph_store.add_flexible_entity_paper_link(inst, 'Institution', doi)
+                self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Institution', doi)
                 if dep != "SIN INFORMACIÓN":
-                    self.graph_store.add_flexible_entity_paper_link(dep, 'Dependency', doi)
+                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Dependency', doi)
                 if sub != "SIN INFORMACIÓN":
-                    self.graph_store.add_flexible_entity_paper_link(sub, 'Subdependency', doi)
+                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Subdependency', doi)
                 
             if not exists_qdrant:
                 self._prepare_for_qdrant_multi(work, entities, batch_texts, batch_payloads)
             
             self.processed_dois.add(doi)
+
+        if len(works) > 0:
+            print(f"      🗄️ Neo4j: {len(works)} artículos vinculados a jerarquía institucional.")
 
         # Vectorizar
         if batch_texts:
@@ -381,12 +397,56 @@ class RORIngestor:
                 self.vector_store.add_documents(batch_payloads, embeddings)
             except: pass
 
+        # --- DUAL WRITE TO CLICKHOUSE ---
+        if self.save_to_ch and works:
+            self._sync_to_clickhouse(works, entities)
+
+    def _sync_to_clickhouse(self, works, entities):
+        try:
+            ch = ch_client.get_client()
+            rows = []
+            for w in works:
+                doi = (w.get('doi') or w.get('id') or '').replace("https://doi.org/", "").lower()
+                if not doi: continue
+                
+                ids = w.get('ids', {})
+                
+                # Para cada entidad mapeada a este ROR, creamos una entrada en la tabla de entidades
+                for ent in entities:
+                    rows.append({
+                        'paper_id': doi,
+                        'institution': ent['inst'],
+                        'institution_ror': ent['matched_ror'],
+                        'dependency': ent['dep'],
+                        'dependency_id': '', # Se podría derivar si fuera necesario
+                        'subdependency': ent['sub'],
+                        'subdependency_id': '',
+                        'paper_title': w.get('display_name') or '',
+                        'paper_year': int(w.get('publication_year') or 0),
+                        'citations': int(w.get('cited_by_count') or 0),
+                        'is_wos': 1 if 'wos' in ids else 0,
+                        'is_scopus': 1 if 'scopus' in ids else 0,
+                        'is_pubmed': 1 if 'pmid' in ids else 0,
+                        'is_openalex': 1,
+                        'is_doaj': 1 if w.get('is_oa') and 'doaj' in str(w.get('locations', [])).lower() else 0,
+                        'is_semantic_scholar': 1 if 'mag' in ids else 0,
+                        'is_dimensions': 1 if 'mag' in ids else 0,
+                        'is_lens': 1 if 'mag' in ids or 'pmid' in ids else 0,
+                        'source': 'ROR_Dual_Ingest'
+                    })
+            if rows:
+                import pandas as pd
+                ch.insert_df('paper_entity_map', pd.DataFrame(rows))
+                print(f"      📊 [ClickHouse] {len(rows)} mapeos de entidades sincronizados.")
+        except Exception as e:
+            print(f"      [WARN] Error en ClickHouse Sync: {e}")
+
     def _prepare_for_qdrant_multi(self, work, entities, batch_texts, batch_payloads):
         ent = entities[0]
         ref_inst, ref_dep, ref_sub = ent['inst'], ent['dep'], ent['sub']
         title = work.get('display_name') or "Sin Título"
         abstract = deconstruct_abstract(work.get('abstract_inverted_index'))
-        doi = work.get('doi', '').replace("https://doi.org/", "").lower()
+        doi = (work.get('doi') or '').replace("https://doi.org/", "").lower()
         
         # Escoger la entidad mas especifica para Qdrant
         entity_qdrant = ref_sub if ref_sub != "SIN INFORMACIÓN" else (ref_dep if ref_dep != "SIN INFORMACIÓN" else ref_inst)
@@ -404,11 +464,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Ingesta de documentos ROR desde OpenAlex")
     parser.add_argument("--limit", type=int, help="Límite de instituciones a procesar")
     parser.add_argument("--local-only", action="store_true", help="Usar sólo la API local de OpenAlex")
+    parser.add_argument("--ch", action="store_true", help="Sincronizar con ClickHouse (paper_entity_map)")
     args = parser.parse_args()
     
     ingestor = RORIngestor()
     try:
-        ingestor.run(limit=args.limit, local_only=args.local_only)
+        ingestor.run(limit=args.limit, local_only=args.local_only, save_to_ch=args.ch)
+    except KeyboardInterrupt:
+        print("\n\n🛑 Proceso interrumpido por el usuario.")
     finally:
         ingestor.graph_store.close()
         print("\n🎉 Finalizado.")

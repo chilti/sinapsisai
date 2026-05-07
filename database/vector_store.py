@@ -99,6 +99,46 @@ class QdrantStore:
         )
         print(f"✅ Se insertaron {len(points)} documentos en Qdrant.")
 
+    def filter_existing_ids(self, identifiers: List[Dict[str, str]]) -> List[str]:
+        """
+        Recibe una lista de dicts {"doi": "...", "title": "..."} y devuelve
+        solo aquellos UUIDs que NO existen en Qdrant.
+        """
+        if not self.client or not identifiers:
+            return []
+            
+        map_id_to_original = {}
+        for item in identifiers:
+            doi = item.get("doi")
+            title = item.get("title")
+            unique_str = doi
+            if not unique_str or str(unique_str).strip().lower() == "none":
+                unique_str = title
+            
+            if unique_str:
+                det_id = str(uuid.uuid5(uuid.NAMESPACE_URL, unique_str))
+                map_id_to_original[det_id] = unique_str
+        
+        if not map_id_to_original:
+            return []
+            
+        try:
+            # Recuperar puntos que sí existen
+            existing_points = self.client.retrieve(
+                collection_name=self.collection_name,
+                ids=list(map_id_to_original.keys()),
+                with_payload=False,
+                with_vectors=False
+            )
+            existing_ids = {p.id for p in existing_points}
+            
+            # Retornar los que NO están en existing_ids
+            missing_ids = [map_id_to_original[pid] for pid in map_id_to_original if pid not in existing_ids]
+            return missing_ids
+        except Exception as e:
+            print(f"⚠️ Error en filter_existing_ids: {e}")
+            return [v for v in map_id_to_original.values()]
+
     def check_document_exists(self, doi: str, title: str = None) -> bool:
         """Verifica si un documento ya existe en Qdrant usando su ID determinista."""
         unique_str = doi

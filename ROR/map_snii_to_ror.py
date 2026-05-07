@@ -221,7 +221,7 @@ def main():
     unique_entities, ror_data = load_data()
     print(f"Entities to process: {len(unique_entities)}")
 
-    mapping_file = 'ROR/snii_ror_mapping.json'
+    mapping_file = os.path.join("data", "snii_ror_verified_matches.json")
     mapping = {}
     if os.path.exists(mapping_file):
         try:
