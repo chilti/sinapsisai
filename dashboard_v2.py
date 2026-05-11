@@ -23,6 +23,7 @@ from agent.interpreter_agent import InterpreterOrchestrator
 from dashboard_analytics import render_institucion_view, render_investigador_view, load_cached_data, get_institution_hierarchy
 from lib.coauthra_integration import render_coauthra
 from agent.tools_mcp import get_mcp_tools_sync
+from lib import auth
 
 load_dotenv()
 
@@ -115,6 +116,42 @@ def fetch_database_live_stats(entity_name=None):
     return graph_stats, qdrant_stats, graph_sample, qdrant_schema
 
 
+def trigger_background_processing(academic_name, orcid=None):
+    """Lanza los procesos de ingesta y métricas en segundo plano."""
+    import subprocess
+    import os
+    
+    # Ruta base
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+    
+    # 1. Ingesta
+    cmd_ingest = [
+        sys.executable, 
+        os.path.join(base_dir, "SNII", "ingest_snii_apis.py"),
+        "--name", academic_name,
+        "--ch"
+    ]
+    if orcid:
+        cmd_ingest.extend(["--orcid", orcid])
+    
+    # 2. Métricas
+    cmd_metrics = [
+        sys.executable,
+        os.path.join(base_dir, "ingestion", "compute_scholar_metrics_ch.py"),
+        "--academic", academic_name
+    ]
+    
+    # Ejecutar sin esperar (background)
+    try:
+        # Usamos setsid para que el proceso sobreviva al cierre del dashboard si es necesario
+        subprocess.Popen(cmd_ingest, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        subprocess.Popen(cmd_metrics, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        return True
+    except Exception as e:
+        st.error(f"Error al lanzar procesos de segundo plano: {e}")
+        return False
+
+
 @st.cache_data(ttl=3600)
 def fetch_snii_ror_stats():
     """Lee las estadísticas del pipeline de SNII y ROR desde los archivos de mapeo y caché."""
@@ -174,6 +211,10 @@ def fetch_snii_ror_stats():
 
     return stats
 
+
+# ---- Inicialización de Autenticación ----
+auth.init_auth_session()
+auth.handle_orcid_callback()
 
 # ---- Inicialización del Orquestador ----
 if "orchestrator" not in st.session_state:
@@ -250,6 +291,36 @@ with st.sidebar:
     st.subheader("Estado del Sistema")
     st.success("✅ Orquestador: Activo")
     st.info(f"ID Sesión: {st.session_state.session_id}")
+
+    # --- Sección de Usuario / ORCID ---
+    st.markdown("---")
+    st.subheader("👤 Mi Perfil")
+    user = st.session_state.authenticated_user
+    if user:
+        st.write(f"**Hola, {user.get('name', 'Investigador')}**")
+        st.caption(f"ORCID: {user.get('orcid')}")
+        
+        # Consultar si ya está vinculado en Neo4j
+        neo = Neo4jGraphStore()
+        profile = neo.get_user_profile(user.get('orcid'))
+        neo.close()
+        
+        if profile and profile.get('academic_id'):
+            st.success(f"✅ Perfil Verificado: {profile.get('academic_name')}")
+        else:
+            st.warning("⚠️ Perfil no vinculado")
+            if st.button("🔗 Vincular mi Perfil"):
+                st.session_state.show_claim_profile = True
+        
+        if st.button("Log out"):
+            st.session_state.authenticated_user = None
+            st.rerun()
+    else:
+        login_url = auth.get_orcid_login_url()
+        if login_url:
+            st.link_button("🆔 Identifícate con ORCID", login_url, type="primary", use_container_width=True)
+        else:
+            st.error("Error en configuración de ORCID")
 
 
     st.markdown("---")
@@ -340,16 +411,152 @@ with st.sidebar:
 # ---- Interfaz Principal ----
 st.title("Sinapsis AI: Hub de Ciencia Abierta")
 st.info("🚀 **Nota:** El sistema se encuentra en fase de desarrollo. Los datos se están cargando y procesando.")
+
+# ---- Buscador Global (Neo4j Full-Text) ----
+with st.container():
+    col_search, col_stats = st.columns([3, 1])
+    with col_search:
+        global_query = st.text_input("🔍 Búsqueda Global", placeholder="Encuentra investigadores, facultades, institutos...", label_visibility="collapsed")
+    with col_stats:
+        st.caption("⚡ Búsqueda en Grafo Nacional")
+
+    if global_query and len(global_query) >= 3:
+        neo = Neo4jGraphStore()
+        search_results = neo.global_search(global_query)
+        neo.close()
+        
+        if search_results:
+            with st.expander(f"🎯 Resultados para '{global_query}'", expanded=True):
+                for res in search_results:
+                    c1, c2, c3 = st.columns([1, 4, 2])
+                    with c1:
+                        icon = "👤" if res['type'] == "Academic" else "🏢"
+                        st.markdown(f"### {icon}")
+                    with c2:
+                        st.write(f"**{res['name']}**")
+                        st.caption(f"Tipo: {res['type']} | Labels: {', '.join(res['labels'])}")
+                    with c3:
+                        if st.button("Ver Detalle", key=f"global_res_{res['id']}"):
+                            # Guardar en estado para que las pestañas lo tomen
+                            if res['type'] == "Academic":
+                                st.session_state.selected_academic_search = res['name']
+                                st.success(f"Cargando perfil de {res['name']}... Ve a la pestaña 'Perfil Académico'")
+                            else:
+                                st.session_state.selected_entity_search = res['name']
+                                st.success(f"Cargando {res['name']}... Ve a la pestaña 'Panorama Institucional'")
+                            # st.rerun()
+        else:
+            st.warning("No se encontraron coincidencias exactas. Intenta con un nombre más corto o apellidos.")
+
 st.markdown("Inteligencia Bibliométrica Híbrida")
 
-tab_inst, tab_inv, tab_chat, tab_test, tab_council, tab_about = st.tabs([
+
+tab_labels = [
     "🏢 Panorama Institucional",
     "👤 Perfil Académico",
     "🤖 Asistente",
     "🧪 Asistente-Prueba (MCP)",
     "🏛️ Consejo Estratégico",
     "ℹ️ Acerca de..."
-])
+]
+
+user_auth = st.session_state.get("authenticated_user")
+if user_auth:
+    tab_labels.insert(0, "👤 Mi Espacio")
+
+all_tabs = st.tabs(tab_labels)
+
+if user_auth:
+    tab_me, tab_inst, tab_inv, tab_chat, tab_test, tab_council, tab_about = all_tabs
+else:
+    tab_inst, tab_inv, tab_chat, tab_test, tab_council, tab_about = all_tabs
+
+# =======================================================
+# TAB: Mi Espacio (Solo autenticados)
+# =======================================================
+if user_auth:
+    with tab_me:
+        st.header(f"Bienvenido, {user_auth.get('name', 'Investigador')}")
+        st.markdown(f"**ORCID iD:** [{user_auth.get('orcid')}](https://orcid.org/{user_auth.get('orcid')})")
+        
+        neo = Neo4jGraphStore()
+        profile = neo.get_user_profile(user_auth.get('orcid'))
+        neo.close()
+        
+        if profile and profile.get('academic_id'):
+            st.success(f"✅ Tu cuenta está vinculada al perfil académico: **{profile.get('academic_name')}**")
+            st.info("💡 Ahora puedes ver tus métricas personalizadas y reportes de autoría.")
+            
+            # Botón de acceso directo a su vista
+            if st.button("📊 Ver mi Producción y Métricas"):
+                st.write("Cargando tu vista personalizada...")
+                render_investigador_view(profile.get('academic_name'), institution_name=selected_institution)
+        else:
+            # FLUJO DE AUTO-DETECCIÓN: ¿Ya tenemos este ORCID en el padrón?
+            suggested_match = neo.find_academic_by_orcid(user_auth['orcid'])
+            
+            if suggested_match:
+                st.info(f"✨ **¡Te hemos identificado!** Encontramos un perfil en el padrón que coincide con tu ORCID.")
+                col_m1, col_m2 = st.columns([3, 1])
+                with col_m1:
+                    st.write(f"**{suggested_match['name']}**")
+                    st.caption(f"ID: {suggested_match['id']}")
+                with col_m2:
+                    if st.button("Sí, soy yo", key="confirm_auto_match"):
+                        neo_local = Neo4jGraphStore()
+                        neo_local.upsert_user(user_auth['orcid'], user_auth['name'])
+                        neo_local.link_user_to_academic(user_auth['orcid'], suggested_match['id'])
+                        neo_local.close()
+                        
+                        # Disparar procesamiento en tiempo real
+                        trigger_background_processing(suggested_match['name'], user_auth['orcid'])
+                        
+                        st.success("✅ Perfil vinculado con éxito. Iniciando descarga de tu producción científica en segundo plano...")
+                        st.rerun()
+                st.write("---")
+                st.write("¿No eres tú? Puedes buscar tu perfil manualmente a continuación:")
+            else:
+                st.warning("⚠️ Tu cuenta aún no está vinculada a un perfil del padrón institucional.")
+                st.write("Vincular tu perfil nos permite ofrecerte análisis precisos de tu producción científica.")
+            
+            with st.expander("🔍 Vincular mi Identidad Digital (Manual)", expanded=not suggested_match):
+                st.write("Busca tu nombre en el padrón para vincular tu ORCID verificado.")
+                search_query_me = st.text_input("Buscar mi nombre en el padrón:", placeholder="Ej: Carrillo Calvet", key="search_me")
+                
+                if search_query_me:
+                    neo = Neo4jGraphStore()
+                    with neo.driver.session() as session:
+                        q_search = """
+                        MATCH (a:Person)
+                        WHERE a.fullname CONTAINS $q OR a.id CONTAINS $q
+                        RETURN a.id as id, a.fullname as name, a.orcid as existing_orcid
+                        LIMIT 5
+                        """
+                        results = session.run(q_search, q=search_query_me.upper()).data()
+                    neo.close()
+                    
+                    if results:
+                        for res in results:
+                            col1, col2 = st.columns([3, 1])
+                            with col1:
+                                st.write(f"**{res['name']}**")
+                                st.caption(f"ID: {res['id']} | ORCID previo: {res['existing_orcid'] or 'Ninguno'}")
+                            with col2:
+                                if st.button("Este soy yo", key=f"claim_me_{res['id']}"):
+                                    neo = Neo4jGraphStore()
+                                    neo.upsert_user(user_auth['orcid'], user_auth['name'])
+                                    neo.link_user_to_academic(user_auth['orcid'], res['id'])
+                                    neo.close()
+                                    
+                                    # Disparar procesamiento en tiempo real
+                                    trigger_background_processing(res['name'], user_auth['orcid'])
+                                    
+                                    st.success(f"✅ ¡Perfil vinculado con éxito! Iniciando procesamiento de tus datos...")
+                                    st.rerun()
+                    else:
+                        st.info("No te encontramos? Prueba buscando solo tu primer apellido o ID de OpenAlex.")
+                        if st.button("Solicitar nuevo registro"):
+                            st.write("Formulario de registro en desarrollo...")
 
 # =======================================================
 # TAB: Consejo Estratégico Virtual
@@ -885,30 +1092,38 @@ with tab_about:
     st.markdown("Diagrama de Entidad-Relación que describe cómo se almacena la información estructurada de Sinapsis AI.")
     schema_mermaid = """
     erDiagram
-        Author ||--o{ Paper : AUTHORED
-        Author }o--|| Institution : AFFILIATED_WITH
+        Person ||--o{ Paper : AUTHORED
+        Person }o--|| Institution : AFFILIATED_TO
+        Person }o--|| Dependency : AFFILIATED_TO
+        Person }o--|| Subdependency : AFFILIATED_TO
+        
+        Subdependency }o--|| Dependency : PART_OF
+        Dependency }o--|| Institution : PART_OF
+        
+        Person }o--|| KnowledgeArea : SPECIALIZED_IN
+        Person }o--|| Discipline : SPECIALIZED_IN
+        Person }o--|| Subdiscipline : SPECIALIZED_IN
+        Person }o--|| Specialty : SPECIALIZED_IN
+        
+        Specialty }o--|| Subdiscipline : BELONGS_TO
+        Subdiscipline }o--|| Discipline : BELONGS_TO
+        Discipline }o--|| KnowledgeArea : BELONGS_TO
+        
         Paper ||--o{ Concept : HAS_CONCEPT
         Paper ||--o{ Topic : HAS_TOPIC
-        Paper ||--o{ SDG : ADDRESSES
         
-        Academic ||--|| Author : is_subclass_of
-        Entity ||--|| Institution : is_subclass_of
-        Institution }o--|| State : LOCATED_IN
-        State }o--|| Country : PART_OF
-        
-        Author {
+        Person {
             string id
-            string name
-        }
-        Institution {
-            string name
+            string fullname
+            bool is_snii
         }
         Paper {
             string doi
             string title
             int year
             int citations
-        }   
+        }
+    """
         Topic {
             string id
             string name
@@ -1020,17 +1235,17 @@ with tab_about:
     
     mermaid_ingestion = """
     graph TD
-        A[1. Web Scraping / Archivo Local] --> B[Lista Base de Académicos JSON]
+        A[1. Padrón Oficial SNII / Excel] --> B[Lista Base de Investigadores JSON]
         B --> C[Enriquecimiento Global APIs]
         C --> D[OpenAlex]
         C --> E[ORCID / Scopus]
-        D --> F[Neo4j: Nodos Academic / Paper]
+        D --> F[Neo4j: Nodos Person / Paper]
         E --> F
         
-        F --> G[Extracción Temática]
-        F --> H[Clasificación ODS]
+        F --> G[Jerarquía de Conocimiento (4 Niveles)]
+        F --> H[Jerarquía Institucional (3 Niveles)]
         
-        G --> I[Neo4j: Grafo de Conocimiento]
+        G --> I[Neo4j: Knowledge Graph]
         H --> I
         
         I --> J[Motor de Cómputo Analítico]

@@ -32,19 +32,15 @@ El sistema utiliza un enfoque de **Triple Almacenamiento**:
     ```
 
 3.  **Configurar Credenciales**
-    Crea un archivo `.env` basado en la arquitectura actual:
-    ```env
-    NEO4J_URI=bolt://localhost:7687
-    NEO4J_USER=neo4j
-    NEO4J_PASSWORD=password123
-    
-    CH_HOST=localhost
-    CH_PORT=8123
-    CH_USER=default
-    CH_PASSWORD=
-    
-    LLM_BASE_URL=http://localhost:1234/v1/
+    Copia el archivo de ejemplo y completa con tus valores:
+    ```bash
+    cp .env.example .env
     ```
+    El archivo `.env.example` contiene todas las variables necesarias con descripciones. Las principales a configurar son:
+    - `CH_HOST` / `CH_PORT` / `CH_USER` / `CH_PASSWORD` — ClickHouse (OpenAlex bulk)
+    - `NEO4J_URI_MEXICO` / `NEO4J_PASSWORD_MEXICO` — Neo4j
+    - `LLM_BASE_URL` / `LLM_MODEL` / `EMBEDDING_MODEL` — servidor LLM local
+    - `OPENALEX_LOCAL_API` — API local de OpenAlex (opcional)
 
 ---
 
@@ -80,6 +76,25 @@ Si necesitas agregar académicos que no están en el SNII o producción instituc
 
 ## 📊 Visualización y Analítica
 
+### 3. Materialización de `works_academic_all`
+
+Después de cualquier ingesta (SNII, ROR o manual), ejecuta este paso para sincronizar la tabla analítica `works_academic_all` con los nuevos papers incorporados en `paper_author_map` y `paper_entity_map`. Sin este paso, `compute_scholar_metrics_ch.py` no encontrará los papers recién ingestados.
+
+```bash
+python ingestion/materialize_works_academic.py
+```
+
+- Busca todos los DOIs en `paper_author_map` y `paper_entity_map` que existen en `works_flat` (569M papers OpenAlex).
+- Inserta los nuevos papers en `works_academic_all` sin duplicar los ya existentes.
+- Es idempotente: puede correrse múltiples veces sin problema.
+
+```bash
+# Solo contar cuántos papers nuevos hay pendientes (sin insertar):
+python ingestion/materialize_works_academic.py --dry-run
+```
+
+> **Nota arquitectural:** `works_flat` es la fuente de verdad del bulk de OpenAlex (solo lectura). `works_academic_all` es la tabla pre-materializada que contiene únicamente los papers de los investigadores del sistema, optimizada para el cómputo de métricas.
+
 ### Dashboard Principal
 Lanza la interfaz de analítica basada en ClickHouse y Neo4j:
 ```bash
@@ -87,9 +102,13 @@ streamlit run dashboard_analytics.py
 ```
 
 ### Generación de Métricas
-Para actualizar el caché analítico de una entidad:
+Para actualizar el caché analítico de una entidad o investigador:
 ```bash
+# Por entidad (dependencia/subdependencia):
 python ingestion/compute_scholar_metrics_ch.py --entity "Facultad de Ciencias"
+
+# Por investigador individual:
+python ingestion/compute_scholar_metrics_ch.py --academic "APELLIDO, NOMBRE"
 ```
 
 ---

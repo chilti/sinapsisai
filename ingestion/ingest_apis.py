@@ -792,9 +792,11 @@ def _sync_to_clickhouse(batch_data, inst, dep, sub, is_snii, source_override=Non
         if author_rows:
             ch.insert_df('paper_author_map', pd.DataFrame(author_rows))
         if entity_rows:
-            ch.insert_df('paper_entity_map', pd.DataFrame(entity_rows))
+            df_ent = pd.DataFrame(entity_rows).drop_duplicates(subset=['paper_id', 'institution', 'dependency', 'subdependency'])
+            ch.insert_df('paper_entity_map', df_ent)
+            print(f"      📊 [ClickHouse] {len(df_ent)} entidades únicas sincronizadas.")
             
-        print(f"      📊 [ClickHouse] {len(author_rows)} registros sincronizados (Dual Write).")
+        print(f"      📊 [ClickHouse] {len(author_rows)} autores sincronizados (Dual Write).")
     except Exception as e:
         print(f"      [WARN] Error sincronizando con ClickHouse: {e}")
 

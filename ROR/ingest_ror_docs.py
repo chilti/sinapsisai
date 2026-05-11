@@ -71,7 +71,112 @@ class RORIngestor:
         self.graph_store = Neo4jGraphStore()
         # Cache de DOIs procesados en esta ejecución para evitar redundancia
         self.processed_dois = set()
-        
+
+    def _ror_to_openalex_id(self, ror_id: str) -> str | None:
+        """Devuelve el OpenAlex institution ID (https://openalex.org/I...) dado un ROR."""
+        try:
+            ch = ch_client.get_client()
+            result = ch.query(
+                "SELECT DISTINCT id FROM institutions WHERE ror = {ror:String} LIMIT 1",
+                parameters={'ror': ror_id}
+            )
+            if result.result_rows:
+                return result.result_rows[0][0]   # e.g. 'https://openalex.org/I8961855'
+        except Exception as e:
+            print(f"   ⚠️  Error buscando OpenAlex ID para ROR {ror_id}: {e}")
+        return None
+
+    def _iter_works_from_ch(self, ror_id: str, batch_size: int = 500):
+        """
+        Generador que itera works_flat FINAL filtrando por institution_ids (OpenAlex ID).
+        Construye dicts de work desde columnas estructuradas (works_flat no tiene raw_data).
+        Keyset pagination por id — sin límite de 10k, sin duplicados de snapshot.
+        """
+        oa_id = self._ror_to_openalex_id(ror_id)
+        if not oa_id:
+            print(f"   ❌ No se encontró OpenAlex ID para ROR {ror_id}. Saltando.")
+            return
+
+        print(f"   🗄️  ClickHouse directo: {oa_id} ({ror_id})")
+        ch = ch_client.get_client()
+        last_id = ''
+        page = 0
+        total_yielded = 0
+
+        while True:
+            try:
+                rows = ch.query(
+                    """
+                    SELECT
+                        id, doi, title, publication_year, cited_by_count,
+                        is_oa, type, pmid, mag_id, fwci, percentile,
+                        is_top_10, is_top_1, source_id,
+                        domain_name, field_name, subfield_name, topic_id, sdgs
+                    FROM works_flat FINAL
+                    WHERE has(institution_ids, {oa_id:String})
+                      AND id > {last_id:String}
+                    ORDER BY id
+                    LIMIT {batch_size:UInt32}
+                    """,
+                    parameters={
+                        'oa_id': oa_id,
+                        'last_id': last_id,
+                        'batch_size': batch_size,
+                    }
+                ).result_rows
+            except Exception as e:
+                print(f"   ❌ Error en batch {page}: {e}")
+                break
+
+            if not rows:
+                break
+
+            batch = []
+            for row in rows:
+                (wid, doi, title, year, cites,
+                 is_oa, wtype, pmid, mag_id, fwci, percentile,
+                 is_top_10, is_top_1, source_id,
+                 dom, fld, subf, top, sdgs) = row
+                # Reconstruir dict compatible con _process_works_batch_multi
+                batch.append({
+                    'id':               wid,
+                    'doi':              doi or None,
+                    'display_name':     title or '',
+                    'publication_year': int(year or 0),
+                    'cited_by_count':   int(cites or 0),
+                    'is_oa':            bool(is_oa),
+                    'type':             wtype or '',
+                    'fwci':             float(fwci or 0),
+                    'topic_domain':     dom,
+                    'topic_field':      fld,
+                    'topic_subfield':   subf,
+                    'topic_name':       top,
+                    'sdgs':             sdgs,
+                    'authorships':      [],
+                    'concepts':         [],
+                    'ids': {
+                        'pmid': pmid or '',
+                        'mag':  mag_id or '',
+                    },
+                })
+
+            if not batch:
+                break
+
+            total_yielded += len(batch)
+            page += 1
+            print(f"   📄 Batch {page}: {len(batch)} works (total: {total_yielded:,})")
+            yield batch
+
+            if len(rows) < batch_size:
+                break
+
+            # Keyset: id de la última fila (columna 0)
+            last_id = rows[-1][0]
+
+        print(f"   ✅ ClickHouse: {total_yielded:,} works totales para {ror_id}")
+
+
     def _extract_authors_and_concepts(self, work):
         """Extrae autores y conceptos formateados para Neo4jGraphStore."""
         authors = []
@@ -161,9 +266,13 @@ class RORIngestor:
             # 1. Verificar si ya fue procesado en esta ejecución (ahorro de DB)
             if doi in self.processed_dois:
                 # Solo aseguramos el link por si acaso es una nueva entidad vinculada al mismo DOI
-                self.graph_store.add_entity_paper_link(inst_name, doi)
-                if sub_name and sub_name != "SIN INFORMACIÓN":
-                    self.graph_store.add_entity_paper_link(sub_name, doi)
+                for ent in entities:
+                    inst, dep, sub = ent['inst'], ent['dep'], ent['sub']
+                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Institution', doi)
+                    if dep != "SIN INFORMACIÓN":
+                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Dependency', doi)
+                    if sub != "SIN INFORMACIÓN":
+                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Subdependency', doi)
                 continue
 
             # 2. Verificar si ya existe en las bases (para DOIs no vistos en este run)
@@ -174,19 +283,24 @@ class RORIngestor:
             if exists_graph:
                 self.graph_store.mark_paper_as_indexed(doi, 'openalex')
                 self.graph_store.set_paper_openalex_id(doi, work.get('id'))
-                self.graph_store.add_entity_paper_link(inst_name, doi)
-                if sub_name and sub_name != "SIN INFORMACIÓN":
-                    self.graph_store.add_entity_paper_link(sub_name, doi)
+                
+                for ent in entities:
+                    inst, dep, sub = ent['inst'], ent['dep'], ent['sub']
+                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Institution', doi)
+                    if dep != "SIN INFORMACIÓN":
+                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Dependency', doi)
+                    if sub != "SIN INFORMACIÓN":
+                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Subdependency', doi)
                 
                 if not exists_qdrant:
-                    self._prepare_for_qdrant(work, inst_name, sub_name, batch_texts, batch_payloads)
+                    self._prepare_for_qdrant_multi(work, entities, batch_texts, batch_payloads)
                 
                 self.processed_dois.add(doi)
                 continue
             
             # 4. Si no existe en Neo4j, procesar e insertar
             if not exists_qdrant:
-                self._prepare_for_qdrant(work, inst_name, sub_name, batch_texts, batch_payloads)
+                self._prepare_for_qdrant_multi(work, entities, batch_texts, batch_payloads)
 
             authors, concepts = self._extract_authors_and_concepts(work)
 
@@ -205,9 +319,13 @@ class RORIngestor:
             self.graph_store.mark_paper_as_indexed(doi, 'openalex')
             self.graph_store.set_paper_openalex_id(doi, work.get('id'))
             
-            self.graph_store.add_entity_paper_link(inst_name, doi)
-            if sub_name and sub_name != "SIN INFORMACIÓN":
-                 self.graph_store.add_entity_paper_link(sub_name, doi)
+            for ent in entities:
+                inst, dep, sub = ent['inst'], ent['dep'], ent['sub']
+                self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Institution', doi)
+                if dep != "SIN INFORMACIÓN":
+                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Dependency', doi)
+                if sub != "SIN INFORMACIÓN":
+                     self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Subdependency', doi)
             
             self.processed_dois.add(doi)
 
@@ -270,12 +388,15 @@ class RORIngestor:
             parent_oa = data.get('parent_openalex_id')
             is_sub_match = data.get('is_subdependency_match', False)
             
-            ror_groups[ror_id].append({
+            # Evitar duplicados exactos en el mapeo para este ROR
+            ent_entry = {
                 "inst": inst, "dep": dep, "sub": sub,
                 "parent_ror": parent_ror, "parent_oa": parent_oa,
                 "matched_ror": ror_id, "matched_oa": matched_oa,
                 "is_sub_match": is_sub_match
-            })
+            }
+            if ent_entry not in ror_groups[ror_id]:
+                ror_groups[ror_id].append(ent_entry)
 
         print(f"🎯 Identificados {len(ror_groups)} RORs únicos para procesar.")
         
@@ -289,7 +410,7 @@ class RORIngestor:
             
             try:
                 processed_count = 0
-                for page in openalex_utils.get_works_by_ror(ror_id, per_page=100, local_only=local_only):
+                for page in self._iter_works_from_ch(ror_id):
                     self._process_works_batch_multi(page, entities, ror_id)
                     processed_count += len(page)
                 print(f"   ✅ Finalizado: {processed_count} trabajos.")
@@ -300,7 +421,6 @@ class RORIngestor:
         """Procesa trabajos vinculándolos a los 3 niveles y actualizando metadata."""
         batch_payloads = []
         batch_texts = []
-        batch_seen = set()
         
         # 1. Actualizar metadata de las entidades primero
         if works:
@@ -334,61 +454,49 @@ class RORIngestor:
         else:
             missing_dois_in_qdrant = {(w.get('doi') or '').replace("https://doi.org/", "").lower() for w in works}
 
-        print(f"      🔍 Qdrant: {len(works)} trabajos encontrados. {len(works) - len(missing_dois_in_qdrant)} ya existen, {len(missing_dois_in_qdrant)} nuevos para vectorizar.")
+        print(f"      🔍 Qdrant: {len(works)} trabajos. {len(works) - len(missing_dois_in_qdrant)} ya existen, {len(missing_dois_in_qdrant)} nuevos.")
 
         for work in works:
             doi = (work.get('doi') or '').replace("https://doi.org/", "").lower()
             if not doi: continue
             
-            # 1. Si ya se procesó en este run, solo actualizamos links
-            if doi in self.processed_dois:
-                for ent in entities:
-                    inst, dep, sub = ent['inst'], ent['dep'], ent['sub']
-                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Institution', doi)
-                    if dep != "SIN INFORMACIÓN":
-                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Dependency', doi)
-                    if sub != "SIN INFORMACIÓN":
-                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Subdependency', doi)
-                continue
-
-            # 2. Verificar existencia en bases
-            exists_graph = self.graph_store.check_paper_exists(doi)
-            
-            # Usar el set pre-calculado para Qdrant
-            u_str = doi if doi and str(doi).strip().lower() != "none" else work.get('display_name')
-            exists_qdrant = u_str not in missing_dois_in_qdrant
-
-            if not exists_graph:
-                authors, concepts = self._extract_authors_and_concepts(work)
-                self.graph_store.add_paper({
-                    "paper_id": doi, "doi": doi, 
+            # En ROR no siempre tenemos el CVU, así que pasamos None
+            # Llamamos a ingest_paper_row por cada entidad para asegurar los links CREDITED_TO
+            for ent in entities:
+                row = {
+                    "paper_id": doi,
                     "title": work.get('display_name') or "Sin Título",
                     "year": work.get('publication_year', 0),
                     "citations": work.get('cited_by_count', 0),
-                    "authors": authors,
-                    "concepts": concepts,
-                    "raw_metadata": work
-                })
-
-            self.graph_store.mark_paper_as_indexed(doi, 'openalex')
-            self.graph_store.set_paper_openalex_id(doi, work.get('id'))
-
-            # VINCULACIÓN 3 NIVELES
-            for ent in entities:
-                inst, dep, sub = ent['inst'], ent['dep'], ent['sub']
-                self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Institution', doi)
-                if dep != "SIN INFORMACIÓN":
-                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Dependency', doi)
-                if sub != "SIN INFORMACIÓN":
-                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Subdependency', doi)
-                
+                    "doi": doi,
+                    "openalex_id": work.get('id'),
+                    "wos_id": work.get('ids', {}).get('wos'),
+                    "scopus_id": work.get('ids', {}).get('scopus'),
+                    "fwci": work.get('fwci'),
+                    "topic_domain": work.get('topic_domain'),
+                    "topic_field": work.get('topic_field'),
+                    "topic_subfield": work.get('topic_subfield'),
+                    "topic_name": work.get('topic_name'),
+                    "sdgs": work.get('sdgs', []),
+                    "author_cvu": None,
+                    "author_position": None,
+                    "is_corresponding": False,
+                    "institucion": ent['inst'],
+                    "dependencia": ent['dep'],
+                    "subdependencia": ent['sub']
+                }
+                self.graph_store.ingest_paper_row(row)
+            
+            # 2. Qdrant
+            u_str = doi if doi and str(doi).strip().lower() != "none" else work.get('display_name')
+            exists_qdrant = u_str not in missing_dois_in_qdrant
             if not exists_qdrant:
                 self._prepare_for_qdrant_multi(work, entities, batch_texts, batch_payloads)
             
             self.processed_dois.add(doi)
 
         if len(works) > 0:
-            print(f"      🗄️ Neo4j: {len(works)} artículos vinculados a jerarquía institucional.")
+            print(f"      🗄️ Neo4j: {len(works)} artículos procesados.")
 
         # Vectorizar
         if batch_texts:
@@ -406,19 +514,27 @@ class RORIngestor:
             ch = ch_client.get_client()
             rows = []
             for w in works:
-                doi = (w.get('doi') or w.get('id') or '').replace("https://doi.org/", "").lower()
-                if not doi: continue
-                
+                raw_doi = (w.get('doi') or '').replace('https://doi.org/', '').strip().lower()
+                openalex_url = w.get('id') or ''
+                # Preferir DOI normalizado (coincide con LIKE '10.%' en _Q_PROD)
+                # Si no hay DOI, usar W-ID corto sin el prefijo https://openalex.org/
+                if raw_doi and raw_doi.startswith('10.'):
+                    paper_id = raw_doi
+                elif openalex_url.startswith('https://openalex.org/'):
+                    paper_id = openalex_url.replace('https://openalex.org/', '')  # → 'W4404983616'
+                else:
+                    paper_id = openalex_url or raw_doi
+                if not paper_id:
+                    continue
+
                 ids = w.get('ids', {})
-                
-                # Para cada entidad mapeada a este ROR, creamos una entrada en la tabla de entidades
                 for ent in entities:
                     rows.append({
-                        'paper_id': doi,
+                        'paper_id': paper_id,
                         'institution': ent['inst'],
                         'institution_ror': ent['matched_ror'],
                         'dependency': ent['dep'],
-                        'dependency_id': '', # Se podría derivar si fuera necesario
+                        'dependency_id': '',
                         'subdependency': ent['sub'],
                         'subdependency_id': '',
                         'paper_title': w.get('display_name') or '',
@@ -432,12 +548,13 @@ class RORIngestor:
                         'is_semantic_scholar': 1 if 'mag' in ids else 0,
                         'is_dimensions': 1 if 'mag' in ids else 0,
                         'is_lens': 1 if 'mag' in ids or 'pmid' in ids else 0,
-                        'source': 'ROR_Dual_Ingest'
+                        'source': 'CH_Direct_Ingest'
                     })
             if rows:
                 import pandas as pd
-                ch.insert_df('paper_entity_map', pd.DataFrame(rows))
-                print(f"      📊 [ClickHouse] {len(rows)} mapeos de entidades sincronizados.")
+                df_to_insert = pd.DataFrame(rows).drop_duplicates(subset=['paper_id', 'institution', 'dependency', 'subdependency'])
+                ch.insert_df('paper_entity_map', df_to_insert)
+                print(f"      📊 [ClickHouse] {len(df_to_insert)} mapeos únicos sincronizados (de {len(rows)} totales).")
         except Exception as e:
             print(f"      [WARN] Error en ClickHouse Sync: {e}")
 
@@ -448,14 +565,15 @@ class RORIngestor:
         abstract = deconstruct_abstract(work.get('abstract_inverted_index'))
         doi = (work.get('doi') or '').replace("https://doi.org/", "").lower()
         
-        # Escoger la entidad mas especifica para Qdrant
-        entity_qdrant = ref_sub if ref_sub != "SIN INFORMACIÓN" else (ref_dep if ref_dep != "SIN INFORMACIÓN" else ref_inst)
-        
         text_content = f"Title: {title}\nAbstract: {abstract or ''}".strip()
         batch_texts.append(text_content)
         batch_payloads.append({
-            "paper_id": doi, "title": title, "doi": doi,
-            "entity": entity_qdrant,
+            "paper_id": doi, 
+            "title": title, 
+            "doi": doi,
+            "institution": ref_inst,
+            "dependency": ref_dep,
+            "subdependency": ref_sub,
             "text": text_content
         })
 

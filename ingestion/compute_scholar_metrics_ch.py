@@ -37,6 +37,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env')))
 
 from database.clickhouse_db import ch_client
+from database.knowledge_graph import Neo4jGraphStore
 from scripts.generate_snii_counts import generate_official_snii_counts
 
 # ── Importar helpers del script original ───────────────────────────────────
@@ -58,7 +59,7 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Queries ClickHouse ─────────────────────────────────────────────────────
 
-# Capacidad Instalada (Unificada)
+# Capacidad Instalada — JOIN dual: W-ID directo (nuevos) + DOI normalizado (legacy)
 _Q_CAP = """
 SELECT
     pm.academic_name, pm.institution, pm.dependency, pm.subdependency,
@@ -79,13 +80,37 @@ SELECT
     wf.is_retracted, wf.referenced_works_count, wf.keywords, pm.ODS AS ODS,
     wf.author_names, wf.all_country_codes,
     wf.apc_paid_usd, wf.apc_list_usd, wf.counts_by_year, wf.license,
-    wf.journal_is_in_doaj, wf.journal_is_core, wf.any_repository_has_fulltext
+    wf.journal_is_in_doaj, wf.journal_is_core, wf.any_repository_has_fulltext,
+    inst.ror AS ror_id,
+    inst.id AS institution_id,
+    inst.type AS institution_type,
+    inst.country_code AS institution_country
 FROM works_academic_all wf
-JOIN paper_author_map pm ON wf.id = pm.paper_id
-{filter}
-"""
+JOIN (
+    -- W-ID directo (registros nuevos post-fix)
+    SELECT DISTINCT paper_id, academic_name, institution, dependency, subdependency,
+           orcid, openalex_id, is_snii, audit_verdict, ODS, institution_ror
+    FROM paper_author_map
+    WHERE paper_id LIKE 'W%%'
+    UNION DISTINCT
+    -- DOI normalizado (registros legacy con DOI como paper_id)
+    SELECT any(wf2.id) AS paper_id, pm2.academic_name, pm2.institution, pm2.dependency,
+           pm2.subdependency, pm2.orcid, pm2.openalex_id, pm2.is_snii,
+           pm2.audit_verdict, pm2.ODS, pm2.institution_ror
+    FROM paper_author_map pm2
+    JOIN works_academic_all wf2
+      ON lower(replaceOne(wf2.doi, %(doi_prefix)s, %(doi_empty)s)) = lower(pm2.paper_id)
+    WHERE pm2.paper_id LIKE %(doi_like)s
+    GROUP BY pm2.paper_id, pm2.academic_name, pm2.institution, pm2.dependency,
+             pm2.subdependency, pm2.orcid, pm2.openalex_id, pm2.is_snii,
+             pm2.audit_verdict, pm2.ODS, pm2.institution_ror
+) pm ON wf.id = pm.paper_id
+LEFT JOIN institutions inst ON pm.institution_ror = inst.ror
+{filter}"""
 
-# Producción Institucional: works_seed_mexico
+
+# Producción Institucional: paper_entity_map → works_academic_all
+# JOIN dual: por W-ID (nuevos registros) y por DOI normalizado (registros legacy)
 _Q_PROD = """
 SELECT
     wf.id          AS paper_id,
@@ -107,6 +132,9 @@ SELECT
     wf.type,
     wf.source_id   AS Source,
     wf.source_type,
+    pe.institution,
+    pe.dependency,
+    pe.subdependency,
     coalesce(pm.ODS, wf.sdgs) AS ODS,
     wf.author_names,
     wf.all_country_codes,
@@ -117,26 +145,51 @@ SELECT
     wf.license,
     wf.journal_is_in_doaj,
     wf.journal_is_core,
-    wf.any_repository_has_fulltext
+    wf.any_repository_has_fulltext,
+    inst.ror AS ror_id,
+    inst.id AS institution_id,
+    inst.type AS institution_type,
+    inst.country_code AS institution_country
 FROM works_academic_all wf
-JOIN paper_entity_map pe ON wf.id = pe.paper_id
+JOIN (
+    -- W-ID directo (registros nuevos post-fix)
+    SELECT DISTINCT paper_id, institution, dependency, subdependency, institution_ror
+    FROM paper_entity_map
+    WHERE paper_id LIKE 'W%%'
+    UNION DISTINCT
+    -- DOI normalizado (registros legacy)
+    SELECT any(wf2.id) AS paper_id, pe2.institution, pe2.dependency, pe2.subdependency, pe2.institution_ror
+    FROM paper_entity_map pe2
+    JOIN works_academic_all wf2
+      ON lower(replaceOne(wf2.doi, %(doi_prefix)s, %(doi_empty)s)) = lower(pe2.paper_id)
+    WHERE pe2.paper_id LIKE %(doi_like)s
+    GROUP BY pe2.paper_id, pe2.institution, pe2.dependency, pe2.subdependency, pe2.institution_ror
+) pe ON wf.id = pe.paper_id
 LEFT JOIN (
     SELECT paper_id, any(ODS) as ODS 
     FROM paper_author_map 
     GROUP BY paper_id
 ) pm ON wf.id = pm.paper_id
+LEFT JOIN institutions inst ON pe.institution_ror = inst.ror
 {filter}
 """
 
 
+_DOI_PREFIX = 'https://doi.org/'
+_DOI_PARAMS  = {'doi_prefix': _DOI_PREFIX, 'doi_empty': '', 'doi_like': '10.%'}
+
 def _query_cap(filter_sql: str, params: dict = None) -> pd.DataFrame:
     query = _Q_CAP.format(filter=filter_sql)
-    return ch_client.query_df(query, parameters=params or {})
+    p = dict(_DOI_PARAMS)
+    p.update(params or {})
+    return ch_client.query_df(query, parameters=p)
 
 
 def _query_prod(filter_sql: str, params: dict = None) -> pd.DataFrame:
     q = _Q_PROD.format(filter=filter_sql)
-    return ch_client.query_df(q, parameters=params or {})
+    p = dict(_DOI_PARAMS)
+    p.update(params or {})
+    return ch_client.query_df(q, parameters=p)
 
 
 # ── Helpers de normalización ───────────────────────────────────────────────
@@ -420,7 +473,8 @@ def _save_inst_parquets(df: pd.DataFrame, base_dir: Path,
 
 def _save_aggregate_parquets(df: pd.DataFrame, out_dir: Path,
                               updated_files: set = None,
-                              label: str = 'MEXICO'):
+                              label: str = 'MEXICO',
+                              inst: str = None, dep: str = None, sub: str = None):
     """
     Guarda los 6 parquets de nivel México (o institución completa)
     en out_dir/ como un único agregado.
@@ -449,12 +503,38 @@ def _save_aggregate_parquets(df: pd.DataFrame, out_dir: Path,
     for k, v in inter.items():
         df_tot[k] = v
 
-    # Inyectar lista de académicos para el selector del dashboard
+    # Inyectar lista de académicos desde el Censo de Neo4j (Lista Maestra)
+    # Usamos un diccionario indexado por nombre para deduplicar y permitir diccionarios de metadatos
+    ac_map = {} 
+    
+    # 1. Académicos con obra (en ClickHouse)
     if 'academic_name' in df.columns:
-        ac_list = sorted([str(a) for a in df['academic_name'].dropna().unique() if a])
-        df_tot['academics_list'] = json.dumps(ac_list)
-    else:
-        df_tot['academics_list'] = "[]"
+        for a in df['academic_name'].dropna().unique():
+            if a:
+                name_str = str(a)
+                ac_map[name_str] = {
+                    "name": name_str,
+                    "institution": inst or institution_name or "MÉXICO",
+                    "dependency": dep or "SIN INFORMACIÓN",
+                    "subdependency": sub or "SIN INFORMACIÓN"
+                }
+    
+    # 2. Académicos del Censo (en Neo4j - SNIIs y No-SNIIs)
+    if inst:
+        try:
+            neo = Neo4jGraphStore()
+            census = neo.get_hierarchical_academic_census(inst, dep, sub)
+            neo.close()
+            if census:
+                for person in census:
+                    # El censo de Neo4j tiene prioridad por tener la jerarquía verificada
+                    ac_map[person['name']] = person
+        except Exception as e:
+            print(f"  ⚠️ Error obteniendo censo de Neo4j para {label}: {e}")
+
+    # Convertir a lista ordenada de diccionarios para el JSON
+    final_ac_list = sorted(list(ac_map.values()), key=lambda x: x['name'])
+    df_tot['academics_list'] = json.dumps(final_ac_list, ensure_ascii=False)
 
     # Inyectar conteo oficial SNII 2025
     path_counts = BASE_PATH / 'data' / 'official_snii_counts.json'
@@ -531,29 +611,42 @@ _PAPERS_DROP = ['topic_name', 'subfield_name', 'field_name', 'domain_name',
 
 def _flush_academic(ac_name: str, df_ac: pd.DataFrame,
                     entity: str, institution: str, updated_files: set):
-    """Procesa y guarda los 7 parquets de un académico."""
-    if df_ac.empty:
-        return
-
+    """Procesa y guarda los 7 parquets de un académico. Soporta DFs vacíos para censo."""
     safe_inst = _safe_name(institution)
     safe_ent  = _safe_name(entity)
     safe_ac   = _safe_name(ac_name)
     d = CACHE_DIR / safe_inst / safe_ent / safe_ac
 
-    df_ac = df_ac.drop_duplicates(subset=['paper_id']).copy()
-    df_ac['year'] = pd.to_numeric(df_ac.get('year'), errors='coerce')
+    if df_ac.empty:
+        # Crear un DataFrame mínimo para que el dashboard no rompa y muestre info básica
+        df_ac = pd.DataFrame([{
+            'academic_name': ac_name,
+            'entities': entity,
+            'institutions': institution,
+            'has_oa_data': 0,
+            'citations': 0,
+            'paper_id': None,
+            'year': None
+        }])
+    else:
+        df_ac = df_ac.drop_duplicates(subset=['paper_id']).copy()
+        df_ac['year'] = pd.to_numeric(df_ac.get('year'), errors='coerce')
+        df_ac['entities']     = entity
+        df_ac['institutions'] = institution
+        df_ac['has_oa_data']  = 1
+        df_ac['academic_name'] = ac_name
 
     # Columnas derivadas para el dashboard
-    df_ac['entities']     = entity
-    df_ac['institutions'] = institution
-    df_ac['has_oa_data']  = 1
-    df_ac['DOI']  = df_ac['doi'].apply(
-        lambda x: f'https://doi.org/{x}' if x and str(x).startswith('10.') else x)
-    df_ac['Link']         = df_ac['DOI']
-    df_ac['openalex_url'] = df_ac['paper_id'].apply(
-        lambda x: f'https://openalex.org/{x}' if x and str(x).startswith('W') else None)
+    if 'doi' in df_ac.columns:
+        df_ac['DOI']  = df_ac['doi'].apply(
+            lambda x: f'https://doi.org/{x}' if x and str(x).startswith('10.') else x)
+        df_ac['Link'] = df_ac['DOI']
+    
+    if 'paper_id' in df_ac.columns:
+        df_ac['openalex_url'] = df_ac['paper_id'].apply(
+            lambda x: f'https://openalex.org/{x}' if x and str(x).startswith('W') else None)
+
     df_ac['topics'] = _topics_as_list(df_ac)
-    df_ac['academic_name'] = ac_name
 
     # papers_profesor (sin columnas internas)
     drop = [c for c in _PAPERS_DROP if c in df_ac.columns]
@@ -710,6 +803,60 @@ def _load_hierarchy_from_json(institution_filter=None):
     return hier
 
 
+def _process_single_academic(academic_filter: str, updated_files: set):
+    """
+    Modo rápido: filtra paper_author_map por academic_name,
+    lee la jerarquía de los propios registros y guarda sus parquets.
+    Si no hay registros en CH, busca en Neo4j para crear al menos el placeholder del censo.
+    """
+    print(f"\n🔍 Modo académico individual: {academic_filter}")
+    df = _query_cap(
+        "WHERE pm.academic_name = %(ac)s",
+        {'ac': academic_filter}
+    )
+    
+    if df.empty:
+        print("  ⚠ Sin registros en paper_author_map. Buscando en Neo4j (Censo)...")
+        # Fallback a Neo4j para obtener jerarquía
+        try:
+            from database.knowledge_graph import Neo4jGraphStore
+            gs = Neo4jGraphStore()
+            # Buscar cualquier afiliación
+            q = """
+            MATCH (a:Academic {name: $name})-[:AFFILIATED_TO]->(ent)
+            OPTIONAL MATCH (ent)-[:PART_OF]->(p1)-[:PART_OF]->(p2)
+            RETURN ent.name as entity, 
+                   COALESCE(p2.name, p1.name, ent.name) as institution
+            LIMIT 1
+            """
+            with gs.driver.session() as session:
+                res = session.run(q, name=academic_filter).single()
+                if res:
+                    entity = res['entity']
+                    institution = res['institution']
+                    print(f"  ✅ Jerarquía encontrada en Neo4j: {institution} -> {entity}")
+                    _flush_academic(academic_filter, pd.DataFrame(), entity, institution, updated_files)
+                else:
+                    print("  ❌ Tampoco se encontró en Neo4j.")
+            gs.close()
+        except Exception as e:
+            print(f"  ❌ Error consultando Neo4j: {e}")
+        return
+
+    print(f"  📊 {len(df):,} papers encontrados.")
+    # ... rest of the logic ...
+    df['entity'] = (
+        df.get('subdependency', pd.Series(dtype=str))
+          .fillna(df.get('dependency', pd.Series(dtype=str)))
+          .fillna(df.get('institution', pd.Series(dtype=str)))
+    )
+
+    institution = df['institution'].mode().iloc[0] if 'institution' in df.columns else 'SIN INSTITUCIÓN'
+    entity      = df['entity'].mode().iloc[0]
+
+    _flush_academic(academic_filter, df.copy(), entity, institution, updated_files)
+
+
 def process_and_save(entity_filter=None, academic_filter=None, institution_filter=None, source_filter='all'):
     """
     Orquestador principal. Carga jerarquía, consulta ClickHouse y guarda Parquets.
@@ -720,6 +867,12 @@ def process_and_save(entity_filter=None, academic_filter=None, institution_filte
     print("\n[0] Actualizando conteos oficiales SNII 2025...")
     _count_official_census()
 
+    # ── Modo académico individual: path rápido ─────────────────────────────
+    if academic_filter:
+        _process_single_academic(academic_filter, updated_files)
+        print(f"\n✅ Completado. {len(updated_files)} archivos actualizados.")
+        return
+
     # ── [1] Cargar jerarquía desde el JSON ──
     print(f"\n[1] Cargando jerarquía institucional desde {AUDIT_PATH.name}...")
     hier = _load_hierarchy_from_json(institution_filter)
@@ -729,6 +882,7 @@ def process_and_save(entity_filter=None, academic_filter=None, institution_filte
 
     mx_cap_frames = []
 
+
     # ── [2] Procesar institución por institución ──────────────────────────────
     for inst_name, data in hier.items():
         inst_ror = data['ror']
@@ -737,8 +891,15 @@ def process_and_save(entity_filter=None, academic_filter=None, institution_filte
         print(f"\n📍 {inst_name} ({inst_ror})")
 
         # 1. Obtener capacidad instalada (con filtro de académico si existe)
-        params = {'ror': inst_ror}
-        where_cap = "WHERE (pm.institution_ror = %(ror)s OR pm.institution ILIKE '%%AUTONOMA%%MEXICO%%')"
+        params = {'ror': inst_ror, 'inst': inst_name}
+        # Filtrar por ROR si está disponible, si no por nombre exacto de institución
+        if inst_ror:
+            where_cap = "WHERE pm.institution_ror = %(ror)s"
+        else:
+            where_cap = "WHERE pm.institution = %(inst)s"
+        if entity_filter:
+            where_cap += " AND (pm.subdependency = %(entity)s OR pm.dependency = %(entity)s)"
+            params['entity'] = entity_filter
         if academic_filter:
             where_cap += " AND pm.academic_name = %(ac)s"
             params['ac'] = academic_filter
@@ -756,17 +917,46 @@ def process_and_save(entity_filter=None, academic_filter=None, institution_filte
             print(f"  ❌ No se encontró capacidad instalada.")
             continue
 
-        print(f"  📊 {len(df_full_cap):,} registros recuperados. Iniciando agregación...")
+        print(f"  📊 {df_full_cap['paper_id'].nunique():,} registros únicos recuperados. Iniciando agregación...")
         
         # 2. Visibilidad e Indexación
         for c in ['is_wos', 'is_scopus', 'is_pubmed', 'is_openalex', 'is_doaj']:
             if c in df_full_cap.columns:
                 df_full_cap[c] = pd.to_numeric(df_full_cap[c], errors='coerce').fillna(0).astype(int)
 
-        # 3. Nivel Académico
+        # 3. Nivel Académico (ClickHouse + Censo Neo4j)
         df_full_cap['entity'] = df_full_cap['subdependency'].fillna(df_full_cap['dependency']).fillna(df_full_cap['institution'])
-        for ac_name, df_ac in df_full_cap.groupby('academic_name'):
-            ac_entity = df_ac['entity'].mode()[0] if not df_ac['entity'].empty else inst_name
+        
+        # Obtener censo completo de esta institución desde Neo4j
+        census_map = {}
+        try:
+            neo = Neo4jGraphStore()
+            census_data = neo.get_hierarchical_academic_census(inst_name)
+            neo.close()
+            for c in census_data:
+                census_map[c['name']] = c
+        except Exception as e:
+            print(f"  ⚠️ Error de censo para {inst_name}: {e}")
+
+        # Identificar todos los académicos únicos (unión de ambas fuentes)
+        all_names = set(df_full_cap['academic_name'].unique()) | set(census_map.keys())
+        
+        for ac_name in all_names:
+            if not ac_name or str(ac_name).lower() == 'none': continue
+            
+            df_ac = df_full_cap[df_full_cap['academic_name'] == ac_name]
+            
+            # Determinar afiliación (preferir ClickHouse si hay obra, si no Neo4j)
+            if not df_ac.empty:
+                ac_entity = df_ac['entity'].mode()[0] if not df_ac['entity'].empty else inst_name
+            else:
+                c_info = census_map.get(ac_name, {})
+                ac_entity = c_info.get('subdependency')
+                if not ac_entity or ac_entity == 'SIN INFORMACIÓN':
+                    ac_entity = c_info.get('dependency')
+                if not ac_entity or ac_entity == 'SIN INFORMACIÓN':
+                    ac_entity = inst_name
+            
             _flush_academic(ac_name, df_ac.copy(), ac_entity, inst_name, updated_files)
 
         # 4. Agregación Bottom-Up (Dependencias y Subdependencias)
@@ -775,39 +965,51 @@ def process_and_save(entity_filter=None, academic_filter=None, institution_filte
             print(f"  ℹ️ Saltando agregaciones institucionales (filtro académico activo)")
             continue
 
-        # Capacidad por Dependencia
+        # Capacidad por Dependencia y Subdependencia
         if 'dependency' in df_full_cap.columns:
             for dep_name, df_dep in df_full_cap[df_full_cap['dependency'] != 'SIN INFORMACIÓN'].groupby('dependency'):
                 d_dep = CACHE_DIR / safe_inst / _safe_name(dep_name)
-                _save_aggregate_parquets(df_dep, d_dep, updated_files, label=dep_name)
+                _save_aggregate_parquets(df_dep, d_dep, updated_files, label=dep_name, inst=inst_name, dep=dep_name)
 
-        # Capacidad por Subdependencia
-        if 'subdependency' in df_full_cap.columns:
-            for sub_name, df_sub in df_full_cap[df_full_cap['subdependency'] != 'SIN INFORMACIÓN'].groupby('subdependency'):
-                d_sub = CACHE_DIR / safe_inst / _safe_name(sub_name)
-                _save_aggregate_parquets(df_sub, d_sub, updated_files, label=sub_name)
+                # Subdependencias
+                if 'subdependency' in df_dep.columns:
+                    for sub_name, df_sub in df_dep[df_dep['subdependency'] != 'SIN INFORMACIÓN'].groupby('subdependency'):
+                        d_sub = CACHE_DIR / safe_inst / _safe_name(sub_name)
+                        _save_aggregate_parquets(df_sub, d_sub, updated_files, label=sub_name, inst=inst_name, dep=dep_name, sub=sub_name)
 
         # Capacidad Institución (Total)
         cap_dir = CACHE_DIR / safe_inst / 'capacidad_instalada'
-        _save_aggregate_parquets(df_full_cap, cap_dir, updated_files, label=inst_name)
-        _save_aggregate_parquets(df_full_cap, CACHE_DIR / safe_inst, updated_files, label=inst_name)
+        _save_aggregate_parquets(df_full_cap, cap_dir, updated_files, label=inst_name, inst=inst_name)
+        _save_aggregate_parquets(df_full_cap, CACHE_DIR / safe_inst, updated_files, label=inst_name, inst=inst_name)
         
         mx_cap_frames.append(df_full_cap)
 
         # 5. Producción Institucional (Firma / ROR)
-        where_prod = "WHERE (pe.institution_ror = %(ror)s OR pe.institution ILIKE '%%AUTONOMA%%MEXICO%%')"
-        df_prod = _query_prod(where_prod, {'ror': inst_ror})
+        params_prod = {'ror': inst_ror, 'inst': inst_name}
+        if inst_ror:
+            where_prod = "WHERE pe.institution_ror = %(ror)s"
+        else:
+            where_prod = "WHERE pe.institution = %(inst)s"
+        if entity_filter:
+            where_prod += " AND (pe.subdependency = %(entity)s OR pe.dependency = %(entity)s)"
+            params_prod['entity'] = entity_filter
+        df_prod = _query_prod(where_prod, params_prod)
         
         if not df_prod.empty:
             prod_dir = CACHE_DIR / safe_inst / 'produccion_institucional'
             _save_aggregate_parquets(df_prod, prod_dir, updated_files, label=inst_name)
-            print(f"  🏛️ {len(df_prod):,} papers (Producción Institucional)")
+            print(f"  🏛️ {df_prod['paper_id'].nunique():,} papers únicos (Producción Institucional)")
 
-            # Producción por Dependencia
+            # Producción por Dependencia y Subdependencia (anidada)
             if 'dependency' in df_prod.columns:
                 for dep_name, df_dep_p in df_prod[df_prod['dependency'] != 'SIN INFORMACIÓN'].groupby('dependency'):
                     p_dep = CACHE_DIR / safe_inst / _safe_name(dep_name) / 'produccion_institucional'
                     _save_aggregate_parquets(df_dep_p, p_dep, updated_files, label=dep_name)
+
+                    if 'subdependency' in df_dep_p.columns:
+                        for sub_name, df_sub_p in df_dep_p[df_dep_p['subdependency'] != 'SIN INFORMACIÓN'].groupby('subdependency'):
+                            p_sub = CACHE_DIR / safe_inst / _safe_name(sub_name) / 'produccion_institucional'
+                            _save_aggregate_parquets(df_sub_p, p_sub, updated_files, label=sub_name)
 
         print(f"  ✅ Agregación completada para {inst_name}")
 
@@ -826,7 +1028,7 @@ def process_and_save(entity_filter=None, academic_filter=None, institution_filte
         if not df_mx_prod.empty:
             mx_prod_dir = CACHE_DIR / 'MEXICO' / 'produccion_institucional'
             _save_aggregate_parquets(df_mx_prod, mx_prod_dir, updated_files, label='MEXICO')
-            print(f"  🇲🇽 {len(df_mx_prod):,} papers en works_seed_mexico")
+            print(f"  🇲🇽 {df_mx_prod['paper_id'].nunique():,} papers únicos en works_seed_mexico")
         del df_mx_prod
 
     # ── 5. PRECALCULO DE UMAP (Trayectorias) ──────────────────────────────────

@@ -257,58 +257,63 @@ def obtener_metadatos_de_openalex_autor(openalex_author_id, force_local=False):
                             'Abstract': deconstruct_abstract(w.get('abstract_inverted_index')),
                             'openalex_url': w.get('id') # Persistir ID de OpenAlex
                         }
-        if metadatos:
-            print(f"    [OpenAlex Oficial] Author {oa_id_clean}: {len(metadatos)} trabajos.")
-    except Exception as e:
-        print(f"    [WARN] Error API Oficial OpenAlex Author: {e}")
-    
-    return metadatos
-
-
-
 def ingest_researcher_data(data, force=False, force_local=False, current_idx=None, total=None, save_to_ch=False):
     """Procesa e ingesta los datos de un único investigador."""
     academic_name = data.get('snii_author')
     if not academic_name: return
     
-    inst_name = data.get('snii_institution', 'INSTITUCIÓN DESCONOCIDA')
-    dep_name = data.get('snii_dependency', 'SIN INFORMACIÓN')
-    sub_name = data.get('snii_subdependency', 'SIN INFORMACIÓN')
+    # 1. Generar ID único consistente con knowledge_graph.py
+    cvu = data.get('snii_cvu') or data.get('CVU') or data.get('CVU padrón corregido')
+    if cvu and str(cvu).strip().isdigit():
+        person_id = str(cvu).strip()
+    else:
+        person_id = "EXT_" + "".join(filter(str.isalnum, academic_name)).upper()
+
+    # Preparar datos para ingesta taxonómica
+    # Si el JSON viene de snii_llm_verified_matches, mapear nombres
+    row_for_graph = {
+        'NOMBRE DEL INVESTIGADOR': academic_name,
+        'CVU': cvu,
+        'NIVEL': data.get('snii_level') or data.get('nivel'),
+        'ENTIDAD DE ACREDITACIÓN': data.get('snii_state') or data.get('entidad_federativa'),
+        'INSTITUCION DE ACREDITACION': data.get('snii_institution'),
+        'DEPENDENCIA DE ACREDITACIÓN': data.get('snii_dependency'),
+        'SUBDEPENDENCIA DE ACREDITACIÓN': data.get('snii_subdependency'),
+        'ÁREA DE CONOCIMIENTO': data.get('snii_area'),
+        'DISCIPLINA': data.get('snii_discipline'),
+        'SUBDISCIPLINA': data.get('snii_subdiscipline'),
+        'ESPECIALIDAD': data.get('snii_specialty')
+    }
+    
+    if current_idx and total:
+        print(f"\n🏷️ [{current_idx}/{total}] [{academic_name}] ID: {person_id} - Ingestando esquema...")
+    else:
+        print(f"\n🏷️ [{academic_name}] ID: {person_id} - Ingestando esquema...")
+    
+    # 2. Ingestar Metadatos Taxonómicos e Institucionales (Nueva lógica atómica)
+    graph_store.ingest_academic_row(row_for_graph)
+
+    # 3. Enriquecer con identificadores externos y auditoría
+    audit = data.get('audit', {})
     orcid = data.get('matched_orcid')
     
-    # 1. Actualizar metadatos básicos y auditoría directamente
-    audit = data.get('audit', {})
-    if current_idx and total:
-        print(f"\n🏷️ [{current_idx}/{total}] [{academic_name}] Actualizando metadatos y afiliación...")
-    else:
-        print(f"\n🏷️ [{academic_name}] Actualizando metadatos y afiliación...")
-    
-    if hasattr(graph_store, 'update_academic_metadata'):
-        graph_store.update_academic_metadata(
-            academic_name=academic_name,
-            cvu=data.get('snii_cvu'),
-            orcid=orcid if data.get('match') is True and audit.get('verdict') != 'FALSE_POSITIVE' else None,
-            scopus_id=data.get('scopus_ids'),
-            audit_verdict=audit.get('verdict'),
-            audit_reason=audit.get('reason'),
-            audit_confidence=audit.get('confidence'),
-            audit_timestamp=audit.get('timestamp'),
-            match_reason=data.get('reason'),
-            discarded_candidates=data.get('discarded_candidates'),
-            is_snii=True,
-            entity_name=sub_name if sub_name != "SIN INFORMACIÓN" else (dep_name if dep_name != "SIN INFORMACIÓN" else inst_name)
-        )
-    else:
-        graph_store.set_academic_snii(academic_name, True)
-
-    # 2. Asegurar afiliación jerárquica
-    graph_store.add_academic_full_affiliation(academic_name, inst_name, dep_name, sub_name)
+    graph_store.update_academic_metadata(
+        academic_id=person_id,
+        cvu=cvu,
+        orcid=orcid if data.get('match') is True and audit.get('verdict') != 'FALSE_POSITIVE' else None,
+        scopus_id=data.get('scopus_ids'),
+        audit_verdict=audit.get('verdict'),
+        audit_reason=audit.get('reason'),
+        audit_confidence=audit.get('confidence'),
+        audit_timestamp=audit.get('timestamp'),
+        is_snii=True
+    )
 
 
     # --- Enriquecer con IDs desde Neo4j ---
     neo4j_ids = {"orcid": None, "openalex_id": None}
     if hasattr(graph_store, 'get_academic_ids'):
-        neo4j_ids = graph_store.get_academic_ids(academic_name)
+        neo4j_ids = graph_store.get_academic_ids(person_id)
     
     # Prioridad: data > Neo4j
     orcid = orcid or neo4j_ids.get('orcid')
@@ -332,7 +337,7 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
         return
 
     # 4. Verificar existencia de publicaciones
-    if hasattr(graph_store, 'check_academic_exists') and graph_store.check_academic_exists(academic_name) and not force:
+    if hasattr(graph_store, 'check_academic_exists') and graph_store.check_academic_exists(person_id) and not force:
         print(f"  📍 Publicaciones ya existen en Neo4j. Saltando recolección API...")
         return
 
@@ -419,7 +424,21 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
             record['openalex_url'] = work.get('id')
             if record['Abstract_oa']: record['Abstract'] = record['Abstract_oa']
             record['Cited_by'] = work.get('cited_by_count', record.get('Cited_by', 0))
+            record['fwci'] = work.get('fwci')
             record['Source'] += ' + OpenAlex'
+            
+            # Extraer Topic Principal (primer tópico de la lista)
+            topics = work.get('topics', [])
+            if topics:
+                main_t = topics[0]
+                record['topic_domain'] = main_t.get('domain', {}).get('display_name')
+                record['topic_field'] = main_t.get('field', {}).get('display_name')
+                record['topic_subfield'] = main_t.get('subfield', {}).get('display_name')
+                record['topic_name'] = main_t.get('display_name')
+            
+            # Extraer SDGs
+            sdgs_list = [s.get('display_name') for s in work.get('sustainable_development_goals', []) if s.get('display_name')]
+            record['sdgs'] = sdgs_list
 
         # Verificar existencia en Qdrant usando el set pre-calculado
         u_str = doi if doi and str(doi).strip().lower() != "none" else record.get("Title")
@@ -431,11 +450,14 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
             
             payload_qdrant = {
                 "academic_name": academic_name,
+                "person_id":     person_id,
                 "doi":           doi,
                 "title":         record.get("Title"),
                 "year":          record.get("Year"),
                 "source":        record.get("Source"),
-                "entity":        sub_name if sub_name != "SIN INFORMACIÓN" else inst_name,
+                "institution":   data.get('snii_institution'),
+                "dependency":    data.get('snii_dependency'),
+                "subdependency": data.get('snii_subdependency'),
                 "text":          text_for_embedding
             }
             batch_texts.append(text_for_embedding)
@@ -451,30 +473,40 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
             if g.get("award_id"):
                 awards_list.append(g.get("award_id"))
 
+        # Mapear para ingest_paper_row
         neo4j_batch.append({
-            "system_id": system_id,
+            "system_id": person_id,
             "academic_name": academic_name,
-            "orcid": orcid or None,
-            "openalex_id": ",".join(oa_ids) if oa_ids else None,
             "doi": doi,
-            "paper_openalex_id": record.get("openalex_url"),
-            "title": record.get("Title", "No Title"),
+            "title": record.get("Title"),
             "year": int(record.get("Year", 0)) if record.get("Year") else 0,
             "citations": int(record.get("Cited_by", 0)) if record.get("Cited_by") else 0,
-            "raw_metadata": json.dumps(record, ensure_ascii=False),
-            "audit_verdict": audit.get('verdict'),
-            "audit_reason": audit.get('reason'),
-            "audit_confidence": audit.get('confidence'),
-            "audit_timestamp": audit.get('timestamp'),
+            "orcid": orcid,
+            "openalex_id": record.get("openalex_url"),
+            "author_openalex_id": ",".join(oa_ids) if oa_ids else None,
+            "wos_id": record.get("wos_id"),
+            "scopus_id": record.get("scopus_id"),
+            "semantic_id": record.get("semantic_scholar_id"),
+            "fwci": record.get("fwci"),
+            "topic_domain": record.get("topic_domain"),
+            "topic_field": record.get("topic_field"),
+            "topic_subfield": record.get("topic_subfield"),
+            "topic_name": record.get("topic_name"),
+            "sdgs": record.get("sdgs", []),
+            "author_position": record.get("author_position"),
+            "is_corresponding": record.get("is_corresponding", False),
+            "institucion": data.get('snii_institution'),
+            "dependencia": data.get('snii_dependency'),
+            "subdependencia": data.get('snii_subdependency'),
             "funders": funders_list,
-            "awards": list(set(awards_list))
+            "awards": list(set(awards_list)),
+            "raw_metadata": json.dumps(record, ensure_ascii=False),
+            "audit_verdict": audit.get('verdict') if audit else None
         })
 
     if neo4j_batch:
         print(f"      🗄️ Insertando lote de {len(neo4j_batch)} artículos en Neo4j...")
         graph_store.add_api_papers_batch(neo4j_batch)
-        
-    graph_store.add_academic_full_affiliation(academic_name, inst_name, sub_name)
         
     # --- DUAL WRITE TO CLICKHOUSE ---
     if save_to_ch and neo4j_batch:
@@ -488,15 +520,15 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
                 oa_ids_dict = oa_data.get('ids', {})
                 
                 rows_ch.append({
-                    'paper_id': item['doi'],
+                    'paper_id': item.get('openalex_id') or item.get('doi'),
                     'academic_name': item['academic_name'],
-                    'cvu': str(data.get('cvu', '')),
-                    'orcid': item['orcid'] or '',
-                    'openalex_id': item['openalex_id'] or '',
-                    'institution': inst_name,
+                    'cvu': str(person_id),
+                    'orcid': item.get('orcid') or '',
+                    'openalex_id': item.get('author_openalex_id') or '',
+                    'institution': data.get('snii_institution'),
                     'institution_ror': '',
-                    'dependency': dep_name,
-                    'subdependency': sub_name,
+                    'dependency': data.get('snii_dependency'),
+                    'subdependency': data.get('snii_subdependency'),
                     'paper_title': item['title'],
                     'paper_year': int(item['year']),
                     'citations': int(item['citations']),
@@ -531,7 +563,7 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
             print(f"  ❌ Error en vectores: {e}")
 
 
-def process_and_ingest_snii(json_path, force=False, force_local=False, target_name=None, limit_acads=None, confirmed_only=False, offset=0, save_to_ch=False):
+def process_and_ingest_snii(json_path, force=False, force_local=False, target_name=None, target_orcid=None, limit_acads=None, confirmed_only=False, offset=0, save_to_ch=False):
     if not os.path.exists(json_path):
         print(f"No se encontró el archivo: {json_path}")
         return
@@ -574,6 +606,11 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
             continue
             
         count += 1
+        # Inyectar ORCID si se proporciona por parámetro (prioridad sobre el JSON)
+        if target_name and target_orcid and academic_name.lower() == target_name.lower():
+             data['matched_orcid'] = target_orcid
+             print(f"      🎯 [Override] Usando ORCID proporcionado: {target_orcid}")
+             
         ingest_researcher_data(data, force=force, force_local=force_local, current_idx=count, total=len(registros_to_process), save_to_ch=save_to_ch)
 
 if __name__ == "__main__":
@@ -582,6 +619,7 @@ if __name__ == "__main__":
     parser.add_argument("--input", default=os.path.join("data", "snii_llm_verified_matches.json"), help="JSON SNII")
     parser.add_argument("--limit", type=int, help="Límite")
     parser.add_argument("--name", type=str, help="Nombre")
+    parser.add_argument("--orcid", type=str, help="ORCID explícito para el académico")
     parser.add_argument("--force", action="store_true", help="Forzar")
     parser.add_argument("--local", action="store_true", help="Usar recursos locales (OpenAlex y Embeddings) para evitar límites de API")
     parser.add_argument("--confirmed-only", action="store_true", help="Procesar solo los auditados como CONFIRMED")
@@ -595,6 +633,7 @@ if __name__ == "__main__":
             force=args.force, 
             force_local=args.local, 
             target_name=args.name, 
+            target_orcid=args.orcid,
             limit_acads=args.limit,
             confirmed_only=args.confirmed_only,
             offset=args.offset,

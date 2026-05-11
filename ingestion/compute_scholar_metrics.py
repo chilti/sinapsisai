@@ -900,7 +900,8 @@ def aggregate_metrics(df_papers, group_cols):
                 agg_funcs[acol] = 'first'
     
     # Agregar columnas informativas si existen y no están en group_cols
-    for col in ['orcid', 'scopus_id', 'entities', 'institutions', 'siia_url', 'ror_id', 'ror_reason']:
+    for col in ['orcid', 'scopus_id', 'entities', 'institutions', 'siia_url', 'ror_id', 'ror_reason', 
+                'institution_id', 'institution_type', 'institution_country']:
         if col in df_papers.columns and col not in group_cols:
             agg_funcs[col] = 'first'
     

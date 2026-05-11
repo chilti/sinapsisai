@@ -31,22 +31,35 @@ class Neo4jGraphStore:
             "CREATE CONSTRAINT paper_id IF NOT EXISTS FOR (p:Paper) REQUIRE p.id IS UNIQUE",
             "CREATE INDEX paper_doi_idx IF NOT EXISTS FOR (p:Paper) ON (p.doi)",
             "CREATE INDEX paper_oa_idx IF NOT EXISTS FOR (p:Paper) ON (p.openalex_id)",
-            "CREATE CONSTRAINT author_id IF NOT EXISTS FOR (a:Author) REQUIRE a.id IS UNIQUE",
-            "CREATE CONSTRAINT institution_id IF NOT EXISTS FOR (i:Institution) REQUIRE i.id IS UNIQUE",
+            "CREATE CONSTRAINT person_id IF NOT EXISTS FOR (p:Person) REQUIRE p.id IS UNIQUE",
+            "CREATE CONSTRAINT institution_name IF NOT EXISTS FOR (i:Institution) REQUIRE i.name IS UNIQUE",
             "CREATE CONSTRAINT dependency_id IF NOT EXISTS FOR (d:Dependency) REQUIRE d.id IS UNIQUE",
             "CREATE CONSTRAINT subdependency_id IF NOT EXISTS FOR (s:Subdependency) REQUIRE s.id IS UNIQUE",
-            "CREATE CONSTRAINT concept_id IF NOT EXISTS FOR (c:Concept) REQUIRE c.id IS UNIQUE",
-            "CREATE CONSTRAINT academic_id IF NOT EXISTS FOR (a:Academic) REQUIRE a.id IS UNIQUE",
-            "CREATE CONSTRAINT funder_id IF NOT EXISTS FOR (f:Funder) REQUIRE f.name IS UNIQUE",
-            "CREATE CONSTRAINT award_id IF NOT EXISTS FOR (aw:Award) REQUIRE aw.id IS UNIQUE"
+            "CREATE CONSTRAINT knowledge_area_name IF NOT EXISTS FOR (k:KnowledgeArea) REQUIRE k.name IS UNIQUE",
+            "CREATE CONSTRAINT discipline_id IF NOT EXISTS FOR (d:Discipline) REQUIRE d.id IS UNIQUE",
+            "CREATE CONSTRAINT subdiscipline_id IF NOT EXISTS FOR (sd:Subdiscipline) REQUIRE sd.id IS UNIQUE",
+            "CREATE CONSTRAINT specialty_id IF NOT EXISTS FOR (sp:Specialty) REQUIRE sp.id IS UNIQUE",
+            "CREATE CONSTRAINT user_orcid IF NOT EXISTS FOR (u:User) REQUIRE u.orcid IS UNIQUE",
+            "CREATE CONSTRAINT sdg_name IF NOT EXISTS FOR (s:SDG) REQUIRE s.name IS UNIQUE",
+            "CREATE CONSTRAINT topic_id IF NOT EXISTS FOR (t:Topic) REQUIRE t.id IS UNIQUE",
+            "CREATE CONSTRAINT topic_subfield_id IF NOT EXISTS FOR (t:TopicSubfield) REQUIRE t.id IS UNIQUE",
+            "CREATE CONSTRAINT topic_field_id IF NOT EXISTS FOR (t:TopicField) REQUIRE t.id IS UNIQUE",
+            "CREATE CONSTRAINT topic_domain_name IF NOT EXISTS FOR (t:TopicDomain) REQUIRE t.name IS UNIQUE",
+            
+            # Indices de performance
+            "CREATE INDEX paper_year_idx IF NOT EXISTS FOR (p:Paper) ON (p.year)",
+            "CREATE INDEX paper_fwci_idx IF NOT EXISTS FOR (p:Paper) ON (p.fwci)",
+            
+            # Full-text indices (opcional, para buscadores)
+            "CREATE FULLTEXT INDEX paper_title_search IF NOT EXISTS FOR (p:Paper) ON EACH [p.title]",
+            "CREATE FULLTEXT INDEX person_name_search IF NOT EXISTS FOR (n:Person) ON EACH [n.fullname]",
+            "CREATE FULLTEXT INDEX institution_name_search IF NOT EXISTS FOR (n:Institution|Dependency|Subdependency) ON EACH [n.name]"
         ]
         with self.driver.session() as session:
-            # Limpieza preventiva de la restricción antigua problemática
+            # Limpieza preventiva de etiquetas antiguas
             try:
                 session.run("DROP CONSTRAINT entity_id IF EXISTS")
-                session.run("DROP CONSTRAINT entity_id_unique IF EXISTS")
-            except:
-                pass
+            except: pass
                 
             for query in queries:
                 try:
@@ -137,10 +150,11 @@ class Neo4jGraphStore:
         
         WITH p
         UNWIND $authors AS author
-        // Nueva lógica de ID: ORCID > ScopusID > Name
-        MERGE (a:Author {id: coalesce(author.orcid, author.scopus_id, author.name)})
-        SET a.name = author.name
-        MERGE (a)-[:AUTHORED]->(p)
+        // Nueva lógica de ID: CVU > ORCID > ScopusID > Name
+        MERGE (a:Person {id: coalesce(author.cvu, author.orcid, author.scopus_id, author.name)})
+        SET a.fullname = author.name
+        SET a:Author
+        MERGE (a)-[:AUTHOR_OF]->(p)
         
         WITH p, author, a
         UNWIND (CASE WHEN author.institutions IS NOT NULL THEN author.institutions ELSE [] END) AS inst
@@ -228,7 +242,7 @@ class Neo4jGraphStore:
     def get_author_coauthors(self, author_name: str) -> List[str]:
         """Ejemplo: Encuentra coautores de un investigador dado."""
         query = """
-        MATCH (a1:Author {name: $name})-[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(a2:Author)
+        MATCH (a1:Author {name: $name})-[:AUTHOR_OF]->(p:Paper)<-[:AUTHOR_OF]-(a2:Author)
         RETURN DISTINCT a2.name AS coauthor
         """
         with self.driver.session() as session:
@@ -245,18 +259,20 @@ class Neo4jGraphStore:
         """
         import json
         
-        # 1. Determinar el ID único del académico (Author/Academic)
-        if orcid:
+        # 1. Determinar el ID único del académico (Person)
+        if cvu:
+            system_id = str(cvu)
+        elif orcid:
             system_id = orcid
         elif scopus_id:
             # Los scopus_ids pueden venir como lista o string separado por ;
             sid = scopus_id.split(';')[0].strip() if ';' in scopus_id else scopus_id
             system_id = f"scopus:{sid}"
         elif entity_name:
-            # Si no hay identificador global, usamos Nombre + Entidad para evitar homónimos entre facultades
+            # Si no hay identificador global, usamos Nombre + Entidad para evitar homónimos
             system_id = f"{academic_name}@{entity_name}"
         else:
-            # Fallback al nombre (único riesgo de colisión)
+            # Fallback al nombre
             system_id = academic_name
 
         data = paper_data.copy()
@@ -314,11 +330,9 @@ class Neo4jGraphStore:
         # Si no hay DOI válido, no podemos ligarlos estrictamente o creamos id random
         if not params["doi"]:
             import uuid
-            params["doi"] = str(uuid.uuid4())
-
-        query = """
-        MERGE (a:Author {id: $system_id})
-        SET a:Academic, a.name = $academic_name
+            params["d        query = """
+        MERGE (a:Person {id: $system_id})
+        SET a:Author, a.fullname = $academic_name, a.is_snii = (CASE WHEN $cvu IS NOT NULL THEN true ELSE a.is_snii END)
         WITH a
         CALL (a) {
             WITH a WHERE $orcid IS NOT NULL
@@ -343,18 +357,13 @@ class Neo4jGraphStore:
                 a.audit_confidence = $audit_confidence,
                 a.audit_timestamp = $audit_timestamp
         }
-        CALL (a) {
-            WITH a WHERE $match_reason IS NOT NULL
-            SET a.match_reason = $match_reason,
-                a.discarded_candidates = $discarded_candidates
-        }
         WITH a
         MERGE (p:Paper {id: $doi})
         SET p.doi = $doi, p.title = $title, p.year = $year, p.citations = $citations,
             p.raw_metadata = $raw_metadata,
             p.openalex_id = $paper_openalex_id
 
-        MERGE (a)-[:AUTHORED]->(p)
+        MERGE (a)-[:AUTHOR_OF]->(p)
         
         WITH p
         FOREACH (funder IN $funders | 
@@ -367,6 +376,9 @@ class Neo4jGraphStore:
             MERGE (p)-[:HAS_AWARD]->(aw)
         )
         """
+aw)
+        )
+        """
         
         with self.driver.session() as session:
             try:
@@ -376,62 +388,124 @@ class Neo4jGraphStore:
 
     def add_api_papers_batch(self, batch_data: List[Dict[str, Any]]):
         """
-        Inserta un lote de artículos de APIs vinculando autores y papers en una sola transacción.
-        batch_data: Lista de diccionarios con la estructura requerida por params.
+        Versión optimizada para ingesta masiva de artículos vinculados a Person.
         """
         if not batch_data:
             return
 
+        for row in batch_data:
+            self.ingest_paper_row(row)
+
+    def ingest_paper_row(self, row: Dict[str, Any]):
         query = """
-        UNWIND $batch AS item
-        MERGE (a:Author {id: item.system_id})
-        SET a:Academic, a.name = item.academic_name
+        // 1. Nodo del Paper y Fuentes
+        MERGE (art:Paper {id: $paper_id})
+        ON CREATE SET 
+            art.title = $title,
+            art.year = $year,
+            art.doi = $doi,
+            art.citations = $citations,
+            art.openalex_id = $openalex_id,
+            art.wos_id = $wos_id,
+            art.scopus_id = $scopus_id,
+            art.fwci = $fwci,
+            art.sources = $initial_sources
+        ON MATCH SET
+            art.citations = COALESCE($citations, art.citations),
+            art.fwci = COALESCE(art.fwci, $fwci),
+            art.sources = apoc.coll.toSet(art.sources + $initial_sources)
+
+        // 2. Jerarquía de Topics (Domain -> Field -> Subfield -> Topic)
+        MERGE (dom:TopicDomain {name: $topic_domain})
         
-        WITH a, item
-        CALL (a, item) {
-            WITH a, item WHERE item.openalex_id IS NOT NULL
-            SET a.openalex_id = item.openalex_id
-        }
-        CALL (a, item) {
-            WITH a, item WHERE item.orcid IS NOT NULL
-            SET a.orcid = item.orcid
-        }
-        CALL (a, item) {
-            WITH a, item WHERE item.scopus_id IS NOT NULL
-            SET a.scopus_id = item.scopus_id
-        }
-        CALL (a, item) {
-            WITH a, item WHERE item.audit_verdict IS NOT NULL
-            SET a.audit_verdict = item.audit_verdict,
-                a.audit_reason = item.audit_reason,
-                a.audit_confidence = item.audit_confidence,
-                a.audit_timestamp = item.audit_timestamp
-        }
+        MERGE (fld:TopicField {id: $topic_domain + "||" + $topic_field})
+        SET fld.name = $topic_field
+        MERGE (fld)-[:PART_OF]->(dom)
+
+        MERGE (subf:TopicSubfield {id: $topic_domain + "||" + $topic_field + "||" + $topic_subfield})
+        SET subf.name = $topic_subfield
+        MERGE (subf)-[:PART_OF]->(fld)
+
+        MERGE (top:Topic {id: $topic_domain + "||" + $topic_field + "||" + $topic_subfield + "||" + $topic_name})
+        SET top.name = $topic_name
+        MERGE (top)-[:PART_OF]->(subf)
         
-        WITH a, item
-        MERGE (p:Paper {id: item.doi})
-        SET p.doi = item.doi, p.title = item.title, p.year = item.year, 
-            p.citations = item.citations, p.raw_metadata = item.raw_metadata,
-            p.openalex_id = item.paper_openalex_id
-        
-        MERGE (a)-[:AUTHORED]->(p)
-        
-        WITH p, item
-        FOREACH (funder IN item.funders | 
-            MERGE (f:Funder {name: funder.name})
-            SET f.openalex_id = funder.openalex_id
-            MERGE (p)-[:FUNDED_BY]->(f)
+        MERGE (art)-[:HAS_TOPIC]->(top)
+
+        // 3. Objetivos de Desarrollo Sostenible (SDG)
+        FOREACH (sdg_name IN $sdgs |
+            MERGE (s:SDG {name: sdg_name})
+            MERGE (art)-[:CONTRIBUTES_TO]->(s)
         )
-        FOREACH (award_id IN item.awards | 
-            MERGE (aw:Award {id: award_id})
-            MERGE (p)-[:HAS_AWARD]->(aw)
+
+        // 4. Relación de Autoría (Opcional si el autor existe)
+        WITH art
+        OPTIONAL MATCH (p:Person {id: $author_cvu})
+        FOREACH (_ IN CASE WHEN p IS NOT NULL THEN [1] ELSE [] END |
+            MERGE (p)-[r:AUTHOR_OF]->(art)
+            SET r.author_order = $author_order,
+                r.is_corresponding = $is_corresponding
         )
+
+        // 5. Afiliación Institucional (Crédito)
+        WITH art
+        OPTIONAL MATCH (sub:Subdependency {id: $inst_name + "||" + $dep_name + "||" + $sub_name})
+        OPTIONAL MATCH (dep:Dependency {id: $inst_name + "||" + $dep_name})
+        OPTIONAL MATCH (inst:Institution {name: $inst_name})
+        
+        WITH art, COALESCE(sub, dep, inst) AS targetNode
+        WHERE targetNode IS NOT NULL
+        MERGE (art)-[:CREDITED_TO]->(targetNode)
         """
+
+        # Manejo de IDs y Fuentes
+        doi = row.get('doi')
+        oa_id = row.get('openalex_id')
+        paper_id = doi if doi and str(doi).strip().lower() != "none" else oa_id
+        
+        if not paper_id:
+            return
+
+        detected_sources = []
+        if row.get('wos_id'): detected_sources.append('WoS')
+        if row.get('scopus_id'): detected_sources.append('Scopus')
+        if oa_id: detected_sources.append('OpenAlex')
+        if row.get('semantic_id'): detected_sources.append('SemanticScholar')
+
+        # Convertir SDG a lista si viene como string único o nulo
+        sdgs = row.get('sdgs', [])
+        if isinstance(sdgs, str): sdgs = [sdgs]
+        if sdgs is None: sdgs = []
+
+        params = {
+            "paper_id": paper_id,
+            "title": row.get('title'),
+            "year": row.get('year'),
+            "doi": doi,
+            "citations": row.get('citations', 0),
+            "openalex_id": oa_id,
+            "wos_id": row.get('wos_id'),
+            "scopus_id": row.get('scopus_id'),
+            "fwci": row.get('fwci'),
+            "initial_sources": detected_sources,
+            "topic_domain": row.get('topic_domain', 'Unknown Domain'),
+            "topic_field": row.get('topic_field', 'Unknown Field'),
+            "topic_subfield": row.get('topic_subfield', 'Unknown Subfield'),
+            "topic_name": row.get('topic_name', 'Unknown Topic'),
+            "sdgs": sdgs,
+            "author_cvu": str(row.get('system_id') or row.get('cvu')) if (row.get('system_id') or row.get('cvu')) else None,
+            "author_order": row.get('author_position'),
+            "is_corresponding": row.get('is_corresponding', False),
+            "inst_name": row.get('institucion'),
+            "dep_name": str(row.get('dependencia', 'SIN INFORMACIÓN')).strip().upper(),
+            "sub_name": str(row.get('subdependencia', 'SIN INFORMACIÓN')).strip().upper()
+        }
+
         with self.driver.session() as session:
             try:
-                session.run(query, batch=batch_data)
+                session.run(query, **params)
             except Exception as e:
-                print(f"Error Neo4j en lote de {len(batch_data)} artículos: {e}")
+                print(f"Error ingesting paper row {paper_id}: {e}")
 
     def get_academic_ids(self, academic_name: str) -> dict:
         """
@@ -441,8 +515,8 @@ class Neo4jGraphStore:
         Retorna dict con claves 'orcid' y 'openalex_id' (pueden ser None).
         """
         query = """
-        MATCH (a:Academic)
-        WHERE a.name = $name OR a.id = $name
+        MATCH (a:Person)
+        WHERE a.fullname = $name OR a.id = $name
         RETURN a.orcid AS orcid, a.openalex_id AS openalex_id
         LIMIT 1
         """
@@ -496,24 +570,122 @@ class Neo4jGraphStore:
             except Exception as e:
                 print(f"Error marcando indización {source} para {doi}: {e}")
 
-    def set_paper_openalex_id(self, doi: str, openalex_url: str):
-        """Asocia un OpenAlex ID (URL) a un artículo existente."""
-        if not doi or not openalex_url: return
-        doi_clean = doi.replace("https://doi.org/", "").strip().lower()
+    def ingest_academic_row(self, row: Dict[str, Any]):
         query = """
-        MATCH (p:Paper) WHERE p.id = $id_raw OR p.doi = $doi_clean
-        SET p.openalex_id = $oa_id
+        // 1. Identificación del Académico
+        MERGE (p:Person {id: $person_id})
+        SET p.fullname = $nombre,
+            p.nivel = $nivel,
+            p.entidad_federativa = $estado,
+            p.is_snii = $is_snii
+
+        // 2. Jerarquía Institucional
+        MERGE (inst:Institution {name: $institucion})
+        MERGE (dep:Dependency {id: $institucion + "||" + $dependencia})
+        SET dep.name = $dependencia
+        MERGE (dep)-[:PART_OF]->(inst)
+
+        FOREACH (_ IN CASE WHEN $subdependencia <> "SIN INFORMACIÓN" AND $subdependencia <> "NO APLICA" AND $subdependencia <> "" THEN [1] ELSE [] END |
+            MERGE (sub:Subdependency {id: $institucion + "||" + $dependencia + "||" + $subdependencia})
+            SET sub.name = $subdependencia
+            MERGE (sub)-[:PART_OF]->(dep)
+            MERGE (p)-[:AFFILIATED_TO]->(sub)
+        )
+
+        WITH p, dep, $area AS areaName, $disciplina AS discName, $subdisciplina AS subName, $especialidad AS espName
+        WHERE NOT (p)-[:AFFILIATED_TO]->(:Subdependency)
+        MERGE (p)-[:AFFILIATED_TO]->(dep)
+
+        // 3. Jerarquía de Conocimiento (Normalizada)
+        WITH p, areaName, discName, subName, espName
+        MERGE (a:KnowledgeArea {name: areaName})
+
+        // Disciplina
+        FOREACH (_ IN CASE WHEN discName <> "SIN INFORMACIÓN" AND discName <> "" THEN [1] ELSE [] END |
+            MERGE (d:Discipline {id: areaName + "||" + discName})
+            SET d.name = discName
+            MERGE (d)-[:BELONGS_TO]->(a)
+            MERGE (p)-[:SPECIALIZED_IN]->(d)
+        )
+
+        // Subdisciplina (Referenciando el ID de la disciplina directamente)
+        FOREACH (_ IN CASE WHEN subName <> "SIN INFORMACIÓN" AND subName <> "" THEN [1] ELSE [] END |
+            MERGE (sd:Subdiscipline {id: areaName + "||" + discName + "||" + subName})
+            SET sd.name = subName
+            // Para conectar jerárquicamente dentro de FOREACH sin MATCH:
+            MERGE (parentD:Discipline {id: areaName + "||" + discName})
+            MERGE (sd)-[:BELONGS_TO]->(parentD)
+            MERGE (p)-[:SPECIALIZED_IN]->(sd)
+        )
+
+        // Especialidad
+        FOREACH (_ IN CASE WHEN espName <> "SIN INFORMACIÓN" AND espName <> "" THEN [1] ELSE [] END |
+            MERGE (esp:Specialty {id: areaName + "||" + discName + "||" + subName + "||" + espName})
+            SET esp.name = espName
+            MERGE (parentSD:Subdiscipline {id: areaName + "||" + discName + "||" + subName})
+            MERGE (esp)-[:BELONGS_TO]->(parentSD)
+            MERGE (p)-[:SPECIALIZED_IN]->(esp)
+        )
+
+        // Conexión elástica final
+        WITH p, a
+        WHERE NOT (p)-[:SPECIALIZED_IN]->(:Discipline) 
+          AND NOT (p)-[:SPECIALIZED_IN]->(:Subdiscipline) 
+          AND NOT (p)-[:SPECIALIZED_IN]->(:Specialty)
+        MERGE (p)-[:SPECIALIZED_IN]->(a)
         """
+
+        # Lógica de identificación (SNII vs Externo)
+        cvu = row.get('CVU') or row.get('CVU padrón corregido')
+        if cvu and str(cvu).strip().isdigit():
+            person_id = str(cvu).strip()
+            is_snii = True
+        else:
+            nombre_raw = str(row.get('NOMBRE DEL INVESTIGADOR', ''))
+            person_id = "EXT_" + "".join(filter(str.isalnum, nombre_raw)).upper()
+            is_snii = False
+
+        # Limpieza de strings
+        def clean(val):
+            return str(val).strip().upper() if val else "SIN INFORMACIÓN"
+
+        params = {
+            "person_id": person_id,
+            "nombre": row.get('NOMBRE DEL INVESTIGADOR'),
+            "nivel": row.get('NIVEL'),
+            "estado": row.get('ENTIDAD DE ACREDITACIÓN'),
+            "is_snii": is_snii,
+            "institucion": clean(row.get('INSTITUCION DE ACREDITACION') or row.get('INSTITUCIÓN DE ACREDITACIÓN')),
+            "dependencia": clean(row.get('DEPENDENCIA DE ACREDITACIÓN')),
+            "subdependencia": clean(row.get('SUBDEPENDENCIA DE ACREDITACIÓN')),
+            "area": clean(row.get('ÁREA DE CONOCIMIENTO')),
+            "disciplina": clean(row.get('DISCIPLINA')),
+            "subdisciplina": clean(row.get('SUBDISCIPLINA')),
+            "especialidad": clean(row.get('ESPECIALIDAD'))
+        }
+
         with self.driver.session() as session:
             try:
-                session.run(query, id_raw=doi, doi_clean=doi_clean, oa_id=openalex_url)
-            except Exception: pass
-
+                session.run(query, **params)
+            except Exception as e:
+                print(f"Error ingesting academic row {person_id}: {e}")
+            "disciplina": row.get('DISCIPLINA'),
+            "especialidad": row.get('ESPECIALIDAD'),
+            "institucion": row.get('INSTITUCION DE ACREDITACION', row.get('INSTITUCIÓN DE ACREDITACIÓN')),
+            "entidad": row.get('ENTIDAD DE ACREDITACIÓN'),
+            "subdependencia": str(row.get('SUBDEPENDENCIA DE ACREDITACIÓN', 'SIN INFORMACIÓN')).strip().upper()
+        }
+        
+        with self.driver.session() as session:
+            try:
+                session.run(query, **params)
+            except Exception as e:
+                print(f"Error ingiriendo fila SNII ({params['cvu']}): {e}")
 
     def upsert_hierarchical_entity_metadata(self, inst_name: str, dep_name: str, sub_name: str, label: str, ror: str = None, openalex_id: str = None):
         """
         Actualiza metadatos de una entidad asegurando que pertenece a la jerarquía correcta.
-        Utiliza MERGE para asegurar que la ruta jerárquica exista.
+        Utiliza IDs compuestos para evitar colisiones y el separador ||.
         """
         if not inst_name: return
         
@@ -527,16 +699,19 @@ class Neo4jGraphStore:
         elif label == 'Dependency':
             query = """
             MERGE (i:Institution {name: $inst_name})
-            MERGE (i)<-[:PART_OF]-(e:Dependency {name: $dep_name})
-            SET e.ror = coalesce($ror, e.ror),
+            MERGE (i)<-[:PART_OF]-(e:Dependency {id: $inst_name + "||" + $dep_name})
+            SET e.name = $dep_name,
+                e.ror = coalesce($ror, e.ror),
                 e.openalex_id = coalesce($openalex_id, e.openalex_id)
             """
         elif label == 'Subdependency':
             query = """
             MERGE (i:Institution {name: $inst_name})
-            MERGE (i)<-[:PART_OF]-(d:Dependency {name: $dep_name})
-            MERGE (d)<-[:PART_OF]-(e:Subdependency {name: $sub_name})
-            SET e.ror = coalesce($ror, e.ror),
+            MERGE (i)<-[:PART_OF]-(d:Dependency {id: $inst_name + "||" + $dep_name})
+            SET d.name = $dep_name
+            MERGE (d)<-[:PART_OF]-(e:Subdependency {id: $inst_name + "||" + $dep_name + "||" + $sub_name})
+            SET e.name = $sub_name,
+                e.ror = coalesce($ror, e.ror),
                 e.openalex_id = coalesce($openalex_id, e.openalex_id)
             """
         else:
@@ -561,8 +736,7 @@ class Neo4jGraphStore:
 
     def add_hierarchical_entity_paper_link(self, inst_name: str, dep_name: str, sub_name: str, label: str, doi: str):
         """
-        Vincula un Paper a una entidad (Inst/Dep/Sub) asegurando el contexto jerárquico.
-        Evita vincular a la 'Facultad de Ciencias' equivocada.
+        Vincula un Paper a una entidad (Inst/Dep/Sub) asegurando el contexto jerárquico y el uso de IDs compuestos.
         """
         if not doi or not inst_name: return
         
@@ -570,19 +744,19 @@ class Neo4jGraphStore:
         if label == 'Institution':
             query = """
             MATCH (e:Institution {name: $inst_name})
-            MATCH (p:Paper {doi: $doi})
+            MATCH (p:Paper {id: $doi})
             MERGE (e)-[:HAS_PAPER]->(p)
             """
         elif label == 'Dependency':
             query = """
-            MATCH (i:Institution {name: $inst_name})<-[:PART_OF]-(e:Dependency {name: $dep_name})
-            MATCH (p:Paper {doi: $doi})
+            MATCH (e:Dependency {id: $inst_name + "||" + $dep_name})
+            MATCH (p:Paper {id: $doi})
             MERGE (e)-[:HAS_PAPER]->(p)
             """
         elif label == 'Subdependency':
             query = """
-            MATCH (i:Institution {name: $inst_name})<-[:PART_OF]-(d:Dependency {name: $dep_name})<-[:PART_OF]-(e:Subdependency {name: $sub_name})
-            MATCH (p:Paper {doi: $doi})
+            MATCH (e:Subdependency {id: $inst_name + "||" + $dep_name + "||" + $sub_name})
+            MATCH (p:Paper {id: $doi})
             MERGE (e)-[:HAS_PAPER]->(p)
             """
         else:
@@ -665,10 +839,10 @@ class Neo4jGraphStore:
             except Exception as e:
                 pass
 
-    def add_academic_full_affiliation(self, academic_name: str, inst_name: str, dep_name: str = None, sub_name: str = None):
+    def add_academic_full_affiliation(self, academic_id: str, inst_name: str, dep_name: str = None, sub_name: str = None):
         """
-        Vincula un Academic con su Institución, Dependencia y Subdependencia (jerárquico),
-        respetando la estructura de tres niveles.
+        Vincula un Person con su Institución, Dependencia y Subdependencia (jerárquico),
+        respetando la estructura de tres niveles y el separador ||.
         """
         # Limpieza de valores nulos o "SIN INFORMACION"
         def _is_valid(val):
@@ -678,54 +852,45 @@ class Neo4jGraphStore:
         dep = dep_name if _is_valid(dep_name) else None
         sub = sub_name if _is_valid(sub_name) else None
 
-        # Caso 1: Solo Institución
-        if not dep and not sub:
-            query = """
-            MATCH (a:Author) WHERE a.id = $academic_name OR a.name = $academic_name
-            MERGE (i:Institution {name: $inst})
-            MERGE (a)-[:AFFILIATED_TO]->(i)
-            """
-            with self.driver.session() as session:
-                try: session.run(query, academic_name=academic_name, inst=inst)
-                except Exception: pass
-            return
-
-        # Caso 2: Jerarquía completa o parcial
-        # Intentamos encontrar la entidad más específica ya existente en Neo4j
-        # Si no existe, la creamos colgando de la institución
         query = """
-        MATCH (a:Author) WHERE a.id = $academic_name OR a.name = $academic_name
+        MATCH (a:Person {id: $academic_id})
         MERGE (i:Institution {name: $inst})
         
         WITH a, i
         CALL (a, i) {
-            // Si hay subdependencia, intentar vincular a ella
-            WITH a, i WHERE $sub IS NOT NULL
-            MERGE (s:Subdependency {name: $sub})
-            // Si hay dependencia, asegurar que la subdependencia cuelga de ella
-            FOREACH (d_name IN CASE WHEN $dep IS NOT NULL THEN [$dep] ELSE [] END |
-                MERGE (d:Dependency {name: d_name})
-                MERGE (d)-[:PART_OF]->(i)
-                MERGE (s)-[:PART_OF]->(d)
-            )
-            // Si NO hay dependencia pero hay subdependencia, colgar sub de inst
-            FOREACH (_ IN CASE WHEN $dep IS NULL THEN [1] ELSE [] END |
-                MERGE (s)-[:PART_OF]->(i)
-            )
+            // Caso: Hay Subdependencia
+            WITH a, i WHERE $sub IS NOT NULL AND $dep IS NOT NULL
+            MERGE (d:Dependency {id: $inst + "||" + $dep})
+            SET d.name = $dep
+            MERGE (d)-[:PART_OF]->(i)
+            MERGE (s:Subdependency {id: $inst + "||" + $dep + "||" + $sub})
+            SET s.name = $sub
+            MERGE (s)-[:PART_OF]->(d)
             MERGE (a)-[:AFFILIATED_TO]->(s)
             RETURN count(*) AS sub_c
         }
         CALL (a, i) {
-            // Si hay dependencia pero NO subdependencia
+            // Caso: Hay Dependencia pero NO subdependencia
             WITH a, i WHERE $dep IS NOT NULL AND $sub IS NULL
-            MERGE (d:Dependency {name: $dep})
+            MERGE (d:Dependency {id: $inst + "||" + $dep})
+            SET d.name = $dep
             MERGE (d)-[:PART_OF]->(i)
             MERGE (a)-[:AFFILIATED_TO]->(d)
             RETURN count(*) AS dep_c
         }
-        // Siempre vincular a la institución raíz para facilitar filtros globales
-        MERGE (a)-[:AFFILIATED_TO]->(i)
+        CALL (a, i) {
+            // Caso: Solo Institución
+            WITH a, i WHERE $dep IS NULL AND $sub IS NULL
+            MERGE (a)-[:AFFILIATED_TO]->(i)
+            RETURN count(*) AS inst_c
+        }
         """
+        
+        with self.driver.session() as session:
+            try:
+                session.run(query, academic_id=academic_id, inst=inst, dep=dep, sub=sub)
+            except Exception as e:
+                print(f"Error en full affiliation para {academic_id}: {e}")
         
         with self.driver.session() as session:
             try:
@@ -739,7 +904,7 @@ class Neo4jGraphStore:
         Verifica si un académico ya fue ingestados con sus documentos en Neo4j.
         Se considera que existe si tiene al menos un artículo vinculado.
         """
-        query = "MATCH (a:Academic {name: $academic_name})-[:AUTHORED]->(:Paper) RETURN count(a) > 0 as exists"
+        query = "MATCH (a:Academic {name: $academic_name})-[:AUTHOR_OF]->(:Paper) RETURN count(a) > 0 as exists"
         with self.driver.session() as session:
             try:
                 result = session.run(query, academic_name=academic_name)
@@ -748,61 +913,46 @@ class Neo4jGraphStore:
             except Exception as e:
                 return False
 
-    def check_academic_node_exists(self, academic_name: str) -> bool:
+    def check_academic_node_exists(self, academic_id: str) -> bool:
         """
-        Verifica si un académico existe como nodo en Neo4j,
-        independientemente de si tiene papers vinculados o no.
+        Verifica si un académico existe como nodo en Neo4j (Person).
         """
-        query = "MATCH (a:Author {id: $academic_name}) RETURN count(a) > 0 as exists"
+        query = "MATCH (a:Person {id: $academic_id}) RETURN count(a) > 0 as exists"
         with self.driver.session() as session:
             try:
-                result = session.run(query, academic_name=academic_name)
+                result = session.run(query, academic_id=academic_id)
                 record = result.single()
                 return record["exists"] if record else False
             except Exception as e:
                 return False
 
 
-    def set_academic_snii(self, academic_name: str, is_snii: bool = True):
+    def set_academic_snii(self, academic_id: str, is_snii: bool = True):
         """
         Establece o remueve la etiqueta SNII a un académico.
         """
         label_action = "SET a:SNII, a.is_snii = true" if is_snii else "REMOVE a:SNII SET a.is_snii = false"
-        query = f"MERGE (a:Author {{id: $name}}) SET a:Academic, a.name = $name {label_action}"
+        query = f"MATCH (a:Person {{id: $id}}) {label_action}"
         with self.driver.session() as session:
             try:
-                session.run(query, name=academic_name)
+                session.run(query, id=academic_id)
             except Exception as e:
-                print(f"Error marcando SNII para {academic_name}: {e}")
+                print(f"Error marcando SNII para {academic_id}: {e}")
 
-    def update_academic_metadata(self, academic_name: str, cvu: str = None, orcid: str = None, scopus_id: str = None,
+    def update_academic_metadata(self, academic_id: str, cvu: str = None, orcid: str = None, scopus_id: str = None,
                                   audit_verdict: str = None, audit_reason: str = None, 
                                   audit_confidence: int = None, audit_timestamp: str = None,
                                   match_reason: str = None, is_snii: bool = True,
-                                  discarded_candidates: list = None,
-                                  entity_name: str = None):
+                                  discarded_candidates: list = None):
         """
-        Actualiza metadatos de un académico (CVU, ORCID, auditoría, SNII) sin necesidad de papers.
-        Si no hay ORCID, genera un ID basado en el nombre y la entidad para evitar colisiones.
+        Actualiza metadatos de un académico (CVU, ORCID, auditoría, SNII).
         """
         import json
         
-        # Generar ID robusto: ORCID > Name@Entity > Name
-        if orcid:
-            system_id = orcid
-        elif entity_name:
-            system_id = f"{academic_name}@{entity_name}"
-        else:
-            system_id = academic_name
-        
         query = """
-        MERGE (a:Author {id: $system_id})
-        SET a:Academic, a.name = $academic_name
+        MERGE (a:Person {id: $academic_id})
+        SET a:Author, a.is_snii = (CASE WHEN $is_snii = true THEN true ELSE a.is_snii END)
         WITH a
-        CALL (a) {
-            WITH a WHERE $cvu IS NOT NULL
-            SET a.cvu = $cvu
-        }
         CALL (a) {
             WITH a WHERE $orcid IS NOT NULL
             SET a.orcid = $orcid
@@ -819,34 +969,25 @@ class Neo4jGraphStore:
                 a.audit_timestamp = $audit_timestamp
         }
         CALL (a) {
-            WITH a WHERE $match_reason IS NOT NULL
-            SET a.match_reason = $match_reason,
-                a.discarded_candidates = $discarded_candidates
-        }
-        CALL (a) {
             WITH a WHERE $is_snii = true
             SET a:SNII, a.is_snii = true
         }
         """
         params = {
-            "system_id": system_id,
-            "academic_name": academic_name,
-            "cvu": cvu,
+            "academic_id": academic_id,
             "orcid": orcid,
             "scopus_id": scopus_id,
             "audit_verdict": audit_verdict,
             "audit_reason": audit_reason,
             "audit_confidence": audit_confidence,
             "audit_timestamp": audit_timestamp,
-            "match_reason": match_reason,
-            "discarded_candidates": json.dumps(discarded_candidates, ensure_ascii=False) if discarded_candidates else None,
             "is_snii": is_snii
         }
         with self.driver.session() as session:
             try:
                 session.run(query, **params)
             except Exception as e:
-                print(f"Error actualizando metadatos para {academic_name}: {e}")
+                print(f"Error actualizando metadatos para {academic_id}: {e}")
 
     def get_database_statistics(self) -> dict:
         """Obtiene un resumen de la cantidad de nodos por etiqueta y relaciones en el grafo."""
@@ -876,18 +1017,15 @@ class Neo4jGraphStore:
         return stats
 
     def get_sample_graph(self, limit: int = 150) -> dict:
-        """Extrae una sub-muestra del grafo para visualización en PyVis interactiva."""
-        # Query que intenta traer un poco de todo, incluyendo la jerarquía geográfica
+        """Extrae una sub-muestra del grafo para visualización interactiva."""
         query = f"""
         MATCH (n)-[r]->(m) 
+        WHERE NOT n:Paper AND NOT m:Paper
         WITH n, r, m LIMIT {limit}
         RETURN n, r, m
         UNION
-        MATCH (i:Institution)-[r:LOCATED_IN]->(s:State)
-        RETURN i as n, r, s as m LIMIT 10
-        UNION
-        MATCH (s:State)-[r:PART_OF]->(c:Country)
-        RETURN s as n, r, c as m LIMIT 5
+        MATCH (p:Person)-[r:AUTHOR_OF]->(pa:Paper)
+        RETURN p as n, r, pa as m LIMIT 20
         """
         nodes = {}
         edges = []
@@ -906,13 +1044,13 @@ class Neo4jGraphStore:
                         nodes[n_id] = {
                             "id": n_id, 
                             "label": list(n.labels)[0] if n.labels else "Unknown", 
-                            "title": n.get("name", n.get("title", str(n_id)))
+                            "title": n.get("fullname", n.get("name", n.get("title", str(n_id))))
                         }
                     if m_id not in nodes:
                         nodes[m_id] = {
                             "id": m_id, 
                             "label": list(m.labels)[0] if m.labels else "Unknown", 
-                            "title": m.get("name", m.get("title", str(m_id)))
+                            "title": m.get("fullname", m.get("name", m.get("title", str(m_id))))
                         }
                         
                     edges.append({"source": n_id, "target": m_id, "label": r.type})
@@ -922,13 +1060,12 @@ class Neo4jGraphStore:
 
     def get_collaboration_sample_graph(self, entity1: str, entity2: str, limit: int = 150) -> dict:
         """
-        Extrae una muestra de la colaboración entre dos entidades.
-        Retorna artículos co-autoreados por investigadores de ambas entidades.
+        Extrae una muestra de la colaboración entre dos entidades usando la nueva jerarquía.
         """
         query = """
         MATCH (e1) WHERE (e1:Institution OR e1:Dependency OR e1:Subdependency) AND e1.name = $entity1
         MATCH (e2) WHERE (e2:Institution OR e2:Dependency OR e2:Subdependency) AND e2.name = $entity2
-        MATCH (e1)<-[:AFFILIATED_TO]-(a1:Academic)-[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(a2:Academic)-[:AFFILIATED_TO]->(e2)
+        MATCH (e1)<-[:AFFILIATED_TO]-(a1:Person)-[:AUTHOR_OF]->(p:Paper)<-[:AUTHOR_OF]-(a2:Person)-[:AFFILIATED_TO]->(e2)
         WITH e1, e2, p, a1, a2 LIMIT 10
         UNWIND [[a1, 'AUTHORED', p], [a2, 'AUTHORED', p], [a1, 'AFFILIATED_TO', e1], [a2, 'AFFILIATED_TO', e2]] AS triple
         RETURN triple[0] AS n, triple[1] AS rel_type, triple[2] AS m
@@ -950,31 +1087,16 @@ class Neo4jGraphStore:
                         nodes[n_id] = {
                             "id": n_id, 
                             "label": list(n.labels)[0] if n.labels else "Unknown", 
-                            "title": n.get("name", n.get("title", str(n_id)))
+                            "title": n.get("fullname", n.get("name", n.get("title", str(n_id))))
                         }
                     if m_id not in nodes:
                         nodes[m_id] = {
                             "id": m_id, 
                             "label": list(m.labels)[0] if m.labels else "Unknown", 
-                            "title": m.get("name", m.get("title", str(m_id)))
+                            "title": m.get("fullname", m.get("name", m.get("title", str(m_id))))
                         }
                         
                     edges.append({"source": n_id, "target": m_id, "label": rel_type})
-                
-                # Si no hay colaboraciones directas, traer algunos de cada una para que no se vea vacío
-                if not edges:
-                    query_fallback = """
-                    MATCH (e1) WHERE (e1:Institution OR e1:Dependency OR e1:Subdependency) AND e1.name = $entity1
-                    MATCH (e1)<-[:HAS_PAPER|AFFILIATED_TO*1..2]-(n1)
-                    WITH e1, n1 LIMIT 20
-                    MATCH (e2) WHERE (e2:Institution OR e2:Dependency OR e2:Subdependency) AND e2.name = $entity2
-                    MATCH (e2)<-[:HAS_PAPER|AFFILIATED_TO*1..2]-(n2)
-                    WITH e1, n1, e2, n2 LIMIT 40
-                    RETURN e1, n1, e2, n2
-                    """
-                    # Para simplificar el fallback, solo retornamos los nodos de las entidades
-                    # pero en el dashboard se manejará mejor.
-                    
                 return {"nodes": list(nodes.values()), "edges": edges}
             except Exception as e:
                 return {"error": str(e)}
@@ -983,7 +1105,7 @@ class Neo4jGraphStore:
         """Extrae una sub-muestra del grafo para una entidad, enfocada en financiadores."""
         query = f"""
         MATCH (e) WHERE (e:Institution OR e:Dependency OR e:Subdependency) AND e.name = $entity_name
-        MATCH (e)<-[r0:AFFILIATED_TO]-(a:Academic)-[r1:AUTHORED]->(p:Paper)-[r2:FUNDED_BY]->(f:Funder)
+        MATCH (e)<-[r0:AFFILIATED_TO]-(a:Person)-[r1:AUTHOR_OF]->(p:Paper)-[r2:FUNDED_BY]->(f:Funder)
         WITH e, a, p, f, r0, r1, r2 LIMIT {limit // 3}
         UNWIND [[a, r0, e], [a, r1, p], [p, r2, f]] AS triple
         RETURN triple[0] AS n, triple[1] AS r, triple[2] AS m
@@ -1018,3 +1140,143 @@ class Neo4jGraphStore:
                 return {"nodes": list(nodes.values()), "edges": edges}
             except Exception as e:
                 return {"error": str(e)}
+
+    def upsert_user(self, orcid: str, name: str = None):
+        """Crea o actualiza un nodo User basado en su ORCID verificado."""
+        query = """
+        MERGE (u:User {orcid: $orcid})
+        SET u.name = coalesce($name, u.name),
+            u.last_login = datetime()
+        """
+        with self.driver.session() as session:
+            session.run(query, orcid=orcid, name=name)
+
+    def link_user_to_academic(self, orcid: str, academic_id: str):
+        """
+        Vincula un nodo User con un nodo Person mediante la relación REPRESENTS.
+        """
+        query = """
+        MATCH (u:User {orcid: $orcid})
+        MATCH (a:Person {id: $academic_id})
+        MERGE (u)-[r:REPRESENTS]->(a)
+        SET r.verification_date = datetime(),
+            a.verified = true,
+            a.verified_orcid = $orcid
+        """
+        with self.driver.session() as session:
+            try:
+                session.run(query, orcid=orcid, academic_id=academic_id)
+            except Exception as e:
+                print(f"Error vinculando User {orcid} a Academic {academic_id}: {e}")
+
+    def get_user_profile(self, orcid: str) -> dict:
+        """Recupera el perfil de usuario y su académico vinculado si existe."""
+        query = """
+        MATCH (u:User {orcid: $orcid})
+        OPTIONAL MATCH (u)-[:REPRESENTS]->(a:Person)
+        RETURN u.name as name, u.orcid as orcid, 
+               a.id as academic_id, a.fullname as academic_name
+        """
+        with self.driver.session() as session:
+            result = session.run(query, orcid=orcid)
+            record = result.single()
+            if record:
+                return dict(record)
+        return None
+
+    def find_academic_by_orcid(self, orcid: str) -> dict:
+        """Busca un nodo Person que ya tenga el ORCID proporcionado."""
+        query = """
+        MATCH (a:Person {orcid: $orcid})
+        RETURN a.id as id, a.fullname as name, a.orcid as orcid
+        LIMIT 1
+        """
+        with self.driver.session() as session:
+            result = session.run(query, orcid=orcid)
+            record = result.single()
+            if record:
+                return dict(record)
+        return None
+
+    def global_search(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Búsqueda global optimizada usando índices Full-Text.
+        Busca en Académicos e Instituciones simultáneamente.
+        """
+        if not query or len(query) < 3:
+            return []
+            
+        # Limpieza básica para evitar errores de sintaxis en Lucene
+        clean_query = query.replace(':', '').replace('/', '').replace('\\', '').strip()
+        
+        cypher = """
+        CALL db.index.fulltext.queryNodes("person_name_search", $q + "~") YIELD node, score
+        RETURN node.fullname as name, node.id as id, labels(node) as labels, score, "Academic" as type
+        LIMIT $limit
+        UNION
+        CALL db.index.fulltext.queryNodes("institution_name_search", $q + "~") YIELD node, score
+        RETURN node.name as name, node.id as id, labels(node) as labels, score, "Institution" as type
+        LIMIT $limit
+        """
+        results = []
+        with self.driver.session() as session:
+            try:
+                records = session.run(cypher, q=clean_query, limit=limit)
+                for r in records:
+                    results.append(dict(r))
+            except Exception as e:
+                print(f"Error en global_search: {e}")
+                
+        # Ordenar por score descendente
+        return sorted(results, key=lambda x: x['score'], reverse=True)[:limit]
+
+    def get_hierarchical_academic_census(self, inst_name: str, dep_name: str = None, sub_name: str = None) -> List[str]:
+        """
+        Obtiene la lista de nombres de académicos para una entidad específica,
+        respetando la jerarquía para evitar problemas con homónimos.
+        """
+        # Limpieza de valores para el MATCH
+        def _is_valid(val):
+            return val and str(val).upper() not in ["SIN INFORMACIÓN", "SIN INFORMACIN", "NO APLICA", "SIN INSTITUCION", "SIN INSTITUCIN", "NAN", "NONE", "NULL"]
+
+        # Determinar el nodo objetivo según la jerarquía proporcionada
+        if _is_valid(sub_name):
+            # Buscar en Subdependencia ligada a Dependency e Inst
+            query = """
+            MATCH (i:Institution {name: $inst})<-[:PART_OF]-(d:Dependency {id: $inst + "||" + $dep})<-[:PART_OF]-(e:Subdependency {id: $inst + "||" + $dep + "||" + $sub})
+            MATCH (a:Person)-[:AFFILIATED_TO]->(e)
+            RETURN DISTINCT a.fullname as name
+            """
+            params = {"inst": inst_name, "dep": dep_name, "sub": sub_name}
+        elif _is_valid(dep_name):
+            # Buscar en Dependency ligada a Inst
+            query = """
+            MATCH (i:Institution {name: $inst})<-[:PART_OF]-(e:Dependency {id: $inst + "||" + $dep})
+            MATCH (a:Person)-[:AFFILIATED_TO]->(e)
+            RETURN DISTINCT a.fullname as name
+            """
+            params = {"inst": inst_name, "dep": dep_name}
+        else:
+            # Buscar en la Institución directamente
+            query = """
+            MATCH (e:Institution {name: $inst})
+            MATCH (a:Person)-[:AFFILIATED_TO]->(e)
+            RETURN DISTINCT a.fullname as name
+            """
+            params = {"inst": inst_name}
+
+        with self.driver.session() as session:
+            try:
+                results = session.run(query, **params)
+                census = []
+                for r in results:
+                    census.append({
+                        "name": r["name"],
+                        "institution": inst_name,
+                        "dependency": dep_name or "SIN INFORMACIÓN",
+                        "subdependency": sub_name or "SIN INFORMACIÓN"
+                    })
+                return census
+            except Exception as e:
+                print(f"Error en get_hierarchical_academic_census: {e}")
+                return []

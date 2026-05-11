@@ -482,13 +482,13 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
     """, unsafe_allow_html=True)
 
     st.header(f"🏢 Vista de la Institución: {entity_name}")
-    st.markdown(f"Panorama Analítico de la Producción de **{entity_name}**.")
-
+    
+    # 1. Cargar datos básicos
     df_annual = load_cached_data("institucion_annual.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
     df_total = load_cached_data("institucion_total.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
     df_topics = load_cached_data("topics_institucion.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
 
-    # Fallback explícito: Comprobamos si existe físicamente el directorio de producción
+    # 2. Fallback explícito: Comprobamos si existe físicamente el directorio de producción
     safe_inst = str(institution_name).replace('/', '_').replace('\\', '_') if institution_name else "MEXICO"
     safe_ent = str(entity_name).replace('/', '_').replace('\\', '_') if entity_name and entity_name != institution_name else ""
     prod_path = os.path.join(CACHE_DIR, safe_inst, safe_ent, "produccion_institucional") if safe_ent else os.path.join(CACHE_DIR, safe_inst, "produccion_institucional")
@@ -499,6 +499,66 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
         df_annual = load_cached_data("institucion_annual.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
         df_total = load_cached_data("institucion_total.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
         df_topics = load_cached_data("topics_institucion.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
+
+    # --- Identificadores Institucionales (Priorizar Cache para modo Offline) ---
+    meta = None
+    if df_total is not None and not df_total.empty:
+        row = df_total.iloc[0]
+        if row.get('ror_id') or row.get('institution_id'):
+            meta = {
+                'ror': row.get('ror_id'),
+                'id': row.get('institution_id'),
+                'type': row.get('institution_type'),
+                'country_code': row.get('institution_country')
+            }
+
+    # Fallback a ClickHouse si no hay cache enriquecida
+    if meta is None:
+        try:
+            from database.clickhouse_db import ch_client
+            search_names = [entity_name]
+            if institution_name and institution_name != entity_name:
+                search_names.append(institution_name)
+                
+            inst_meta = ch_client.query_df("""
+                SELECT id, ror, type, country_code 
+                FROM institutions 
+                WHERE display_name IN {names:Array(String)} 
+                OR ror IN (SELECT ror FROM institutions WHERE display_name IN {names:Array(String)})
+                LIMIT 1
+            """, parameters={'names': search_names})
+            
+            if not inst_meta.empty:
+                meta = inst_meta.iloc[0].to_dict()
+        except Exception:
+            pass
+
+    if meta:
+        ror_url = meta.get('ror')
+        oa_url = meta.get('id')
+        # Estilizar etiquetas de identificación
+        st.markdown(f"""
+            <div style='display: flex; gap: 10px; margin-bottom: 5px; flex-wrap: wrap; align-items: center;'>
+                <span style='background-color: #f8f9fa; padding: 4px 10px; border-radius: 20px; font-size: 11px; border: 1px solid #dee2e6; color: #495057;'>
+                    <b>ROR:</b> <a href='{ror_url}' target='_blank' style='text-decoration: none; color: #007bff;'>{str(ror_url).replace("https://ror.org/", "") if ror_url else "N/A"}</a>
+                </span>
+                <span style='background-color: #f8f9fa; padding: 4px 10px; border-radius: 20px; font-size: 11px; border: 1px solid #dee2e6; color: #495057;'>
+                    <b>OpenAlex:</b> <a href='{oa_url}' target='_blank' style='text-decoration: none; color: #007bff;'>{str(oa_url).replace("https://openalex.org/", "") if oa_url else "N/A"}</a>
+                </span>
+                <span style='background-color: #e9ecef; padding: 4px 10px; border-radius: 20px; font-size: 11px; border: 1px solid #ced4da; color: #495057;'>
+                    <b>Tipo:</b> {str(meta.get('type','')).title()}
+                </span>
+                <span style='background-color: #e9ecef; padding: 4px 10px; border-radius: 20px; font-size: 11px; border: 1px solid #ced4da; color: #495057;'>
+                    <b>País:</b> {meta.get('country_code','')}
+                </span>
+            </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown(f"Panorama Analítico de la Producción de **{entity_name}**.")
+    
+    if view_mode == "produccion_institucional":
+        st.info("ℹ️ **Nota sobre los datos:** Producción institucional según snapshot OpenAlex (Marzo 2026). Puede diferir ligeramente del portal oficial por actualización continua.")
+
 
 
     if df_total is not None and not df_total.empty:
@@ -806,6 +866,10 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
                     import subprocess
                     subprocess.run([sys.executable, "report_generator.py", "--type", "inst", "--name", entity_name])
                 st.rerun()
+
+    # Al final de la función, si no hay dataframes cargados, mostrar un mensaje de "En Proceso"
+    if (df_total is None or df_total.empty) and (df_annual is None or df_annual.empty):
+        st.warning(f"🕒 Los datos para **{entity_name}** están siendo procesados o no tienen registros en el snapshot actual. Por favor, vuelve a consultar más tarde.")
 
 def render_investigador_view(entity_name, institution_name=None):
     # Inyectar CSS global para estilizar st.metric como las tarjetas doradas del reporte

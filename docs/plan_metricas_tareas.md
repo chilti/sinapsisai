@@ -50,3 +50,14 @@ Objetivo: Generar representaciones vectoriales multidimensionales para proyeccio
 - [ ] **Tarea 6.3**: Perfiles Semánticos de Académicos. Calcular el vector promedio (centroide) para cada investigador basado en su producción individual.
 - [ ] **Tarea 6.4**: Proyección y Clustering Atlas. Implementar la reducción de dimensionalidad (UMAP) para visualizar el mapa de la ciencia mexicana y los clusters de expertise académica.
 - [ ] **Tarea 6.5**: Sincronización Maestra a ClickHouse. Poblar las columnas de embeddings en `works_academic_all` y `academics_all` para su explotación en el Dashboard.
+
+## Fase 7: Autenticación y Registro vía ORCID
+Objetivo: Habilitar la verificación de identidad de los investigadores y el registro de nuevos académicos mediante la autenticación oficial de ORCID.
+
+- [ ] **Tarea 7.1**: Infraestructura de OAuth. Registrar la aplicación en ORCID (Public API) y configurar variables de entorno (`ORCID_CLIENT_ID`, `ORCID_CLIENT_SECRET`).
+- [ ] **Tarea 7.2**: Módulo de Autenticación. Desarrollar `lib/auth.py` para gestionar el flujo de OAuth 2.0 (Authorization Code Flow) y las sesiones en Streamlit.
+- [ ] **Tarea 7.3**: Persistencia de Usuarios. Crear nodos `User` en Neo4j para almacenar perfiles autenticados, vinculándolos directamente a los nodos `Academic` mediante relaciones de verificación.
+- [ ] **Tarea 7.4**: Integración en el Dashboard. Implementar el botón "Identifícate con ORCID" en `dashboard_v2.py` y gestionar el redireccionamiento de retorno.
+- [ ] **Tarea 7.5**: Flujo de Verificación (Claiming). Permitir que un investigador autenticado vincule su ORCID real con un nodo `Academic` existente, marcándolo como `verified`.
+- [ ] **Tarea 7.6**: Registro de Nuevos Académicos. Implementar un formulario de registro para investigadores que no están en el padrón inicial, permitiendo que ingresen sus datos base tras autenticarse con ORCID.
+- [ ] **Tarea 7.7**: Sincronización de Identidad. Actualizar el grafo (Neo4j) y los archivos de mapeo (`snii_llm_verified_matches.json`) con el estado verificado para mejorar la precisión de las métricas.
