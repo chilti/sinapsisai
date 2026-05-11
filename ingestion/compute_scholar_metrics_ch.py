@@ -77,7 +77,7 @@ SELECT
     wf.topic, wf.subfield, wf.field, wf.domain,
     wf.language, wf.type,
     wf.source_id AS Source, wf.source_type,
-    wf.is_retracted, wf.referenced_works_count, wf.keywords, pm.ODS AS ODS,
+    wf.is_retracted, wf.referenced_works_count, wf.keywords, coalesce(pm.ODS, wf.sdgs) AS ODS,
     wf.author_names, wf.all_country_codes,
     wf.apc_paid_usd, wf.apc_list_usd, wf.counts_by_year, wf.license,
     wf.journal_is_in_doaj, wf.journal_is_core, wf.any_repository_has_fulltext,
@@ -326,12 +326,19 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     if 'counts_by_year' not in df.columns:
         df['counts_by_year'] = [[] for _ in range(len(df))]
 
-    return df
-
     if 'language' not in df.columns:
         df['language'] = 'en'
     if 'has_oa_data' not in df.columns:
         df['has_oa_data'] = 1
+
+    # Reconstruir columna 'topics' para retrocompatibilidad con métricas legacy (Gini, Domain Diversity)
+    if 'topic' in df.columns and 'domain' in df.columns:
+        df['topics'] = df.apply(
+            lambda r: [{'topic': r['topic'], 'domain': r['domain']}] if pd.notna(r.get('topic')) and r.get('topic') else [],
+            axis=1
+        )
+    else:
+        df['topics'] = [[] for _ in range(len(df))]
 
     return df
 
