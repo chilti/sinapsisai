@@ -121,11 +121,14 @@ def obtener_metadatos_de_scopus(scopus_ids):
             docs = list(au.get_documents())
             print(f"    [Scopus] ID {sid}: {len(docs)} documentos encontrados.")
             for pub in docs:
-                if pub.doi and pub.doi not in metadatos:
-                    metadatos[pub.doi] = {
+                # Usar DOI como llave principal, fallback al Scopus ID (eid)
+                paper_key = pub.doi if pub.doi else pub.eid
+                if paper_key and paper_key not in metadatos:
+                    metadatos[paper_key] = {
                         'Title': pub.title,
                         'Year': pub.coverDate.split('-')[0] if pub.coverDate else 0,
                         'DOI': pub.doi,
+                        'scopus_id': pub.eid,
                         'Source': 'Scopus',
                         'Authors': pub.author_names,
                         'Cited_by': pub.citedby_count,
@@ -156,6 +159,7 @@ def obtener_metadatos_de_orcid(orcid_url):
                     ext_ids_list = ext_ids_node.get('external-id', [])
                     if isinstance(ext_ids_list, dict): ext_ids_list = [ext_ids_list]
 
+                # 1. Intentar obtener DOI
                 doi_raw = next((eid.get('external-id-value') for eid in ext_ids_list
                                  if isinstance(eid, dict) and eid.get('external-id-type') == 'doi'), None)
                 if doi_raw:
@@ -168,6 +172,12 @@ def obtener_metadatos_de_orcid(orcid_url):
                     put_code = summary.get('put-code')
                     doi = f"orcid-work:{put_code}" if put_code else None
 
+                # 2. Extraer otros IDs de respaldo
+                wos_id = next((eid.get('external-id-value') for eid in ext_ids_list
+                                if isinstance(eid, dict) and eid.get('external-id-type') in ['wosid', 'eid']), None)
+                sc_id = next((eid.get('external-id-value') for eid in ext_ids_list
+                                if isinstance(eid, dict) and eid.get('external-id-type') == 'scopusid'), None)
+
                 if doi and doi not in metadatos:
                     pub_date = summary.get('publication-date', {}) or {}
                     title_node = summary.get('title', {}) or {}
@@ -175,6 +185,8 @@ def obtener_metadatos_de_orcid(orcid_url):
                         'Title': title_node.get('title', {}).get('value') if title_node.get('title') else 'Sin Título',
                         'Year': pub_date.get('year', {}).get('value') if pub_date.get('year') else 0,
                         'DOI': doi,
+                        'wos_id': wos_id,
+                        'scopus_id': sc_id,
                         'Source': 'ORCID',
                         'Authors': None,
                         'Cited_by': 0,
@@ -257,6 +269,10 @@ def obtener_metadatos_de_openalex_autor(openalex_author_id, force_local=False):
                             'Abstract': deconstruct_abstract(w.get('abstract_inverted_index')),
                             'openalex_url': w.get('id') # Persistir ID de OpenAlex
                         }
+    except Exception as e:
+        print(f"      ⚠ Error obteniendo trabajos de autor en API OpenAlex: {e}")
+        
+    return metadatos
 def ingest_researcher_data(data, force=False, force_local=False, current_idx=None, total=None, save_to_ch=False):
     """Procesa e ingesta los datos de un único investigador."""
     academic_name = data.get('snii_author')
@@ -295,16 +311,22 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
 
     # 3. Enriquecer con identificadores externos y auditoría
     audit = data.get('audit', {})
-    orcid = data.get('matched_orcid')
+    
+    # Fallbacks si el JSON no tiene objeto 'audit' (formato heurístico)
+    verdict = audit.get('verdict') or ('CONFIRMED' if data.get('match') is True and data.get('confidence') == 'AUTO_HIGH' else None)
+    reason = audit.get('reason') or data.get('reason')
+    confidence = audit.get('confidence') or data.get('confidence')
+    
+    orcid = data.get('matched_orcid') or data.get('orcid')
     
     graph_store.update_academic_metadata(
         academic_id=person_id,
         cvu=cvu,
-        orcid=orcid if data.get('match') is True and audit.get('verdict') != 'FALSE_POSITIVE' else None,
-        scopus_id=data.get('scopus_ids'),
-        audit_verdict=audit.get('verdict'),
-        audit_reason=audit.get('reason'),
-        audit_confidence=audit.get('confidence'),
+        orcid=orcid if data.get('match') is True and verdict != 'FALSE_POSITIVE' else None,
+        scopus_id=data.get('scopus_ids') or data.get('scopus_id'),
+        audit_verdict=verdict,
+        audit_reason=reason,
+        audit_confidence=confidence,
         audit_timestamp=audit.get('timestamp'),
         is_snii=True
     )
@@ -319,7 +341,9 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
     orcid = orcid or neo4j_ids.get('orcid')
     
     oa_ids = data.get('openalex_ids') or []
-    legacy_oa_id = data.get('matched_openalex_id')
+    if isinstance(oa_ids, str): oa_ids = [oa_ids]
+    
+    legacy_oa_id = data.get('matched_openalex_id') or data.get('openalex_id')
     if legacy_oa_id and legacy_oa_id not in oa_ids:
         oa_ids.append(legacy_oa_id)
     if not oa_ids and neo4j_ids.get('openalex_id'):
@@ -328,7 +352,7 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
 
     # 3. Determinar si es seguro recolectar publicaciones
     has_openalex_ids = len(oa_ids) > 0
-    is_false_positive = audit.get('verdict') == 'FALSE_POSITIVE'
+    is_false_positive = verdict == 'FALSE_POSITIVE'
     is_valid_match = data.get('match') is True and not is_false_positive
     is_safe_match = is_valid_match and (orcid or has_openalex_ids)
     
@@ -495,9 +519,9 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
             "sdgs": record.get("sdgs", []),
             "author_position": record.get("author_position"),
             "is_corresponding": record.get("is_corresponding", False),
-            "institucion": data.get('snii_institution'),
-            "dependencia": data.get('snii_dependency'),
-            "subdependencia": data.get('snii_subdependency'),
+            "institucion": None, # Deshabilitado para SNII. Solo crear Capacidad Instalada (AUTHOR_OF).
+            "dependencia": None,
+            "subdependencia": None,
             "funders": funders_list,
             "awards": list(set(awards_list)),
             "raw_metadata": json.dumps(record, ensure_ascii=False),
@@ -611,7 +635,11 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
              data['matched_orcid'] = target_orcid
              print(f"      🎯 [Override] Usando ORCID proporcionado: {target_orcid}")
              
-        ingest_researcher_data(data, force=force, force_local=force_local, current_idx=count, total=len(registros_to_process), save_to_ch=save_to_ch)
+        try:
+            ingest_researcher_data(data, force=force, force_local=force_local, current_idx=count, total=len(registros_to_process), save_to_ch=save_to_ch)
+        except KeyboardInterrupt:
+            print("\n\n🛑 [Ctrl+C detectado] Abortando procesamiento de forma segura...")
+            break
 
 if __name__ == "__main__":
     import argparse

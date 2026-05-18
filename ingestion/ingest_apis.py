@@ -348,7 +348,7 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
         academicos = json.load(f)
 
     # Cargar padrón SNII para verificación de estatus
-    from match_snii_orcid import SNII_PATH, normalize_text
+    from scripts.tools.match_snii_orcid import SNII_PATH, normalize_text
     snii_names = set()
     if os.path.exists(SNII_PATH):
         try:
@@ -437,14 +437,30 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
         siia_url = data.get('siia', '')
         
         # --- Enriquecer con IDs guardados en Neo4j (por pipeline SNII) ---
-        # El matching SNII puede haber descubierto ORCID o OpenAlex IDs que no están en el JSON
         neo4j_ids = {"orcid": None, "openalex_id": None}
         if hasattr(graph_store, 'get_academic_ids'):
             neo4j_ids = graph_store.get_academic_ids(academic_name)
-        orcid = orcid or neo4j_ids.get('orcid') or ''
+        
+        orcid_final = data.get('orcid', '') or neo4j_ids.get('orcid') or ''
         openalex_author_id = data.get('openalex_id') or neo4j_ids.get('openalex_id')
         
-        print(f"\n[{academic_name}] Iniciando recopilación API... ORCID={orcid or 'N/A'} | OA_ID={openalex_author_id or 'N/A'}")
+        # --- NUEVO: Enriquecer metadatos de la Persona (Person) ---
+        scopus_id_input = data.get('scopus', [])
+        siia_url_input = data.get('siia', '')
+        
+        # El ID de la persona para el MATCH es el nombre o el orcid si existe
+        person_id = orcid_final or academic_name
+        
+        print(f"\n[{academic_name}] Enriqueciendo perfil... SIIA={siia_url_input or 'N/A'} | Scopus={scopus_id_input or 'N/A'}")
+        graph_store.update_academic_metadata(
+            academic_id=person_id,
+            orcid=orcid_final,
+            scopus_id=scopus_id_input,
+            siia=siia_url_input,
+            is_snii=is_already_snii or data.get('is_snii', False)
+        )
+        
+        print(f"[{academic_name}] Iniciando recopilación API... ORCID={orcid_final or 'N/A'} | OA_ID={openalex_author_id or 'N/A'}")
         
         # 1. Scopus (si tiene ID)
         meta_scopus = obtener_metadatos_de_scopus(scopus_id)
@@ -814,10 +830,10 @@ if __name__ == "__main__":
     parser.add_argument("--hierarchy", type=str, help="Jerarquía completa: Institución || Dependencia || Subdependencia")
     
     args = parser.parse_args()
-
-    # Validación: Si se pide un nombre específico, DEBE haber jerarquía
-    if args.name and not args.hierarchy:
-        parser.error("La opción --name requiere --hierarchy para asignar la afiliación correcta.")
+    
+    # Validación: La jerarquía es OBLIGATORIA para asegurar la afiliación
+    if not args.hierarchy:
+        parser.error("Se requiere --hierarchy 'Institución || Dependencia || Subdependencia' para asegurar la afiliación correcta.")
     
     # Directorio base por defecto
     unam_data_dir = os.path.join("data", "UNAM")

@@ -69,9 +69,10 @@ def _backoff_get(url: str, params: dict = None,
     client = _get_client()
     for attempt in range(retries):
         try:
+
             resp = client.get(url, params=params,
                               headers={"User-Agent": _user_agent()},
-                              timeout=20, follow_redirects=True)
+                              timeout=60, follow_redirects=True)
             if resp.status_code == 200:
                 return resp
             if resp.status_code in (429, 403):
@@ -181,16 +182,17 @@ def get_works_batch(dois: list, email: str = None,
     clean_input_dois = [d.replace("https://doi.org/", "").strip().lower() for d in dois if d]
     
     def _fetch_chunk(base_url: str, chunk: list, extra_params: dict = None, is_global: bool = False) -> list:
-        doi_filter = "|".join([f"https://doi.org/{d}" for d in chunk])
-        # skip_count='true' evita que ClickHouse haga un SELECT count() extra, ahorrando tiempo
-        params = {"filter": f"doi:{doi_filter}", "per_page": len(chunk), "skip_count": "true"}
+        # OpenAlex prefiere el DOI sin el prefijo https://doi.org/ en los filtros
+        doi_filter = "|".join([d.replace("https://doi.org/", "") for d in chunk])
+        params = {"filter": f"doi:{doi_filter}", "per_page": len(chunk)}
         if is_global:
             params["global"] = "true"
         if extra_params:
             params.update(extra_params)
         resp = _backoff_get(f"{base_url}/works", params)
         if resp and resp.status_code == 200:
-            return resp.json().get("results", [])
+            results = resp.json().get("results", [])
+            return results
         return []
 
     # Procesar por trozos de 50
@@ -201,11 +203,11 @@ def get_works_batch(dois: list, email: str = None,
         # 1. Local (Seed Mexico)
         works = _fetch_chunk(LOCAL_BASE, chunk)
         
-        # 1.1 Fallback Local (Global) si el seed no devolvió todo
-        missing_after_seed = [d for d in chunk if d not in [ (w.get("doi") or "").replace("https://doi.org/", "").strip().lower() for w in works ]]
-        if missing_after_seed:
-            works_global = _fetch_chunk(LOCAL_BASE, missing_after_seed, is_global=True)
-            works.extend(works_global)
+        # 1.1 Fallback Local (Global) - DESACTIVADO para evitar timeouts
+        # missing_after_seed = [d for d in chunk if d not in [ (w.get("doi") or "").replace("https://doi.org/", "").strip().lower() for w in works ]]
+        # if missing_after_seed:
+        #     works_global = _fetch_chunk(LOCAL_BASE, missing_after_seed, is_global=True)
+        #     works.extend(works_global)
 
         for w in works:
             d_key = (w.get("doi") or "").replace("https://doi.org/", "").strip().lower()
@@ -213,7 +215,7 @@ def get_works_batch(dois: list, email: str = None,
                 results_dict[d_key] = w
 
         # 2. Oficial (solo si faltan y no estamos bloqueados)
-        missing_in_chunk = [d for d in chunk if d not in results_dict]
+        missing_in_chunk = [d for d in chunk if d.lower() not in results_dict]
         if missing_in_chunk and not local_only and not OFFICIAL_API_BLOCKED:
             auth = _auth_params()
             works_off = _fetch_chunk(OFFICIAL_BASE, missing_in_chunk, auth)

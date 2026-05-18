@@ -26,18 +26,20 @@ from database.clickhouse_db import ch_client
 _Q_COUNT = """
 SELECT count() AS n
 FROM works_flat wf
-JOIN (
-    SELECT paper_id FROM paper_author_map
-    UNION DISTINCT
-    SELECT paper_id FROM paper_entity_map
-) pm ON (
-    lower(replaceOne(wf.doi, 'https://doi.org/', '')) = lower(pm.paper_id)
+WHERE (
+    wf.id IN (SELECT 'https://openalex.org/' || paper_id FROM paper_author_map WHERE paper_id LIKE 'W%%')
     OR
-    wf.id = 'https://openalex.org/' || pm.paper_id
+    wf.id IN (SELECT 'https://openalex.org/' || paper_id FROM paper_entity_map WHERE paper_id LIKE 'W%%')
     OR
-    wf.id = pm.paper_id
+    wf.id IN (SELECT paper_id FROM paper_author_map WHERE paper_id LIKE 'https://openalex.org/%%')
+    OR
+    wf.id IN (SELECT paper_id FROM paper_entity_map WHERE paper_id LIKE 'https://openalex.org/%%')
+    OR
+    lower(replaceOne(wf.doi, 'https://doi.org/', '')) IN (SELECT lower(paper_id) FROM paper_author_map WHERE paper_id NOT LIKE 'W%%' AND paper_id NOT LIKE 'https://openalex.org/%%')
+    OR
+    lower(replaceOne(wf.doi, 'https://doi.org/', '')) IN (SELECT lower(paper_id) FROM paper_entity_map WHERE paper_id NOT LIKE 'W%%' AND paper_id NOT LIKE 'https://openalex.org/%%')
 )
-WHERE wf.id NOT IN (SELECT id FROM works_academic_all)
+AND wf.id NOT IN (SELECT id FROM works_academic_all)
 """
 
 # Mapeo: columna en works_academic_all → expresión SQL desde works_flat
@@ -168,18 +170,20 @@ INSERT INTO works_academic_all
 SELECT
     {',\n    '.join(select_agg)}
 FROM works_flat wf
-JOIN (
-    SELECT paper_id FROM paper_author_map
-    UNION DISTINCT
-    SELECT paper_id FROM paper_entity_map
-) pm ON (
-    lower(replaceOne(wf.doi, 'https://doi.org/', '')) = lower(pm.paper_id)
+WHERE (
+    wf.id IN (SELECT 'https://openalex.org/' || paper_id FROM paper_author_map WHERE paper_id LIKE 'W%%')
     OR
-    wf.id = 'https://openalex.org/' || pm.paper_id
+    wf.id IN (SELECT 'https://openalex.org/' || paper_id FROM paper_entity_map WHERE paper_id LIKE 'W%%')
     OR
-    wf.id = pm.paper_id
+    wf.id IN (SELECT paper_id FROM paper_author_map WHERE paper_id LIKE 'https://openalex.org/%%')
+    OR
+    wf.id IN (SELECT paper_id FROM paper_entity_map WHERE paper_id LIKE 'https://openalex.org/%%')
+    OR
+    lower(replaceOne(wf.doi, 'https://doi.org/', '')) IN (SELECT lower(paper_id) FROM paper_author_map WHERE paper_id NOT LIKE 'W%%' AND paper_id NOT LIKE 'https://openalex.org/%%')
+    OR
+    lower(replaceOne(wf.doi, 'https://doi.org/', '')) IN (SELECT lower(paper_id) FROM paper_entity_map WHERE paper_id NOT LIKE 'W%%' AND paper_id NOT LIKE 'https://openalex.org/%%')
 )
-WHERE wf.id NOT IN (SELECT id FROM works_academic_all)
+AND wf.id NOT IN (SELECT id FROM works_academic_all)
 GROUP BY wf.id
 """
 

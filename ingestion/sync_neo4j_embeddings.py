@@ -21,7 +21,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'S
 env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
 load_dotenv(env_path)
 
-from SNII.match_snii_orcid import NEO4J_URI, NEO4J_USER, NEO4J_PASS
+from scripts.tools.match_snii_orcid import NEO4J_URI, NEO4J_USER, NEO4J_PASS
 from database.knowledge_graph import Neo4jGraphStore
 from database.vector_store import QdrantStore
 from langchain_openai import OpenAIEmbeddings

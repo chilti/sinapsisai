@@ -22,7 +22,7 @@ from langchain_core.messages import HumanMessage
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.vector_store import QdrantStore
 from database.knowledge_graph import Neo4jGraphStore
-from match_snii_orcid import normalize_text, get_client as get_ch_client, get_orcid_client, SNII_PATH, CH_DB, CH_DB_ORCID
+from scripts.tools.match_snii_orcid import normalize_text, get_client as get_ch_client, get_orcid_client, SNII_PATH, CH_DB, CH_DB_ORCID
 
 # Cargar .env
 env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
@@ -244,7 +244,7 @@ def vectorize_snii_authors():
        Mencionado: Busca coincidencias en tiempo real contra local_authors y orcid_authors_vec.
     """
     print("\n🚀 Paso 3: Vectorizando autores SNII 2025 y buscando coincidencias semánticas...")
-    from match_snii_orcid import SNII_PATH
+    from scripts.tools.match_snii_orcid import SNII_PATH
     
     df = pd.read_excel(SNII_PATH)
     q_store = QdrantStore(collection_name="snii_authors_vec")
@@ -386,7 +386,7 @@ def search_openalex_authors(name: str, institution: str, limit: int = 5) -> list
 def vectorize_snii_with_llm(limit_test=None):
     """Paso 4: SNII -> Qdrant (Top 5 Local + Top 5 ORCID) -> LLM Verification"""
     print("\n🚀 Paso 4: Validando investigadores SNII con LLM (Reranking)...")
-    from match_snii_orcid import SNII_PATH
+    from scripts.tools.match_snii_orcid import SNII_PATH
     
     df = pd.read_excel(SNII_PATH)
     if limit_test:

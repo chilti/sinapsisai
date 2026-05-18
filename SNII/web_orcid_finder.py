@@ -18,7 +18,7 @@ from langchain_core.messages import HumanMessage
 
 # Añadir path raíz
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from SNII.match_snii_orcid import SNII_PATH, normalize_text
+from scripts.tools.match_snii_orcid import SNII_PATH, normalize_text
 
 # Cargar .env
 env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))

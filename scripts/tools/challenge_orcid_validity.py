@@ -21,7 +21,7 @@ from langchain_core.messages import HumanMessage
 
 # Añadir path raíz
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from SNII.match_snii_orcid import get_client as get_ch_client
+from scripts.tools.match_snii_orcid import get_client as get_ch_client
 
 # Cargar .env
 env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
@@ -54,7 +54,7 @@ llm = ChatOpenAI(
 
 def get_orcid_details(orcid):
     """Obtiene detalles del ORCID desde ClickHouse."""
-    from SNII.match_snii_orcid import CH_DB_ORCID, get_orcid_client
+    from scripts.tools.match_snii_orcid import CH_DB_ORCID, get_orcid_client
     client = get_orcid_client()
     
     # Verificar si la base de datos de ORCID existe

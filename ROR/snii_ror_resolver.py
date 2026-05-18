@@ -20,7 +20,7 @@ from langchain_core.messages import HumanMessage
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.knowledge_graph import Neo4jGraphStore
 from database.vector_store import QdrantStore
-from SNII.match_snii_orcid import normalize_text, get_client as get_ch_client, SNII_PATH, CH_DB
+from scripts.tools.match_snii_orcid import normalize_text, get_client as get_ch_client, SNII_PATH, CH_DB
 
 # Cargar .env
 env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))

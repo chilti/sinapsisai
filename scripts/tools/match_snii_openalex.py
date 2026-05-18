@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 # Añadir path raíz para importaciones
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from SNII.match_snii_orcid import normalize_text, load_snii_authors
+from scripts.tools.match_snii_orcid import normalize_text, load_snii_authors
 from lib.llm_utils import get_chat_model, handle_llm_exception, wait_for_llm_recovery
 
 # Cargar configuración

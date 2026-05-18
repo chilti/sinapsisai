@@ -1,0 +1,21 @@
+Traceback (most recent call last):
+  File "/home/sinapsisai/database/rebuild_neo4j_hierarchy.py", line 273, in <module>
+    rebuild()
+  File "/home/sinapsisai/database/rebuild_neo4j_hierarchy.py", line 242, in rebuild
+    session.run(f"""
+  File "/home/ambientesPy/revistaslatam/lib/python3.12/site-packages/neo4j/_sync/work/session.py", line 320, in run
+    self._auto_result._run(
+  File "/home/ambientesPy/revistaslatam/lib/python3.12/site-packages/neo4j/_sync/work/result.py", line 237, in _run
+    self._attach()
+  File "/home/ambientesPy/revistaslatam/lib/python3.12/site-packages/neo4j/_sync/work/result.py", line 439, in _attach
+    self._connection.fetch_message()
+  File "/home/ambientesPy/revistaslatam/lib/python3.12/site-packages/neo4j/_sync/io/_common.py", line 193, in inner
+    func(*args, **kwargs)
+  File "/home/ambientesPy/revistaslatam/lib/python3.12/site-packages/neo4j/_sync/io/_bolt.py", line 867, in fetch_message
+    res = self._process_message(tag, fields)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ambientesPy/revistaslatam/lib/python3.12/site-packages/neo4j/_sync/io/_bolt5.py", line 496, in _process_message
+    response.on_failure(summary_metadata or {})
+  File "/home/ambientesPy/revistaslatam/lib/python3.12/site-packages/neo4j/_sync/io/_common.py", line 263, in on_failure
+    raise self._hydrate_error(metadata)
+neo4j.exceptions.ClientError: {neo4j_code: Neo.ClientError.Statement.EntityNotFound} {message: Unable to load NODE 4:50f91664-0faf-41bd-b987-300b04b8d372:3115952.} {gql_status: 50N42} {gql_status_description: error: general processing exception - unexpected error. Unable to load NODE 4:50f91664-0faf-41bd-b987-300b04b8d372:3115952.}

@@ -86,18 +86,22 @@ class RORIngestor:
             print(f"   ⚠️  Error buscando OpenAlex ID para ROR {ror_id}: {e}")
         return None
 
-    def _iter_works_from_ch(self, ror_id: str, batch_size: int = 500):
+    def _iter_works_from_ch(self, target_id: str, batch_size: int = 500):
         """
         Generador que itera works_flat FINAL filtrando por institution_ids (OpenAlex ID).
         Construye dicts de work desde columnas estructuradas (works_flat no tiene raw_data).
         Keyset pagination por id — sin límite de 10k, sin duplicados de snapshot.
         """
-        oa_id = self._ror_to_openalex_id(ror_id)
+        if target_id.startswith('https://openalex.org/'):
+            oa_id = target_id
+        else:
+            oa_id = self._ror_to_openalex_id(target_id)
+            
         if not oa_id:
-            print(f"   ❌ No se encontró OpenAlex ID para ROR {ror_id}. Saltando.")
+            print(f"   ❌ No se encontró OpenAlex ID para {target_id}. Saltando.")
             return
 
-        print(f"   🗄️  ClickHouse directo: {oa_id} ({ror_id})")
+        print(f"   🗄️  ClickHouse directo: {oa_id} ({target_id})")
         ch = ch_client.get_client()
         last_id = ''
         page = 0
@@ -174,7 +178,7 @@ class RORIngestor:
             # Keyset: id de la última fila (columna 0)
             last_id = rows[-1][0]
 
-        print(f"   ✅ ClickHouse: {total_yielded:,} works totales para {ror_id}")
+        print(f"   ✅ ClickHouse: {total_yielded:,} works totales para {target_id}")
 
 
     def _extract_authors_and_concepts(self, work):
@@ -286,11 +290,12 @@ class RORIngestor:
                 
                 for ent in entities:
                     inst, dep, sub = ent['inst'], ent['dep'], ent['sub']
-                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Institution', doi)
-                    if dep != "SIN INFORMACIÓN":
-                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Dependency', doi)
                     if sub != "SIN INFORMACIÓN":
                         self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Subdependency', doi)
+                    elif dep != "SIN INFORMACIÓN":
+                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Dependency', doi)
+                    else:
+                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Institution', doi)
                 
                 if not exists_qdrant:
                     self._prepare_for_qdrant_multi(work, entities, batch_texts, batch_payloads)
@@ -302,7 +307,8 @@ class RORIngestor:
             if not exists_qdrant:
                 self._prepare_for_qdrant_multi(work, entities, batch_texts, batch_payloads)
 
-            authors, concepts = self._extract_authors_and_concepts(work)
+            # Desactivamos la extracción de autores y conceptos para el pipeline ROR
+            # authors, concepts = self._extract_authors_and_concepts(work)
 
             paper_data = {
                 "paper_id": doi,
@@ -310,8 +316,8 @@ class RORIngestor:
                 "title": work.get('display_name') or work.get('title') or "Sin Título",
                 "year": work.get('publication_year', 0),
                 "citations": work.get('cited_by_count', 0),
-                "authors": authors,
-                "concepts": concepts,
+                "authors": [],
+                "concepts": [],
                 "raw_metadata": work
             }
             
@@ -321,11 +327,12 @@ class RORIngestor:
             
             for ent in entities:
                 inst, dep, sub = ent['inst'], ent['dep'], ent['sub']
-                self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Institution', doi)
-                if dep != "SIN INFORMACIÓN":
-                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Dependency', doi)
                 if sub != "SIN INFORMACIÓN":
-                     self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Subdependency', doi)
+                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Subdependency', doi)
+                elif dep != "SIN INFORMACIÓN":
+                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Dependency', doi)
+                else:
+                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Institution', doi)
             
             self.processed_dois.add(doi)
 
@@ -359,21 +366,32 @@ class RORIngestor:
             "text":     text_content
         })
 
-    def run(self, limit=None, local_only=False, save_to_ch=False):
+    def run(self, limit=None, local_only=False, save_to_ch=False, target_name=None):
         self.save_to_ch = save_to_ch
         mapping = self.load_mapping()
         print(f"📊 Cargados {len(mapping)} registros del mapeo ROR.")
         
-        # 1. Agrupar entidades por ROR
-        ror_groups = {} # ror_id -> list of (inst, sub, is_specific)
+        # 1. Agrupar entidades por Target ID (Priorizar OpenAlex ID, si no ROR)
+        ror_groups = {} # target_id -> list of (inst, sub, is_specific)
         for key, data in mapping.items():
-            ror_id = data.get('matched_ror') or data.get('best_match_ror')
+            matched_oa = data.get('matched_openalex_id')
+            parent_oa = data.get('parent_openalex_id')
+            matched_ror = data.get('matched_ror')
             parent_ror = data.get('parent_ror')
+            
+            # VALIDACIÓN CRÍTICA: Si es una dependencia/subdependencia pero hereda el ID exacto del padre,
+            # no tiene identidad propia en OpenAlex y descargar al padre colapsaría el sistema. La saltamos.
+            if "||" in key:
+                if (matched_oa and parent_oa and matched_oa == parent_oa) or \
+                   (matched_ror and parent_ror and matched_ror == parent_ror):
+                    continue
+            
+            target_id = matched_oa or matched_ror or data.get('best_match_ror')
             conf = data.get('confidence', 0)
             
-            if not ror_id or conf < 70: continue
+            if not target_id or conf < 70: continue
                 
-            if ror_id not in ror_groups: ror_groups[ror_id] = []
+            if target_id not in ror_groups: ror_groups[target_id] = []
             
             parts = [p.strip() for p in key.split('||')]
             if len(parts) == 3:
@@ -387,37 +405,63 @@ class RORIngestor:
             matched_oa = data.get('matched_openalex_id')
             parent_oa = data.get('parent_openalex_id')
             is_sub_match = data.get('is_subdependency_match', False)
+            actual_ror = data.get('matched_ror') or data.get('best_match_ror')
             
             # Evitar duplicados exactos en el mapeo para este ROR
             ent_entry = {
                 "inst": inst, "dep": dep, "sub": sub,
                 "parent_ror": parent_ror, "parent_oa": parent_oa,
-                "matched_ror": ror_id, "matched_oa": matched_oa,
+                "matched_ror": actual_ror, "matched_oa": matched_oa,
                 "is_sub_match": is_sub_match
             }
-            if ent_entry not in ror_groups[ror_id]:
-                ror_groups[ror_id].append(ent_entry)
+            if ent_entry not in ror_groups[target_id]:
+                ror_groups[target_id].append(ent_entry)
+
+        if target_name:
+            filtered_groups = {}
+            # Normalizar el target (quitar espacios alrededor de || si existen)
+            target_normalized = "||".join([p.strip() for p in target_name.split('||')]).lower()
+            for ror_id, entries in ror_groups.items():
+                for ent in entries:
+                    # Reconstruir la llave original normalizada
+                    ent_str = f"{ent['inst']}||{ent['dep']}||{ent['sub']}".lower()
+                    
+                    if target_normalized in ent_str or target_name.lower() in ent_str:
+                        if ror_id not in filtered_groups: filtered_groups[ror_id] = []
+                        if ent not in filtered_groups[ror_id]: filtered_groups[ror_id].append(ent)
+            ror_groups = filtered_groups
+            print(f"🎯 Filtrado por '{target_name}': {len(ror_groups)} RORs listos para procesar.")
 
         print(f"🎯 Identificados {len(ror_groups)} RORs únicos para procesar.")
         
         count = 0
         total_rors = len(ror_groups)
-        for ror_id, entities in ror_groups.items():
+        for target_id, entities in ror_groups.items():
             if limit and count >= limit: break
             count += 1
-            main_inst = entities[0]['inst']
-            print(f"\n🚀 [{count}/{total_rors}] Procesando ROR {ror_id} ({main_inst})")
+            # Construir la jerarquía completa para el log
+            inst_log = entities[0]['inst']
+            dep_log = entities[0]['dep']
+            sub_log = entities[0]['sub']
+            
+            jerarquia = inst_log
+            if dep_log != "SIN INFORMACIÓN":
+                jerarquia += f" || {dep_log}"
+            if sub_log != "SIN INFORMACIÓN":
+                jerarquia += f" || {sub_log}"
+                
+            print(f"\n🚀 [{count}/{total_rors}] Procesando Entidad {target_id}\n   🏢 Jerarquía: {jerarquia}")
             
             try:
                 processed_count = 0
-                for page in self._iter_works_from_ch(ror_id):
-                    self._process_works_batch_multi(page, entities, ror_id)
+                for page in self._iter_works_from_ch(target_id):
+                    self._process_works_batch_multi(page, entities, target_id)
                     processed_count += len(page)
                 print(f"   ✅ Finalizado: {processed_count} trabajos.")
             except Exception as e:
                 print(f"   ❌ Error: {e}")
 
-    def _process_works_batch_multi(self, works, entities, ror_id):
+    def _process_works_batch_multi(self, works, entities, target_id):
         """Procesa trabajos vinculándolos a los 3 niveles y actualizando metadata."""
         batch_payloads = []
         batch_texts = []
@@ -458,7 +502,6 @@ class RORIngestor:
 
         for work in works:
             doi = (work.get('doi') or '').replace("https://doi.org/", "").lower()
-            if not doi: continue
             
             # En ROR no siempre tenemos el CVU, así que pasamos None
             # Llamamos a ingest_paper_row por cada entidad para asegurar los links CREDITED_TO
@@ -583,11 +626,12 @@ if __name__ == "__main__":
     parser.add_argument("--limit", type=int, help="Límite de instituciones a procesar")
     parser.add_argument("--local-only", action="store_true", help="Usar sólo la API local de OpenAlex")
     parser.add_argument("--ch", action="store_true", help="Sincronizar con ClickHouse (paper_entity_map)")
+    parser.add_argument("--name", type=str, help="Filtrar por nombre de institución, dependencia o subdependencia")
     args = parser.parse_args()
     
     ingestor = RORIngestor()
     try:
-        ingestor.run(limit=args.limit, local_only=args.local_only, save_to_ch=args.ch)
+        ingestor.run(limit=args.limit, local_only=args.local_only, save_to_ch=args.ch, target_name=args.name)
     except KeyboardInterrupt:
         print("\n\n🛑 Proceso interrumpido por el usuario.")
     finally:

@@ -31,7 +31,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'SNII')))
 from database.knowledge_graph import Neo4jGraphStore
 try:
-    from match_snii_orcid import get_client as get_ch_client
+    from scripts.tools.match_snii_orcid import get_client as get_ch_client
 except ImportError:
     get_ch_client = None
 import pyalex
@@ -105,7 +105,7 @@ def _fetch_from_clickhouse_bulk(dois: list[str]) -> dict:
     if CH_API_BLOCKED or not get_ch_client or not dois:
         return {}
     try:
-        from SNII.match_snii_orcid import CH_DB
+        from scripts.tools.match_snii_orcid import CH_DB
         ch_table = os.getenv("CH_TABLE", "works")
         ch = get_ch_client()
         doi_list = [f"https://doi.org/{d.lower()}" for d in dois]
@@ -244,7 +244,7 @@ def patch_all_fields(entity_filter=None, academic_filter=None, dry_run=False, sk
             print("   Usando API oficial (puede alcanzar rate limit). Considera levantar el servidor local.")
 
 
-    from SNII.match_snii_orcid import NEO4J_URI, NEO4J_USER, NEO4J_PASS
+    from scripts.tools.match_snii_orcid import NEO4J_URI, NEO4J_USER, NEO4J_PASS
     graph_store = Neo4jGraphStore(uri=NEO4J_URI, user=NEO4J_USER, password=NEO4J_PASS)
     
     # 1. Contar total de trabajos a procesar

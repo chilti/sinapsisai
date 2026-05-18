@@ -396,6 +396,7 @@ with st.sidebar:
     else:
         # Si no hay subdependencias, la entidad es la dependencia
         selected_entity = selected_dep
+        selected_sub = None
     
     st.selectbox("Modelo", ["openai/gpt-oss-20b"], index=0)
 
@@ -455,8 +456,8 @@ tab_labels = [
     "🏢 Panorama Institucional",
     "👤 Perfil Académico",
     "🤖 Asistente",
-    "🧪 Asistente-Prueba (MCP)",
-    "🏛️ Consejo Estratégico",
+    # "🧪 Asistente-Prueba (MCP)",   # Oculta temporalmente
+    # "🏛️ Consejo Estratégico",      # Oculta temporalmente
     "ℹ️ Acerca de..."
 ]
 
@@ -467,9 +468,14 @@ if user_auth:
 all_tabs = st.tabs(tab_labels)
 
 if user_auth:
-    tab_me, tab_inst, tab_inv, tab_chat, tab_test, tab_council, tab_about = all_tabs
+    tab_me, tab_inst, tab_inv, tab_chat, tab_about = all_tabs
 else:
-    tab_inst, tab_inv, tab_chat, tab_test, tab_council, tab_about = all_tabs
+    tab_inst, tab_inv, tab_chat, tab_about = all_tabs
+
+# Pestañas ocultas temporalmente — se definen como None para evitar NameError
+tab_test = None
+tab_council = None
+
 
 # =======================================================
 # TAB: Mi Espacio (Solo autenticados)
@@ -561,7 +567,9 @@ if user_auth:
 # =======================================================
 # TAB: Consejo Estratégico Virtual
 # =======================================================
-with tab_council:
+if tab_council is not None:
+  with tab_council:
+
     st.header("🏛️ Consejo Estratégico Virtual")
     st.markdown(
         "Sistema multi-agente que orquesta un comité plural y diverso para diseñar estudios bibliométricos de forma autónoma."
@@ -868,7 +876,9 @@ with tab_chat:
 # =======================================================
 # TAB: Asistente-Prueba (MCP Neo4j Solo)
 # =======================================================
-with tab_test:
+if tab_test is not None:
+  with tab_test:
+
     st.header("🧪 Asistente de Prueba (MCP-Only)")
     st.info("Este asistente utiliza exclusivamente el servidor MCP del nuevo Neo4j como herramienta.")
     
@@ -942,16 +952,18 @@ with tab_test:
 with tab_inst:
     st.markdown("### 📊 Perspectiva Analítica")
     view_mode_inst = st.radio(
-        "Lente de análisis",
+        "Vista",
         ["Capacidad Instalada", "Producción Institucional"],
         index=0,
         horizontal=True,
-        help="Capacidad Instalada: Suma de la producción de tus académicos.\nProducción Institucional: Papers firmados explícitamente con tu ROR.",
+        help="Capacidad Instalada: Suma de la producción de los académicos adscritos a la institución.\nProducción Institucional: Papers firmados explícitamente con tu ROR.",
         key="view_mode_inst_tab"
     )
     v_mode_inst_code = "capacidad_instalada" if view_mode_inst == "Capacidad Instalada" else "produccion_institucional"
+    # Determinar el padre (Dependencia) si estamos viendo una Subdependencia
+    parent = selected_dep if selected_sub and selected_entity == selected_sub else None
     
-    render_institucion_view(selected_entity, institution_name=selected_institution, view_mode=v_mode_inst_code)
+    render_institucion_view(selected_entity, institution_name=selected_institution, view_mode=v_mode_inst_code, parent_name=parent)
 
 # =======================================================
 # TAB 3: Vista por Investigador
@@ -1123,7 +1135,7 @@ with tab_about:
             int year
             int citations
         }
-    """
+
         Topic {
             string id
             string name

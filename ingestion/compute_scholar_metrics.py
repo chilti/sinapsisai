@@ -789,9 +789,17 @@ def aggregate_metrics(df_papers, group_cols):
         )
         for col in ['velocity', 'recent_cites_3yr', 'early_impact', 'half_life']:
             df_papers[col] = vel_data[col]
+        
+        # Fallback para velocity si counts_by_year estaba vacío pero hay citas totales
+        if 'citations' in df_papers.columns:
+            age = (CURRENT_YEAR - pd.to_numeric(df_papers['year'], errors='coerce').fillna(CURRENT_YEAR)).clip(lower=1)
+            df_papers['velocity'] = df_papers['velocity'].fillna(df_papers['citations'] / age)
     else:
         for col in ['velocity', 'recent_cites_3yr', 'early_impact', 'half_life']:
             df_papers[col] = np.nan
+        if 'citations' in df_papers.columns and 'year' in df_papers.columns:
+            age = (CURRENT_YEAR - pd.to_numeric(df_papers['year'], errors='coerce').fillna(CURRENT_YEAR)).clip(lower=1)
+            df_papers['velocity'] = df_papers['citations'] / age
 
     # APC — suma bruta mantiene 0 válido; % sólo sobre papers con datos OA
     for col in ['apc_paid_usd', 'apc_list_usd']:

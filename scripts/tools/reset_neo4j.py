@@ -2,7 +2,11 @@ import os
 import sys
 
 # Asegurar que el directorio raíz del proyecto esté en el path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+sys.path.append(project_root)
+
+from dotenv import load_dotenv
+load_dotenv(os.path.join(project_root, '.env'))
 
 from database.knowledge_graph import Neo4jGraphStore
 

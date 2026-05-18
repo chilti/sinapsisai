@@ -28,6 +28,14 @@ class ClickHouseClient:
         client = self.get_client()
         return client.query_df(query, parameters=parameters)
 
+    def command(self, cmd, parameters=None):
+        client = self.get_client()
+        return client.command(cmd, parameters=parameters)
+
+    def query(self, query, parameters=None):
+        client = self.get_client()
+        return client.query(query, parameters=parameters)
+
     def close(self):
         if self.client:
             self.client.close()

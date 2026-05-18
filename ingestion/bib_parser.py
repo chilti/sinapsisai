@@ -49,10 +49,14 @@ class BibParser:
         keywords = [k.strip() for k in keywords_str.split(',') if k.strip()]
         concepts = [{"name": k} for k in keywords]
         
+        # Extraer Identificadores de WoS y Scopus (campos comunes en exportaciones)
+        wos_id = rec.get('unique-id', '').replace('{', '').replace('}', '').strip()
+        sc_id = rec.get('scopus-id', '').strip()
+        
         # Priorizar DOI como paper_id para unificar con otras fuentes
-        # Si no hay DOI, usamos el ID del bibtex
+        # Si no hay DOI, usamos el WOS_ID o el ID del bibtex
         bib_id = raw_record.get('ID', 'unknown')
-        paper_id = doi if doi else bib_id
+        paper_id = doi if doi else (wos_id if wos_id else bib_id)
 
         processed = {
             "paper_id": paper_id,
@@ -60,6 +64,8 @@ class BibParser:
             "abstract": rec.get('abstract', '').replace('{', '').replace('}', ''),
             "year": year,
             "doi": doi,
+            "wos_id": wos_id,
+            "scopus_id": sc_id,
             "journal": rec.get('journal', ''),
             "citations": 0,
             "authors": authors,

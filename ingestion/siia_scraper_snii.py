@@ -33,7 +33,11 @@ from lxml import html
 # Importar dependencias del proyecto
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.knowledge_graph import Neo4jGraphStore
-from SNII.match_snii_orcid import SNII_PATH
+
+# Ruta al padrón SNII (anclada al root del proyecto)
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+SNII_PATH = os.path.join(_ROOT, 'data', 'Investigadores_vigentes_2025.xlsx')
+SNII_SHEET = '4T_2025 (44,794)'
 
 # --- Funciones de Utilidad (Replicadas de siia_scraper.py) ---
 
@@ -180,11 +184,11 @@ def main():
 
     # 1. Cargar y Filtrar Excel
     print(f"📋 Cargando SNII desde {SNII_PATH}...")
-    df = pd.read_excel(SNII_PATH)
+    df = pd.read_excel(SNII_PATH, sheet_name=SNII_SHEET)
     
-    inst_col = 'INSTITUCIÓN DE ACREDITACIÓN'
+    inst_col    = 'INSTITUCION DE ACREDITACION'          # Sin tilde (como viene en el Excel)
     sub_inst_col = 'SUBDEPENDENCIA DE ACREDITACIÓN'
-    name_col = 'NOMBRE DEL INVESTIGADOR'
+    name_col    = 'NOMBRE DEL INVESTIGADOR'
     
     # Filtrar UNAM
     df_unam = df[df[inst_col] == "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)"].copy()
@@ -202,14 +206,18 @@ def main():
     driver = webdriver.Chrome(options=options)
     driver.set_page_load_timeout(40)
 
-    # 3. Cache de Neo4j
-    graph_store = Neo4jGraphStore()
-    existing_academics = []
+    # 3. Cache de Neo4j (opcional — si falla, el JSON es la fuente de verdad)
+    graph_store = None
+    existing_academics = set()
     try:
+        graph_store = Neo4jGraphStore()
         with graph_store.driver.session() as session:
             res = session.run("MATCH (a:Academic) RETURN a.name AS name")
             existing_academics = {limpiar_nombre(r["name"]) for r in res}
-    except: pass
+        print(f"   ✅ Neo4j: {len(existing_academics)} académicos cargados en cache.")
+    except Exception as e:
+        print(f"   ⚠️  Neo4j no disponible ({e.__class__.__name__}). Usando solo cache JSON.")
+        graph_store = None
     
     # Asegurar directorio de salida
     unam_data_dir = os.path.join("data", "UNAM")
@@ -240,14 +248,17 @@ def main():
             
             for original_name in lista_nombres:
                 p_name = limpiar_nombre(original_name)
-                if p_name in profesores_data and profesores_data[p_name].get('siia') != 'No encontrado':
-                    print(f"    📂 {p_name} recuperado del caché JSON local. Saltando scraping.")
+                
+                # Saltar solo si ya tiene siia_url (= scrape exitoso previo)
+                # Los registros 'No encontrado' no tienen siia_url → se reintentan
+                cached = profesores_data.get(p_name, {})
+                if cached.get('siia_url'):
+                    print(f"    📂 {p_name} ya tiene perfil SIIA. Saltando.")
                     continue
                 
-                # Evitar duplicados de Neo4j (SIIA ya procesados)
-                if p_name in existing_academics:
-                    print(f"    🌟 {p_name} ya existe en Neo4j. Saltando.")
-                    continue
+                # Info: si ya está en Neo4j pero sin perfil SIIA, se re-intenta de todas formas
+                if p_name in existing_academics and not cached:
+                    print(f"    ℹ️  {p_name} en Neo4j pero sin perfil SIIA previo. Buscando...")
                 
                 print(f"  🔍 Buscando: {p_name}")
                 siia_links = buscar_en_siia_con_reintentos(str(original_name), p_name)
@@ -269,8 +280,13 @@ def main():
                 
                 if found_data:
                     profesores_data[p_name] = found_data
+                    orcid_str  = found_data.get('orcid') or '—'
+                    scopus_str = found_data.get('scopus') or '—'
+                    areas_n    = len(found_data.get('areas', []))
+                    print(f"       ORCID: {orcid_str}  |  Scopus: {scopus_str}  |  Áreas: {areas_n}")
                 else:
                     profesores_data[p_name] = {'original_name': str(original_name), 'siia': 'No encontrado', 'entity': entity}
+                    print(f"    ❌ No encontrado en SIIA: {p_name}")
                 
                 # Guardado progresivo por entidad
                 with open(out_path, "w", encoding='utf-8') as f:
@@ -280,7 +296,9 @@ def main():
                 
     finally:
         driver.quit()
-        graph_store.close()
+        if graph_store:
+            try: graph_store.close()
+            except: pass
         print("\n✨ Proceso de scraping SNII-UNAM finalizado.")
 
 if __name__ == "__main__":

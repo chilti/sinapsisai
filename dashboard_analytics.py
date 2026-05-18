@@ -447,7 +447,7 @@ def _render_thematic_evolution(df_evol, name_col, name_val, key_suffix=""):
     st.dataframe(df_pivot, use_container_width=True)
 
 
-def render_institucion_view(entity_name, institution_name=None, view_mode="capacidad_instalada"):
+def render_institucion_view(entity_name, institution_name=None, view_mode="capacidad_instalada", parent_name=None):
     # Inyectar CSS global para estilizar st.metric como las tarjetas doradas del reporte
     st.markdown("""
         <style>
@@ -570,38 +570,47 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
         # KPIs (Fila 1)
         st.markdown("##### Métricas Generales")
         
-        snii_count = 0
-        if 'academics_list' in total and isinstance(total['academics_list'], str):
-            try:
-                import json
-                snii_list = json.loads(total['academics_list'])
-                snii_count = len(snii_list)
-            except Exception:
-                pass
-                
         official_count = total.get('official_snii_count')
         if official_count is None or official_count == 0:
             official_counts = load_official_snii_counts()
-            # Intentamos buscar por entidad, si no, por institución
-            official_count = official_counts.get(entity_name)
+            
+            # 1. Intentar búsqueda jerárquica (la más precisa)
+            if institution_name and entity_name:
+                if parent_name and parent_name != entity_name:
+                    hier_key = f"{institution_name} || {parent_name} || {entity_name}"
+                else:
+                    hier_key = f"{institution_name} || {entity_name}"
+                official_count = official_counts.get(hier_key)
+            
+            # 2. Fallback al nombre de la entidad (flat) - útil para niveles superiores
+            if official_count is None:
+                official_count = official_counts.get(entity_name)
+            
+            # 3. Fallback al nombre de la institución (total)
             if official_count is None and institution_name:
                 official_count = official_counts.get(institution_name)
         
         c1, c2, c3, c4, c5, c6 = st.columns(6)
-        c1.metric("Doc. Totales", f"{int(total.get('num_documents',0)):,}")
-        c2.metric("Identificados (SNII)", f"{snii_count:,}", help="Investigadores encontrados en el sistema con publicaciones.")
+        
+        # Obtener el censo de Neo4j (Estrategia de Identidad Flexible)
+        total_census = int(total.get('neo4j_total_papers', total.get('num_documents', 0)))
+        indexed_count = int(total.get('num_documents', 0))
+        
+        c1.metric("Producción Total", f"{total_census:,}", help="Conteo total de artículos detectados en el Knowledge Graph (WoS, Scopus, BIB, etc).")
+        c2.metric("Indizada en OpenAlex", f"{indexed_count:,}", help="Artículos con metadatos completos en OpenAlex usados para el cálculo de indicadores.")
         
         official_val = f"{official_count:,}" if official_count is not None else "—"
-        c3.metric("Padrón SNII 2025", official_val, help="Total oficial de investigadores según el catálogo 2025.")
+        c3.metric("No. de SNIIs 2025", official_val, help="Total oficial de investigadores según el padrón del SNII 2025.")
         
         c4.metric("Citas Acumuladas", f"{int(total.get('citations',0)):,}")
         c5.metric("FWCI Promedio", f"{total.get('fwci_avg',0):.2f}")
         c6.metric("% Open Access", f"{total.get('pct_open_access',0):.1f}%")
+
         
         # KPIs (Fila 2)
         st.markdown("##### Métricas de Excelencia")
         c5, c6, c7, c8 = st.columns(4)
-        c5.metric("Percentil Promedio", f"{100*total.get('percentile_avg',50):.1f}")
+        c5.metric("Percentil Promedio", f"{total.get('percentile_avg',50):.1f}")
         c6.metric("% Top 10%", f"{total.get('pct_top_10',0):.1f}%")
         c7.metric("% Top 1%", f"{total.get('pct_1',0):.1f}%")
 
@@ -701,7 +710,7 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
                 _render_thematic_evolution(df_evol_inst, 'entity_name', entity_name, key_suffix=f"inst_{entity_name}")
 
     # ── Vocabulario Científico (WordCloud) ────────────────────────────────────────
-    df_kw_inst = get_cached_data("keywords_institucion.parquet", entity_name=entity_name, institution_name=institution_name)
+    df_kw_inst = get_cached_data("keywords_institucion.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
     if df_kw_inst is not None and not df_kw_inst.empty:
         st.markdown("---")
         st.subheader("🔑 Vocabulario Científico Institucional")
@@ -709,13 +718,13 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
                                  title="", key_suffix=f"inst_{entity_name}")
 
     # ── Colaboración Internacional (Choropleth) ───────────────────────────────────
-    df_inst_papers = get_cached_data("papers_institucion.parquet", entity_name=entity_name, institution_name=institution_name)
+    df_inst_papers = get_cached_data("papers_institucion.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
     if df_inst_papers is not None and not df_inst_papers.empty:
         df_ip = df_inst_papers
         if not df_ip.empty and "countries" in df_ip.columns:
             st.markdown("---")
             st.subheader("🌍 Colaboración Internacional")
-            df_annual_inst = get_cached_data("institucion_annual.parquet", entity_name=entity_name, institution_name=institution_name)
+            df_annual_inst = get_cached_data("institucion_annual.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
             if df_annual_inst is not None and not df_annual_inst.empty:
                 df_ia = df_annual_inst.sort_values('year')
                 if 'pct_international' in df_ia.columns and not df_ia.empty:
@@ -741,7 +750,7 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
                                       key_suffix=f"inst_{entity_name}")
 
     # ── Stacked Bar OA anual ──────────────────────────────────────────────
-    df_annual_oa = get_cached_data("institucion_annual.parquet", entity_name=entity_name, institution_name=institution_name)
+    df_annual_oa = get_cached_data("institucion_annual.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
     if df_annual_oa is not None and not df_annual_oa.empty:
         df_oa_ann = df_annual_oa.sort_values('year')
         oa_cols = [c for c in ['pct_oa_gold','pct_oa_green','pct_oa_hybrid','pct_oa_bronze','pct_oa_closed']
@@ -791,7 +800,7 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
 | Papers retractados | `{total_row.get('pct_retracted',0):.2f}%` |
                         """.strip())
 
-    df_institucion_papers = load_cached_data("papers_institucion.parquet", entity_name=entity_name, institution_name=institution_name)
+    df_institucion_papers = load_cached_data("papers_institucion.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
     if df_institucion_papers is not None and not df_institucion_papers.empty:
         df_inst_p = df_institucion_papers
         
@@ -1120,11 +1129,16 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
     st.markdown("---")
     
     st.markdown("##### Métricas Generales")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Doc. Totales", f"{int(inv_data.get('num_documents',0)):,}")
-    c2.metric("Índice H", f"{int(inv_data.get('h_index',0))}")
-    c3.metric("Total Citas", f"{int(inv_data.get('citations',0)):,}")
-    c4.metric("% Open Access", f"{inv_data.get('pct_open_access',0):.1f}%")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    
+    total_census = int(inv_data.get('neo4j_total_papers', inv_data.get('num_documents', 0)))
+    indexed_count = int(inv_data.get('num_documents', 0))
+
+    c1.metric("Producción Total (Censo)", f"{total_census:,}", help="Conteo total de artículos en Neo4j (incluye WoS/BIB no indizados).")
+    c2.metric("Indizada (Analítica)", f"{indexed_count:,}", help="Artículos en OpenAlex usados para el cálculo de métricas.")
+    c3.metric("Índice H", f"{int(inv_data.get('h_index',0))}")
+    c4.metric("Total Citas", f"{int(inv_data.get('citations',0)):,}")
+    c5.metric("% Open Access", f"{inv_data.get('pct_open_access',0):.1f}%")
     
     st.markdown("##### Métricas de Excelencia")
     c5, c6, c7, c8 = st.columns(4)
@@ -1311,45 +1325,51 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
         st.markdown("---")
         st.subheader("📜 Lista Completa de Publicaciones")
         
-        # Blindaje contra columnas faltantes
-        if 'ODS_Nombre' not in df_prof.columns:
-            df_prof['ODS_Nombre'] = None
-        if 'openalex_url' not in df_prof.columns:
-            df_prof['openalex_url'] = None
+        # Validar si hay publicaciones reales
+        is_empty = df_prof.empty or (len(df_prof) == 1 and (df_prof['paper_id'].isna().all() or df_prof['paper_id'].iloc[0] is None))
+        
+        if is_empty:
+            st.info("No se encontraron publicaciones indizadas para este académico en las fuentes consultadas (OpenAlex, Scopus, WoS).")
+        else:
+            # Blindaje contra columnas faltantes
+            if 'ODS_Nombre' not in df_prof.columns:
+                df_prof['ODS_Nombre'] = None
+            if 'openalex_url' not in df_prof.columns:
+                df_prof['openalex_url'] = None
 
-        col_fil_prof1, col_fil_prof2 = st.columns(2)
-        with col_fil_prof1:
-            years_prof = np.flip(np.unique(df_prof['year'].dropna()))
-            s_year_prof = st.selectbox("Filtrar por año:", options=["Todos"] + list(years_prof), key="prof_year")
-        with col_fil_prof2:
-            ods_options_prof = sorted([str(ods) for ods in df_prof['ODS_Nombre'].dropna().unique() if ods and str(ods).lower() != "null" and "x" not in str(ods).lower()])
-            s_ods_prof = st.selectbox("Filtrar por ODS:", options=["Todos"] + ods_options_prof, key="prof_ods")
-        
-        df_display_prof = df_prof.copy()
-        if s_year_prof != "Todos":
-            df_display_prof = df_display_prof[df_display_prof['year'] == s_year_prof]
-        if s_ods_prof != "Todos":
-            df_display_prof = df_display_prof[df_display_prof['ODS_Nombre'] == s_ods_prof]
+            col_fil_prof1, col_fil_prof2 = st.columns(2)
+            with col_fil_prof1:
+                years_prof = np.flip(np.unique(df_prof['year'].dropna()))
+                s_year_prof = st.selectbox("Filtrar por año:", options=["Todos"] + list(years_prof), key="prof_year")
+            with col_fil_prof2:
+                ods_options_prof = sorted([str(ods) for ods in df_prof['ODS_Nombre'].dropna().unique() if ods and str(ods).lower() != "null" and "x" not in str(ods).lower()])
+                s_ods_prof = st.selectbox("Filtrar por ODS:", options=["Todos"] + ods_options_prof, key="prof_ods")
             
-        if "openalex_url" not in df_display_prof.columns:
-            df_display_prof["openalex_url"] = None
+            df_display_prof = df_prof.copy()
+            if s_year_prof != "Todos":
+                df_display_prof = df_display_prof[df_display_prof['year'] == s_year_prof]
+            if s_ods_prof != "Todos":
+                df_display_prof = df_display_prof[df_display_prof['ODS_Nombre'] == s_ods_prof]
+                
+            if "openalex_url" not in df_display_prof.columns:
+                df_display_prof["openalex_url"] = None
+                
+            df_display_prof = df_display_prof[[
+                "year", "Title", "Source", "citations", "DOI", "openalex_url", "ODS_Nombre"
+            ]].rename(columns={
+                "year": "Año",
+                "Title": "Título",
+                "Source": "Revista/Publicación",
+                "citations": "Citas",
+                "DOI": "DOI",
+                "openalex_url": "OpenAlex",
+                "ODS_Nombre": "ODS"
+            }).sort_values(by="Año", ascending=False)
             
-        df_display_prof = df_display_prof[[
-            "year", "Title", "Source", "citations", "DOI", "openalex_url", "ODS_Nombre"
-        ]].rename(columns={
-            "year": "Año",
-            "Title": "Título",
-            "Source": "Revista/Publicación",
-            "citations": "Citas",
-            "DOI": "DOI",
-            "openalex_url": "OpenAlex",
-            "ODS_Nombre": "ODS"
-        }).sort_values(by="Año", ascending=False)
-        
-        st.dataframe(df_display_prof, width="stretch", hide_index=True, column_config={
-            "DOI": st.column_config.LinkColumn("Enlace DOI", display_text="Ver Link"),
-            "OpenAlex": st.column_config.LinkColumn("OpenAlex", display_text="Ver en OpenAlex")
-        })
+            st.dataframe(df_display_prof, width="stretch", hide_index=True, column_config={
+                "DOI": st.column_config.LinkColumn("Enlace DOI", display_text="Ver Link"),
+                "OpenAlex": st.column_config.LinkColumn("OpenAlex", display_text="Ver en OpenAlex")
+            })
     
 
     # ── Red de Colaboración Científica ───────────────────────────────────────────
