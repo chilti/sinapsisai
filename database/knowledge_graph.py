@@ -1016,13 +1016,27 @@ class Neo4jGraphStore:
         
         # Caso 1: Jerarquía Completa (Dep + Sub)
         if dep and sub and dep != 'SIN INFORMACIÓN' and sub != 'SIN INFORMACIÓN':
-            query = """
-            MATCH (i:Institution {name: $inst})<-[:PART_OF]-(d:Dependency {id: $inst + "||" + $dep})<-[:PART_OF]-(s:Subdependency {id: $inst + "||" + $dep + "||" + $sub})
-            MATCH (p:Paper)-[:CREDITED_TO]->(s)
-            RETURN count(DISTINCT p) as total
-            """
-            params["dep"] = dep
-            params["sub"] = sub
+            if dep == sub:
+                # Fallback para consultas artificiales donde dep y sub son iguales
+                entity_name = sub
+                query = """
+                MATCH (i:Institution {name: $inst})<-[:PART_OF*1..2]-(e)
+                WHERE (e:Dependency OR e:Subdependency) AND e.name = $entity
+                OPTIONAL MATCH (e)<-[:PART_OF*0..1]-(child)
+                WITH e, collect(child) + e as targets
+                UNWIND targets as t
+                MATCH (p:Paper)-[:CREDITED_TO]->(t)
+                RETURN count(DISTINCT p) as total
+                """
+                params["entity"] = entity_name
+            else:
+                query = """
+                MATCH (i:Institution {name: $inst})<-[:PART_OF]-(d:Dependency {id: $inst + "||" + $dep})<-[:PART_OF]-(s:Subdependency {id: $inst + "||" + $dep + "||" + $sub})
+                MATCH (p:Paper)-[:CREDITED_TO]->(s)
+                RETURN count(DISTINCT p) as total
+                """
+                params["dep"] = dep
+                params["sub"] = sub
         
         # Caso 2: Solo una entidad (puede ser Dep o Sub)
         elif (dep or sub) and (dep != 'SIN INFORMACIÓN' or sub != 'SIN INFORMACIÓN'):
@@ -1085,7 +1099,19 @@ class Neo4jGraphStore:
             return val and str(val).upper() not in ["SIN INFORMACIÓN", "SIN INFORMACIN", "NO APLICA", "SIN INSTITUCION", "SIN INSTITUCIN", "NAN", "NONE", "NULL"]
 
         # Determinar el nodo objetivo según la jerarquía (usando IDs compuestos para evitar homónimos)
-        if _is_valid(sub):
+        if _is_valid(sub) and _is_valid(dep) and sub == dep:
+            query = """
+            MATCH (i:Institution {name: $inst})<-[:PART_OF*1..2]-(e)
+            WHERE (e:Dependency OR e:Subdependency) AND e.name = $entity
+            OPTIONAL MATCH (e)<-[:PART_OF*0..1]-(child)
+            WITH e, collect(child) + e as targets
+            UNWIND targets as t
+            MATCH (a:Person)-[:AFFILIATED_TO]->(t)
+            MATCH (a)-[:AUTHOR_OF|AUTHORED]->(p:Paper)
+            RETURN count(DISTINCT p) as total
+            """
+            params = {"inst": inst, "entity": sub}
+        elif _is_valid(sub):
             query = """
             MATCH (i:Institution {name: $inst})<-[:PART_OF]-(d:Dependency {id: $inst + "||" + $dep})<-[:PART_OF]-(e:Subdependency {id: $inst + "||" + $dep + "||" + $sub})
             MATCH (a:Person)-[:AFFILIATED_TO]->(e)

@@ -161,6 +161,7 @@ SELECT
     wf.type,
     wf.source_id   AS Source,
     wf.source_type,
+    wf.is_retracted, wf.referenced_works_count, wf.keywords,
     pe.institution,
     pe.dependency,
     pe.subdependency,
@@ -211,6 +212,7 @@ SELECT
     wf.type,
     wf.source_id   AS Source,
     wf.source_type,
+    wf.is_retracted, wf.referenced_works_count, wf.keywords,
     pe.institution,
     pe.dependency,
     pe.subdependency,
@@ -318,6 +320,7 @@ SELECT
     wf.is_top_10 AS is_in_top_10_percent, wf.is_top_1 AS is_in_top_1_percent,
     wf.is_oa, wf.oa_status, wf.topic, wf.subfield, wf.field, wf.domain,
     wf.language, wf.type, wf.source_id AS Source, wf.source_type,
+    wf.is_retracted, wf.referenced_works_count, wf.keywords,
     wf.sdgs AS ODS, wf.author_names, wf.all_country_codes, wf.institution_rors,
     wf.apc_paid_usd, wf.apc_list_usd, wf.counts_by_year, wf.license,
     wf.journal_is_in_doaj, wf.journal_is_core, wf.any_repository_has_fulltext
@@ -333,6 +336,7 @@ SELECT
     wf.is_top_10 AS is_in_top_10_percent, wf.is_top_1 AS is_in_top_1_percent,
     wf.is_oa, wf.oa_status, wf.topic, wf.subfield, wf.field, wf.domain,
     wf.language, wf.type, wf.source_id AS Source, wf.source_type,
+    wf.is_retracted, wf.referenced_works_count, wf.keywords,
     wf.sdgs AS ODS, wf.author_names, wf.all_country_codes, wf.institution_rors,
     wf.apc_paid_usd, wf.apc_list_usd, wf.counts_by_year, wf.license,
     wf.journal_is_in_doaj, wf.journal_is_core, wf.any_repository_has_fulltext
@@ -1272,85 +1276,84 @@ def process_and_save(entity_filter=None, academic_filter=None, institution_filte
             
         if df_full_cap.empty:
             print(f"  ❌ No se encontró capacidad instalada.")
-            continue
+        else:
+            df_full_cap = _ensure_columns(df_full_cap)
+            print(f"  📊 {df_full_cap['paper_id'].nunique():,} registros únicos recuperados. Iniciando agregación...")
 
-        df_full_cap = _ensure_columns(df_full_cap)
-        print(f"  📊 {df_full_cap['paper_id'].nunique():,} registros únicos recuperados. Iniciando agregación...")
-        
-        # 2. Visibilidad e Indexación
-        for c in ['is_wos', 'is_scopus', 'is_pubmed', 'is_openalex', 'is_doaj']:
-            if c in df_full_cap.columns:
-                df_full_cap[c] = pd.to_numeric(df_full_cap[c], errors='coerce').fillna(0).astype(int)
+            # 2. Visibilidad e Indexación
+            for c in ['is_wos', 'is_scopus', 'is_pubmed', 'is_openalex', 'is_doaj']:
+                if c in df_full_cap.columns:
+                    df_full_cap[c] = pd.to_numeric(df_full_cap[c], errors='coerce').fillna(0).astype(int)
 
-        # 3. Nivel Académico (ClickHouse + Censo Neo4j)
-        df_full_cap['entity'] = df_full_cap['subdependency'].fillna(df_full_cap['dependency']).fillna(df_full_cap['institution'])
-        
-        # Obtener censo completo de esta institución desde Neo4j
-        census_map = {}
-        try:
-            neo = Neo4jGraphStore()
-            census_data = neo.get_hierarchical_academic_census(inst_name)
-            neo.close()
-            for c in census_data:
-                census_map[c['name']] = c
-        except Exception as e:
-            print(f"  ⚠️ Error de censo para {inst_name}: {e}")
+            # 3. Nivel Académico (ClickHouse + Censo Neo4j)
+            df_full_cap['entity'] = df_full_cap['subdependency'].fillna(df_full_cap['dependency']).fillna(df_full_cap['institution'])
 
-        # Identificar todos los académicos únicos (unión de ambas fuentes)
-        all_names = set(df_full_cap['academic_name'].unique()) | set(census_map.keys())
-        
-        for ac_name in all_names:
-            if not ac_name or str(ac_name).lower() == 'none': continue
-            
-            df_ac = df_full_cap[df_full_cap['academic_name'] == ac_name]
-            
-            # Determinar afiliación (preferir ClickHouse si hay obra, si no Neo4j)
-            if not df_ac.empty:
-                ac_entity = df_ac['entity'].mode()[0] if not df_ac['entity'].empty else inst_name
-            else:
-                c_info = census_map.get(ac_name, {})
-                ac_entity = c_info.get('subdependency')
-                if not ac_entity or ac_entity == 'SIN INFORMACIÓN':
-                    ac_entity = c_info.get('dependency')
-                if not ac_entity or ac_entity == 'SIN INFORMACIÓN':
-                    ac_entity = inst_name
+            # Obtener censo completo de esta institución desde Neo4j
+            census_map = {}
+            try:
+                neo = Neo4jGraphStore()
+                census_data = neo.get_hierarchical_academic_census(inst_name)
+                neo.close()
+                for c in census_data:
+                    census_map[c['name']] = c
+            except Exception as e:
+                print(f"  ⚠️ Error de censo para {inst_name}: {e}")
 
-            # Filtro de entidad: si está activo, solo procesar académicos de esa entidad
-            if entity_filter:
-                c_info = census_map.get(ac_name, {})
-                belong_census = (c_info.get('subdependency') == entity_filter or c_info.get('dependency') == entity_filter)
-                belong_click  = (not df_ac.empty and df_ac['entity'].iloc[0] == entity_filter)
-                if not (belong_census or belong_click):
-                    continue
-            
-            _flush_academic(ac_name, df_ac.copy(), ac_entity, inst_name, updated_files)
+            # Identificar todos los académicos únicos (unión de ambas fuentes)
+            all_names = set(df_full_cap['academic_name'].unique()) | set(census_map.keys())
 
-        # 4. Agregación Bottom-Up (Dependencias y Subdependencias)
-        # Solo si NO hay filtro de académico para no corromper agregados parciales
-        if academic_filter:
-            print(f"  ℹ️ Saltando agregaciones institucionales (filtro académico activo)")
-            continue
+            for ac_name in all_names:
+                if not ac_name or str(ac_name).lower() == 'none': continue
 
-        # Capacidad por Dependencia y Subdependencia
-        if 'dependency' in df_full_cap.columns:
-            for dep_name, df_dep in df_full_cap[df_full_cap['dependency'] != 'SIN INFORMACIÓN'].groupby('dependency'):
-                d_dep = CACHE_DIR / safe_inst / _safe_name(dep_name) / 'capacidad_instalada'
-                d_dep.mkdir(parents=True, exist_ok=True)
-                _save_aggregate_parquets(df_dep, d_dep, updated_files, label=dep_name, inst=inst_name, dep=dep_name)
+                df_ac = df_full_cap[df_full_cap['academic_name'] == ac_name]
 
-                # Subdependencias
-                if 'subdependency' in df_dep.columns:
-                    for sub_name, df_sub in df_dep[df_dep['subdependency'] != 'SIN INFORMACIÓN'].groupby('subdependency'):
-                        d_sub = CACHE_DIR / safe_inst / _safe_name(sub_name) / 'capacidad_instalada'
-                        d_sub.mkdir(parents=True, exist_ok=True)
-                        _save_aggregate_parquets(df_sub, d_sub, updated_files, label=sub_name, inst=inst_name, dep=dep_name, sub=sub_name)
+                # Determinar afiliación (preferir ClickHouse si hay obra, si no Neo4j)
+                if not df_ac.empty:
+                    ac_entity = df_ac['entity'].mode()[0] if not df_ac['entity'].empty else inst_name
+                else:
+                    c_info = census_map.get(ac_name, {})
+                    ac_entity = c_info.get('subdependency')
+                    if not ac_entity or ac_entity == 'SIN INFORMACIÓN':
+                        ac_entity = c_info.get('dependency')
+                    if not ac_entity or ac_entity == 'SIN INFORMACIÓN':
+                        ac_entity = inst_name
 
-        # Capacidad Institución (Total)
-        if not entity_filter:
-            cap_dir = CACHE_DIR / safe_inst / 'capacidad_instalada'
-            _save_aggregate_parquets(df_full_cap, cap_dir, updated_files, label=inst_name, inst=inst_name)
-            _save_aggregate_parquets(df_full_cap, CACHE_DIR / safe_inst, updated_files, label=inst_name, inst=inst_name)
-            mx_cap_frames.append(df_full_cap)
+                # Filtro de entidad: si está activo, solo procesar académicos de esa entidad
+                if entity_filter:
+                    c_info = census_map.get(ac_name, {})
+                    belong_census = (c_info.get('subdependency') == entity_filter or c_info.get('dependency') == entity_filter)
+                    belong_click  = (not df_ac.empty and df_ac['entity'].iloc[0] == entity_filter)
+                    if not (belong_census or belong_click):
+                        continue
+
+                _flush_academic(ac_name, df_ac.copy(), ac_entity, inst_name, updated_files)
+
+            # 4. Agregación Bottom-Up (Dependencias y Subdependencias)
+            # Solo si NO hay filtro de académico para no corromper agregados parciales
+            if academic_filter:
+                print(f"  ℹ️ Saltando agregaciones institucionales (filtro académico activo)")
+                continue
+
+            # Capacidad por Dependencia y Subdependencia
+            if 'dependency' in df_full_cap.columns:
+                for dep_name, df_dep in df_full_cap[df_full_cap['dependency'] != 'SIN INFORMACIÓN'].groupby('dependency'):
+                    d_dep = CACHE_DIR / safe_inst / _safe_name(dep_name) / 'capacidad_instalada'
+                    d_dep.mkdir(parents=True, exist_ok=True)
+                    _save_aggregate_parquets(df_dep, d_dep, updated_files, label=dep_name, inst=inst_name, dep=dep_name)
+
+                    # Subdependencias
+                    if 'subdependency' in df_dep.columns:
+                        for sub_name, df_sub in df_dep[df_dep['subdependency'] != 'SIN INFORMACIÓN'].groupby('subdependency'):
+                            d_sub = CACHE_DIR / safe_inst / _safe_name(sub_name) / 'capacidad_instalada'
+                            d_sub.mkdir(parents=True, exist_ok=True)
+                            _save_aggregate_parquets(df_sub, d_sub, updated_files, label=sub_name, inst=inst_name, dep=dep_name, sub=sub_name)
+
+            # Capacidad Institución (Total)
+            if not entity_filter:
+                cap_dir = CACHE_DIR / safe_inst / 'capacidad_instalada'
+                _save_aggregate_parquets(df_full_cap, cap_dir, updated_files, label=inst_name, inst=inst_name)
+                _save_aggregate_parquets(df_full_cap, CACHE_DIR / safe_inst, updated_files, label=inst_name, inst=inst_name)
+                mx_cap_frames.append(df_full_cap)
 
         # 5. Producción Institucional (via Neo4j CREDITED_TO + JOIN works_academic_all)
         print(f"  ⏳ Consultando producción institucional desde Neo4j...")

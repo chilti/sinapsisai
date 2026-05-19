@@ -499,6 +499,14 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
         df_annual = load_cached_data("institucion_annual.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
         df_total = load_cached_data("institucion_total.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
         df_topics = load_cached_data("topics_institucion.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
+        
+    elif view_mode == "capacidad_instalada" and (df_total is None or df_total.empty):
+        if os.path.exists(prod_path):
+            st.warning("⚠️ No se encontraron papers asociados directamente a los perfiles de los académicos de esta entidad (**Capacidad Instalada**). Se muestran a continuación las métricas correspondientes a su **Producción Institucional** (papers firmados explícitamente a nombre de la entidad).")
+            view_mode = "produccion_institucional"
+            df_annual = load_cached_data("institucion_annual.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
+            df_total = load_cached_data("institucion_total.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
+            df_topics = load_cached_data("topics_institucion.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
 
     # --- Identificadores Institucionales (Priorizar Cache para modo Offline) ---
     meta = None

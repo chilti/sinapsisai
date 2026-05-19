@@ -200,7 +200,7 @@ def sync_author_map():
                 
                 rows.append({
                     'paper_id': p_id,
-                    'academic_name': r['academic_name'],
+                    'academic_name': r['academic_name'] or '',
                     'cvu': r['cvu'] or '',
                     'orcid': r['orcid'] or '',
                     'openalex_id': r['author_oa_id'] or '',

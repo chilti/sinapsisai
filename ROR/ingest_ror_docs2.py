@@ -99,7 +99,7 @@ class RORIngestorV2(RORIngestor):
                     rows = ch.query(
                         '''SELECT id, doi, title, publication_year, type,
                                   cited_by_count, raw_data
-                           FROM works_flat
+                           FROM works_flat FINAL
                            WHERE has(institution_ids, {id:String})
                            ORDER BY id
                            LIMIT {limit:UInt32} OFFSET {offset:UInt32}''',

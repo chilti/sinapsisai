@@ -260,47 +260,50 @@ class RORIngestor:
 
         for work in works:
             doi_raw = work.get('doi')
-            if not doi_raw: continue
-            doi = doi_raw.replace("https://doi.org/", "").strip().lower()
+            doi = doi_raw.replace("https://doi.org/", "").strip().lower() if doi_raw else None
+            
+            # Identidad flexible: DOI si existe, si no, OpenAlex Work ID (WID)
+            paper_key = doi if doi else work.get('id')
+            if not paper_key: continue
             
             # Evitar duplicados en el mismo batch (página de OpenAlex)
-            if doi in batch_seen: continue
-            batch_seen.add(doi)
+            if paper_key in batch_seen: continue
+            batch_seen.add(paper_key)
 
             # 1. Verificar si ya fue procesado en esta ejecución (ahorro de DB)
-            if doi in self.processed_dois:
-                # Solo aseguramos el link por si acaso es una nueva entidad vinculada al mismo DOI
+            if paper_key in self.processed_dois:
+                # Solo aseguramos el link por si acaso es una nueva entidad vinculada al mismo paper
                 for ent in entities:
                     inst, dep, sub = ent['inst'], ent['dep'], ent['sub']
-                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Institution', doi)
+                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Institution', paper_key)
                     if dep != "SIN INFORMACIÓN":
-                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Dependency', doi)
+                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Dependency', paper_key)
                     if sub != "SIN INFORMACIÓN":
-                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Subdependency', doi)
+                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Subdependency', paper_key)
                 continue
 
-            # 2. Verificar si ya existe en las bases (para DOIs no vistos en este run)
-            exists_graph = self.graph_store.check_paper_exists(doi)
-            exists_qdrant = self.vector_store.check_document_exists(doi)
+            # 2. Verificar si ya existe en las bases (para DOIs/WIDs no vistos en este run)
+            exists_graph = self.graph_store.check_paper_exists(paper_key)
+            exists_qdrant = self.vector_store.check_document_exists(paper_key)
             
             # 3. Si ya existe en Neo4j, ENRIQUECER en lugar de saltar
             if exists_graph:
-                self.graph_store.mark_paper_as_indexed(doi, 'openalex')
-                self.graph_store.set_paper_openalex_id(doi, work.get('id'))
+                self.graph_store.mark_paper_as_indexed(paper_key, 'openalex')
+                self.graph_store.set_paper_openalex_id(paper_key, work.get('id'))
                 
                 for ent in entities:
                     inst, dep, sub = ent['inst'], ent['dep'], ent['sub']
                     if sub != "SIN INFORMACIÓN":
-                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Subdependency', doi)
+                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Subdependency', paper_key)
                     elif dep != "SIN INFORMACIÓN":
-                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Dependency', doi)
+                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Dependency', paper_key)
                     else:
-                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Institution', doi)
+                        self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Institution', paper_key)
                 
                 if not exists_qdrant:
                     self._prepare_for_qdrant_multi(work, entities, batch_texts, batch_payloads)
                 
-                self.processed_dois.add(doi)
+                self.processed_dois.add(paper_key)
                 continue
             
             # 4. Si no existe en Neo4j, procesar e insertar
@@ -311,7 +314,7 @@ class RORIngestor:
             # authors, concepts = self._extract_authors_and_concepts(work)
 
             paper_data = {
-                "paper_id": doi,
+                "paper_id": paper_key,
                 "doi": doi,
                 "title": work.get('display_name') or work.get('title') or "Sin Título",
                 "year": work.get('publication_year', 0),
@@ -322,19 +325,19 @@ class RORIngestor:
             }
             
             self.graph_store.add_paper(paper_data)
-            self.graph_store.mark_paper_as_indexed(doi, 'openalex')
-            self.graph_store.set_paper_openalex_id(doi, work.get('id'))
+            self.graph_store.mark_paper_as_indexed(paper_key, 'openalex')
+            self.graph_store.set_paper_openalex_id(paper_key, work.get('id'))
             
             for ent in entities:
                 inst, dep, sub = ent['inst'], ent['dep'], ent['sub']
                 if sub != "SIN INFORMACIÓN":
-                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Subdependency', doi)
+                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Subdependency', paper_key)
                 elif dep != "SIN INFORMACIÓN":
-                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Dependency', doi)
+                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Dependency', paper_key)
                 else:
-                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Institution', doi)
+                    self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Institution', paper_key)
             
-            self.processed_dois.add(doi)
+            self.processed_dois.add(paper_key)
 
         # 6. Embeddings masivos
         if batch_texts:
@@ -491,27 +494,38 @@ class RORIngestor:
                         self.graph_store.upsert_hierarchical_entity_metadata(inst, dep, sub, 'Subdependency', p_ror, p_oa)
 
         # Optimización: Filtrar documentos que ya existen en Qdrant por lote
-        ids_to_check = [{"doi": (w.get('doi') or '').replace("https://doi.org/", "").lower(), "title": w.get('display_name')} for w in works]
+        ids_to_check = []
+        for w in works:
+            w_doi = (w.get('doi') or '').replace("https://doi.org/", "").lower()
+            w_key = w_doi if (w_doi and w_doi != "none") else w.get('id')
+            ids_to_check.append({"doi": w_key, "title": w.get('display_name')})
+            
         missing_dois_in_qdrant = set()
         if hasattr(self.vector_store, 'filter_existing_ids'):
             missing_dois_in_qdrant = set(self.vector_store.filter_existing_ids(ids_to_check))
         else:
-            missing_dois_in_qdrant = {(w.get('doi') or '').replace("https://doi.org/", "").lower() for w in works}
+            missing_dois_in_qdrant = {x['doi'] for x in ids_to_check if x['doi']}
 
         print(f"      🔍 Qdrant: {len(works)} trabajos. {len(works) - len(missing_dois_in_qdrant)} ya existen, {len(missing_dois_in_qdrant)} nuevos.")
 
         for work in works:
             doi = (work.get('doi') or '').replace("https://doi.org/", "").lower()
+            paper_key = doi if (doi and doi != "none") else work.get('id')
+            if not paper_key: continue
             
+            # Evitar procesar duplicados en el mismo run
+            if paper_key in self.processed_dois:
+                continue
+
             # En ROR no siempre tenemos el CVU, así que pasamos None
             # Llamamos a ingest_paper_row por cada entidad para asegurar los links CREDITED_TO
             for ent in entities:
                 row = {
-                    "paper_id": doi,
+                    "paper_id": paper_key,
                     "title": work.get('display_name') or "Sin Título",
                     "year": work.get('publication_year', 0),
                     "citations": work.get('cited_by_count', 0),
-                    "doi": doi,
+                    "doi": doi if doi else None,
                     "openalex_id": work.get('id'),
                     "wos_id": work.get('ids', {}).get('wos'),
                     "scopus_id": work.get('ids', {}).get('scopus'),
@@ -531,12 +545,12 @@ class RORIngestor:
                 self.graph_store.ingest_paper_row(row)
             
             # 2. Qdrant
-            u_str = doi if doi and str(doi).strip().lower() != "none" else work.get('display_name')
+            u_str = paper_key
             exists_qdrant = u_str not in missing_dois_in_qdrant
             if not exists_qdrant:
                 self._prepare_for_qdrant_multi(work, entities, batch_texts, batch_payloads)
             
-            self.processed_dois.add(doi)
+            self.processed_dois.add(paper_key)
 
         if len(works) > 0:
             print(f"      🗄️ Neo4j: {len(works)} artículos procesados.")
