@@ -76,24 +76,30 @@ Si necesitas agregar académicos que no están en el SNII o producción instituc
 
 ## 📊 Visualización y Analítica
 
-### 3. Materialización de `works_academic_all`
+### 3. Sincronización del Pipeline de Analítica (`sync_analytics_pipeline.py`)
 
-Después de cualquier ingesta (SNII, ROR o manual), ejecuta este paso para sincronizar la tabla analítica `works_academic_all` con los nuevos papers incorporados en `paper_author_map` y `paper_entity_map`. Sin este paso, `compute_scholar_metrics_ch.py` no encontrará los papers recién ingestados.
+Después de realizar cualquier ingesta de datos (mediante SNII, ROR o de forma manual), es **indispensable** sincronizar los grafos e identidades de Neo4j hacia ClickHouse para recalcular las tablas de analítica. Sin este paso, `compute_scholar_metrics_ch.py` no encontrará los papers recién ingestados.
 
+El script `sync_analytics_pipeline.py` es el orquestador unificado que realiza de forma automática las siguientes fases:
+1. **Fase 1 (Firma)**: Sincroniza `paper_entity_map` en ClickHouse con la relación `CREDITED_TO` de Neo4j.
+2. **Fase 2 (Talento)**: Sincroniza `paper_author_map` en ClickHouse con la relación `AUTHORED` de Neo4j.
+3. **Fase 3 (Materialización)**: Sincroniza e inserta de forma incremental los nuevos papers en `works_academic_all` desde `works_flat` (569M papers de OpenAlex).
+
+Ejecuta el pipeline completo de sincronización con:
 ```bash
-python ingestion/materialize_works_academic.py
+python ingestion/sync_analytics_pipeline.py
 ```
 
-- Busca todos los DOIs en `paper_author_map` y `paper_entity_map` que existen en `works_flat` (569M papers OpenAlex).
-- Inserta los nuevos papers en `works_academic_all` sin duplicar los ya existentes.
-- Es idempotente: puede correrse múltiples veces sin problema.
-
+También puedes ejecutar fases específicas si lo deseas:
 ```bash
-# Solo contar cuántos papers nuevos hay pendientes (sin insertar):
-python ingestion/materialize_works_academic.py --dry-run
+# Sincronizar solo los mapas de afinidad (Fases 1 y 2):
+python ingestion/sync_analytics_pipeline.py --phase maps
+
+# Ejecutar solo la materialización de papers en works_academic_all (Fase 3):
+python ingestion/sync_analytics_pipeline.py --phase works
 ```
 
-> **Nota arquitectural:** `works_flat` es la fuente de verdad del bulk de OpenAlex (solo lectura). `works_academic_all` es la tabla pre-materializada que contiene únicamente los papers de los investigadores del sistema, optimizada para el cómputo de métricas.
+> **Nota arquitectural:** `works_flat` es la fuente de verdad del bulk de OpenAlex (solo lectura). `works_academic_all` es la tabla pre-materializada que contiene únicamente los papers vinculados a investigadores del sistema, optimizada para el cómputo veloz de indicadores.
 
 ### Dashboard Principal
 Lanza la interfaz de analítica basada en ClickHouse y Neo4j:
