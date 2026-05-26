@@ -2,11 +2,13 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from utils.ui_components import render_explain_button
 import streamlit.components.v1 as components
 import os
 import sys
 import json
 import numpy as np
+from datetime import datetime
 from lib import viz_ods  # Nuevo módulo para pintar la matriz de ODS
 from lib.coauthra_integration import render_coauthra
 
@@ -23,6 +25,34 @@ except Exception:
 # Paths
 BASE_PATH = os.path.dirname(os.path.abspath(__file__))
 CACHE_DIR = os.path.join(BASE_PATH, 'data', 'cache_ch')
+
+ISO2_TO_ISO3 = {
+    'AF': 'AFG', 'AX': 'ALA', 'AL': 'ALB', 'DZ': 'DZA', 'AS': 'ASM', 'AD': 'AND', 'AO': 'AGO', 'AI': 'AIA', 'AQ': 'ATA', 'AG': 'ATG',
+    'AR': 'ARG', 'AM': 'ARM', 'AW': 'ABW', 'AU': 'AUS', 'AT': 'AUT', 'AZ': 'AZE', 'BS': 'BHS', 'BH': 'BHR', 'BD': 'BGD', 'BB': 'BRB',
+    'BY': 'BLR', 'BE': 'BEL', 'BZ': 'BLZ', 'BJ': 'BEN', 'BM': 'BMU', 'BT': 'BTN', 'BO': 'BOL', 'BQ': 'BES', 'BA': 'BIH', 'BW': 'BWA',
+    'BV': 'BVT', 'BR': 'BRA', 'IO': 'IOT', 'BN': 'BRN', 'BG': 'BGR', 'BF': 'BFA', 'BI': 'BDI', 'CV': 'CPV', 'KH': 'KHM', 'CM': 'CMR',
+    'CA': 'CAN', 'KY': 'CYM', 'CF': 'CAF', 'TD': 'TCD', 'CL': 'CHL', 'CN': 'CHN', 'CX': 'CXR', 'CC': 'CCK', 'CO': 'COL', 'KM': 'COM',
+    'CD': 'COD', 'CG': 'COG', 'CK': 'COK', 'CR': 'CRI', 'CI': 'CIV', 'HR': 'HRV', 'CU': 'CUB', 'CW': 'CUW', 'CY': 'CYP', 'CZ': 'CZE',
+    'DK': 'DNK', 'DJ': 'DJI', 'DM': 'DMA', 'DO': 'DOM', 'EC': 'ECU', 'EG': 'EGY', 'SV': 'SLV', 'GQ': 'GNQ', 'ER': 'ERI', 'EE': 'EST',
+    'SZ': 'SWZ', 'ET': 'ETH', 'FK': 'FLK', 'FO': 'FRO', 'FJ': 'FJI', 'FI': 'FIN', 'FR': 'FRA', 'GF': 'GUF', 'PF': 'PYF', 'TF': 'ATF',
+    'GA': 'GAB', 'GM': 'GMB', 'GE': 'GEO', 'DE': 'DEU', 'GH': 'GHA', 'GI': 'GIB', 'GR': 'GRC', 'GL': 'GRL', 'GD': 'GRD', 'GP': 'GLP',
+    'GU': 'GUM', 'GT': 'GTM', 'GG': 'GGY', 'GN': 'GIN', 'GW': 'GNB', 'GY': 'GUY', 'HT': 'HTI', 'HM': 'HMD', 'VA': 'VAT', 'HN': 'HND',
+    'HK': 'HKG', 'HU': 'HUN', 'IS': 'ISL', 'IN': 'IND', 'ID': 'IDN', 'IR': 'IRN', 'IQ': 'IRQ', 'IE': 'IRL', 'IM': 'IMN', 'IL': 'ISR',
+    'IT': 'ITA', 'JM': 'JAM', 'JP': 'JPN', 'JE': 'JEY', 'JO': 'JOR', 'KZ': 'KAZ', 'KE': 'KEN', 'KI': 'KIR', 'KP': 'PRK', 'KR': 'KOR',
+    'KW': 'KWT', 'KG': 'KGZ', 'LA': 'LAO', 'LV': 'LVA', 'LB': 'LBN', 'LS': 'LSO', 'LR': 'LBR', 'LY': 'LBY', 'LI': 'LIE', 'LT': 'LTU',
+    'LU': 'LUX', 'MO': 'MAC', 'MG': 'MDG', 'MW': 'MWI', 'MY': 'MYS', 'MV': 'MDV', 'ML': 'MLI', 'MT': 'MLT', 'MH': 'MHL', 'MQ': 'MTQ',
+    'MR': 'MRT', 'MU': 'MUS', 'YT': 'MYT', 'MX': 'MEX', 'FM': 'FSM', 'MD': 'MDA', 'MC': 'MCO', 'MN': 'MNG', 'ME': 'MNE', 'MS': 'MSR',
+    'MA': 'MAR', 'MZ': 'MOZ', 'MM': 'MMR', 'NA': 'NAM', 'NR': 'NRU', 'NP': 'NPL', 'NL': 'NLD', 'NC': 'NCL', 'NZ': 'NZL', 'NI': 'NIC',
+    'NE': 'NER', 'NG': 'NGA', 'NU': 'NIU', 'NF': 'NFK', 'MP': 'MNP', 'NO': 'NOR', 'OM': 'OMN', 'PK': 'PAK', 'PW': 'PLW', 'PS': 'PSE',
+    'PA': 'PAN', 'PG': 'PNG', 'PY': 'PRY', 'PE': 'PER', 'PH': 'PHL', 'PN': 'PCN', 'PL': 'POL', 'PT': 'PRT', 'PR': 'PRI', 'QA': 'QAT',
+    'RE': 'REU', 'RO': 'ROU', 'RU': 'RUS', 'RW': 'RWA', 'BL': 'BLM', 'SH': 'SHN', 'KN': 'KNA', 'LC': 'LCA', 'MF': 'MAF', 'PM': 'SPM',
+    'VC': 'VCT', 'WS': 'WSM', 'SM': 'SMR', 'ST': 'STP', 'SA': 'SAU', 'SN': 'SEN', 'RS': 'SRB', 'SC': 'SYC', 'SL': 'SLE', 'SG': 'SGP',
+    'SX': 'SXM', 'SK': 'SVK', 'SI': 'SVN', 'SB': 'SLB', 'SO': 'SOM', 'ZA': 'ZAF', 'GS': 'SGS', 'SS': 'SSD', 'ES': 'ESP', 'LK': 'LKA',
+    'SD': 'SDN', 'SR': 'SUR', 'SJ': 'SJM', 'SE': 'SWE', 'CH': 'CHE', 'SY': 'SYR', 'TW': 'TWN', 'TJ': 'TJK', 'TZ': 'TZA', 'TH': 'THA',
+    'TL': 'TLS', 'TG': 'TGO', 'TK': 'TKL', 'TO': 'TON', 'TT': 'TTO', 'TN': 'TUN', 'TR': 'TUR', 'TM': 'TKM', 'TC': 'TCA', 'TV': 'TUV',
+    'UG': 'UGA', 'UA': 'UKR', 'AE': 'ARE', 'GB': 'GBR', 'UM': 'UMI', 'US': 'USA', 'UY': 'URY', 'UZ': 'UZB', 'VU': 'VUT', 'VE': 'VEN',
+    'VN': 'VNM', 'VG': 'VGB', 'VI': 'VIR', 'WF': 'WLF', 'EH': 'ESH', 'YE': 'YEM', 'ZM': 'ZMB', 'ZW': 'ZWE'
+}
 
 @st.cache_data
 def load_official_snii_counts():
@@ -265,7 +295,7 @@ def _render_velocity_sparkline(df_papers, name_col, name_val, key_suffix="", ret
         return
     year_cites: dict = defaultdict(int)
     for val in df_p["counts_by_year"]:
-        if isinstance(val, list):
+        if isinstance(val, (list, np.ndarray)):
             for entry in val:
                 if isinstance(entry, dict):
                     year_cites[int(entry.get("year", 0))] += int(entry.get("cited_by_count", 0))
@@ -296,48 +326,41 @@ def _render_velocity_sparkline(df_papers, name_col, name_val, key_suffix="", ret
 def _render_choropleth_collab(df_papers, name_col, name_val, title="Países colaboradores", key_suffix="", return_fig=False):
     """Choropleth world map de países colaboradores (ISO-alpha-2 en campo 'countries')."""
     from collections import Counter
+    import pytz
     df_p = df_papers[df_papers[name_col] == name_val].copy()
     if df_p.empty or "countries" not in df_p.columns:
         st.info("Sin datos de colaboración internacional.")
         return
     cnt: Counter = Counter()
     for val in df_p["countries"]:
-        if isinstance(val, list):
+        if isinstance(val, (list, np.ndarray)):
             cnt.update(c for c in val if c and c != "MX")
     if not cnt:
         st.info("No se detectó colaboración internacional registrada.")
         return
     df_cnt = pd.DataFrame(cnt.most_common(80), columns=["iso_a2", "papers"])
-    # Plotly choropleth acepta locationmode='ISO-3' natively; convertir si es alpha-2
+    
+    # Mapeo de ISO2 a ISO3 para Plotly
+    df_cnt['iso_a3'] = df_cnt['iso_a2'].map(ISO2_TO_ISO3).fillna(df_cnt['iso_a2'])
+    df_cnt['País'] = df_cnt['iso_a2'].apply(lambda x: pytz.country_names.get(x, x))
+    
     fig = px.choropleth(
-        df_cnt, locations="iso_a2", locationmode="ISO-3",
+        df_cnt, locations="iso_a3", locationmode="ISO-3",
         color="papers",
         color_continuous_scale="Blues",
         title=title,
         labels={"papers": "Papers conjuntos"},
-        hover_name="iso_a2",
+        hover_name="País",
     )
-    # Fallback: si los códigos son alpha-2, usar country_iso_alpha nativo
-    fig.update_traces(locationmode="geojson-id",
-                      geojson=None,
-                      selector=dict(type="choropleth"))
-    fig_alt = px.choropleth(
-        df_cnt, locations="iso_a2",
-        color="papers",
-        color_continuous_scale="Blues",
-        title=title,
-        labels={"papers": "Papers conjuntos"},
-        hover_name="iso_a2",
-    )
-    fig_alt.update_layout(
+    fig.update_layout(
         height=380, margin=dict(t=30,b=0,l=0,r=0),
         geo=dict(showframe=False, showcoastlines=True, bgcolor="rgba(0,0,0,0)",
                  showland=True, landcolor="#f0f0f0"),
         coloraxis_colorbar=dict(title="Papers", len=0.6),
     )
     if return_fig:
-        return fig_alt
-    st.plotly_chart(fig_alt, use_container_width=True, key=f"choro_{key_suffix}")
+        return fig
+    st.plotly_chart(fig, use_container_width=True, key=f"choro_{key_suffix}")
 
 
 def _render_keywords_section(df_kw, name_col, name_val, title="Keywords principales", key_suffix="", return_fig=False):
@@ -469,6 +492,11 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
+        /* Desactivar mayúsculas en la tercera columna para mostrar SNIIs correctamente */
+        div[data-testid="column"]:nth-child(5) [data-testid="stMetricLabel"],
+        [data-testid="stMetricLabel"]:has(button[aria-label*="SNII"]) {
+            text-transform: none !important;
+        }
         [data-testid="stMetricValue"] {
             font-size: 30px !important;
             font-weight: 700;
@@ -510,7 +538,8 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
 
     # --- Identificadores Institucionales (Priorizar Cache para modo Offline) ---
     meta = None
-    if df_total is not None and not df_total.empty:
+    # Solo cargamos de la cache si la entidad es la institución raíz
+    if entity_name == institution_name and df_total is not None and not df_total.empty:
         row = df_total.iloc[0]
         if row.get('ror_id') or row.get('institution_id'):
             meta = {
@@ -524,9 +553,8 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
     if meta is None:
         try:
             from database.clickhouse_db import ch_client
+            # Buscamos únicamente por el nombre exacto de la entidad (no añadimos la institución raíz)
             search_names = [entity_name]
-            if institution_name and institution_name != entity_name:
-                search_names.append(institution_name)
                 
             inst_meta = ch_client.query_df("""
                 SELECT id, ror, type, country_code 
@@ -540,6 +568,15 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
                 meta = inst_meta.iloc[0].to_dict()
         except Exception:
             pass
+
+    # Si no tenemos ror ni openalex id real para la entidad, no mostramos nada
+    if meta:
+        ror_val = meta.get('ror')
+        id_val = meta.get('id')
+        has_ror = ror_val and str(ror_val).strip() != '' and str(ror_val).upper() != 'N/A'
+        has_oa = id_val and str(id_val).strip() != '' and str(id_val).upper() != 'N/A'
+        if not (has_ror or has_oa):
+            meta = None
 
     if meta:
         ror_url = meta.get('ror')
@@ -575,8 +612,6 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
             return
             
         total = df_total.iloc[0]
-        # KPIs (Fila 1)
-        st.markdown("##### Métricas Generales")
         
         official_count = total.get('official_snii_count')
         if official_count is None or official_count == 0:
@@ -597,59 +632,114 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
             # 3. Fallback al nombre de la institución (total)
             if official_count is None and institution_name:
                 official_count = official_counts.get(institution_name)
-        
-        c1, c2, c3, c4, c5, c6 = st.columns(6)
-        
+                
         # Obtener el censo de Neo4j (Estrategia de Identidad Flexible)
         total_census = int(total.get('neo4j_total_papers', total.get('num_documents', 0)))
         indexed_count = int(total.get('num_documents', 0))
+        official_val = f"{official_count:,}" if official_count is not None else "—"
+        citas_por_articulo = int(total.get('citations', 0)) / indexed_count if indexed_count > 0 else 0.0
+
+        # Construir datos para el asistente
+        datos_generales = f"""
+        Producción Total: {total_census}
+        Indizada en OpenAlex: {indexed_count}
+        No. de SNIIs 2025: {official_val}
+        Citas Acumuladas: {int(total.get('citations',0))}
+        Citas/artículo: {citas_por_articulo:.2f}
+        FWCI Promedio: {total.get('fwci_avg',0):.2f}
+        % Open Access: {total.get('pct_open_access',0):.1f}%
+        """
+        
+        c_btn, c_title = st.columns([0.3, 10])
+        with c_btn: render_explain_button("Métricas Generales", "kpi_gen", datos_generales)
+        with c_title: st.markdown("##### Métricas Generales")
+        
+        c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
         
         c1.metric("Producción Total", f"{total_census:,}", help="Conteo total de artículos detectados en el Knowledge Graph (WoS, Scopus, BIB, etc).")
         c2.metric("Indizada en OpenAlex", f"{indexed_count:,}", help="Artículos con metadatos completos en OpenAlex usados para el cálculo de indicadores.")
         
-        official_val = f"{official_count:,}" if official_count is not None else "—"
         c3.metric("No. de SNIIs 2025", official_val, help="Total oficial de investigadores según el padrón del SNII 2025.")
+        c4.metric("Citas Acumuladas", f"{int(total.get('citations',0)):,}", help="Suma total de citas recibidas por los artículos indizados en OpenAlex.")
         
-        c4.metric("Citas Acumuladas", f"{int(total.get('citations',0)):,}")
-        c5.metric("FWCI Promedio", f"{total.get('fwci_avg',0):.2f}")
-        c6.metric("% Open Access", f"{total.get('pct_open_access',0):.1f}%")
+        c5.metric("Citas/artículo", f"{citas_por_articulo:.2f}", help="Promedio de citas por artículo (Citas Acumuladas divididas entre artículos Indizados en OpenAlex).")
+        
+        c6.metric("FWCI Promedio", f"{total.get('fwci_avg',0):.2f}", help="Field-Weighted Citation Impact promedio: impacto de citación normalizado por disciplina y año (1.0 representa el promedio mundial).")
+        c7.metric("% Open Access", f"{total.get('pct_open_access',0):.1f}%", help="Porcentaje de la producción científica indizada disponible en acceso abierto (Gold, Green, Hybrid, Bronze).")
 
         
-        # KPIs (Fila 2)
-        st.markdown("##### Métricas de Excelencia")
+        datos_excelencia = f"""
+        Percentil Promedio: {total.get('percentile_avg',50):.1f}
+        % Top 10%: {total.get('pct_top_10',0):.1f}%
+        % Top 1%: {total.get('pct_1',0):.1f}%
+        """
+        c_btn, c_title = st.columns([0.3, 10])
+        with c_btn: render_explain_button("Métricas de Excelencia", "kpi_excelencia", datos_excelencia)
+        with c_title: st.markdown("##### Métricas de Excelencia")
+        
         c5, c6, c7, c8 = st.columns(4)
-        c5.metric("Percentil Promedio", f"{total.get('percentile_avg',50):.1f}")
-        c6.metric("% Top 10%", f"{total.get('pct_top_10',0):.1f}%")
-        c7.metric("% Top 1%", f"{total.get('pct_1',0):.1f}%")
+        c5.metric("Percentil Promedio", f"{total.get('percentile_avg',50):.1f}", help="Percentil de citación promedio (un percentil menor indica que el trabajo está más citado, ej. Top 10% son percentiles <= 10).")
+        c6.metric("% Top 10%", f"{total.get('pct_top_10',0):.1f}%", help="Porcentaje de artículos que se ubican en el 10% más citado a nivel mundial en sus respectivas áreas y años.")
+        c7.metric("% Top 1%", f"{total.get('pct_1',0):.1f}%", help="Porcentaje de artículos que se ubican en el 1% más citado a nivel mundial en sus respectivas áreas y años.")
 
         # ── Velocidad y Colaboración ──────────────────────────────────────────────
-        st.markdown("##### Velocidad de Citas y Colaboración")
+        datos_velocidad = f"""
+        Citas/año (avg): {total.get('velocity_avg',0):.1f}
+        Citas últ. 3 años: {int(total.get('recent_cites_3yr',0)):,}
+        % Colaboración Internacional: {total.get('pct_international',0):.1f}%
+        Países/paper (avg): {total.get('avg_countries',0):.1f}
+        Autores/paper (avg): {total.get('avg_author_count',0):.1f}
+        """
+        c_btn, c_title = st.columns([0.3, 10])
+        with c_btn: render_explain_button("Velocidad de Citas y Colaboración", "kpi_velocidad", datos_velocidad)
+        with c_title: st.markdown("##### Velocidad de Citas y Colaboración")
+        
         cv1, cv2, cv3, cv4, cv5 = st.columns(5)
-        cv1.metric("Citas/año (avg)",       f"{total.get('velocity_avg',0):.1f}")
-        cv2.metric("Citas últ. 3 años",     f"{int(total.get('recent_cites_3yr',0)):,}")
-        cv3.metric("% Internacional",       f"{total.get('pct_international',0):.1f}%")
-        cv4.metric("Países/paper (avg)",    f"{total.get('avg_countries',0):.1f}")
-        cv5.metric("Autores/paper (avg)",   f"{total.get('avg_author_count',0):.1f}")
+        cv1.metric("Citas/año (avg)",       f"{total.get('velocity_avg',0):.1f}", help="Velocidad promedio de acumulación de citas por artículo por año desde su fecha de publicación.")
+        cv2.metric("Citas últ. 3 años",     f"{int(total.get('recent_cites_3yr',0)):,}", help="Total de citas recibidas en los últimos 36 meses.")
+        cv3.metric("% Colaboración Internacional",       f"{total.get('pct_international',0):.1f}%", help="Porcentaje de artículos co-escritos con al menos un autor de una institución extranjera.")
+        cv4.metric("Países/paper (avg)",    f"{total.get('avg_countries',0):.1f}", help="Número promedio de países distintos representados en las coautorías por publicación.")
+        cv5.metric("Autores/paper (avg)",   f"{total.get('avg_author_count',0):.1f}", help="Número promedio de autores firmantes por artículo.")
 
         # ── APC ───────────────────────────────────────────────────────────────────
-        st.markdown("##### Acceso Abierto y Costos")
-        ca1, ca2, ca3 = st.columns(3)
         apc_total = total.get('apc_paid_usd', 0) or 0
-        ca1.metric("APC Total",     f"${apc_total:,.0f} USD")
-        ca2.metric("% Papers con APC",     f"{total.get('pct_apc',0):.1f}%")
-        ca3.metric("Vida Media Citas",     f"{total.get('half_life_avg',0):.1f} años")
+        datos_apc = f"""
+        APC Total: ${apc_total:,.0f} USD
+        % Papers con APC: {total.get('pct_apc',0):.1f}%
+        Vida Media Citas: {total.get('half_life_avg',0):.1f} años
+        """
+        c_btn, c_title = st.columns([0.3, 10])
+        with c_btn: render_explain_button("Acceso Abierto y Costos", "kpi_apc", datos_apc)
+        with c_title: st.markdown("##### Acceso Abierto y Costos")
+        
+        ca1, ca2, ca3 = st.columns(3)
+        ca1.metric("APC Total",     f"${apc_total:,.0f} USD", help="Monto estimado en USD por cargos de procesamiento de artículos (Article Processing Charges) en revistas de acceso abierto.")
+        ca2.metric("% Papers con APC",     f"{total.get('pct_apc',0):.1f}%", help="Porcentaje de la producción publicada en revistas que requieren pago de cuotas (APC).")
+        ca3.metric("Vida Media Citas",     f"{total.get('half_life_avg',0):.1f} años", help="Años transcurridos desde la publicación hasta que los artículos acumulan el 50% de su impacto total.")
 
         # ── OA Donut ──────────────────────────────────────────────────────────────
         col_donut, col_gini = st.columns(2)
         with col_donut:
-            st.markdown("**Distribución Open Access**")
+            c_btn, c_title = st.columns([0.6, 10])
+            with c_btn: render_explain_button("Distribución Open Access", "oa_donut_inst", None)
+            with c_title: st.markdown("**Distribución Open Access**")
             _render_oa_donut(total, key_suffix=f"inst_{entity_name}")
         with col_gini:
-            st.markdown("**Perfil Temático**")
             gini_val = total.get('gini_topics')
             n_dom    = int(total.get('domain_diversity', 0) or 0)
             n_top    = int(total.get('unique_topics', 0) or 0)
             top_dom  = total.get('top_domain', '—') or '—'
+            
+            datos_perfil = f"""
+            Índice de Gini temático: {gini_val:.3f} si existe
+            Dominios de investigación: {n_dom}
+            Tópicos únicos: {n_top}
+            Dominio principal: {top_dom}
+            """
+            c_btn, c_title = st.columns([0.6, 10])
+            with c_btn: render_explain_button("Perfil Temático", "perfil_tematico", datos_perfil)
+            with c_title: st.markdown("**Perfil Temático**")
+            
             st.markdown(f"""
 | Indicador | Valor |
 |---|---|
@@ -685,32 +775,54 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
             # Ordenamos los anios
             df_annual = df_annual.sort_values('year')
 
-            fig = px.area(df_annual, x='year', y='num_documents', 
-                          title="Documentos Publicados por Año",
-                          color_discrete_sequence=['#ff7f0e'])
-            st.plotly_chart(fig, width="stretch")
+            # Rango temporal: de max(1950, año_mínimo) al año en curso
+            _cur_year = datetime.now().year
+            _yr_min = int(df_annual['year'].min()) if not df_annual.empty else 1950
+            _x_min = max(1950, _yr_min)
+
+            c_btn, c_title = st.columns([0.3, 10])
+            with c_btn: render_explain_button("Producción Histórica Institucional", "inst_docs", df_annual[['year', 'num_documents']])
+            with c_title: st.markdown("**Documentos Publicados por Año**")
+
+            fig = px.area(df_annual, x='year', y='num_documents',
+                          title="",
+                          color_discrete_sequence=['#ff7f0e'],
+                          range_x=[_x_min, _cur_year],
+                          markers=True)
+            fig.update_xaxes(tickformat='d', dtick=5)
+            st.plotly_chart(fig, width="stretch", on_select="rerun", selection_mode=("points",), key="inst_annual_docs")
 
             # Gráfico FWCI
-            fig_fwci = px.line(df_annual, x='year', y='fwci_avg', markers=True, 
-                               title="Evolución FWCI Promedio Institucional")
+            c_btn, c_title = st.columns([0.3, 10])
+            with c_btn: render_explain_button("Evolución FWCI Institucional", "inst_fwci", df_annual[['year', 'fwci_avg']])
+            with c_title: st.markdown("**Evolución FWCI Promedio Institucional**")
+
+            fig_fwci = px.line(df_annual, x='year', y='fwci_avg', markers=True,
+                               title="",
+                               range_x=[_x_min, _cur_year])
             fig_fwci.add_hline(y=1.0, line_dash="dash", line_color="red", annotation_text="Base Mundial (1.0)")
-            st.plotly_chart(fig_fwci, width="stretch")
+            fig_fwci.update_xaxes(tickformat='d', dtick=5)
+            st.plotly_chart(fig_fwci, width="stretch", on_select="rerun", selection_mode=("points",), key="inst_annual_fwci")
         
     if df_topics is not None and not df_topics.empty:
         if not df_topics.empty:
             st.markdown("---")
-            st.subheader("Temáticas de Investigación Institucional (Sunburst)")
-            top_topics = df_topics.sort_values('value', ascending=False).head(100)
+            c_btn, c_title = st.columns([0.3, 10])
+            with c_btn: render_explain_button("Sunburst Temático Institucional", "inst_sun", df_topics.head(15) if df_topics is not None else None)
+            with c_title: st.subheader("Temáticas de Investigación Institucional (Sunburst)")
+            # Filtrar valores vacíos para que el Sunburst no se corte
+            clean_topics = df_topics.replace('', pd.NA).dropna(subset=['domain', 'field', 'subfield', 'topic'])
+            top_topics = clean_topics.sort_values('value', ascending=False).head(100)
             fig_sun = px.sunburst(
                 top_topics,
                 path=['domain', 'field', 'subfield', 'topic'],
                 values='value',
                 color='value',
                 color_continuous_scale='Blues',
-                title="Concentración Temática"
+                title=""
             )
             fig_sun.update_layout(margin=dict(t=50, l=0, r=0, b=10), height=700)
-            st.plotly_chart(fig_sun, width="stretch")
+            st.plotly_chart(fig_sun, width="stretch", on_select="rerun", selection_mode=("points",), key="inst_sunburst")
 
             # --- Evolución Histórica Institucional ---
             df_evol_inst = get_cached_data("thematic_evolution_institucion.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
@@ -721,7 +833,7 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
     df_kw_inst = get_cached_data("keywords_institucion.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
     if df_kw_inst is not None and not df_kw_inst.empty:
         st.markdown("---")
-        st.subheader("🔑 Vocabulario Científico Institucional")
+        st.subheader("🔑 Vocabulario Científico Institucional (keywords)")
         _render_keywords_section(df_kw_inst, "entity_name", entity_name,
                                  title="", key_suffix=f"inst_{entity_name}")
 
@@ -731,7 +843,7 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
         df_ip = df_inst_papers
         if not df_ip.empty and "countries" in df_ip.columns:
             st.markdown("---")
-            st.subheader("🌍 Colaboración Internacional")
+            st.subheader("🌍 % Colaboración Internacional")
             df_annual_inst = get_cached_data("institucion_annual.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
             if df_annual_inst is not None and not df_annual_inst.empty:
                 df_ia = df_annual_inst.sort_values('year')
@@ -769,44 +881,63 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
             df_oa_melt = df_oa_ann[['year'] + oa_cols].melt(id_vars='year', var_name='tipo_oa', value_name='pct')
             df_oa_melt['tipo_oa'] = df_oa_melt['tipo_oa'].str.replace('pct_oa_','').str.capitalize()
             color_map = {'Gold':'#FFD700','Green':'#2ECC71','Hybrid':'#3498DB','Bronze':'#CD7F32','Closed':'#95A5A6'}
+            # Rango temporal OA
+            _cur_year_oa = datetime.now().year
+            _yr_min_oa = int(df_oa_ann['year'].min()) if not df_oa_ann.empty else 1950
+            _x_min_oa = max(1950, _yr_min_oa)
             fig_stack = px.bar(df_oa_melt, x='year', y='pct', color='tipo_oa',
                                color_discrete_map=color_map,
                                labels={'pct':'%','tipo_oa':'Tipo OA'},
                                barmode='stack',
                                title="Distribución OA por año (%)",
+                               range_x=[_x_min_oa - 0.5, _cur_year_oa + 0.5],
                                text_auto=False)
-            fig_stack.update_layout(height=320, margin=dict(t=30,b=10), template='plotly_white',
-                                     xaxis=dict(tickformat='d'))
+            fig_stack.update_layout(height=320, margin=dict(t=30,b=10), template='plotly_white')
+            fig_stack.update_xaxes(tickformat='d', dtick=5)
             st.plotly_chart(fig_stack, use_container_width=True, key=f"oa_stack_{entity_name}")
 
     # ── Perfil de Visibilidad e Indexación (Radar) ────────────────────────────────
-    if df_total is not None:
+    if False: # df_total is not None:
         total_row = df_total.iloc[0] if not df_total.empty else None
         if total_row is not None:
             vis_cols = ['pct_pubmed','pct_doaj_indexed','pct_core_journal',
                         'pct_repository','pct_english','pct_cc_by']
-            has_vis = any(total_row.get(c, 0) != 0 for c in vis_cols)
+            has_vis = any(
+                (v := total_row.get(c)) is not None and not (isinstance(v, float) and np.isnan(v)) and v != 0
+                for c in vis_cols
+            )
             if has_vis:
                 st.markdown("---")
-                with st.expander("🔭 Perfil de Visibilidad e Indexación", expanded=False):
-                    col_rad, col_idx = st.columns([1, 1])
-                    with col_rad:
-                        _render_radar_visibilidad(total_row,
-                                                  title="Perfil de Visibilidad",
-                                                  key_suffix=f"inst_{entity_name}")
-                    with col_idx:
-                        st.markdown("")
-                        st.markdown(f"""
+                st.subheader("🔭 Perfil de Visibilidad e Indexación")
+
+                def _fmt_pct(val, decimals=1):
+                    """Formatea un porcentaje o devuelve N/A si es NaN/None."""
+                    if val is None: return "N/A"
+                    try:
+                        f = float(val)
+                        if np.isnan(f): return "N/A"
+                        return f"{f:.{decimals}f}%"
+                    except (TypeError, ValueError):
+                        return "N/A"
+
+                col_rad, col_idx = st.columns([1, 1])
+                with col_rad:
+                    _render_radar_visibilidad(total_row,
+                                              title="Perfil de Visibilidad",
+                                              key_suffix=f"inst_{entity_name}")
+                with col_idx:
+                    st.markdown("")
+                    st.markdown(f"""
 | Indicador | Valor |
 |---|---|
-| % en PubMed | `{total_row.get('pct_pubmed',0):.1f}%` |
-| % en DOAJ | `{total_row.get('pct_doaj_indexed',0):.1f}%` |
-| % en revista Core | `{total_row.get('pct_core_journal',0):.1f}%` |
-| % en repositorio | `{total_row.get('pct_repository',0):.1f}%` |
-| % en inglés | `{total_row.get('pct_english',0):.1f}%` |
-| % con licencia CC-BY | `{total_row.get('pct_cc_by',0):.1f}%` |
-| Papers retractados | `{total_row.get('pct_retracted',0):.2f}%` |
-                        """.strip())
+| % en PubMed | `{_fmt_pct(total_row.get('pct_pubmed'))}` |
+| % en DOAJ | `{_fmt_pct(total_row.get('pct_doaj_indexed'))}` |
+| % en revista Core | `{_fmt_pct(total_row.get('pct_core_journal'))}` |
+| % en repositorio | `{_fmt_pct(total_row.get('pct_repository'))}` |
+| % en inglés | `{_fmt_pct(total_row.get('pct_english'))}` |
+| % con licencia CC-BY | `{_fmt_pct(total_row.get('pct_cc_by'))}` |
+| Papers retractados | `{_fmt_pct(total_row.get('pct_retracted'), decimals=2)}` |
+                    """.strip())
 
     df_institucion_papers = load_cached_data("papers_institucion.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
     if df_institucion_papers is not None and not df_institucion_papers.empty:
@@ -814,10 +945,69 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
         
         st.markdown("---")
         st.header("🌍 Impacto Global Institucional en Sostenibilidad (ODS)")
-        st.write("Distribución consolidada de toda la producción científica de la institución respecto a los Objetivos de Desarrollo Sostenible.")
+        st.write("Distribución consolidada de toda la producción científica de la institución respecto a los Objetivos de Desarrollo Sostenible. En Openalex algunos trabajos han sido etiquetados con uno o más ODSs")
         html_code_inst = viz_ods.render_sdg_matrix(df_inst_p, col_ods='ODS_ID')
         st.markdown(html_code_inst, unsafe_allow_html=True)
         
+        # --- Mapa Semántico (Artículos) ---
+        import urllib.parse
+        import json
+        st.markdown("---")
+        st.subheader("🗺️ Mapa Semántico de Producción")
+        st.write(f"Exploración espacial de la producción científica. Los **{indexed_count:,} artículos** de la entidad están coloreados; el resto de la base nacional aparece en gris.")
+        
+        # Extraer DOIs de df_inst_p
+        list_of_dois = []
+        if 'doi' in df_inst_p.columns:
+            list_of_dois = df_inst_p['doi'].dropna().astype(str).tolist()
+        elif 'DOI' in df_inst_p.columns:
+            list_of_dois = df_inst_p['DOI'].dropna().astype(str).tolist()
+        list_of_dois = [d.replace('https://doi.org/', '').strip() for d in list_of_dois]
+        dois_json = json.dumps(list_of_dois)
+        
+        # Parámetro URL para destacar a la institución (highlight_inst) - Fallback
+        encoded_inst = urllib.parse.quote(entity_name)
+        iframe_src = f"https://dinamica1.fciencias.unam.mx/tiles/map_test.html?v=13&data=https://dinamica1.fciencias.unam.mx/tiles/articles_data.json&color_by=cluster&highlight_inst={encoded_inst}"
+        safe_name_inst = "".join([c if c.isalnum() else "_" for c in entity_name])
+        
+        map_html = f"""
+        <script>
+            window._highlightDois_{safe_name_inst} = {dois_json};
+            function sendDois_{safe_name_inst}(iframe) {{
+                iframe.contentWindow.postMessage({{
+                    type: 'HIGHLIGHT_DOIS',
+                    dois: window._highlightDois_{safe_name_inst}
+                }}, '*');
+            }}
+        </script>
+        <div id="map-container-inst-{safe_name_inst}" style="width:100%; overflow:hidden;">
+            <iframe id="map-iframe-inst-{safe_name_inst}" src="{iframe_src}" 
+                    style="width:100%; border:none; display:block;" 
+                    scrolling="no"
+                    onload="sendDois_{safe_name_inst}(this)">
+            </iframe>
+        </div>
+        <script>
+            function resizeInstMap() {{
+                var iframe = document.getElementById('map-iframe-inst-{safe_name_inst}');
+                var container = document.getElementById('map-container-inst-{safe_name_inst}');
+                if(!iframe || !container) return;
+                var rect = container.getBoundingClientRect();
+                var availableHeight = window.innerHeight - rect.top - 10;
+                if (availableHeight < 500) availableHeight = 500;
+                iframe.style.height = availableHeight + 'px';
+            }}
+            resizeInstMap();
+            window.addEventListener('resize', resizeInstMap);
+            setTimeout(resizeInstMap, 300);
+            setTimeout(resizeInstMap, 1000);
+        </script>
+        """
+        
+        if st.toggle("Cargar mapa interactivo (WebGL)", key=f"toggle_map_inst_{safe_name_inst}"):
+            with st.spinner("Cargando el mapa semántico..."):
+                components.html(map_html, height=600, scrolling=False)
+
         st.markdown("---")
         st.subheader("📜 Publicaciones")
         
@@ -862,27 +1052,63 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
         st.markdown("Genera o descarga un reporte analítico consolidado, interpretado por LLM, incluyendo las gráficas interactivas mostradas arriba.")
         import re
         safe_name = "".join([c if c.isalnum() else "_" for c in entity_name])
-        report_path = os.path.join(BASE_PATH, 'reports', f"report_inst_{safe_name}.html")
+        suffix = f"_{view_mode}"
+        report_path = os.path.join(BASE_PATH, 'reports', f"report_inst{suffix}_{safe_name}.html")
         
         if os.path.exists(report_path):
             with open(report_path, "r", encoding="utf-8") as f:
                 html_data = f.read()
             
-            c_rep1, c_rep2 = st.columns([1, 1])
+            show_report_inst_key = f"show_report_inst{suffix}_{safe_name}"
+            show_state = st.session_state.get(show_report_inst_key, False)
+            btn_text = "👁️ Ocultar Reporte" if show_state else "👁️ Ver Reporte en Pantalla"
+            
+            c_rep1, c_rep2, c_rep3 = st.columns([1.2, 1.2, 1])
             with c_rep1:
-                st.download_button("⬇️ Descargar Reporte (HTML)", data=html_data, file_name=f"Reporte_Institucion_{safe_name}.html", mime="text/html")
+                if st.button(btn_text, key=f"btn_view_inst_{view_mode}_{safe_name}"):
+                    st.session_state[show_report_inst_key] = not show_state
+                    st.rerun()
             with c_rep2:
-                if st.button("🔄 Regenerar Reporte con IA", key=f"btn_regen_inst_{safe_name}"):
+                view_label = "Capacidad_Instalada" if view_mode == "capacidad_instalada" else "Produccion_Institucional"
+                st.download_button("⬇️ Descargar Reporte (HTML)", data=html_data, file_name=f"Reporte_Institucion_{view_label}_{safe_name}.html", mime="text/html")
+            with c_rep3:
+                if st.button("🔄 Regenerar", key=f"btn_regen_inst_{view_mode}_{safe_name}"):
                     with st.spinner("Regenerando análisis y reporte con el modelo LLM local... Esto tomará algunos segundos."):
                         import subprocess
-                        subprocess.run([sys.executable, "report_generator.py", "--type", "inst", "--name", entity_name])
-                    st.rerun()
+                        try:
+                            subprocess.run([
+                                sys.executable, 
+                                os.path.join(BASE_PATH, "report_generator.py"), 
+                                "--type", "inst", 
+                                "--name", entity_name, 
+                                "--institution", institution_name, 
+                                "--view_mode", view_mode
+                            ], check=True, capture_output=True, text=True)
+                            st.rerun()
+                        except subprocess.CalledProcessError as e:
+                            st.error(f"Fallo al generar reporte:\n{e.stderr or e.stdout}")
+                            st.stop()
+                    
+            if st.session_state.get(show_report_inst_key, False):
+                st.markdown("---")
+                components.html(html_data, height=900, scrolling=True)
         else:
-            if st.button("✨ Generar Reporte con IA", key=f"btn_gen_inst_{safe_name}"):
+            if st.button("✨ Generar Reporte con IA", key=f"btn_gen_inst_{view_mode}_{safe_name}"):
                 with st.spinner("Generando análisis y reporte con el modelo LLM local... Esto tomará algunos segundos."):
                     import subprocess
-                    subprocess.run([sys.executable, "report_generator.py", "--type", "inst", "--name", entity_name])
-                st.rerun()
+                    try:
+                        subprocess.run([
+                            sys.executable, 
+                            os.path.join(BASE_PATH, "report_generator.py"), 
+                            "--type", "inst", 
+                            "--name", entity_name, 
+                            "--institution", institution_name, 
+                            "--view_mode", view_mode
+                        ], check=True, capture_output=True, text=True)
+                        st.rerun()
+                    except subprocess.CalledProcessError as e:
+                        st.error(f"Fallo al generar reporte:\n{e.stderr or e.stdout}")
+                        st.stop()
 
     # Al final de la función, si no hay dataframes cargados, mostrar un mensaje de "En Proceso"
     if (df_total is None or df_total.empty) and (df_annual is None or df_annual.empty):
@@ -939,8 +1165,11 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
         }
         </style>
     """, unsafe_allow_html=True)
-
     st.header(f"👤 Vista por Investigador: {entity_name}")
+
+    if entity_name == institution_name:
+        st.info(f"La vista por investigador individual no está disponible a nivel de toda la institución ({entity_name}). Por favor, seleccione una dependencia o subdependencia específica en la jerarquía de navegación de la barra lateral.")
+        return
 
     df_inst_tot = get_cached_data("institucion_total.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
 
@@ -971,76 +1200,225 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
                 investigadores.extend(f_inv)
                 break
         investigadores = sorted(list(set(investigadores)))
-        
+
+    # ── Fuente 3: Neo4j — todos los Person afiliados a la entidad (incluye no-SNII) ──
+    # Determinar qué nivel jerárquico es entity_name para la consulta
+    try:
+        from database.knowledge_graph import Neo4jGraphStore as _Neo4jStore
+        _neo = _Neo4jStore()
+
+        # Intentar detectar si la entidad es Subdependency, Dependency o Institution
+        _detect_q = """
+        OPTIONAL MATCH (s:Subdependency {name: $ent})
+        OPTIONAL MATCH (d:Dependency    {name: $ent})
+        OPTIONAL MATCH (i:Institution   {name: $ent})
+        RETURN
+            s.name AS sub_name,
+            s.id   AS sub_id,
+            d.name AS dep_name,
+            i.name AS inst_name
+        LIMIT 1
+        """
+        with _neo.driver.session() as _sess:
+            _row = _sess.run(_detect_q, ent=entity_name).single()
+
+        _inst_param = institution_name or entity_name
+        _dep_param  = None
+        _sub_param  = None
+
+        if _row:
+            if _row.get("sub_name"):
+                # Es subdependencia; extraer dep del id compuesto INST||DEP||SUB
+                _parts = (_row.get("sub_id") or "").split("||")
+                _dep_param = _parts[1] if len(_parts) >= 2 else None
+                _sub_param = _row["sub_name"]
+            elif _row.get("dep_name"):
+                _dep_param = _row["dep_name"]
+            elif _row.get("inst_name"):
+                _inst_param = _row["inst_name"]
+
+        _census = _neo.get_hierarchical_academic_census(
+            inst_name=_inst_param,
+            dep_name=_dep_param,
+            sub_name=_sub_param
+        )
+        _neo.close()
+
+        neo_names = [r["name"] for r in _census if r.get("name")]
+        if neo_names:
+            # Deduplicación inteligente: normalizamos comas y espacios, 
+            # pero damos prioridad al string original del Parquet para no romper las rutas de caché.
+            dedup_map = {}
+            for inv in investigadores:
+                norm = inv.replace(",", "").replace("  ", " ").strip().lower()
+                dedup_map[norm] = inv
+                
+            for name in neo_names:
+                norm = name.replace(",", "").replace("  ", " ").strip().lower()
+                if norm not in dedup_map:
+                    dedup_map[norm] = name
+                    
+            investigadores = sorted(list(dedup_map.values()))
+    except Exception as _e:
+        print(f"[render_investigador_view] Neo4j fallback error: {_e}")
+
     if not investigadores:
-        st.info(f"La vista individual de investigadores no está disponible o es demasiado extensa para {entity_name}.")
+        st.info(f"La vista individual de investigadores no está disponible para {entity_name}.")
         return
 
     # Selector
     st.markdown("Los indicadores se calcularon a partir de la producción académica que se pudo recoger de Scopus y ORCID, lo cual implica que puede haber trabajos faltantes y trabajos con afiliaciones distintas a la actual.")
-    selected_inv = st.selectbox("Seleccione un Académico:", investigadores)
+    default_idx = 0
+    if "selected_academic_search" in st.session_state and st.session_state.selected_academic_search in investigadores:
+        default_idx = investigadores.index(st.session_state.selected_academic_search)
+        
+    selected_inv = st.selectbox("Seleccione un Académico:", investigadores, index=default_idx)
     
-    # Ya teniendo el investigador y entidad, cargamos sus archivos únicos ultra-ligeros
     df_inv_tot = get_cached_data("investigador_total.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name, view_mode=view_mode)
     df_inv_ann = get_cached_data("investigador_annual.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name, view_mode=view_mode)
     df_topics  = get_cached_data("topics_investigador.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name, view_mode=view_mode)
-    df_umap    = get_cached_data("umap_investigadores.parquet", institution_name=institution_name, view_mode=view_mode) # UMAP si se mantiene global o por inst
+    df_umap = get_cached_data("umap_investigadores.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
+    umap_source = f"la entidad ({entity_name})"
+    if df_umap is None or df_umap.empty:
+        df_umap = get_cached_data("umap_investigadores.parquet", institution_name=institution_name, view_mode=view_mode)
+        umap_source = f"la institución ({institution_name})"
+        if df_umap is None or df_umap.empty:
+            global_path = os.path.join(CACHE_DIR, "umap_investigadores.parquet")
+            if os.path.exists(global_path):
+                try:
+                    df_umap = pd.read_parquet(global_path)
+                    umap_source = "nivel global (toda la base de datos)"
+                except Exception:
+                    df_umap = None
+                    umap_source = None
+            else:
+                df_umap = None
+                umap_source = None
     
     # Cargar papers globales del investigador y preinicializar df_prof
     df_profesores_papers = load_cached_data("papers_profesor.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name, view_mode=view_mode)
     if df_profesores_papers is not None and not df_profesores_papers.empty:
         df_prof = df_profesores_papers
     else:
-        import pandas as pd
         df_prof = pd.DataFrame()
 
     # 4. Enlaces de Perfil Externo
     if df_inv_tot is None or df_inv_tot.empty:
-        st.error(f"No se pudieron cargar los datos individuales para {selected_inv}.")
+        st.warning(
+            f"⚠️ **{selected_inv}** está registrado en el padrón institucional pero aún no tiene "
+            f"métricas bibliométricas computadas. Para generar su análisis, ejecuta el pipeline de "
+            f"ingesta y cómputo para este investigador."
+        )
+        # Mostrar datos básicos desde Neo4j aunque no haya parquets
+        try:
+            from database.knowledge_graph import Neo4jGraphStore as _NgNeo
+            _ng = _NgNeo()
+            with _ng.driver.session() as _sess:
+                _r = _sess.run(
+                    "MATCH (a:Person) WHERE a.fullname = $n OR a.id = $n "
+                    "RETURN a.orcid AS orcid, a.cvu AS cvu, a.is_snii AS is_snii, "
+                    "a.siia AS siia LIMIT 1",
+                    n=selected_inv
+                ).single()
+            _ng.close()
+            if _r:
+                _cols = st.columns(4)
+                _cols[0].metric("ORCID", _r.get("orcid") or "—")
+                _cols[1].metric("CVU", _r.get("cvu") or "—")
+                _cols[2].metric("SNII", "✅ Sí" if _r.get("is_snii") else "No")
+                _cols[3].metric("SIIA", _r.get("siia") or "—")
+        except Exception:
+            pass
         return
         
     inv_data = df_inv_tot.iloc[0]
     academicos_dict = cargar_lista_academicos()
     academico_info = academicos_dict.get(selected_inv, {})
+    neo_orcid, neo_scopus, neo_openalex, neo_siia, neo_cvu, neo_is_snii = None, None, None, None, None, None
+    try:
+        from database.knowledge_graph import Neo4jGraphStore
+        neo = Neo4jGraphStore()
+        with neo.driver.session() as session:
+            record = session.run("MATCH (a:Person) WHERE a.id = $name OR a.fullname = $name RETURN coalesce(a.orcids, []) as orcids, coalesce(a.scopus_ids, []) as scopus_ids, coalesce(a.openalex_ids, []) as openalex_ids, a.siia as siia, a.cvu as cvu, a.is_snii as is_snii LIMIT 1", name=selected_inv).single()
+            if record:
+                o_ids = record.get("orcids")
+                neo_orcid = ", ".join(o_ids) if o_ids else None
+                
+                sc_ids = record.get("scopus_ids")
+                neo_scopus = ", ".join(sc_ids) if sc_ids else None
+                
+                oa_ids = record.get("openalex_ids")
+                neo_openalex = ", ".join(oa_ids) if oa_ids else None
+                
+                neo_siia = record.get("siia")
+                neo_cvu = record.get("cvu")
+                neo_is_snii = record.get("is_snii")
+        neo.close()
+    except Exception:
+        pass
     
-    # Priorizar IDs del DataFrame (Neo4j/Parquet) sobre el JSON institucional (obsoleto)
-    inv_orcid = inv_data.get('orcid') or academico_info.get("orcid")
-    inv_scopus = inv_data.get('scopus_id') or academico_info.get("scopus")
-    inv_siia = inv_data.get('siia_url') or academico_info.get("siia")
+    # Priorizar IDs del Grafo de Conocimiento (Neo4j), luego del Parquet, y por último el JSON (obsoleto)
+    inv_orcid = neo_orcid or inv_data.get('orcid') or academico_info.get("orcid")
+    inv_scopus = neo_scopus or inv_data.get('scopus_id') or academico_info.get("scopus")
+    inv_siia = neo_siia or inv_data.get('siia_url') or academico_info.get("siia")
+    inv_cvu = neo_cvu or inv_data.get('cvu')
+    is_snii_val = bool(neo_is_snii) if neo_is_snii is not None else (bool(inv_data.get('is_snii', False)) or bool(academico_info.get("is_snii", False)))
     
     # Cargar info de SNII Verificado (IA)
     snii_matches = load_snii_matches()
     snii_info = snii_matches.get(selected_inv, {})
-    inv_oa = inv_data.get('openalex_id') or snii_info.get('matched_openalex_id')
+    inv_oa = neo_openalex or inv_data.get('openalex_id') or snii_info.get('matched_openalex_id')
     inv_reason = inv_data.get('match_reason') or snii_info.get('reason')
 
     st.markdown("---")
     
     # --- Enlaces y Acciones Principales ---
     # --- Enlaces de Perfiles Externos ---
-    if inv_siia or inv_orcid or inv_scopus:
+    if inv_siia or inv_orcid or inv_scopus or inv_cvu:
+        if inv_cvu:
+            st.markdown(f"- **CVU SECIHTI:** `{inv_cvu}`")
+            
         if inv_siia and "http" in str(inv_siia) and "No encont" not in str(inv_siia):
             st.markdown(f"- **SIIA-UNAM:** [Ver Perfil de {selected_inv}]({inv_siia})")
             if "unam.mx" in str(inv_siia):
-                st.caption("ℹ️ Extraímos ORCID y Scopus IDs de la página web del SIIA.")
+                st.caption("ℹ️ Se extrajeron ORCID y Scopus IDs de la página web del SIIA.")
         
         if inv_orcid:
-            orcid_link = inv_orcid if "http" in inv_orcid else f"https://orcid.org/{inv_orcid}"
-            st.markdown(f"- **ORCID:** [Ver Perfil]({orcid_link})")
+            orcids = [o.strip() for o in str(inv_orcid).split(',')]
+            orcid_links = []
+            for o in orcids:
+                o_url = o if "http" in o else f"https://orcid.org/{o}"
+                o_txt = o.split('/')[-1] if "http" in o else o
+                orcid_links.append(f"[{o_txt}]({o_url})")
+            st.markdown(f"- **ORCID:** {', '.join(orcid_links)}")
         
         if inv_scopus:
             import re
             all_ids = re.findall(r'\d+', str(inv_scopus))
             if all_ids:
+                scopus_links = []
                 for sid in all_ids:
-                    scopus_link = f"https://www.scopus.com/authid/detail.uri?authorId={sid}"
-                    st.markdown(f"- **Scopus ({sid}):** [Ver Perfil]({scopus_link})")
+                    scopus_url = f"https://www.scopus.com/authid/detail.uri?authorId={sid}"
+                    scopus_links.append(f"[{sid}]({scopus_url})")
+                st.markdown(f"- **Scopus:** {', '.join(scopus_links)}")
             elif "http" in str(inv_scopus):
                 st.markdown(f"- **Scopus:** [Ver Perfil]({inv_scopus})")
         
         if inv_oa:
-            oa_link = inv_oa if "http" in str(inv_oa) else f"https://openalex.org/{inv_oa}"
-            st.markdown(f"- **OpenAlex ID:** [{inv_oa}]({oa_link})")
+            oa_parts = [o.strip() for o in str(inv_oa).split(',')]
+            oa_links = []
+            for o_part in oa_parts:
+                o_url = o_part if "http" in o_part else f"https://openalex.org/{o_part}"
+                o_text = o_part.split('/')[-1] if "http" in o_part else o_part
+                oa_links.append(f"[{o_text}]({o_url})")
+            
+            st.markdown(f"- **OpenAlex ID:** {', '.join(oa_links)}")
+            
+        # Pertenencia al SNII
+        if is_snii_val:
+            st.markdown("- **Miembro del SNII (SECIHTI):** Sí ✅")
+        else:
+            st.markdown("- **Miembro del SNII (SECIHTI):** No ❌")
 
     # --- Detalles Técnicos y Auditoría (LLM) ---
     with st.expander("🔍 Ver detalles de los perfiles académicos", expanded=False):
@@ -1090,7 +1468,7 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
     df_kw_inv = get_cached_data("keywords_investigador.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name, view_mode=view_mode)
     if df_kw_inv is not None and not df_kw_inv.empty:
         st.markdown("---")
-        st.subheader("🔑 Vocabulario Científico")
+        st.subheader("🔑 Vocabulario Científico (keywords)")
         _render_keywords_section(df_kw_inv, "academic_name", selected_inv,
                                  title="", key_suffix=f"inv_{selected_inv}")
 
@@ -1101,8 +1479,12 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
         conc_data = df_topics[df_topics['academic_name'] == selected_inv]
         if not conc_data.empty:
             st.markdown("---")
-            st.subheader("Concentración Temática (Sunburst)")
-            top_topics_inv = conc_data.sort_values('value', ascending=False).head(100)
+            c_btn, c_title = st.columns([0.3, 10])
+            with c_btn: render_explain_button(f"Sunburst Temático de {selected_inv}", "inv_sun", df_topics[df_topics['academic_name'] == selected_inv].head(15) if df_topics is not None else None)
+            with c_title: st.subheader("Concentración Temática (Sunburst)")
+            # Filtrar valores vacíos para que el Sunburst no se corte
+            clean_topics_inv = conc_data.replace('', pd.NA).dropna(subset=['domain', 'field', 'subfield', 'topic'])
+            top_topics_inv = clean_topics_inv.sort_values('value', ascending=False).head(100)
             
             fig_sun_inv = px.sunburst(
                 top_topics_inv, 
@@ -1112,7 +1494,7 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
                 color_continuous_scale='Blues',
             )
             fig_sun_inv.update_layout(margin=dict(t=10, l=0, r=0, b=10), height=600)
-            st.plotly_chart(fig_sun_inv, width="stretch")
+            st.plotly_chart(fig_sun_inv, width="stretch", on_select="rerun", selection_mode=("points",), key="inv_sunburst")
 
             # --- Evolución Histórica Investigador ---
             df_evol_inv = get_cached_data("thematic_evolution_investigador.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name, view_mode=view_mode)
@@ -1122,7 +1504,7 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
 
         st.markdown("---")
         st.header("🌍 Panorama General de Sostenibilidad (ODS)")
-        st.write("Distribución de la producción científica en base a Objetivos de Desarrollo Sostenible (Asignados por LLM).")
+        st.write("Distribución de la producción científica en base a Objetivos de Desarrollo Sostenible (OpenAlex etiqueta algunos artículos con los ODSs)")
         html_code = viz_ods.render_sdg_matrix(df_prof, col_ods='ODS_ID')
         st.markdown(html_code, unsafe_allow_html=True)
         
@@ -1136,61 +1518,123 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
     # 1. KPIs del Investigador
     st.markdown("---")
     
-    st.markdown("##### Métricas Generales")
-    c1, c2, c3, c4, c5 = st.columns(5)
-    
     total_census = int(inv_data.get('neo4j_total_papers', inv_data.get('num_documents', 0)))
     indexed_count = int(inv_data.get('num_documents', 0))
+    citas_por_articulo = int(inv_data.get('citations', 0)) / indexed_count if indexed_count > 0 else 0.0
+
+    datos_gen_inv = f"""
+    Investigador: {selected_inv}
+    Producción Total (Censo): {total_census}
+    Indizada (Analítica): {indexed_count}
+    Índice H: {int(inv_data.get('h_index',0))}
+    Total Citas: {int(inv_data.get('citations',0))}
+    % Open Access: {inv_data.get('pct_open_access',0):.1f}%
+    """
+    c_btn, c_title = st.columns([0.3, 10])
+    with c_btn: render_explain_button(f"Métricas Generales de {selected_inv}", "kpi_gen_inv", datos_gen_inv)
+    with c_title: st.markdown("##### Métricas Generales")
+
+    c1, c2, c3, c4, c5 = st.columns(5)
 
     c1.metric("Producción Total (Censo)", f"{total_census:,}", help="Conteo total de artículos en Neo4j (incluye WoS/BIB no indizados).")
     c2.metric("Indizada (Analítica)", f"{indexed_count:,}", help="Artículos en OpenAlex usados para el cálculo de métricas.")
-    c3.metric("Índice H", f"{int(inv_data.get('h_index',0))}")
-    c4.metric("Total Citas", f"{int(inv_data.get('citations',0)):,}")
-    c5.metric("% Open Access", f"{inv_data.get('pct_open_access',0):.1f}%")
+    c3.metric("Índice H", f"{int(inv_data.get('h_index',0))}", help="Índice H: el investigador tiene H artículos que han recibido al menos H citas cada uno.")
+    c4.metric("Total Citas", f"{int(inv_data.get('citations',0)):,}", help="Suma total de citas recibidas por las publicaciones del investigador indizadas en OpenAlex.")
+    c5.metric("% Open Access", f"{inv_data.get('pct_open_access',0):.1f}%", help="Porcentaje de la producción científica del investigador disponible en acceso abierto.")
     
-    st.markdown("##### Métricas de Excelencia")
-    c5, c6, c7, c8 = st.columns(4)
-    c5.metric("FWCI Promedio", f"{inv_data.get('fwci_avg', 0):.2f}")
-    c6.metric("Percentil Promedio", f"{inv_data.get('percentile_avg',50):.1f}")
-    c7.metric("% Top 10%", f"{inv_data.get('pct_top_10',0):.1f}%")
-    c8.metric("% Top 1%", f"{inv_data.get('pct_1',0):.1f}%")
+    datos_exc_inv = f"""
+    Investigador: {selected_inv}
+    Citas/artículo: {citas_por_articulo:.2f}
+    FWCI Promedio: {inv_data.get('fwci_avg', 0):.2f}
+    Percentil Promedio: {inv_data.get('percentile_avg',50):.1f}
+    % Top 10%: {inv_data.get('pct_top_10',0):.1f}%
+    % Top 1%: {inv_data.get('pct_1',0):.1f}%
+    """
+    c_btn, c_title = st.columns([0.3, 10])
+    with c_btn: render_explain_button(f"Métricas de Excelencia de {selected_inv}", "kpi_exc_inv", datos_exc_inv)
+    with c_title: st.markdown("##### Métricas de Excelencia")
+
+    ce1, ce2, ce3, ce4, ce5 = st.columns(5)
+    ce1.metric("Citas/artículo", f"{citas_por_articulo:.2f}", help="Promedio de citas recibidas por artículo publicado (Total Citas dividido entre producción Indizada).")
+    ce2.metric("FWCI Promedio", f"{inv_data.get('fwci_avg', 0):.2f}", help="Field-Weighted Citation Impact promedio: impacto de citación normalizado por disciplina y año (1.0 representa el promedio mundial).")
+    ce3.metric("Percentil Promedio", f"{inv_data.get('percentile_avg',50):.1f}", help="Percentil de citación promedio (un percentil menor indica que el trabajo está más citado, ej. Top 10% son percentiles <= 10).")
+    ce4.metric("% Top 10%", f"{inv_data.get('pct_top_10',0):.1f}%", help="Porcentaje de artículos que se ubican en el 10% más citado a nivel mundial en sus respectivas áreas y años.")
+    ce5.metric("% Top 1%", f"{inv_data.get('pct_1',0):.1f}%", help="Porcentaje de artículos que se ubican en el 1% más citado a nivel mundial en sus respectivas áreas y años.")
 
     # ── Velocidad y Colaboración ────────────────────────────────────────────────
-    st.markdown("##### Velocidad de Citas y Colaboración")
-    cv1, cv2, cv3, cv4, cv5 = st.columns(5)
     vel = inv_data.get('velocity_avg', 0) or 0
     rec = int(inv_data.get('recent_cites_3yr', 0) or 0)
+    
+    datos_vel_inv = f"""
+    Investigador: {selected_inv}
+    Citas/año (prom.): {vel:.1f}
+    Citas últ. 3 años: {rec}
+    % Colaboración Internacional: {inv_data.get('pct_international',0):.1f}%
+    Países/paper (prom.): {inv_data.get('avg_countries',0):.1f}
+    Autores/paper (prom.): {inv_data.get('avg_author_count',0):.1f}
+    """
+    c_btn, c_title = st.columns([0.3, 10])
+    with c_btn: render_explain_button(f"Velocidad de Citas y Colaboración de {selected_inv}", "kpi_vel_inv", datos_vel_inv)
+    with c_title: st.markdown("##### Velocidad de Citas y Colaboración")
+
+    cv1, cv2, cv3, cv4, cv5 = st.columns(5)
     delta_txt = f"↑ {rec} últ. 3 años" if rec > vel else None
-    cv1.metric("Citas/año (prom.)",      f"{vel:.1f}", delta=delta_txt)
-    cv2.metric("Citas últ. 3 años",      f"{rec:,}")
-    cv3.metric("% Internacional",        f"{inv_data.get('pct_international',0):.1f}%")
-    cv4.metric("Países/paper (prom.)",   f"{inv_data.get('avg_countries',0):.1f}")
-    cv5.metric("Autores/paper (prom.)",  f"{inv_data.get('avg_author_count',0):.1f}")
+    cv1.metric("Citas/año (prom.)",      f"{vel:.1f}", delta=delta_txt, help="Velocidad promedio de acumulación de citas por artículo por año desde su fecha de publicación.")
+    cv2.metric("Citas últ. 3 años",      f"{rec:,}", help="Total de citas recibidas en los últimos 36 meses.")
+    cv3.metric("% Colaboración Internacional",        f"{inv_data.get('pct_international',0):.1f}%", help="Porcentaje de artículos co-escritos con al menos un autor de una institución extranjera.")
+    cv4.metric("Países/paper (prom.)",   f"{inv_data.get('avg_countries',0):.1f}", help="Número promedio de países distintos representados en las coautorías por publicación.")
+    cv5.metric("Autores/paper (prom.)",  f"{inv_data.get('avg_author_count',0):.1f}", help="Número promedio de autores firmantes por artículo.")
 
     # ── APC ──────────────────────────────────────────────────────────────────────
-    st.markdown("##### Acceso Abierto y Costos")
-    ca1, ca2, ca3 = st.columns(3)
     apc_inv = inv_data.get('apc_paid_usd', 0) or 0
-    ca1.metric("APC Total",  f"${apc_inv:,.0f} USD")
-    ca2.metric("% Papers con APC", f"{inv_data.get('pct_apc',0):.1f}%")
-    ca3.metric("Vida Media Citas", f"{inv_data.get('half_life_avg',0):.1f} años")
+    
+    datos_apc_inv = f"""
+    Investigador: {selected_inv}
+    APC Total: ${apc_inv:,.0f} USD
+    % Papers con APC: {inv_data.get('pct_apc',0):.1f}%
+    Vida Media Citas: {inv_data.get('half_life_avg',0):.1f} años
+    """
+    c_btn, c_title = st.columns([0.3, 10])
+    with c_btn: render_explain_button(f"Acceso Abierto y Costos de {selected_inv}", "kpi_apc_inv", datos_apc_inv)
+    with c_title: st.markdown("##### Acceso Abierto y Costos")
+
+    ca1, ca2, ca3 = st.columns(3)
+    ca1.metric("APC Total",  f"${apc_inv:,.0f} USD", help="Monto estimado en USD por cargos de procesamiento de artículos (Article Processing Charges) en revistas de acceso abierto.")
+    ca2.metric("% Papers con APC", f"{inv_data.get('pct_apc',0):.1f}%", help="Porcentaje de la producción publicada en revistas que requieren pago de cuotas (APC).")
+    ca3.metric("Vida Media Citas", f"{inv_data.get('half_life_avg',0):.1f} años", help="Años transcurridos desde la publicación hasta que los artículos acumulan el 50% de su impacto total.")
 
     # ── OA Donut ──────────────────────────────────────────────────────────────────
     col_donut_inv, col_gini_inv = st.columns(2)
     with col_donut_inv:
-        st.markdown("**Distribución Open Access**")
+        c_btn, c_title = st.columns([0.6, 10])
+        with c_btn: render_explain_button(f"Distribución Open Access de {selected_inv}", "oa_donut_inv", None)
+        with c_title: st.markdown("**Distribución Open Access**")
         _render_oa_donut(inv_data, key_suffix=f"inv_{selected_inv}")
     with col_gini_inv:
-        st.markdown("**Perfil Temático**")
         gini_inv = inv_data.get('gini_topics')
+        n_dom_inv = int(inv_data.get('domain_diversity',0) or 0)
+        n_top_inv = int(inv_data.get('unique_topics',0) or 0)
+        top_dom_inv = inv_data.get('top_domain','—') or '—'
+        
+        datos_perfil_inv = f"""
+        Investigador: {selected_inv}
+        Índice de Gini temático: {gini_inv:.3f} si existe
+        Dominios cubiertos: {n_dom_inv}
+        Tópicos únicos: {n_top_inv}
+        Dominio principal: {top_dom_inv}
+        """
+        c_btn, c_title = st.columns([0.6, 10])
+        with c_btn: render_explain_button(f"Perfil Temático de {selected_inv}", "perfil_tematico_inv", datos_perfil_inv)
+        with c_title: st.markdown("**Perfil Temático**")
+        
         if gini_inv is not None and not (isinstance(gini_inv, float) and np.isnan(gini_inv)):
             st.markdown(f"""
 | Indicador | Valor |
 |---|---|
 | Índice de Gini temático | `{gini_inv:.3f}` |
-| Dominios cubiertos | **{int(inv_data.get('domain_diversity',0) or 0)}** |
-| Tópicos únicos | **{int(inv_data.get('unique_topics',0) or 0)}** |
-| Dominio principal | {inv_data.get('top_domain','—') or '—'} |
+| Dominios cubiertos | **{n_dom_inv}** |
+| Tópicos únicos | **{n_top_inv}** |
+| Dominio principal | {top_dom_inv} |
             """.strip())
         else:
             st.info("Sin datos de diversidad temática.")
@@ -1218,23 +1662,36 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
 
     # 2. Trayectoria Anual
     with colizq:
-        st.subheader("Trayectoria Histórica (Docs)")
         if df_inv_ann is not None:
             ann_data = df_inv_ann[df_inv_ann['academic_name'] == selected_inv].sort_values('year')
-            fig_hist = px.bar(ann_data, x='year', y='num_documents', title="Producción Anual", text_auto=True)
-            st.plotly_chart(fig_hist, width="stretch")
+            c_btn, c_title = st.columns([0.6, 10])
+            with c_btn: render_explain_button(f"Producción Anual de {selected_inv}", "inv_docs", ann_data[['year', 'num_documents']])
+            with c_title: st.subheader("Trayectoria Histórica (Docs)")
+            
+            # Rango temporal: de max(1950, año_mínimo) al año en curso
+            _cur_year_inv = datetime.now().year
+            _yr_min_inv = int(ann_data['year'].min()) if not ann_data.empty else 1950
+            _x_min_inv = max(1950, _yr_min_inv)
+            fig_hist = px.bar(ann_data, x='year', y='num_documents', title="",
+                              text_auto=True, range_x=[_x_min_inv - 0.5, _cur_year_inv + 0.5])
+            fig_hist.update_xaxes(tickformat='d', dtick=5)
+            st.plotly_chart(fig_hist, width="stretch", on_select="rerun", selection_mode=("points",), key="inv_annual_docs")
         else:
             st.info("Sin datos anuales.")
 
     # 3. Temáticas
     with colder:
-        st.subheader("Foco Temático (Top 10)")
         if df_topics is not None:
             conc_data = df_topics[df_topics['academic_name'] == selected_inv]
             if not conc_data.empty:
                 conc_data = conc_data.groupby('topic')['value'].sum().reset_index()
                 top_c = conc_data.sort_values('value', ascending=False).head(10)
-                fig_bar = px.bar(top_c, x='value', y='topic', orientation='h', title="Áreas de Expertise")
+                
+                c_btn, c_title = st.columns([0.6, 10])
+                with c_btn: render_explain_button(f"Áreas de Expertise de {selected_inv}", "inv_expertise", top_c)
+                with c_title: st.subheader("Foco Temático (Top 10 Topics)")
+                
+                fig_bar = px.bar(top_c, x='value', y='topic', orientation='h', title="")
                 fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
                 st.plotly_chart(fig_bar, width="stretch")
             else:
@@ -1246,11 +1703,30 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
 
     # 5. Mapa UMAP
     st.markdown("---")
-    st.subheader("Mapa de Desempeño Institucional (UMAP)")
-    st.markdown("Cálculo multidimensional comparando %Top 10, FWCI y Citas normalizadas frente al resto del padrón.")
+    
+    datos_umap = f"""
+    Investigador: {selected_inv}
+    Métricas proyectadas en el UMAP:
+    Producción: {int(inv_data.get('num_documents', 0))}
+    FWCI Promedio: {inv_data.get('fwci_avg', 0):.2f}
+    % Top 10%: {inv_data.get('pct_top_10',0):.1f}%
+    % Top 1%: {inv_data.get('pct_1',0):.1f}%
+    Percentil Promedio: {inv_data.get('percentile_avg',50):.1f}
+    """
+    c_btn, c_title = st.columns([0.3, 10])
+    with c_btn: render_explain_button(f"Mapa de Desempeño UMAP de {selected_inv}", "umap_inv", datos_umap)
+    with c_title: st.subheader("Mapa de Desempeño Institucional (UMAP)")
+    
+    st.markdown("Cálculo multidimensional comparando %Top 10, FWCI, % Top 1% y Percentil Promedio frente al resto del padrón.")
+    if df_umap is not None and not df_umap.empty and umap_source:
+        st.caption(f"ℹ️ **Origen del mapa:** Cargado a nivel de {umap_source}.")
 
     if df_umap is not None and not df_umap.empty:
         fig_umap = go.Figure()
+
+        # Configurar escalado de burbujas basado en número de documentos
+        max_docs = df_umap['num_documents'].max() if 'num_documents' in df_umap.columns else 1
+        sizeref = 2.0 * max(max_docs, 1) / (30. ** 2)
 
         # Otros investigadores (Puntos grises)
         otros = df_umap[df_umap['academic_name'] != selected_inv]
@@ -1260,9 +1736,15 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
                 mode='markers',
                 name='Resto del padrón',
                 text=otros['academic_name'],
-                marker=dict(size=8, color='#002B5C', opacity=0.3, line=dict(width=1, color='darkgray')),
-                hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>FWCI: %{customdata[1]:.2f}",
-                customdata=otros[['num_documents', 'fwci_avg']]
+                marker=dict(
+                    size=otros['num_documents'],
+                    sizemode='area',
+                    sizeref=sizeref,
+                    sizemin=5,
+                    color='#002B5C', opacity=0.3, line=dict(width=1, color='darkgray')
+                ),
+                hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>FWCI: %{customdata[1]:.2f}<br>% Top 10: %{customdata[2]:.1f}%<br>% Top 1%: %{customdata[3]:.1f}%",
+                customdata=otros[['num_documents', 'fwci_avg', 'pct_top_10', 'pct_1']]
             ))
 
         # Investigador seleccionado (Punto destacado)
@@ -1273,9 +1755,15 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
                 mode='markers',
                 name=selected_inv,
                 text=sel_row['academic_name'],
-                marker=dict(size=14, color='#D4AF37', symbol='star', line=dict(width=2, color='#b6932b')),
-                hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>FWCI: %{customdata[1]:.2f}",
-                customdata=sel_row[['num_documents', 'fwci_avg']]
+                marker=dict(
+                    size=sel_row['num_documents'],
+                    sizemode='area',
+                    sizeref=sizeref,
+                    sizemin=8,
+                    color='#D4AF37', symbol='star', line=dict(width=2, color='#b6932b')
+                ),
+                hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>FWCI: %{customdata[1]:.2f}<br>% Top 10: %{customdata[2]:.1f}%<br>% Top 1%: %{customdata[3]:.1f}%",
+                customdata=sel_row[['num_documents', 'fwci_avg', 'pct_top_10', 'pct_1']]
             ))
 
         fig_umap.update_layout(
@@ -1289,16 +1777,33 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
         st.plotly_chart(fig_umap, width="stretch")
     else:
         st.info("El mapa UMAP no está disponible o faltan datos base calculados.")
-
-
-
     # ── Colaboración Internacional (Choropleth) ───────────────────────────────────
     if not df_prof.empty and "countries" in df_prof.columns:
         st.markdown("---")
-        st.subheader("🌍 Colaboración Internacional")
-        # Sparkline de citas
-        _render_velocity_sparkline(df_prof, 'academic_name', selected_inv,
-                                   key_suffix=f"inv_{selected_inv}")
+        st.subheader("🌍 % Colaboración Internacional")
+        
+        # Evolución de colaboración (%)
+        if df_inv_ann is not None and not df_inv_ann.empty:
+            df_ia = df_inv_ann.sort_values('year')
+            if 'pct_international' in df_ia.columns and not df_ia.empty:
+                fig_intl = go.Figure()
+                fig_intl.add_trace(go.Scatter(
+                    x=df_ia['year'], y=df_ia['pct_international'],
+                    mode='lines+markers', name='% Internacional',
+                    line=dict(color='#002B5C', width=2.5),
+                    marker=dict(size=6, color='#D4AF37'),
+                    fill='tozeroy', fillcolor='rgba(0,43,92,0.07)',
+                    hovertemplate="%{x}: <b>%{y:.1f}%</b><extra></extra>",
+                ))
+                fig_intl.update_layout(
+                    height=220, margin=dict(t=5,b=5,l=40,r=10),
+                    yaxis=dict(ticksuffix="%", range=[0,100]),
+                    xaxis=dict(showgrid=False, tickformat="d"),
+                    template="plotly_white",
+                    title="Evolución de Colaboración Internacional (%)",
+                )
+                st.plotly_chart(fig_intl, use_container_width=True, key=f"intl_evol_inv_{selected_inv}")
+        
         _render_choropleth_collab(df_prof, 'academic_name', selected_inv,
                                   title="Países colaboradores",
                                   key_suffix=f"inv_{selected_inv}")
@@ -1307,7 +1812,7 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
     vis_cols_inv = ['pct_pubmed','pct_doaj_indexed','pct_core_journal',
                     'pct_repository','pct_english','pct_cc_by']
     has_vis_inv = any(inv_data.get(c, 0) != 0 for c in vis_cols_inv)
-    if has_vis_inv:
+    if False: # has_vis_inv:
         st.markdown("---")
         with st.expander("🔭 Visibilidad e Indexación", expanded=False):
             col_r, col_t = st.columns([1, 1])
@@ -1328,7 +1833,66 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
 | % con licencia CC-BY | `{inv_data.get('pct_cc_by',0):.1f}%` |
                     """.strip())
 
-
+        # 6. Mapa Semántico de Producción (Investigador)
+        import urllib.parse
+        import json
+        st.markdown("---")
+        st.subheader("🗺️ Mapa Semántico de Producción")
+        num_docs_inv = int(inv_data.get('num_documents', 0))
+        st.write(f"Exploración espacial de la producción científica. Los **{num_docs_inv:,} artículos** del investigador están coloreados; el resto de la base nacional aparece en gris.")
+        
+        # Extraer DOIs de df_prof
+        list_of_dois_inv = []
+        if not df_prof.empty:
+            if 'doi' in df_prof.columns:
+                list_of_dois_inv = df_prof['doi'].dropna().astype(str).tolist()
+            elif 'DOI' in df_prof.columns:
+                list_of_dois_inv = df_prof['DOI'].dropna().astype(str).tolist()
+        list_of_dois_inv = [d.replace('https://doi.org/', '').strip() for d in list_of_dois_inv]
+        dois_json_inv = json.dumps(list_of_dois_inv)
+        
+        # Parámetro URL para destacar al autor (highlight_author) - Fallback
+        encoded_author = urllib.parse.quote(selected_inv)
+        iframe_src_inv = f"https://dinamica1.fciencias.unam.mx/tiles/map_test.html?v=13&data=https://dinamica1.fciencias.unam.mx/tiles/articles_data.json&color_by=cluster&highlight_author={encoded_author}"
+        safe_name_inv = "".join([c if c.isalnum() else "_" for c in selected_inv])
+        
+        map_html_inv = f"""
+        <script>
+            window._highlightDois_{safe_name_inv} = {dois_json_inv};
+            function sendDois_{safe_name_inv}(iframe) {{
+                iframe.contentWindow.postMessage({{
+                    type: 'HIGHLIGHT_DOIS',
+                    dois: window._highlightDois_{safe_name_inv}
+                }}, '*');
+            }}
+        </script>
+        <div id="map-container-inv-{safe_name_inv}" style="width:100%; overflow:hidden;">
+            <iframe id="map-iframe-inv-{safe_name_inv}" src="{iframe_src_inv}" 
+                    style="width:100%; border:none; display:block;" 
+                    scrolling="no"
+                    onload="sendDois_{safe_name_inv}(this)">
+            </iframe>
+        </div>
+        <script>
+            function resizeInvMap() {{
+                var iframe = document.getElementById('map-iframe-inv-{safe_name_inv}');
+                var container = document.getElementById('map-container-inv-{safe_name_inv}');
+                if(!iframe || !container) return;
+                var rect = container.getBoundingClientRect();
+                var availableHeight = window.innerHeight - rect.top - 10;
+                if (availableHeight < 500) availableHeight = 500;
+                iframe.style.height = availableHeight + 'px';
+            }}
+            resizeInvMap();
+            window.addEventListener('resize', resizeInvMap);
+            setTimeout(resizeInvMap, 300);
+            setTimeout(resizeInvMap, 1000);
+        </script>
+        """
+        
+        if st.toggle("Cargar mapa interactivo (WebGL)", key=f"toggle_map_inv_{safe_name_inv}"):
+            with st.spinner("Cargando el mapa semántico..."):
+                components.html(map_html_inv, height=600, scrolling=False)
 
         st.markdown("---")
         st.subheader("📜 Lista Completa de Publicaciones")
@@ -1423,20 +1987,54 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
         with open(report_path, "r", encoding="utf-8") as f:
             html_data = f.read()
             
-        c_repA, c_repB = st.columns([1, 1])
+        show_report_inv_key = f"show_report_inv_{safe_name}"
+        show_state = st.session_state.get(show_report_inv_key, False)
+        btn_text = "👁️ Ocultar Reporte" if show_state else "👁️ Ver Reporte en Pantalla"
+        
+        c_repA, c_repB, c_repC = st.columns([1.2, 1.2, 1])
         with c_repA:
-            st.download_button("⬇️ Descargar Reporte (HTML)", data=html_data, file_name=f"Reporte_Investigador_{safe_name}.html", mime="text/html")
+            if st.button(btn_text, key=f"btn_view_inv_{safe_name}"):
+                st.session_state[show_report_inv_key] = not show_state
+                st.rerun()
         with c_repB:
-            if st.button("🔄 Regenerar Reporte con IA", key=f"btn_regen_inv_{safe_name}"):
+            st.download_button("⬇️ Descargar Reporte (HTML)", data=html_data, file_name=f"Reporte_Investigador_{safe_name}.html", mime="text/html")
+        with c_repC:
+            if st.button("🔄 Regenerar", key=f"btn_regen_inv_{safe_name}"):
                 with st.spinner("Regenerando análisis y reporte con el modelo LLM local... Esto tomará un par de minutos."):
                     import subprocess
-                    subprocess.run([sys.executable, "report_generator.py", "--type", "inv", "--name", selected_inv, "--entity", entity_name])
-                st.rerun()
+                    try:
+                        subprocess.run([
+                            sys.executable, 
+                            os.path.join(BASE_PATH, "report_generator.py"), 
+                            "--type", "inv", 
+                            "--name", selected_inv, 
+                            "--entity", entity_name, 
+                            "--institution", institution_name
+                        ], check=True, capture_output=True, text=True)
+                        st.rerun()
+                    except subprocess.CalledProcessError as e:
+                        st.error(f"Fallo al generar reporte:\n{e.stderr or e.stdout}")
+                        st.stop()
+                
+        if st.session_state.get(show_report_inv_key, False):
+            st.markdown("---")
+            components.html(html_data, height=900, scrolling=True)
     else:
         if st.button("✨ Generar Reporte con IA", key=f"btn_gen_inv_{safe_name}"):
             with st.spinner("Generando análisis y reporte con el modelo LLM local... Esto tomará un par de minutos."):
                 import subprocess
-                subprocess.run([sys.executable, "report_generator.py", "--type", "inv", "--name", selected_inv, "--entity", entity_name])
-            st.rerun()
+                try:
+                    subprocess.run([
+                        sys.executable, 
+                        os.path.join(BASE_PATH, "report_generator.py"), 
+                        "--type", "inv", 
+                        "--name", selected_inv, 
+                        "--entity", entity_name, 
+                        "--institution", institution_name
+                    ], check=True, capture_output=True, text=True)
+                    st.rerun()
+                except subprocess.CalledProcessError as e:
+                    st.error(f"Fallo al generar reporte:\n{e.stderr or e.stdout}")
+                    st.stop()
 
 
