@@ -16,6 +16,10 @@ def format_authors(authors):
     return f"{authors[0]} et al."
 
 def build_json(csv_path, out_path, name_col, inst_col, extra_cols=None, top_n_legend=20):
+    if '--force' not in sys.argv and os.path.exists(out_path):
+        print(f"  -> {out_path} ya existe. Saltando generación JSON...")
+        return
+
     print(f"Procesando {csv_path}...")
     df = pd.read_csv(csv_path)
     
@@ -26,31 +30,25 @@ def build_json(csv_path, out_path, name_col, inst_col, extra_cols=None, top_n_le
     if 'articles' in csv_path and 'doi' in df.columns:
         print("  -> Extrayendo autores nacionales y revistas de ClickHouse...")
         
-        # 1. Obtener autores nacionales agrupados por DOI desde paper_author_map
-        q_authors = "SELECT paper_id as doi, groupArray(academic_name) as author_names FROM paper_author_map GROUP BY paper_id"
-        df_authors = ch_client.query_df(q_authors)
-        df_authors = df_authors.drop_duplicates(subset=['doi'])
-        
-        # 2. Obtener source_id y openalex_id de los works para cruzar la revista
+        # 1. Obtener works: id, doi, source_id para cruzar revista
         df_works = ch_client.query_df("SELECT id as openalex_id, doi, source_id FROM works_academic_all WHERE doi != ''")
-        
-        # Limpiar el prefijo de doi para que coincida con el UMAP
         df_works['doi'] = df_works['doi'].astype(str).str.replace('https://doi.org/', '', regex=False)
         df_works = df_works.drop_duplicates(subset=['doi'])
         
-        # 3. Obtener nombres de las revistas y evitar duplicados de origen
+        # 2. Obtener nombres de revistas desde tabla sources
         df_sources = ch_client.query_df("SELECT id as source_id, display_name as journal FROM sources")
         df_sources = df_sources.drop_duplicates(subset=['source_id'])
-        
-        # 4. Hacer los joins en pandas
         df_works = df_works.merge(df_sources, on='source_id', how='left')
         
-        # 5. Formatear autores nacionales
+        # 3. Obtener autores nacionales agrupados por OpenAlex Work ID
+        q_authors = "SELECT paper_id as openalex_id, groupArray(academic_name) as author_names FROM paper_author_map WHERE paper_id LIKE 'https://openalex.org/%' GROUP BY paper_id"
+        df_authors = ch_client.query_df(q_authors)
         df_authors['authors'] = df_authors['author_names'].apply(format_authors)
         
-        # 6. Unir con el dataset principal
-        df = df.merge(df_authors[['doi', 'authors']], on='doi', how='left')
-        df = df.merge(df_works[['doi', 'journal', 'openalex_id']], on='doi', how='left')
+        # 4. Unir con el dataset principal:
+        #    doi -> openalex_id (y journal), luego openalex_id -> authors
+        df = df.merge(df_works[['doi', 'openalex_id', 'journal']], on='doi', how='left')
+        df = df.merge(df_authors[['openalex_id', 'authors']], on='openalex_id', how='left')
         
         df['authors'] = df['authors'].fillna('')
         df['journal'] = df['journal'].fillna('')
@@ -106,14 +104,15 @@ if __name__ == '__main__':
         extra_cols=['is_snii', 'snii_level']
     )
     
-    # Artículos
-    build_json(
-        'data/maps/articles_umap.csv', 
-        'public/tiles/articles_data.json', 
-        name_col='title', 
-        inst_col='institution',
-        extra_cols=['year', 'cluster_label', 'doi']
-    )
+    # Artículos (Original de Qdrant, conservado por compatibilidad si existe)
+    if os.path.exists('data/maps/articles_umap.csv'):
+        build_json(
+            'data/maps/articles_umap.csv', 
+            'public/tiles/articles_data.json', 
+            name_col='title', 
+            inst_col='institution',
+            extra_cols=['year', 'cluster_label', 'doi']
+        )
     
     # Desempeño (usando institution como categoría primaria)
     build_json(
@@ -124,4 +123,41 @@ if __name__ == '__main__':
         extra_cols=['institution', 'dependency', 'pct_top_10', 'fwci_avg', 'pct_1', 'percentile_avg']
     )
     
+    # --- Nuevos Mapas ---
+    
+    # 1. Artículos (Nomic desde ClickHouse)
+    if os.path.exists('data/maps/articles_nomic_umap.csv'):
+        build_json(
+            'data/maps/articles_nomic_umap.csv',
+            'public/tiles/articles_nomic_data.json',
+            name_col='title',
+            inst_col='institution',
+            extra_cols=['year', 'cluster_label', 'doi']
+        )
+        # Hacer copia a articles_data.json para compatibilidad con la vista por defecto
+        import shutil
+        shutil.copy('public/tiles/articles_nomic_data.json', 'public/tiles/articles_data.json')
+        print("Copied articles_nomic_data.json to articles_data.json (default)")
+        
+    # 2. Artículos (SPECTER2 desde ClickHouse)
+    if os.path.exists('data/maps/articles_specter_umap.csv'):
+        build_json(
+            'data/maps/articles_specter_umap.csv',
+            'public/tiles/articles_specter_data.json',
+            name_col='title',
+            inst_col='institution',
+            extra_cols=['year', 'cluster_label', 'doi']
+        )
+        
+    # 3. Académicos (Semántica SPECTER2)
+    if os.path.exists('data/maps/people_semantic_umap.csv'):
+        build_json(
+            'data/maps/people_semantic_umap.csv',
+            'public/tiles/people_semantic_data.json',
+            name_col='fullname',
+            inst_col='institution',
+            extra_cols=['is_snii', 'snii_level', 'dependency']
+        )
+    
     print("Todo listo.")
+
