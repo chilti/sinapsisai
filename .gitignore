@@ -41,3 +41,5 @@ agent/council/scripts/
 *.png
 *.csv
 query_test.py
+pdf/
+
