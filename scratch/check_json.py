@@ -1,15 +1,14 @@
-
 import json
 
-path = r"c:\Users\jlja\Documents\Proyectos\RAGs\data\snii_ror_verified_matches.json"
-with open(path, 'r', encoding='utf-8') as f:
+with open('public/tiles/articles_nomic_data.json', 'r') as f:
     data = json.load(f)
 
-# Buscar entradas que tengan algún ID que no sea del padre
-matches = {}
-for k, v in data.items():
-    if v.get('matched_ror') or v.get('matched_openalex_id'):
-        matches[k] = v
-    if len(matches) > 10: break
-
-print(json.dumps(matches, indent=2))
+print("has extras:", 'extras' in data)
+if 'extras' in data:
+    print("extras keys:", list(data['extras'].keys()))
+    print("has cluster_label:", 'cluster_label' in data['extras'])
+    print("len cluster_label:", len(data['extras']['cluster_label']))
+    
+print("has cluster_labels_list:", 'cluster_labels_list' in data)
+if 'cluster_labels_list' in data:
+    print("len cluster_labels_list:", len(data['cluster_labels_list']))

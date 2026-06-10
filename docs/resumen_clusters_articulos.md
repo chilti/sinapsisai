@@ -1,0 +1,67 @@
+# Resumen de Clústeres Semánticos (HDBSCAN)
+
+Total de clústeres encontrados: 63
+
+- **Mexico / Mexican**: 185,210 artículos
+- **Quantum / Systems**: 19,293 artículos
+- **Mexico / Gulf**: 14,004 artículos
+- **Control / Systems**: 13,217 artículos
+- **Mexico / Gulf**: 11,351 artículos
+- **Properties / Antioxidant**: 10,457 artículos
+- **Mexico / Entamoeba**: 9,049 artículos
+- **Galaxies / Star**: 8,502 artículos
+- **Mexico / Species**: 8,260 artículos
+- **Coli / Escherichia**: 7,711 artículos
+- **Maize / Growth**: 6,870 artículos
+- **Performance / Mexico**: 6,321 artículos
+- **Mexico / Volcanic**: 6,284 artículos
+- **Production / Wastewater**: 5,912 artículos
+- **Sup Sup / Proton**: 5,615 artículos
+- **Activity / Extracts**: 5,196 artículos
+- **Mexico / Forest**: 4,440 artículos
+- **Gravity / Black**: 4,294 artículos
+- **Power / Control**: 3,788 artículos
+- **Removal / Adsorption**: 3,769 artículos
+- **Mexico / Resistance**: 3,439 artículos
+- **Steel / Alloy**: 3,374 artículos
+- **Sub Sub / Catalysts**: 3,242 artículos
+- **Using / Classification**: 2,868 artículos
+- **Tuberculosis / Mycobacterium**: 2,830 artículos
+- **Phase / Optical**: 2,746 artículos
+- **Flow / Porous**: 2,630 artículos
+- **Synthesis / Derivatives**: 2,609 artículos
+- **Solar / Heat**: 2,497 artículos
+- **Corneal / Patients**: 2,363 artículos
+- **Mexico / Species**: 2,307 artículos
+- **Sub Sub / Properties**: 2,305 artículos
+- **Hard / Colloidal**: 2,155 artículos
+- **Design / Using**: 2,147 artículos
+- **Sub Sub / Films**: 2,106 artículos
+- **Exposure / Arsenic**: 2,048 artículos
+- **Optical / Fiber**: 1,987 artículos
+- **Chitosan / Poly**: 1,902 artículos
+- **Mexico / City**: 1,817 artículos
+- **Mexico / Coleoptera**: 1,715 artículos
+- **Sub Sub / Photocatalytic**: 1,708 artículos
+- **Complexes / Synthesis**: 1,610 artículos
+- **Nanoparticles / Silver**: 1,609 artículos
+- **Sub Sub / Clusters**: 1,563 artículos
+- **Corrosion / Steel**: 1,503 artículos
+- **Seismic / Design**: 1,443 artículos
+- **Mexico / Production**: 1,410 artículos
+- **Carbon / Nanotubes**: 1,396 artículos
+- **Films / Sub Sub**: 1,353 artículos
+- **Species / Mexico**: 1,255 artículos
+- **Taenia / Neurocysticercosis**: 1,173 artículos
+- **Mexico / Lepidoptera**: 1,130 artículos
+- **Fiber / Laser**: 1,105 artículos
+- **Solar / Gamma**: 1,038 artículos
+- **Sub Sub / Silicon**: 1,020 artículos
+- **Sup Sup / Electron**: 1,017 artículos
+- **Silicon / Graphene**: 952 artículos
+- **Venom / Scorpion**: 934 artículos
+- **Polymerization / Styrene**: 928 artículos
+- **Energy / Mexico**: 891 artículos
+- **Children / Memory**: 891 artículos
+- **Epilepsy / Parkinson**: 888 artículos
+- **Water / Mexico**: 873 artículos

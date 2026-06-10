@@ -332,3 +332,300 @@ def get_works_by_ror(ror_id: str, per_page: int = 100, local_only: bool = False)
             page += 1
     except Exception as e:
         print(f"      ❌ [Oficial] Error recuperando ROR {ror_id_clean}: {e}")
+
+
+# ─────────────────────────────────────────────────────────────────
+# fetch_all_works_by_author_id: Recupera TODAS las obras de un
+# autor con paginación completa (local page=N + pyalex fallback)
+# ─────────────────────────────────────────────────────────────────
+def fetch_all_works_by_author_id(
+    openalex_author_id: str,
+    force_local: bool = False,
+    per_page: int = 200,
+) -> dict:
+    """
+    Obtiene la lista completa de trabajos de un autor por su OpenAlex Author ID.
+    Soporta:
+      - API local con paginación por `page=N` (sin límite de 1 página)
+      - Fallback a pyalex (API oficial) con `.paginate()`
+
+    Args:
+        openalex_author_id: ID completo o código corto (A1234567).
+        force_local: Si True, no usa la API oficial aunque la local falle.
+        per_page: Tamaño de página para la API local.
+
+    Returns:
+        dict {doi_or_id: record_dict}
+    """
+    if not openalex_author_id:
+        return {}
+
+    oa_id_clean = str(openalex_author_id).split('/')[-1].strip()
+    metadatos: dict = {}
+
+    def _build_record(w: dict, source: str) -> dict:
+        doi = w.get('doi') or w.get('id') or ''
+        doi_clean = (str(doi)
+                     .replace('https://doi.org/', '')
+                     .replace('http://doi.org/', '')
+                     .strip('/'))
+        return doi_clean, {
+            'Title':       w.get('title', 'Sin Título'),
+            'Year':        w.get('publication_year', 0),
+            'DOI':         doi_clean,
+            'Source':      source,
+            'Authors':     None,
+            'Cited_by':    w.get('cited_by_count', 0),
+            'Abstract':    None,
+            'openalex_url': w.get('id'),
+            '_raw_oa':     w,
+        }
+
+    # ── Intento 1: API local con paginación completa ──────────────
+    try:
+        client = _get_client()
+        url    = f"{LOCAL_BASE}/works"
+        page   = 1
+        total_local = 0
+        while True:
+            params = {
+                "filter":   f"author.id:{oa_id_clean}",
+                "per_page": per_page,
+                "page":     page,
+            }
+            resp = client.get(url, params=params, timeout=60)
+            if resp.status_code != 200:
+                break
+            data    = resp.json()
+            works   = data.get('results', [])
+            if not works:
+                break
+            for w in works:
+                key, rec = _build_record(w, 'OpenAlex_AuthorID_Local')
+                if key and key not in metadatos:
+                    metadatos[key] = rec
+                    total_local += 1
+            if len(works) < per_page:
+                break
+            page += 1
+
+        if metadatos:
+            print(f"    [OpenAlex Local] Author {oa_id_clean}: "
+                  f"{len(metadatos)} trabajos ({page} página(s)).")
+            return metadatos
+
+    except Exception as e:
+        print(f"    [WARN] Error API Local OpenAlex Author ({oa_id_clean}): {e}")
+
+    # ── Intento 2: ClickHouse directo (works_flat.author_ids) ─────
+    # La API local no soporta filter=author.id en todos los despliegues.
+    # Fallback a una consulta directa sobre works_flat que sí es eficiente
+    # porque author_ids es un Array(String) con índice bloom filter.
+    oa_url_full = (openalex_author_id
+                   if openalex_author_id.startswith('https://')
+                   else f"https://openalex.org/{oa_id_clean}")
+    try:
+        from database.clickhouse_db import ch_client
+        ch = ch_client.get_client()
+        rows = ch.query(
+            """
+            SELECT id, doi, title, publication_year, cited_by_count,
+                   abstract, fwci, is_oa, oa_status
+            FROM works_flat
+            WHERE has(author_ids, {oa_url:String})
+            LIMIT 2000
+            """,
+            parameters={'oa_url': oa_url_full}
+        ).result_rows
+        if rows:
+            for row in rows:
+                oa_id_w, doi_w, title_w, year_w, cit_w, abs_w, fwci_w, is_oa_w, oa_st_w = row
+                doi_clean = (str(doi_w or oa_id_w)
+                             .replace('https://doi.org/', '')
+                             .replace('http://doi.org/', '')
+                             .strip('/'))
+                if doi_clean and doi_clean not in metadatos:
+                    metadatos[doi_clean] = {
+                        'Title':        title_w or 'Sin Título',
+                        'Year':         year_w or 0,
+                        'DOI':          doi_clean,
+                        'Source':       'OpenAlex_AuthorID_ClickHouse',
+                        'Authors':      None,
+                        'Cited_by':     cit_w or 0,
+                        'Abstract':     abs_w or None,
+                        'fwci':         fwci_w,
+                        'openalex_url': oa_id_w,
+                        '_raw_oa':      {'id': oa_id_w, 'doi': doi_w,
+                                         'is_oa': is_oa_w, 'oa_status': oa_st_w},
+                    }
+            if metadatos:
+                print(f"    [OpenAlex ClickHouse] Author {oa_id_clean}: "
+                      f"{len(metadatos)} trabajos.")
+                return metadatos
+    except Exception as e:
+        print(f"    [WARN] ClickHouse fallback para author_ids ({oa_id_clean}): {e}")
+
+    if force_local:
+        return {}
+
+    # ── Intento 2: pyalex con paginación completa ─────────────────
+    try:
+        import pyalex
+        results = (pyalex.Works()
+                   .filter(authorships={"author": {"id": oa_id_clean}})
+                   .paginate(per_page=per_page))
+        pages_fetched = 0
+        for page_data in results:
+            pages_fetched += 1
+            for w in page_data:
+                doi = w.get('doi') or w.get('id') or ''
+                doi_clean = (str(doi)
+                             .replace('https://doi.org/', '')
+                             .replace('http://doi.org/', '')
+                             .strip('/'))
+                if doi_clean and doi_clean not in metadatos:
+                    try:
+                        from ingestion import openalex_utils as _self
+                        abstract = _self._deconstruct_abstract(
+                            w.get('abstract_inverted_index'))
+                    except Exception:
+                        abstract = None
+                    metadatos[doi_clean] = {
+                        'Title':        w.get('title', 'Sin Título'),
+                        'Year':         w.get('publication_year', 0),
+                        'DOI':          doi_clean,
+                        'Source':       'OpenAlex_AuthorID_Oficial',
+                        'Authors':      None,
+                        'Cited_by':     w.get('cited_by_count', 0),
+                        'Abstract':     abstract,
+                        'openalex_url': w.get('id'),
+                        '_raw_oa':      w,
+                    }
+        if metadatos:
+            print(f"    [OpenAlex Oficial] Author {oa_id_clean}: "
+                  f"{len(metadatos)} trabajos ({pages_fetched} página(s)).")
+    except Exception as e:
+        print(f"    [WARN] Error API Oficial OpenAlex Author ({oa_id_clean}): {e}")
+
+    return metadatos
+
+
+def _deconstruct_abstract(inv: dict) -> str | None:
+    """Reconstruye el abstract desde el índice invertido de OpenAlex."""
+    if not inv:
+        return None
+    try:
+        length = max(pos for positions in inv.values() for pos in positions) + 1
+        words  = [''] * length
+        for word, positions in inv.items():
+            for pos in positions:
+                words[pos] = word
+        return ' '.join(w for w in words if w)
+    except Exception:
+        return None
+
+
+# ─────────────────────────────────────────────────────────────────
+# resolve_author_oa_id: Resuelve OpenAlex Author IDs activamente
+# buscando por ORCID o Scopus en ClickHouse y pyalex (fallback).
+# Devuelve LISTA con todos los IDs únicos encontrados.
+# ─────────────────────────────────────────────────────────────────
+def resolve_author_oa_id(
+    orcid: str = None,
+    scopus_ids=None,
+    force_local: bool = False,
+    force_scopus: bool = False,
+) -> list:
+    """
+    Busca todos los OpenAlex Author IDs a partir de ORCID o Scopus IDs.
+
+    Orden:
+      1. ORCID  -> SELECT DISTINCT id FROM authors WHERE orcid = ? (ClickHouse)
+      2. Scopus -> JSONExtractString(raw_data, 'ids', 'scopus') = ? (ClickHouse)
+      3. pyalex (API oficial) -- solo si force_local=False
+
+    Returns:
+        list de IDs de autor unicos. Lista vacia si no se encuentra nada.
+    """
+    found: list = []
+
+    def _is_author_id(oa_id: str) -> bool:
+        clean = str(oa_id).split("/")[-1]
+        return clean.startswith("A") and clean[1:].isdigit()
+
+    orcid_clean = None
+    orcid_url   = None
+    if orcid:
+        raw = str(orcid).strip()
+        if "orcid.org/" in raw:
+            orcid_url   = raw if raw.startswith("https://") else "https://orcid.org/" + raw.split("orcid.org/")[-1]
+            orcid_clean = raw.split("orcid.org/")[-1]
+        else:
+            orcid_clean = raw
+            orcid_url   = "https://orcid.org/" + raw
+
+    if scopus_ids is None:
+        scopus_ids = []
+    elif isinstance(scopus_ids, str):
+        scopus_ids = [s.strip() for s in scopus_ids.replace(";", ",").split(",") if s.strip()]
+
+    try:
+        from database.clickhouse_db import ch_client
+        ch = ch_client.get_client()
+
+        if orcid_url or orcid_clean:
+            for orcid_val in filter(None, [orcid_url, orcid_clean]):
+                rows = ch.query(
+                    "SELECT DISTINCT id FROM authors WHERE orcid = {o:String}",
+                    parameters={"o": orcid_val}
+                ).result_rows
+                for r in rows:
+                    if r[0] and _is_author_id(r[0]) and r[0] not in found:
+                        found.append(r[0])
+                if found:
+                    break
+
+        if found and not force_scopus:
+            pass  # Se salta el escaneo de Scopus en ClickHouse porque es muy costoso y ya resolvimos por ORCID
+        else:
+            for sid in scopus_ids:
+                sid_str = str(sid).strip()
+                if not sid_str:
+                    continue
+                rows = ch.query(
+                    "SELECT DISTINCT id FROM authors WHERE JSONExtractString(raw_data, 'ids', 'scopus') = {s:String}",
+                    parameters={"s": sid_str}
+                ).result_rows
+                for r in rows:
+                    if r[0] and _is_author_id(r[0]) and r[0] not in found:
+                        found.append(r[0])
+
+    except Exception as e:
+        print(f"      [resolve_author_oa_id] ClickHouse error: {e}")
+
+    if found:
+        if len(found) > 1:
+            print(f"      [resolve_author_oa_id] {len(found)} perfiles OA: {found}")
+        return found
+
+    if force_local:
+        return []
+
+    try:
+        import pyalex
+        if orcid_clean:
+            results = pyalex.Authors().filter(orcid=orcid_clean).get()
+            for r in results:
+                oa_id = r.get("id")
+                if oa_id and _is_author_id(oa_id) and oa_id not in found:
+                    found.append(oa_id)
+        for sid in scopus_ids:
+            results = pyalex.Authors().filter(ids={"scopus": str(sid).strip()}).get()
+            for r in results:
+                oa_id = r.get("id")
+                if oa_id and _is_author_id(oa_id) and oa_id not in found:
+                    found.append(oa_id)
+    except Exception as e:
+        print(f"      [resolve_author_oa_id] pyalex error: {e}")
+
+    return found

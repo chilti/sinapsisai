@@ -65,13 +65,105 @@ def load_official_snii_counts():
             pass
     return {}
 
-@st.cache_data
+import duckdb
+
+_FILENAME_TO_TABLE = {
+    'institucion_annual.parquet': 'institucion_annual',
+    'investigador_annual.parquet': 'investigador_annual',
+    'institucion_total.parquet': 'institucion_total',
+    'investigador_total.parquet': 'investigador_total',
+    'investigador_recent.parquet': 'investigador_recent',
+    'keywords_institucion.parquet': 'keywords_institucion',
+    'keywords_investigador.parquet': 'keywords_investigador',
+    'papers_institucion.parquet': 'papers_institucion',
+    'papers_profesor.parquet': 'papers_profesor',
+    'thematic_evolution_institucion.parquet': 'thematic_evolution_institucion',
+    'thematic_evolution_investigador.parquet': 'thematic_evolution_investigador',
+    'topics_institucion.parquet': 'topics_institucion',
+    'topics_investigador.parquet': 'topics_investigador',
+    'umap_investigadores.parquet': 'umap_investigadores'
+}
+
+def get_duckdb_con():
+    db_path = os.path.join(BASE_PATH, 'data', 'analytics_cache.duckdb')
+    if os.path.exists(db_path):
+        try:
+            return duckdb.connect(db_path, read_only=True)
+        except Exception:
+            return None
+    return None
+
 def load_cached_data(filename, entity_name=None, academic_name=None, institution_name=None, view_mode="capacidad_instalada", _mtime=None):
-    """Carga un parquet del cache jerárquico. Soporta estructura:
-    data/cache/[Institution]/[Entity]/[Academic]/filename
-    con soporte para vista dual:
-    data/cache/[Institution]/[ViewMode]/filename
+    """Carga datos desde DuckDB. Si falla o no hay datos, hace un fallback a leer el Parquet original.
     """
+    table_name = _FILENAME_TO_TABLE.get(filename)
+    con = get_duckdb_con()
+    
+    if con and table_name:
+        try:
+            level = "UNKNOWN"
+            inst = None
+            ent = None
+            ac = None
+            v_mode = view_mode
+            
+            if institution_name:
+                inst = "MEXICO" if str(institution_name).upper() in ["MEXICO", "MÉXICO"] else str(institution_name).replace('/', '_').replace('\\', '_')
+                level = "NATIONAL" if inst == "MEXICO" else "INSTITUTION"
+            
+            if entity_name and entity_name != institution_name:
+                ent = str(entity_name).replace('/', '_').replace('\\', '_')
+                level = "ENTITY"
+            else:
+                ent = inst
+                
+            if academic_name:
+                ac = str(academic_name).replace('/', '_').replace('\\', '_')
+                level = "RESEARCHER"
+
+            where_clauses = ["db_level = ?"]
+            params = [level]
+            
+            if inst:
+                where_clauses.append("db_institution_name = ?")
+                params.append(inst)
+            if ent:
+                where_clauses.append("db_entity_name = ?")
+                params.append(ent)
+            if ac:
+                where_clauses.append("db_academic_name = ?")
+                params.append(ac)
+            
+            if level != "RESEARCHER" and v_mode:
+                where_clauses.append("db_view_mode = ?")
+                params.append(v_mode)
+                
+            where_sql = " AND ".join(where_clauses)
+            
+            exists = con.execute(f"SELECT count(*) FROM information_schema.tables WHERE table_name = '{table_name}'").fetchone()[0] > 0
+            if exists:
+                df = con.execute(f"SELECT * FROM {table_name} WHERE {where_sql}", params).df()
+                con.close()
+                if not df.empty:
+                    df = df.drop(columns=['db_level', 'db_view_mode', 'db_institution_name', 'db_entity_name', 'db_academic_name'], errors='ignore')
+                    # Convert JSON strings back to lists
+                    for col in df.columns:
+                        if df[col].dtype == object:
+                            try:
+                                sample = df[col].dropna().iloc[0]
+                                if isinstance(sample, str) and (sample.startswith('[') or sample.startswith('{')):
+                                    df[col] = df[col].apply(lambda x: json.loads(x) if isinstance(x, str) and (x.startswith('[') or x.startswith('{')) else x)
+                            except:
+                                pass
+                    return df
+            con.close()
+        except Exception as e:
+            try:
+                con.close()
+            except:
+                pass
+            pass # Fallback to parquet
+
     path = None
     
     # 1. Intentar estructura jerárquica (Nacional)
@@ -178,55 +270,97 @@ def load_snii_matches():
         print(f"Error cargando SNII matches: {e}")
         return {}
 
-@st.cache_data(show_spinner=False, ttl=3600)
-def load_hierarchy():
-    """Carga jerarquía instituciones -> entidades desde el Padrón SNII (JSON)"""
-    import json
-    
-    # Intentar primero desde el JSON del Padrón (Fuente de verdad)
-    padron_path = os.path.join(BASE_PATH, 'data', 'snii_llm_verified_matches.json')
-    hierarchy = {}
-    
-    if os.path.exists(padron_path):
-        try:
-            with open(padron_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                for r in data:
-                    inst = r.get('snii_institution')
-                    if not inst: continue
-                    
-                    dep = r.get('snii_dependency', 'SIN INFORMACIÓN')
-                    sub = r.get('snii_subdependency', 'SIN INFORMACIÓN')
+def _fix_enc(s: str) -> str:
+    """Repara mojibake en el Excel del padr\u00f3n SNII 2025 (4T_2025).
+    Algunos valores tienen un doble-encoding donde los bytes UTF-8 de caracteres
+    acentuados espa\u00f1oles fueron re-interpretados como Latin-1/CP1252, resultando
+    en pares como: \u00c3\u2018 (Ã+\u2018) en lugar de \u00d1 (\u00d1), o \u00c3\u0152 en lugar de \u00dc (\u00dc).
+    """
+    _MOJIBAKE_MAP = [
+        ('\u00c3\u2018', '\u00d1'),   # c3 91 -> Ñ (capital N-tilde)
+        ('\u00c3\u0152', '\u00dc'),   # c3 9c -> Ü (capital U-umlaut)
+        ('\u00c3\u201c', '\u00d3'),   # c3 93 -> Ó (capital O-acute)
+        ('\u00c3\u2020', '\u00c7'),   # c3 87 -> Ç (capital C-cedilla)
+        ('\u00c3\x8d',   '\u00cd'),   # c3 8d -> Í (capital I-acute)
+        ('\u00c3\xa9', '\u00e9'),     # c3 a9 -> é (small e-acute)
+        ('\u00c3\xa1', '\u00e1'),     # c3 a1 -> á (small a-acute)
+        ('\u00c3\xad', '\u00ed'),     # c3 ad -> í (small i-acute)
+        ('\u00c3\xb3', '\u00f3'),     # c3 b3 -> ó (small o-acute)
+        ('\u00c3\xba', '\u00fa'),     # c3 ba -> ú (small u-acute)
+        ('\u00c3\xb1', '\u00f1'),     # c3 b1 -> ñ (small n-tilde)
+        ('\u00c3\xbc', '\u00fc'),     # c3 bc -> ü (small u-umlaut)
+        ('\u00c3\xb9', '\u00f9'),     # c3 b9 -> ù (small u-grave)
+    ]
+    for bad, good in _MOJIBAKE_MAP:
+        if bad in s:
+            s = s.replace(bad, good)
+    return s
 
-                    if inst not in hierarchy:
-                        hierarchy[inst] = {}
-                    
-                    if dep not in hierarchy[inst]:
-                        hierarchy[inst][dep] = set()
-                    
-                    if sub and sub != 'NO APLICA':
-                        hierarchy[inst][dep].add(sub)
-            
+@st.cache_data(show_spinner=False, ttl=86400)
+def load_hierarchy():
+    """Carga jerarquía instituciones -> dependencias -> subdependencias
+    exclusivamente desde el Padrón SNII 2025 (hoja 4T_2025).
+    Esta fuente contiene únicamente instituciones mexicanas.
+    """
+    # Ruta al Excel del padrón 2025 (fuente de verdad)
+    excel_paths = [
+        os.path.join(BASE_PATH, 'SNII', 'Investigadores_vigentes_2025.xlsx'),
+        os.path.join(BASE_PATH, 'data', 'Investigadores_vigentes_2025.xlsx'),
+    ]
+    sheet_name = '4T_2025 (44,794)'
+    hierarchy = {}
+
+    for excel_path in excel_paths:
+        if not os.path.exists(excel_path):
+            continue
+        try:
+            df = pd.read_excel(excel_path, sheet_name=sheet_name)
+
+            inst_col = 'INSTITUCION DE ACREDITACION'
+            dep_col  = 'DEPENDENCIA DE ACREDITACIÓN'
+            sub_col  = 'SUBDEPENDENCIA DE ACREDITACIÓN'
+
+            for _, row in df.iterrows():
+                inst = _fix_enc(str(row.get(inst_col, '') or '').strip())
+                dep  = _fix_enc(str(row.get(dep_col,  '') or '').strip())
+                sub  = _fix_enc(str(row.get(sub_col,  '') or '').strip())
+
+                # Omitir filas sin institución real
+                if not inst or inst.upper() in ('SIN INSTITUCION', 'NAN', ''):
+                    continue
+
+                if inst not in hierarchy:
+                    hierarchy[inst] = {}
+
+                dep_key = dep if dep and dep.upper() not in ('NAN', '', 'NO APLICA', 'SIN INFORMACIÓN', 'SIN INFORMACION') else inst
+                if dep_key not in hierarchy[inst]:
+                    hierarchy[inst][dep_key] = set()
+
+                if sub and sub.upper() not in ('NAN', '', 'NO APLICA', 'SIN INFORMACIÓN', 'SIN INFORMACION'):
+                    hierarchy[inst][dep_key].add(sub)
+
             # Convertir sets a listas ordenadas
             for inst in hierarchy:
                 for dep in hierarchy[inst]:
                     hierarchy[inst][dep] = sorted(list(hierarchy[inst][dep]))
-            
-            # Caso especial México: Agregador Nacional
-            hierarchy["MÉXICO"] = {inst: [] for inst in hierarchy.keys() if inst != "MÉXICO"}
-            return hierarchy
-            
-        except Exception as e:
-            print(f"Error procesando padrón para jerarquía: {e}")
 
-    # Fallback a hierarchy.json en cache si el padrón falla
+            # Agregador Nacional
+            hierarchy["MÉXICO"] = {inst: [] for inst in hierarchy.keys() if inst != "MÉXICO"}
+            print(f"[load_hierarchy] Jerarquía cargada desde padrón 2025: {len(hierarchy)-1} instituciones mexicanas.")
+            return hierarchy
+
+        except Exception as e:
+            print(f"[load_hierarchy] Error procesando {excel_path}: {e}")
+            continue
+
+    # Fallback a hierarchy.json en cache si el Excel no está disponible
     json_path = os.path.join(CACHE_DIR, 'hierarchy.json')
     if os.path.exists(json_path):
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except Exception as e:
-            print(f"Error leyendo hierarchy.json: {e}")
+            print(f"[load_hierarchy] Error leyendo hierarchy.json: {e}")
 
     return {}
 
@@ -240,8 +374,17 @@ def mostrar_banners_destacados(df):
         st.info("Sin publicaciones para mostrar.")
         return
 
+    # Resolver nombres de columnas con tolerancia a mayúsculas/minúsculas
+    cols = df.columns.tolist()
+    title_col = next((c for c in cols if c.lower() == "title"), None)
+    doi_col   = next((c for c in cols if c.lower() == "doi"), None)
+
+    if title_col is None:
+        st.info("Sin información de publicaciones para mostrar (columna de título no encontrada).")
+        return
+
     # Preparamos los datos
-    df_sorted_citas = df.sort_values(by="citations", ascending=False).head(10)
+    df_sorted_citas    = df.sort_values(by="citations", ascending=False).head(10)
     df_sorted_recientes = df.sort_values(by="year", ascending=False).head(10)
 
     col1, col2 = st.columns(2)
@@ -249,13 +392,17 @@ def mostrar_banners_destacados(df):
     with col1:
         st.markdown("#### 🔥 Artículos Más Citados")
         for _, row in df_sorted_citas.iterrows():
-            Title = f"[{row['Title']}]({row['DOI']})" if row['DOI'] else row['Title']
+            doi_val = row[doi_col] if doi_col else None
+            title_val = row[title_col]
+            Title = f"[{title_val}]({doi_val})" if doi_val and str(doi_val).strip() not in ("", "nan", "None") else str(title_val)
             st.markdown(f"**{int(row['citations'])} citas** - {Title} ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
 
     with col2:
         st.markdown("#### 🚀 Artículos Más Recientes")
         for _, row in df_sorted_recientes.iterrows():
-            Title = f"[{row['Title']}]({row['DOI']})" if row['DOI'] else row['Title']
+            doi_val = row[doi_col] if doi_col else None
+            title_val = row[title_col]
+            Title = f"[{title_val}]({doi_val})" if doi_val and str(doi_val).strip() not in ("", "nan", "None") else str(title_val)
             st.markdown(f"**{int(row['year']) if pd.notna(row['year']) else 'N/A'}** - {Title}")
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -284,6 +431,337 @@ def _render_oa_donut(data_row, key_suffix="", return_fig=False):
     if return_fig:
         return fig
     st.plotly_chart(fig, use_container_width=True, key=f"donut_oa_{key_suffix}")
+
+
+@st.cache_data(ttl=3600)
+def _get_sources_display_names_v3(source_ids):
+    """Obtiene el display_name de las fuentes/revistas desde ClickHouse en lotes seguros."""
+    if not source_ids:
+        return {}
+    from database.clickhouse_db import ch_client
+    valid_ids = []
+    for sid in source_ids:
+        if not sid:
+            continue
+        sid_str = str(sid).strip()
+        if sid_str.startswith('https://openalex.org/S'):
+            valid_ids.append(sid_str)
+        elif sid_str.startswith('S') and sid_str[1:].isdigit():
+            valid_ids.append(f'https://openalex.org/{sid_str}')
+            
+    if not valid_ids:
+        return {}
+        
+    mapping = {}
+    chunk_size = 500
+    for i in range(0, len(valid_ids), chunk_size):
+        chunk = valid_ids[i:i + chunk_size]
+        query = "SELECT id, display_name FROM sources WHERE id IN %(ids)s"
+        try:
+            df_src = ch_client.query_df(query, {"ids": chunk})
+            if not df_src.empty:
+                for _, row in df_src.iterrows():
+                    full_id = row['id']
+                    name = row['display_name']
+                    mapping[full_id] = name
+                    short_id = full_id.split('/')[-1]
+                    mapping[short_id] = name
+        except Exception as e:
+            st.warning(f"Error parcial al consultar revistas a ClickHouse: {str(e)}")
+    return mapping
+
+
+@st.cache_data(ttl=3600)
+def _get_authors_display_names_v3(author_ids):
+    """Obtiene el display_name de los autores desde ClickHouse en lotes seguros."""
+    if not author_ids:
+        return {}
+    from database.clickhouse_db import ch_client
+    valid_ids = []
+    for aid in author_ids:
+        if not aid:
+            continue
+        aid_str = str(aid).strip()
+        if aid_str.startswith('https://openalex.org/A'):
+            valid_ids.append(aid_str)
+        elif aid_str.startswith('A') and aid_str[1:].isdigit():
+            valid_ids.append(f'https://openalex.org/{aid_str}')
+            
+    if not valid_ids:
+        return {}
+        
+    mapping = {}
+    chunk_size = 500
+    for i in range(0, len(valid_ids), chunk_size):
+        chunk = valid_ids[i:i + chunk_size]
+        query = "SELECT id, display_name FROM authors WHERE id IN %(ids)s"
+        try:
+            df_aut = ch_client.query_df(query, {"ids": chunk})
+            if not df_aut.empty:
+                for _, row in df_aut.iterrows():
+                    full_id = row['id']
+                    name = row['display_name']
+                    mapping[full_id] = name
+                    short_id = full_id.split('/')[-1]
+                    mapping[short_id] = name
+        except Exception as e:
+            st.warning(f"Error parcial al consultar autores a ClickHouse: {str(e)}")
+    return mapping
+
+
+def _prepare_papers_table(df_papers):
+    """Enriquece el DataFrame de artículos con nombres de revistas, autores y openalex_url (con fallback flexible y seguro)."""
+    if df_papers.empty:
+        return df_papers.copy()
+    
+    df = df_papers.copy()
+    
+    # 1. OpenAlex URL
+    if 'paper_id' in df.columns:
+        df['openalex_url'] = df['paper_id'].where(df['paper_id'].notna(), None)
+    else:
+        df['openalex_url'] = None
+
+    # 2. Nombre de la revista
+    source_col = 'Source' if 'Source' in df.columns else ('source' if 'source' in df.columns else None)
+    if source_col:
+        source_ids = df[source_col].dropna().unique().tolist()
+        src_mapping = _get_sources_display_names_v3(source_ids)
+        
+        def translate_source(val):
+            if not val:
+                return val
+            val_str = str(val).strip()
+            if val_str in src_mapping:
+                return src_mapping[val_str]
+            if val_str.startswith('https://openalex.org/S'):
+                short = val_str.split('/')[-1]
+                return src_mapping.get(short, short)
+            return val
+            
+        df[source_col] = df[source_col].apply(translate_source)
+
+    # 3. Autores formateados
+    author_col = 'author_names' if 'author_names' in df.columns else ('authors' if 'authors' in df.columns else None)
+    if author_col:
+        all_author_ids = set()
+        for val in df[author_col].dropna():
+            if isinstance(val, (list, np.ndarray)):
+                for aid in val:
+                    aid_str = str(aid).strip()
+                    if aid_str:
+                        all_author_ids.add(aid_str)
+            elif isinstance(val, str):
+                val_str = val.strip()
+                if val_str.startswith('['):
+                    try:
+                        import ast
+                        parsed = ast.literal_eval(val_str)
+                        if isinstance(parsed, list):
+                            for aid in parsed:
+                                all_author_ids.add(str(aid).strip())
+                            continue
+                    except Exception:
+                        pass
+                if ',' in val_str:
+                    parts = [p.strip() for p in val_str.split(',')]
+                    for p in parts:
+                        if p:
+                            all_author_ids.add(p)
+                else:
+                    if val_str:
+                        all_author_ids.add(val_str)
+                        
+        auth_mapping = _get_authors_display_names_v3(list(all_author_ids))
+        
+        def format_authors(val):
+            if val is None:
+                return ""
+            if isinstance(val, (list, np.ndarray)):
+                if len(val) == 0:
+                    return ""
+            else:
+                if pd.isna(val) or str(val).strip() == "":
+                    return ""
+                    
+            def resolve_name(aid):
+                aid_str = str(aid).strip()
+                if aid_str in auth_mapping:
+                    return auth_mapping[aid_str]
+                if aid_str.startswith('https://openalex.org/A'):
+                    short = aid_str.split('/')[-1]
+                    return auth_mapping.get(short, short)
+                return aid_str
+                
+            if isinstance(val, (list, np.ndarray)):
+                return ", ".join([resolve_name(aid) for aid in val if aid])
+            elif isinstance(val, str):
+                val_str = val.strip()
+                if val_str.startswith('['):
+                    try:
+                        import ast
+                        parsed = ast.literal_eval(val_str)
+                        if isinstance(parsed, list):
+                            return ", ".join([resolve_name(aid) for aid in parsed if aid])
+                    except Exception:
+                        pass
+                if ',' in val_str:
+                    parts = [p.strip() for p in val_str.split(',')]
+                    return ", ".join([resolve_name(p) for p in parts if p])
+                return resolve_name(val_str)
+            return str(val)
+            
+        df['_formatted_authors'] = df[author_col].apply(format_authors)
+    else:
+        df['_formatted_authors'] = ""
+
+    # 4. Asegurar tópicos
+    if 'topic' not in df.columns:
+        df['topic'] = None
+        
+    return df
+
+
+def _render_umap_plot(df_umap, selected_inv, title_context, key_suffix=""):
+    """
+    Renderiza un gráfico de Plotly go.Scatter con el UMAP de desempeño
+    comparando al investigador seleccionado contra sus pares.
+    """
+    if df_umap is None or df_umap.empty:
+        st.info(f"El mapa UMAP ({title_context}) no está disponible o faltan datos base calculados.")
+        return
+
+    fig_umap = go.Figure()
+
+    # Configurar escalado de burbujas basado en número de documentos
+    max_docs = df_umap['num_documents'].max() if 'num_documents' in df_umap.columns else 1
+    sizeref = 2.0 * max(max_docs, 1) / (30. ** 2)
+
+    # Otros investigadores (Puntos grises)
+    otros = df_umap[df_umap['academic_name'] != selected_inv]
+    if not otros.empty:
+        fig_umap.add_trace(go.Scatter(
+            x=otros['umap_x'], y=otros['umap_y'],
+            mode='markers',
+            name='Resto de investigadores',
+            text=otros['academic_name'],
+            marker=dict(
+                size=otros['num_documents'],
+                sizemode='area',
+                sizeref=sizeref,
+                sizemin=5,
+                color='#002B5C', opacity=0.3, line=dict(width=1, color='darkgray')
+            ),
+            hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>FWCI: %{customdata[1]:.2f}<br>% Top 10: %{customdata[2]:.1f}%<br>% Top 1%: %{customdata[3]:.1f}%",
+            customdata=otros[['num_documents', 'fwci_avg', 'pct_top_10', 'pct_1']]
+        ))
+
+    # Investigador seleccionado (Punto destacado como una estrella dorada)
+    sel_row = df_umap[df_umap['academic_name'] == selected_inv]
+    if not sel_row.empty:
+        fig_umap.add_trace(go.Scatter(
+            x=sel_row['umap_x'], y=sel_row['umap_y'],
+            mode='markers',
+            name=selected_inv,
+            text=sel_row['academic_name'],
+            marker=dict(
+                size=sel_row['num_documents'],
+                sizemode='area',
+                sizeref=sizeref,
+                sizemin=8,
+                color='#D4AF37', symbol='star', line=dict(width=2, color='#b6932b')
+            ),
+            hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>FWCI: %{customdata[1]:.2f}<br>% Top 10: %{customdata[2]:.1f}%<br>% Top 1%: %{customdata[3]:.1f}%",
+            customdata=sel_row[['num_documents', 'fwci_avg', 'pct_top_10', 'pct_1']]
+        ))
+
+    fig_umap.update_layout(
+        hovermode="closest",
+        height=450,
+        template="plotly_white",
+        margin=dict(l=0,r=0,t=30,b=0),
+        xaxis_title="Dimensión 1",
+        yaxis_title="Dimensión 2",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    st.plotly_chart(fig_umap, use_container_width=True, key=f"umap_chart_{key_suffix}")
+
+
+def _render_document_types_pie(df_papers, key_suffix=""):
+    """
+    Dibuja un gráfico de pastel con la distribución de tipos de documentos.
+    El campo en el DataFrame es 'wf.type'.
+    """
+    if df_papers is None or df_papers.empty or 'wf.type' not in df_papers.columns:
+        st.info("Sin información de tipos de documentos.")
+        return
+
+    # Contar frecuencias y filtrar nulos
+    type_counts = df_papers['wf.type'].fillna('other').value_counts()
+    
+    # Filtrar estrictamente categorías con conteo > 0
+    type_counts = type_counts[type_counts > 0]
+    
+    if type_counts.empty:
+        st.info("Sin información de tipos de documentos.")
+        return
+
+    # Diccionario de traducción al español para todos los tipos de OpenAlex
+    translation = {
+        'article': 'Artículo',
+        'book': 'Libro',
+        'book-chapter': 'Capítulo de Libro',
+        'dataset': 'Conjunto de Datos',
+        'dissertation': 'Tesis',
+        'editorial': 'Editorial',
+        'erratum': 'Fe de Erratas',
+        'letter': 'Carta',
+        'libguides': 'Guía Temática',
+        'other': 'Otro',
+        'paratext': 'Paratexto',
+        'peer-review': 'Revisión por Pares',
+        'preprint': 'Preprint',
+        'reference-entry': 'Entrada de Referencia',
+        'report': 'Reporte / Informe',
+        'retraction': 'Retractación',
+        'review': 'Revisión (Review)',
+        'standard': 'Estándar / Norma',
+        'supplementary-materials': 'Material Suplementario'
+    }
+
+    labels = []
+    values = []
+    for raw_type, count in type_counts.items():
+        translated = translation.get(str(raw_type).lower(), str(raw_type).capitalize())
+        labels.append(translated)
+        values.append(int(count))
+
+    # Colores premium (paleta UNAM adaptada)
+    colors = [
+        "#002B5C", "#D4AF37", "#1E6FB5", "#B6932B", 
+        "#2ECC71", "#3498DB", "#E74C3C", "#9B59B6",
+        "#1ABC9C", "#95A5A6", "#34495E"
+    ]
+
+    fig = go.Figure(data=[go.Pie(
+        labels=labels, 
+        values=values, 
+        hole=0.4,
+        marker=dict(colors=colors),
+        hovertemplate="<b>%{label}</b><br>%{value:,} documentos<br>%{percent:.1f}%<extra></extra>",
+        textinfo="percent", 
+        textposition="auto",
+    )])
+
+    fig.update_layout(
+        height=380, 
+        margin=dict(t=30, b=30, l=10, r=10),
+        showlegend=True, 
+        legend=dict(orientation="v", yanchor="middle", y=0.5, xanchor="left", x=1.05),
+    )
+
+    st.plotly_chart(fig, use_container_width=True, key=f"pie_doc_types_{key_suffix}")
+
 
 
 def _render_velocity_sparkline(df_papers, name_col, name_val, key_suffix="", return_fig=False):
@@ -369,14 +847,13 @@ def _render_keywords_section(df_kw, name_col, name_val, title="Keywords principa
         if df_kw is not None and not df_kw.empty:
             print(f"⚠️ Alerta: Columna {name_col} no encontrada en keywords. Columnas disponibles: {df_kw.columns}")
         return
-    
-    df_k = df_kw[df_kw[name_col] == name_val].sort_values("freq", ascending=False).head(50)
+    df_k = df_kw[df_kw[name_col] == name_val].sort_values("freq", ascending=False)
     if df_k.empty:
         st.info("Sin keywords registrados.")
         return
     freq_dict = dict(zip(df_k["keyword"], df_k["freq"]))
     if _HAS_WORDCLOUD and _wc_helper is not None:
-        img_bytes = _wc_helper.generate_wordcloud_image(freq_dict)
+        img_bytes = _wc_helper.generate_wordcloud_image(freq_dict, max_words=len(freq_dict))
         if img_bytes:
             st.markdown(f"**{title}**")
             st.image(img_bytes, use_container_width=True)
@@ -511,10 +988,10 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
 
     st.header(f"🏢 Vista de la Institución: {entity_name}")
     
-    # 1. Cargar datos básicos
     df_annual = load_cached_data("institucion_annual.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
     df_total = load_cached_data("institucion_total.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
     df_topics = load_cached_data("topics_institucion.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
+    df_inst_papers = load_cached_data("papers_institucion.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
 
     # 2. Fallback explícito: Comprobamos si existe físicamente el directorio de producción
     safe_inst = str(institution_name).replace('/', '_').replace('\\', '_') if institution_name else "MEXICO"
@@ -549,25 +1026,8 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
                 'country_code': row.get('institution_country')
             }
 
-    # Fallback a ClickHouse si no hay cache enriquecida
-    if meta is None:
-        try:
-            from database.clickhouse_db import ch_client
-            # Buscamos únicamente por el nombre exacto de la entidad (no añadimos la institución raíz)
-            search_names = [entity_name]
-                
-            inst_meta = ch_client.query_df("""
-                SELECT id, ror, type, country_code 
-                FROM institutions 
-                WHERE display_name IN {names:Array(String)} 
-                OR ror IN (SELECT ror FROM institutions WHERE display_name IN {names:Array(String)})
-                LIMIT 1
-            """, parameters={'names': search_names})
-            
-            if not inst_meta.empty:
-                meta = inst_meta.iloc[0].to_dict()
-        except Exception:
-            pass
+    # Si no hay meta en el parquet cacheado, no se muestran los identificadores
+    # (ClickHouse eliminado como dependencia del dashboard — todo debe estar pre-calculado)
 
     # Si no tenemos ror ni openalex id real para la entidad, no mostramos nada
     if meta:
@@ -633,6 +1093,30 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
             if official_count is None and institution_name:
                 official_count = official_counts.get(institution_name)
                 
+        # ── Identificadores de Académicos ─────────────────────────────────────────
+        pct_ac_orcid = total.get('pct_academic_orcid', 0.0)
+        pct_ac_any_id = total.get('pct_academic_any_id', 0.0)
+        pct_sn_orcid = total.get('pct_snii_orcid', 0.0)
+        pct_sn_any_id = total.get('pct_snii_any_id', 0.0)
+
+        datos_ids = f"""
+        % Académicos con ORCID: {pct_ac_orcid:.1f}%
+        % Académicos con algún ID: {pct_ac_any_id:.1f}%
+        % SNII con ORCID: {pct_sn_orcid:.1f}%
+        % SNII con algún ID: {pct_sn_any_id:.1f}%
+        """
+        c_btn, c_title = st.columns([0.3, 10])
+        with c_btn: render_explain_button("Identificadores de Académicos", "kpi_ids", datos_ids)
+        with c_title: st.markdown("##### Identificadores de Académicos")
+
+        ci1, ci2, ci3, ci4 = st.columns(4)
+        ci1.metric("% Académicos con ORCID", f"{pct_ac_orcid:.1f}%", help="Porcentaje de académicos afiliados en la institución que tienen registrado su ORCID en la base de datos.")
+        ci2.metric("% Académicos con algún ID", f"{pct_ac_any_id:.1f}%", help="Porcentaje de académicos afiliados en la institución que cuentan con al menos un identificador (ORCID, OpenAlex ID, Scopus ID o CVU).")
+        ci3.metric("% SNII con ORCID", f"{pct_sn_orcid:.1f}%", help="Porcentaje de investigadores SNII afiliados en la institución que tienen registrado su ORCID en la base de datos.")
+        ci4.metric("% SNII con algún ID", f"{pct_sn_any_id:.1f}%", help="Porcentaje de investigadores SNII afiliados en la institución que cuentan con al menos un identificador (ORCID, OpenAlex ID, Scopus ID o CVU).")
+
+        st.markdown("---")
+
         # Obtener el censo de Neo4j (Estrategia de Identidad Flexible)
         total_census = int(total.get('neo4j_total_papers', total.get('num_documents', 0)))
         indexed_count = int(total.get('num_documents', 0))
@@ -717,13 +1201,15 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
         ca2.metric("% Papers con APC",     f"{total.get('pct_apc',0):.1f}%", help="Porcentaje de la producción publicada en revistas que requieren pago de cuotas (APC).")
         ca3.metric("Vida Media Citas",     f"{total.get('half_life_avg',0):.1f} años", help="Años transcurridos desde la publicación hasta que los artículos acumulan el 50% de su impacto total.")
 
-        # ── OA Donut ──────────────────────────────────────────────────────────────
+
+        # ── Distribución Open Access y Perfil Temático ──────────────────────────────
         col_donut, col_gini = st.columns(2)
         with col_donut:
             c_btn, c_title = st.columns([0.6, 10])
             with c_btn: render_explain_button("Distribución Open Access", "oa_donut_inst", None)
             with c_title: st.markdown("**Distribución Open Access**")
             _render_oa_donut(total, key_suffix=f"inst_{entity_name}")
+            
         with col_gini:
             gini_val = total.get('gini_topics')
             n_dom    = int(total.get('domain_diversity', 0) or 0)
@@ -749,6 +1235,15 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
 | Dominio principal | {top_dom} |
             """.strip()) if gini_val and not np.isnan(gini_val) else st.info("Sin datos de Gini temático.")
 
+        # ── Tipos de Documentos (En nueva fila a ancho controlado) ─────────────────
+        st.markdown("---")
+        col_types, col_empty_types = st.columns([1.1, 0.9])
+        with col_types:
+            c_btn, c_title = st.columns([0.6, 10])
+            with c_btn: render_explain_button("Tipos de Documentos", "types_pie_inst", "Distribución de la producción científica por tipo de documento según la clasificación de OpenAlex.")
+            with c_title: st.markdown("**Tipos de Documentos**")
+            _render_document_types_pie(df_inst_papers, key_suffix=f"inst_{entity_name}")
+
         # Glosario Metodológico
         with st.expander("ℹ️ ¿Qué significan estos indicadores?"):
             st.markdown("""
@@ -763,6 +1258,8 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
             - **Autores/paper (avg):** Promedio de autores individuales por publicación.
             - **APC Total:** Suma del costo histórico de las Cuotas por Procesamiento de Artículo (Article Processing Charges) de todos los artículos en los que participó al menos un académico de la Institución. Este valor es referencial al "precio de lista de OA de la revista" y no significa que la Facultad lo haya pagado, ya que pudo ser cubierto por fondos de investigación, otras universidades o consorcios.
             - **Vida Media Citas:** Años que tarda en promedio un artículo en acumular el 50% de sus citas totales actuales.
+            - **% Académicos con ORCID / algún ID:** Porcentaje de académicos afiliados que cuentan con un ORCID o con al menos un identificador (ORCID, OpenAlex, Scopus o CVU) registrado en la base de datos, respectivamente.
+            - **% SNII con ORCID / algún ID:** Porcentaje de investigadores SNII afiliados que cuentan con un ORCID o con al menos un identificador registrado en la base de datos, respectivamente.
             - **Gini temático:** 0 = enfocado en un solo tema, 1 = producción totalmente dispersa.
             """)
 
@@ -956,27 +1453,38 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
         st.subheader("🗺️ Mapa Semántico de Producción")
         st.write(f"Exploración espacial de la producción científica. Los **{indexed_count:,} artículos** de la entidad están coloreados; el resto de la base nacional aparece en gris.")
         
-        # Extraer DOIs de df_inst_p
+        # Extraer DOIs y OpenAlex IDs de df_inst_p
         list_of_dois = []
+        list_of_oa = []
         if 'doi' in df_inst_p.columns:
             list_of_dois = df_inst_p['doi'].dropna().astype(str).tolist()
         elif 'DOI' in df_inst_p.columns:
             list_of_dois = df_inst_p['DOI'].dropna().astype(str).tolist()
+            
+        if 'paper_id' in df_inst_p.columns:
+            list_of_oa = df_inst_p['paper_id'].dropna().astype(str).tolist()
+            
         list_of_dois = [d.replace('https://doi.org/', '').strip() for d in list_of_dois]
+        # Mantenemos el prefijo completo de OpenAlex para que coincida con el JSON del mapa
+        # (articles_data.json contiene 'https://openalex.org/W...')
+        list_of_oa = [d.strip() for d in list_of_oa]
         dois_json = json.dumps(list_of_dois)
+        oa_json = json.dumps(list_of_oa)
         
         # Parámetro URL para destacar a la institución (highlight_inst) - Fallback
         encoded_inst = urllib.parse.quote(entity_name)
-        iframe_src = f"https://dinamica1.fciencias.unam.mx/tiles/map_test.html?v=13&data=https://dinamica1.fciencias.unam.mx/tiles/articles_data.json&color_by=cluster&highlight_inst={encoded_inst}"
+        iframe_src = f"https://dinamica1.fciencias.unam.mx/tiles/map_test.html?v=28&data=https://dinamica1.fciencias.unam.mx/tiles/articles_specter_data.json?v=28&color_by=cluster&highlight_inst={encoded_inst}"
         safe_name_inst = "".join([c if c.isalnum() else "_" for c in entity_name])
         
         map_html = f"""
         <script>
             window._highlightDois_{safe_name_inst} = {dois_json};
+            window._highlightOa_{safe_name_inst} = {oa_json};
             function sendDois_{safe_name_inst}(iframe) {{
                 iframe.contentWindow.postMessage({{
                     type: 'HIGHLIGHT_DOIS',
-                    dois: window._highlightDois_{safe_name_inst}
+                    dois: window._highlightDois_{safe_name_inst},
+                    oa_ids: window._highlightOa_{safe_name_inst}
                 }}, '*');
             }}
         </script>
@@ -1006,7 +1514,7 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
         
         if st.toggle("Cargar mapa interactivo (WebGL)", key=f"toggle_map_inst_{safe_name_inst}"):
             with st.spinner("Cargando el mapa semántico..."):
-                components.html(map_html, height=600, scrolling=False)
+                components.html(map_html, height=720, scrolling=False)
 
         st.markdown("---")
         st.subheader("📜 Publicaciones")
@@ -1030,19 +1538,23 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
         if s_ods_inst != "Todos":
             df_display_inst = df_display_inst[df_display_inst['ODS_Nombre'] == s_ods_inst]
             
-        cols_to_show = ["year", "Title", "Source", "citations", "DOI", "openalex_url", "ODS_Nombre"]
+        df_display_inst = _prepare_papers_table(df_display_inst)
+        
+        cols_to_show = ["year", "Title", "Source", "citations", "DOI", "openalex_url", "ODS_Nombre", "topic", "_formatted_authors"]
         df_display_inst = df_display_inst[[c for c in cols_to_show if c in df_display_inst.columns]].rename(columns={
             "year": "Año",
             "Title": "Título",
-            "Source": "Revista/Publicación",
+            "Source": "Revista",
             "citations": "Citas",
-            "DOI": "DOI",
+            "DOI": "Enlace DOI",
             "openalex_url": "OpenAlex",
-            "ODS_Nombre": "ODS"
+            "ODS_Nombre": "ODS",
+            "topic": "Tópico",
+            "_formatted_authors": "Autores"
         }).sort_values(by="Año", ascending=False)
         
         st.dataframe(df_display_inst, width="stretch", hide_index=True, column_config={
-            "DOI": st.column_config.LinkColumn("Enlace DOI", display_text="Ver Link"),
+            "Enlace DOI": st.column_config.LinkColumn("Enlace DOI", display_text="Ver paper"),
             "OpenAlex": st.column_config.LinkColumn("OpenAlex", display_text="Ver en OpenAlex")
         })
 
@@ -1072,8 +1584,43 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
                 view_label = "Capacidad_Instalada" if view_mode == "capacidad_instalada" else "Produccion_Institucional"
                 st.download_button("⬇️ Descargar Reporte (HTML)", data=html_data, file_name=f"Reporte_Institucion_{view_label}_{safe_name}.html", mime="text/html")
             with c_rep3:
-                if st.button("🔄 Regenerar", key=f"btn_regen_inst_{view_mode}_{safe_name}"):
-                    with st.spinner("Regenerando análisis y reporte con el modelo LLM local... Esto tomará algunos segundos."):
+                admins_str = os.environ.get("admins", os.environ.get("ADMINS", ""))
+                admin_orcids = [x.strip() for x in admins_str.split(",") if x.strip()]
+                auth_user = st.session_state.get("authenticated_user")
+                user_orcid = auth_user.get("orcid") if auth_user else None
+                is_admin = user_orcid in admin_orcids
+
+                if is_admin:
+                    if st.button("🔄 Regenerar", key=f"btn_regen_inst_{view_mode}_{safe_name}"):
+                        with st.spinner("Regenerando análisis y reporte con el modelo LLM local... Esto tomará algunos segundos."):
+                            import subprocess
+                            try:
+                                subprocess.run([
+                                    sys.executable, 
+                                    os.path.join(BASE_PATH, "report_generator.py"), 
+                                    "--type", "inst", 
+                                    "--name", entity_name, 
+                                    "--institution", institution_name, 
+                                    "--view_mode", view_mode
+                                ], check=True, capture_output=True, text=True)
+                                st.rerun()
+                            except subprocess.CalledProcessError as e:
+                                st.error(f"Fallo al generar reporte:\n{e.stderr or e.stdout}")
+                                st.stop()
+                    
+            if st.session_state.get(show_report_inst_key, False):
+                st.markdown("---")
+                components.html(html_data, height=900, scrolling=True)
+        else:
+            admins_str = os.environ.get("admins", os.environ.get("ADMINS", ""))
+            admin_orcids = [x.strip() for x in admins_str.split(",") if x.strip()]
+            auth_user = st.session_state.get("authenticated_user")
+            user_orcid = auth_user.get("orcid") if auth_user else None
+            is_admin = user_orcid in admin_orcids
+
+            if is_admin:
+                if st.button("✨ Generar Reporte con IA", key=f"btn_gen_inst_{view_mode}_{safe_name}"):
+                    with st.spinner("Generando análisis y reporte con el modelo LLM local... Esto tomará algunos segundos."):
                         import subprocess
                         try:
                             subprocess.run([
@@ -1088,27 +1635,6 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
                         except subprocess.CalledProcessError as e:
                             st.error(f"Fallo al generar reporte:\n{e.stderr or e.stdout}")
                             st.stop()
-                    
-            if st.session_state.get(show_report_inst_key, False):
-                st.markdown("---")
-                components.html(html_data, height=900, scrolling=True)
-        else:
-            if st.button("✨ Generar Reporte con IA", key=f"btn_gen_inst_{view_mode}_{safe_name}"):
-                with st.spinner("Generando análisis y reporte con el modelo LLM local... Esto tomará algunos segundos."):
-                    import subprocess
-                    try:
-                        subprocess.run([
-                            sys.executable, 
-                            os.path.join(BASE_PATH, "report_generator.py"), 
-                            "--type", "inst", 
-                            "--name", entity_name, 
-                            "--institution", institution_name, 
-                            "--view_mode", view_mode
-                        ], check=True, capture_output=True, text=True)
-                        st.rerun()
-                    except subprocess.CalledProcessError as e:
-                        st.error(f"Fallo al generar reporte:\n{e.stderr or e.stdout}")
-                        st.stop()
 
     # Al final de la función, si no hay dataframes cargados, mostrar un mensaje de "En Proceso"
     if (df_total is None or df_total.empty) and (df_annual is None or df_annual.empty):
@@ -1165,24 +1691,57 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
         }
         </style>
     """, unsafe_allow_html=True)
-    st.header(f"👤 Vista por Investigador: {entity_name}")
 
-    if entity_name == institution_name:
+    # Interceptar búsqueda global activa de investigadores
+    search_inv = st.session_state.get("selected_academic_search")
+    is_search_active = False
+
+    if search_inv:
+        real_inst = st.session_state.get("selected_academic_real_inst")
+        real_dep = st.session_state.get("selected_academic_real_dep")
+        real_sub = st.session_state.get("selected_academic_real_sub")
+
+        if real_inst:
+            is_search_active = True
+            st.success(f"🎯 **Perfil Seleccionado:** {search_inv}")
+            st.caption(f"Afiliación: **{real_inst}**" + 
+                       (f" ➔ **{real_dep}**" if real_dep and real_dep != "SIN INFORMACIÓN" else "") + 
+                       (f" ➔ **{real_sub}**" if real_sub and real_sub != "SIN INFORMACIÓN" else ""))
+            
+            if st.button("❌ Limpiar búsqueda y volver a la navegación normal"):
+                del st.session_state["selected_academic_search"]
+                if "selected_academic_real_inst" in st.session_state: del st.session_state["selected_academic_real_inst"]
+                if "selected_academic_real_dep" in st.session_state: del st.session_state["selected_academic_real_dep"]
+                if "selected_academic_real_sub" in st.session_state: del st.session_state["selected_academic_real_sub"]
+                st.rerun()
+
+            # Sobreescribir variables para la carga física de parquets
+            institution_name = real_inst
+            entity_name = real_sub if real_sub and real_sub != 'SIN INFORMACIÓN' else (real_dep if real_dep and real_dep != 'SIN INFORMACIÓN' else real_inst)
+            investigadores = [search_inv]
+
+    st.header(f"👤 Vista por Investigador: {entity_name if not is_search_active else search_inv}")
+
+    # Validar la salida de la institución solo si no es búsqueda activa
+    if not is_search_active and entity_name == institution_name:
         st.info(f"La vista por investigador individual no está disponible a nivel de toda la institución ({entity_name}). Por favor, seleccione una dependencia o subdependencia específica en la jerarquía de navegación de la barra lateral.")
         return
 
-    df_inst_tot = get_cached_data("institucion_total.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
-
-    if df_inst_tot is None or df_inst_tot.empty:
-        # Si no hay df_inst_tot, buscaremos los investigadores físicamente en las carpetas (caso "Sin Entidad")
-        investigadores = []
+    # Si es búsqueda activa, omitimos la generación de la lista desde el sidebar
+    if is_search_active:
+        df_inst_tot = None
     else:
-        # Extraer la lista veloz de académicos inyectada en el archivo maestro de Institución
-        try:
-            academics_json = df_inst_tot.iloc[0].get('academics_list', "[]")
-            investigadores = sorted(json.loads(academics_json))
-        except Exception:
+        df_inst_tot = get_cached_data("institucion_total.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
+
+    if not is_search_active:
+        if df_inst_tot is None or df_inst_tot.empty:
             investigadores = []
+        else:
+            try:
+                academics_json = df_inst_tot.iloc[0].get('academics_list', "[]")
+                investigadores = sorted(json.loads(academics_json))
+            except Exception:
+                investigadores = []
             
     # Fallback físico si la lista está vacía (ideal para los SNIIs en "Sin Entidad")
     if not investigadores:
@@ -1277,23 +1836,21 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
     df_inv_tot = get_cached_data("investigador_total.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name, view_mode=view_mode)
     df_inv_ann = get_cached_data("investigador_annual.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name, view_mode=view_mode)
     df_topics  = get_cached_data("topics_investigador.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name, view_mode=view_mode)
-    df_umap = get_cached_data("umap_investigadores.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
-    umap_source = f"la entidad ({entity_name})"
-    if df_umap is None or df_umap.empty:
-        df_umap = get_cached_data("umap_investigadores.parquet", institution_name=institution_name, view_mode=view_mode)
-        umap_source = f"la institución ({institution_name})"
-        if df_umap is None or df_umap.empty:
-            global_path = os.path.join(CACHE_DIR, "umap_investigadores.parquet")
-            if os.path.exists(global_path):
-                try:
-                    df_umap = pd.read_parquet(global_path)
-                    umap_source = "nivel global (toda la base de datos)"
-                except Exception:
-                    df_umap = None
-                    umap_source = None
-            else:
-                df_umap = None
-                umap_source = None
+    df_umap = None
+    umap_source = None
+    if entity_name:
+        df_umap = get_cached_data("umap_investigadores.parquet", entity_name=entity_name, institution_name=institution_name, view_mode=view_mode)
+        if df_umap is not None and not df_umap.empty:
+            umap_source = f"la entidad ({entity_name})"
+            
+    df_umap_inst = get_cached_data("umap_investigadores.parquet", institution_name=institution_name, view_mode=view_mode)
+    if df_umap_inst is None or df_umap_inst.empty:
+        global_path = os.path.join(CACHE_DIR, "umap_investigadores.parquet")
+        if os.path.exists(global_path):
+            try:
+                df_umap_inst = pd.read_parquet(global_path)
+            except Exception:
+                df_umap_inst = None
     
     # Cargar papers globales del investigador y preinicializar df_prof
     df_profesores_papers = load_cached_data("papers_profesor.parquet", entity_name=entity_name, academic_name=selected_inv, institution_name=institution_name, view_mode=view_mode)
@@ -1603,13 +2160,14 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
     ca2.metric("% Papers con APC", f"{inv_data.get('pct_apc',0):.1f}%", help="Porcentaje de la producción publicada en revistas que requieren pago de cuotas (APC).")
     ca3.metric("Vida Media Citas", f"{inv_data.get('half_life_avg',0):.1f} años", help="Años transcurridos desde la publicación hasta que los artículos acumulan el 50% de su impacto total.")
 
-    # ── OA Donut ──────────────────────────────────────────────────────────────────
+    # ── Distribución Open Access y Perfil Temático ─────────────────────────────────
     col_donut_inv, col_gini_inv = st.columns(2)
     with col_donut_inv:
         c_btn, c_title = st.columns([0.6, 10])
         with c_btn: render_explain_button(f"Distribución Open Access de {selected_inv}", "oa_donut_inv", None)
         with c_title: st.markdown("**Distribución Open Access**")
         _render_oa_donut(inv_data, key_suffix=f"inv_{selected_inv}")
+        
     with col_gini_inv:
         gini_inv = inv_data.get('gini_topics')
         n_dom_inv = int(inv_data.get('domain_diversity',0) or 0)
@@ -1638,6 +2196,15 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
             """.strip())
         else:
             st.info("Sin datos de diversidad temática.")
+
+    # ── Tipos de Documentos (En nueva fila a ancho controlado) ─────────────────────
+    st.markdown("---")
+    col_types_inv, col_empty_types_inv = st.columns([1.1, 0.9])
+    with col_types_inv:
+        c_btn, c_title = st.columns([0.6, 10])
+        with c_btn: render_explain_button(f"Tipos de Documentos de {selected_inv}", "types_pie_inv", "Distribución de los documentos del investigador por tipo de documento según OpenAlex.")
+        with c_title: st.markdown("**Tipos de Documentos**")
+        _render_document_types_pie(df_profesores_papers, key_suffix=f"inv_{selected_inv}")
 
     with st.expander("ℹ️ ¿Qué significan estos indicadores?"):
         st.markdown("""
@@ -1715,68 +2282,19 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
     """
     c_btn, c_title = st.columns([0.3, 10])
     with c_btn: render_explain_button(f"Mapa de Desempeño UMAP de {selected_inv}", "umap_inv", datos_umap)
-    with c_title: st.subheader("Mapa de Desempeño Institucional (UMAP)")
+    with c_title: st.subheader("Mapas de Desempeño (UMAP)")
     
-    st.markdown("Cálculo multidimensional comparando %Top 10, FWCI, % Top 1% y Percentil Promedio frente al resto del padrón.")
-    if df_umap is not None and not df_umap.empty and umap_source:
-        st.caption(f"ℹ️ **Origen del mapa:** Cargado a nivel de {umap_source}.")
-
-    if df_umap is not None and not df_umap.empty:
-        fig_umap = go.Figure()
-
-        # Configurar escalado de burbujas basado en número de documentos
-        max_docs = df_umap['num_documents'].max() if 'num_documents' in df_umap.columns else 1
-        sizeref = 2.0 * max(max_docs, 1) / (30. ** 2)
-
-        # Otros investigadores (Puntos grises)
-        otros = df_umap[df_umap['academic_name'] != selected_inv]
-        if not otros.empty:
-            fig_umap.add_trace(go.Scatter(
-                x=otros['umap_x'], y=otros['umap_y'],
-                mode='markers',
-                name='Resto del padrón',
-                text=otros['academic_name'],
-                marker=dict(
-                    size=otros['num_documents'],
-                    sizemode='area',
-                    sizeref=sizeref,
-                    sizemin=5,
-                    color='#002B5C', opacity=0.3, line=dict(width=1, color='darkgray')
-                ),
-                hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>FWCI: %{customdata[1]:.2f}<br>% Top 10: %{customdata[2]:.1f}%<br>% Top 1%: %{customdata[3]:.1f}%",
-                customdata=otros[['num_documents', 'fwci_avg', 'pct_top_10', 'pct_1']]
-            ))
-
-        # Investigador seleccionado (Punto destacado)
-        sel_row = df_umap[df_umap['academic_name'] == selected_inv]
-        if not sel_row.empty:
-            fig_umap.add_trace(go.Scatter(
-                x=sel_row['umap_x'], y=sel_row['umap_y'],
-                mode='markers',
-                name=selected_inv,
-                text=sel_row['academic_name'],
-                marker=dict(
-                    size=sel_row['num_documents'],
-                    sizemode='area',
-                    sizeref=sizeref,
-                    sizemin=8,
-                    color='#D4AF37', symbol='star', line=dict(width=2, color='#b6932b')
-                ),
-                hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>FWCI: %{customdata[1]:.2f}<br>% Top 10: %{customdata[2]:.1f}%<br>% Top 1%: %{customdata[3]:.1f}%",
-                customdata=sel_row[['num_documents', 'fwci_avg', 'pct_top_10', 'pct_1']]
-            ))
-
-        fig_umap.update_layout(
-            hovermode="closest",
-            height=500,
-            template="plotly_white",
-            margin=dict(l=0,r=0,t=30,b=0),
-            xaxis_title="Dimensión 1",
-            yaxis_title="Dimensión 2"
-        )
-        st.plotly_chart(fig_umap, width="stretch")
-    else:
-        st.info("El mapa UMAP no está disponible o faltan datos base calculados.")
+    st.markdown("Cálculo multidimensional comparando %Top 10, FWCI, % Top 1% y Percentil Promedio frente a sus pares académicos.")
+    
+    # 1. Mapa en el contexto de su entidad (Dependencia / Subdependencia) si aplica
+    if entity_name:
+        st.markdown(f"#### 🏢 Contexto de la Entidad o Dependencia: **{entity_name}**")
+        _render_umap_plot(df_umap, selected_inv, f"la entidad ({entity_name})", key_suffix="entidad")
+        st.markdown("---")
+        
+    # 2. Mapa en el contexto de la Institución completa
+    st.markdown(f"#### 🏛️ Contexto de la Institución completa: **{institution_name}**")
+    _render_umap_plot(df_umap_inst, selected_inv, f"la institución ({institution_name})", key_suffix="institucion")
     # ── Colaboración Internacional (Choropleth) ───────────────────────────────────
     if not df_prof.empty and "countries" in df_prof.columns:
         st.markdown("---")
@@ -1833,115 +2351,133 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
 | % con licencia CC-BY | `{inv_data.get('pct_cc_by',0):.1f}%` |
                     """.strip())
 
-        # 6. Mapa Semántico de Producción (Investigador)
-        import urllib.parse
-        import json
-        st.markdown("---")
-        st.subheader("🗺️ Mapa Semántico de Producción")
-        num_docs_inv = int(inv_data.get('num_documents', 0))
-        st.write(f"Exploración espacial de la producción científica. Los **{num_docs_inv:,} artículos** del investigador están coloreados; el resto de la base nacional aparece en gris.")
-        
-        # Extraer DOIs de df_prof
-        list_of_dois_inv = []
-        if not df_prof.empty:
-            if 'doi' in df_prof.columns:
-                list_of_dois_inv = df_prof['doi'].dropna().astype(str).tolist()
-            elif 'DOI' in df_prof.columns:
-                list_of_dois_inv = df_prof['DOI'].dropna().astype(str).tolist()
-        list_of_dois_inv = [d.replace('https://doi.org/', '').strip() for d in list_of_dois_inv]
-        dois_json_inv = json.dumps(list_of_dois_inv)
-        
-        # Parámetro URL para destacar al autor (highlight_author) - Fallback
-        encoded_author = urllib.parse.quote(selected_inv)
-        iframe_src_inv = f"https://dinamica1.fciencias.unam.mx/tiles/map_test.html?v=13&data=https://dinamica1.fciencias.unam.mx/tiles/articles_data.json&color_by=cluster&highlight_author={encoded_author}"
-        safe_name_inv = "".join([c if c.isalnum() else "_" for c in selected_inv])
-        
-        map_html_inv = f"""
-        <script>
-            window._highlightDois_{safe_name_inv} = {dois_json_inv};
-            function sendDois_{safe_name_inv}(iframe) {{
-                iframe.contentWindow.postMessage({{
-                    type: 'HIGHLIGHT_DOIS',
-                    dois: window._highlightDois_{safe_name_inv}
-                }}, '*');
-            }}
-        </script>
-        <div id="map-container-inv-{safe_name_inv}" style="width:100%; overflow:hidden;">
-            <iframe id="map-iframe-inv-{safe_name_inv}" src="{iframe_src_inv}" 
-                    style="width:100%; border:none; display:block;" 
-                    scrolling="no"
-                    onload="sendDois_{safe_name_inv}(this)">
-            </iframe>
-        </div>
-        <script>
-            function resizeInvMap() {{
-                var iframe = document.getElementById('map-iframe-inv-{safe_name_inv}');
-                var container = document.getElementById('map-container-inv-{safe_name_inv}');
-                if(!iframe || !container) return;
-                var rect = container.getBoundingClientRect();
-                var availableHeight = window.innerHeight - rect.top - 10;
-                if (availableHeight < 500) availableHeight = 500;
-                iframe.style.height = availableHeight + 'px';
-            }}
-            resizeInvMap();
-            window.addEventListener('resize', resizeInvMap);
-            setTimeout(resizeInvMap, 300);
-            setTimeout(resizeInvMap, 1000);
-        </script>
-        """
-        
-        if st.toggle("Cargar mapa interactivo (WebGL)", key=f"toggle_map_inv_{safe_name_inv}"):
-            with st.spinner("Cargando el mapa semántico..."):
-                components.html(map_html_inv, height=600, scrolling=False)
+    # 6. Mapa Semántico de Producción (Investigador)
+    import urllib.parse
+    import json
+    st.markdown("---")
+    st.subheader("🗺️ Mapa Semántico de Producción")
+    num_docs_inv = int(inv_data.get('num_documents', 0))
+    st.write(f"Exploración espacial de la producción científica. Los **{num_docs_inv:,} artículos** del investigador están coloreados; el resto de la base nacional aparece en gris.")
+    
+    # Extraer DOIs y OpenAlex IDs de df_prof
+    list_of_dois_inv = []
+    list_of_oa_inv = []
+    if not df_prof.empty:
+        if 'doi' in df_prof.columns:
+            list_of_dois_inv = df_prof['doi'].dropna().astype(str).tolist()
+        elif 'DOI' in df_prof.columns:
+            list_of_dois_inv = df_prof['DOI'].dropna().astype(str).tolist()
+        if 'paper_id' in df_prof.columns:
+            list_of_oa_inv = df_prof['paper_id'].dropna().astype(str).tolist()
+            
+    list_of_dois_inv = [d.replace('https://doi.org/', '').strip() for d in list_of_dois_inv]
+    # Mantenemos el prefijo completo de OpenAlex para que coincida con el JSON del mapa
+    # (articles_data.json contiene 'https://openalex.org/W...')
+    list_of_oa_inv = [d.strip() for d in list_of_oa_inv]
+    dois_json_inv = json.dumps(list_of_dois_inv)
+    oa_json_inv = json.dumps(list_of_oa_inv)
+    
+    # Parámetro URL para destacar al autor (highlight_author) - Fallback
+    encoded_author = urllib.parse.quote(selected_inv)
+    iframe_src_inv = f"https://dinamica1.fciencias.unam.mx/tiles/map_test.html?v=28&data=https://dinamica1.fciencias.unam.mx/tiles/articles_specter_data.json?v=28&color_by=cluster&highlight_author={encoded_author}"
+    safe_name_inv = "".join([c if c.isalnum() else "_" for c in selected_inv])
+    
+    map_html_inv = f"""
+    <script>
+        window._highlightDois_{safe_name_inv} = {dois_json_inv};
+        window._highlightOa_{safe_name_inv} = {oa_json_inv};
+        function sendDois_{safe_name_inv}(iframe) {{
+            iframe.contentWindow.postMessage({{
+                type: 'HIGHLIGHT_DOIS',
+                dois: window._highlightDois_{safe_name_inv},
+                oa_ids: window._highlightOa_{safe_name_inv}
+            }}, '*');
+        }}
+    </script>
+    <div id="map-container-inv-{safe_name_inv}" style="width:100%; overflow:hidden;">
+        <iframe id="map-iframe-inv-{safe_name_inv}" src="{iframe_src_inv}" 
+                style="width:100%; border:none; display:block;" 
+                scrolling="no"
+                onload="sendDois_{safe_name_inv}(this)">
+        </iframe>
+    </div>
+    <script>
+        function resizeInvMap() {{
+            var iframe = document.getElementById('map-iframe-inv-{safe_name_inv}');
+            var container = document.getElementById('map-container-inv-{safe_name_inv}');
+            if(!iframe || !container) return;
+            var rect = container.getBoundingClientRect();
+            var availableHeight = window.innerHeight - rect.top - 10;
+            if (availableHeight < 500) availableHeight = 500;
+            iframe.style.height = availableHeight + 'px';
+        }}
+        resizeInvMap();
+        window.addEventListener('resize', resizeInvMap);
+        setTimeout(resizeInvMap, 300);
+        setTimeout(resizeInvMap, 1000);
+    </script>
+    """
+    
+    if st.toggle("Cargar mapa interactivo (WebGL)", key=f"toggle_map_inv_{safe_name_inv}"):
+        with st.spinner("Cargando el mapa semántico..."):
+            components.html(map_html_inv, height=720, scrolling=False)
 
-        st.markdown("---")
-        st.subheader("📜 Lista Completa de Publicaciones")
-        
-        # Validar si hay publicaciones reales
-        is_empty = df_prof.empty or (len(df_prof) == 1 and (df_prof['paper_id'].isna().all() or df_prof['paper_id'].iloc[0] is None))
-        
-        if is_empty:
-            st.info("No se encontraron publicaciones indizadas para este académico en las fuentes consultadas (OpenAlex, Scopus, WoS).")
+    st.markdown("---")
+    st.subheader("📜 Lista Completa de Publicaciones")
+    
+    # Validar si hay publicaciones reales
+    is_empty = df_prof.empty or (len(df_prof) == 1 and (df_prof['paper_id'].isna().all() or df_prof['paper_id'].iloc[0] is None))
+    
+    if is_empty:
+        st.info("No se encontraron publicaciones indizadas para este académico en las fuentes consultadas (OpenAlex, Scopus, WoS).")
+    else:
+        # Blindaje contra columnas faltantes
+        doi_col = 'doi' if 'doi' in df_prof.columns else ('DOI' if 'DOI' in df_prof.columns else None)
+        if 'ODS_Nombre' not in df_prof.columns:
+            df_prof['ODS_Nombre'] = None
+        if doi_col:
+            df_prof['_doi_link'] = df_prof[doi_col].apply(
+                lambda d: f"https://doi.org/{str(d).replace('https://doi.org/','').strip()}" if pd.notna(d) and str(d).strip() else None
+            )
         else:
-            # Blindaje contra columnas faltantes
-            if 'ODS_Nombre' not in df_prof.columns:
-                df_prof['ODS_Nombre'] = None
-            if 'openalex_url' not in df_prof.columns:
-                df_prof['openalex_url'] = None
+            df_prof['_doi_link'] = None
 
-            col_fil_prof1, col_fil_prof2 = st.columns(2)
-            with col_fil_prof1:
-                years_prof = np.flip(np.unique(df_prof['year'].dropna()))
-                s_year_prof = st.selectbox("Filtrar por año:", options=["Todos"] + list(years_prof), key="prof_year")
-            with col_fil_prof2:
-                ods_options_prof = sorted([str(ods) for ods in df_prof['ODS_Nombre'].dropna().unique() if ods and str(ods).lower() != "null" and "x" not in str(ods).lower()])
-                s_ods_prof = st.selectbox("Filtrar por ODS:", options=["Todos"] + ods_options_prof, key="prof_ods")
-            
-            df_display_prof = df_prof.copy()
-            if s_year_prof != "Todos":
-                df_display_prof = df_display_prof[df_display_prof['year'] == s_year_prof]
-            if s_ods_prof != "Todos":
-                df_display_prof = df_display_prof[df_display_prof['ODS_Nombre'] == s_ods_prof]
-                
-            if "openalex_url" not in df_display_prof.columns:
-                df_display_prof["openalex_url"] = None
-                
-            df_display_prof = df_display_prof[[
-                "year", "Title", "Source", "citations", "DOI", "openalex_url", "ODS_Nombre"
-            ]].rename(columns={
-                "year": "Año",
-                "Title": "Título",
-                "Source": "Revista/Publicación",
-                "citations": "Citas",
-                "DOI": "DOI",
-                "openalex_url": "OpenAlex",
-                "ODS_Nombre": "ODS"
-            }).sort_values(by="Año", ascending=False)
-            
-            st.dataframe(df_display_prof, width="stretch", hide_index=True, column_config={
-                "DOI": st.column_config.LinkColumn("Enlace DOI", display_text="Ver Link"),
-                "OpenAlex": st.column_config.LinkColumn("OpenAlex", display_text="Ver en OpenAlex")
-            })
+        col_fil_prof1, col_fil_prof2 = st.columns(2)
+        with col_fil_prof1:
+            years_prof = sorted(df_prof['year'].dropna().unique(), reverse=True)
+            s_year_prof = st.selectbox("Filtrar por año:", options=["Todos"] + [int(y) for y in years_prof], key="prof_year")
+        with col_fil_prof2:
+            ods_options_prof = sorted([str(ods) for ods in df_prof['ODS_Nombre'].dropna().unique() if ods and str(ods).lower() != "null" and "x" not in str(ods).lower()])
+            s_ods_prof = st.selectbox("Filtrar por ODS:", options=["Todos"] + ods_options_prof, key="prof_ods")
+        
+        df_display_prof = df_prof.copy()
+        if s_year_prof != "Todos":
+            df_display_prof = df_display_prof[df_display_prof['year'] == s_year_prof]
+        if s_ods_prof != "Todos":
+            df_display_prof = df_display_prof[df_display_prof['ODS_Nombre'] == s_ods_prof]
+        
+        df_display_prof = _prepare_papers_table(df_display_prof)
+        
+        cols_to_show = ["year", "Title", "Source", "citations", "_doi_link", "openalex_url", "ODS_Nombre", "topic", "_formatted_authors"]
+        df_show = df_display_prof[[c for c in cols_to_show if c in df_display_prof.columns]].rename(columns={
+            "year": "Año",
+            "Title": "Título",
+            "Source": "Revista",
+            "citations": "Citas",
+            "_doi_link": "Enlace DOI",
+            "openalex_url": "OpenAlex",
+            "ODS_Nombre": "ODS",
+            "topic": "Tópico",
+            "_formatted_authors": "Autores"
+        }).sort_values(by="Año", ascending=False)
+        
+        col_config = {
+            "Enlace DOI": st.column_config.LinkColumn("Enlace DOI", display_text="Ver paper"),
+            "OpenAlex": st.column_config.LinkColumn("OpenAlex", display_text="Ver en OpenAlex")
+        }
+        
+        st.caption(f"{len(df_show):,} publicaciones mostradas")
+        st.dataframe(df_show, use_container_width=True, hide_index=True, column_config=col_config)
     
 
     # ── Red de Colaboración Científica ───────────────────────────────────────────
@@ -1999,8 +2535,53 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
         with c_repB:
             st.download_button("⬇️ Descargar Reporte (HTML)", data=html_data, file_name=f"Reporte_Investigador_{safe_name}.html", mime="text/html")
         with c_repC:
-            if st.button("🔄 Regenerar", key=f"btn_regen_inv_{safe_name}"):
-                with st.spinner("Regenerando análisis y reporte con el modelo LLM local... Esto tomará un par de minutos."):
+            admins_str = os.environ.get("admins", os.environ.get("ADMINS", ""))
+            admin_orcids = [x.strip() for x in admins_str.split(",") if x.strip()]
+            auth_user = st.session_state.get("authenticated_user")
+            user_orcid = auth_user.get("orcid") if auth_user else None
+            is_admin = user_orcid in admin_orcids
+            
+            owner_orcids = []
+            if inv_orcid:
+                owner_orcids = [o.strip().split('/')[-1] for o in str(inv_orcid).split(',')]
+            is_owner = user_orcid in owner_orcids if user_orcid else False
+            
+            if is_admin or is_owner:
+                if st.button("🔄 Regenerar", key=f"btn_regen_inv_{safe_name}"):
+                    with st.spinner("Regenerando análisis y reporte con el modelo LLM local... Esto tomará un par de minutos."):
+                        import subprocess
+                        try:
+                            subprocess.run([
+                                sys.executable, 
+                                os.path.join(BASE_PATH, "report_generator.py"), 
+                                "--type", "inv", 
+                                "--name", selected_inv, 
+                                "--entity", entity_name, 
+                                "--institution", institution_name
+                            ], check=True, capture_output=True, text=True)
+                            st.rerun()
+                        except subprocess.CalledProcessError as e:
+                            st.error(f"Fallo al generar reporte:\n{e.stderr or e.stdout}")
+                            st.stop()
+                
+        if st.session_state.get(show_report_inv_key, False):
+            st.markdown("---")
+            components.html(html_data, height=900, scrolling=True)
+    else:
+        admins_str = os.environ.get("admins", os.environ.get("ADMINS", ""))
+        admin_orcids = [x.strip() for x in admins_str.split(",") if x.strip()]
+        auth_user = st.session_state.get("authenticated_user")
+        user_orcid = auth_user.get("orcid") if auth_user else None
+        is_admin = user_orcid in admin_orcids
+        
+        owner_orcids = []
+        if inv_orcid:
+            owner_orcids = [o.strip().split('/')[-1] for o in str(inv_orcid).split(',')]
+        is_owner = user_orcid in owner_orcids if user_orcid else False
+        
+        if is_admin or is_owner:
+            if st.button("✨ Generar Reporte con IA", key=f"btn_gen_inv_{safe_name}"):
+                with st.spinner("Generando análisis y reporte con el modelo LLM local... Esto tomará un par de minutos."):
                     import subprocess
                     try:
                         subprocess.run([
@@ -2015,26 +2596,5 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
                     except subprocess.CalledProcessError as e:
                         st.error(f"Fallo al generar reporte:\n{e.stderr or e.stdout}")
                         st.stop()
-                
-        if st.session_state.get(show_report_inv_key, False):
-            st.markdown("---")
-            components.html(html_data, height=900, scrolling=True)
-    else:
-        if st.button("✨ Generar Reporte con IA", key=f"btn_gen_inv_{safe_name}"):
-            with st.spinner("Generando análisis y reporte con el modelo LLM local... Esto tomará un par de minutos."):
-                import subprocess
-                try:
-                    subprocess.run([
-                        sys.executable, 
-                        os.path.join(BASE_PATH, "report_generator.py"), 
-                        "--type", "inv", 
-                        "--name", selected_inv, 
-                        "--entity", entity_name, 
-                        "--institution", institution_name
-                    ], check=True, capture_output=True, text=True)
-                    st.rerun()
-                except subprocess.CalledProcessError as e:
-                    st.error(f"Fallo al generar reporte:\n{e.stderr or e.stdout}")
-                    st.stop()
 
 

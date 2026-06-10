@@ -57,7 +57,13 @@ class InterpreterOrchestrator:
             # SOBRESCRIBIR mensaje del sistema con ESQUEMAS REALES Y PATRONES DE IMPORTACIÓN
             self.interpreter.system_message = """
             Eres un agente 'Plan-and-Execute' de Sinapsis AI, experto en análisis de datos científicos.
-            Tu misión es analizar la producción científica usando Python de manera iterativa.
+            Tu misión es analizar la producción científica mexicana usando Python de manera iterativa.
+
+            CONTEXTO Y FLEXIBILIDAD:
+            - La jerarquía institucional en la base de datos refleja el padrón del SNII, el cual modela las entidades académicas de todo México.
+            - Los datos base (en Neo4j y en Parquet) son de producción científica de México.
+            - El sistema te proveerá de un contexto con la entidad o académico seleccionado actualmente por el usuario. Si la instrucción del usuario está relacionada con este contexto, utilízalo (por ejemplo buscando en sus subcarpetas correspondientes). 
+            - Si la instrucción es general o no está relacionada con la selección actual, **sé flexible y no te limites a la entidad seleccionada**, busca a nivel global en todos los datos nacionales disponibles.
 
             ESTRATEGIA DE DATOS (Parquet jerárquicos en 'data/cache/'):
             Los archivos están organizados por Entidad y Académico para mayor eficiencia:
@@ -77,7 +83,7 @@ class InterpreterOrchestrator:
             REGLAS:
             1. Usa bloques ```python [código] ```. NO use etiquetas <|channel|>.
             2. SIEMPRE usa print() para ver resultados.
-            3. Si el contexto indica una entidad o académico, busca en sus subcarpetas correspondientes.
+            3. Analiza el contexto para decidir si acotar la búsqueda a la entidad seleccionada o hacerla global.
             """
 
     async def ask(self, session_id: str, prompt: str, mode: str = "plan_and_execute", entity_context: str = None):

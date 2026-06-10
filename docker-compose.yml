@@ -30,8 +30,8 @@ services:
     environment:
       - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-password}
       - NEO4J_PLUGINS=["apoc"]
-      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
-      - NEO4J_dbms_security_procedures_allowlist=apoc.*
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*,gds.*
+      - NEO4J_dbms_security_procedures_allowlist=apoc.*,gds.*
       - NEO4J_server_memory_heap_initial__size=8G
       - NEO4J_server_memory_heap_max__size=16G
       - NEO4J_server_memory_pagecache_size=32G
@@ -56,6 +56,7 @@ services:
       - /mnt/expansion/dockers_drives/neo4j_mexico_logs:/logs
       - /mnt/expansion/dockers_drives/neo4j_mexico_import:/var/lib/neo4j/import
       - /mnt/expansion/dockers_drives/neo4j_mexico_plugins:/plugins
+    environment:
       - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD_MEXICO:-password123}
       - NEO4J_PLUGINS=["apoc", "graph-data-science"]
       - NEO4J_dbms_security_procedures_unrestricted=apoc.*,gds.*

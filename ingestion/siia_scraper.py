@@ -34,17 +34,21 @@ from database.knowledge_graph import Neo4jGraphStore
 
 def limpiar_nombre(nombre):
     """
-    Quita prefijos DR./DRA., acentos y estandariza a mayúsculas.
+    Quita prefijos DR./DRA., acentos y estandariza a mayúsculas. Preserva la ñ/Ñ.
     """
     if not isinstance(nombre, str):
         return ""
     nombre_sin_prefijo = re.sub(r'^(DR\.|DRA\.)\s*', '', nombre, flags=re.IGNORECASE).strip()
-    nombre_normalizado = unicodedata.normalize('NFD', nombre_sin_prefijo)
+    # Protegemos la letra ñ y Ñ para no perderla en la normalización NFD
+    s = nombre_sin_prefijo.replace('ñ', '##n##').replace('Ñ', '##N##')
+    nombre_normalizado = unicodedata.normalize('NFD', s)
     nombre_sin_acentos = ''.join(
         c for c in nombre_normalizado
         if unicodedata.category(c) != 'Mn'
     )
-    return nombre_sin_acentos.upper()
+    s_upper = nombre_sin_acentos.upper()
+    # Restauramos la ñ/Ñ
+    return s_upper.replace('##N##', 'Ñ').replace('##n##', 'ñ')
 
 
 def buscar_en_siia_interno(original_name, cleaned_name):

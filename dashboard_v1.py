@@ -872,16 +872,16 @@ with tab_about:
     st.markdown("Diagrama de Entidad-Relación que describe cómo se almacena la información estructurada de Sinapsis AI.")
     schema_mermaid = """
     erDiagram
-        Author ||--o{ Paper : AUTHORED
-        Author }o--|| Institution : AFFILIATED_WITH
-        Paper ||--o{ Concept : HAS_CONCEPT
-        Paper ||--o{ Topic : HAS_TOPIC
-        Paper ||--o{ SDG : ADDRESSES
+        Author ||--o{ Paper : ""
+        Author }o--|| Institution : ""
+        Paper ||--o{ Concept : ""
+        Paper ||--o{ Topic : ""
+        Paper ||--o{ SDG : ""
         
-        Academic ||--|| Author : is_subclass_of
-        Entity ||--|| Institution : is_subclass_of
-        Institution }o--|| State : LOCATED_IN
-        State }o--|| Country : PART_OF
+        Academic ||--|| Author : ""
+        Entity ||--|| Institution : ""
+        Institution }o--|| State : ""
+        State }o--|| Country : ""
         
         Author {
             string id

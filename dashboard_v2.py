@@ -29,16 +29,40 @@ load_dotenv()
 
 # ---- Configuración de página ----
 st.set_page_config(
-    page_title="Sinapsis AI: Hub de Ciencia Abierta",
+    page_title="Sinapsis AI: Hub de la Ciencia Mexicana",
     page_icon="🔬",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ---- CSS ----
 st.markdown("""
     <style>
     .stApp { background-color: #f4f4f5; color: #1e293b; }
+    
+    /* Ocultar la decoración del header pero conservar funcionalidad */
+    header[data-testid="stHeader"] {
+        background-color: transparent !important;
+        box-shadow: none !important;
+    }
+    header[data-testid="stHeader"]::before {
+        display: none !important;
+    }
+    /* Ocultar la caja de "Deploy" y menú derecho específicamente */
+    .stAppDeployButton, [data-testid="stHeaderActionElements"] {
+        display: none !important;
+    }
+    /* El botón del sidebar debe estar visible y por encima */
+    [data-testid="collapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+        z-index: 100000 !important;
+    }
+    
+    /* Eliminar el espacio en blanco gigante arriba del título */
+    div.block-container {
+        padding-top: 1rem !important;
+    }
     .stChatMessage {
         background-color: #ffffff;
         border-radius: 10px;
@@ -151,6 +175,197 @@ def trigger_background_processing(academic_name, orcid=None):
         st.error(f"Error al lanzar procesos de segundo plano: {e}")
         return False
 
+def select_academic_in_ui(academic_name):
+    from database.knowledge_graph import Neo4jGraphStore
+    from dashboard_analytics import get_institution_hierarchy
+    
+    hierarchy = get_institution_hierarchy()
+    instituciones = list(hierarchy.keys())
+    
+    neo = Neo4jGraphStore()
+    query = """
+    MATCH (a:Person)
+    WHERE a.fullname = $name OR a.id = $name
+    MATCH (a)-[:AFFILIATED_TO]->(node)
+    OPTIONAL MATCH (node)-[:PART_OF*0..2]->(parent)
+    RETURN labels(node) as node_labels, node.name as node_name, labels(parent) as parent_labels, parent.name as parent_name
+    """
+    inst, dep, sub = None, None, None
+    with neo.driver.session() as session:
+        result = session.run(query, name=academic_name)
+        for record in result:
+            n_labels = record["node_labels"]
+            n_name = record["node_name"]
+            p_labels = record["parent_labels"]
+            p_name = record["parent_name"]
+            
+            if n_labels and "Institution" in n_labels: inst = n_name
+            if n_labels and "Dependency" in n_labels: dep = n_name
+            if n_labels and "Subdependency" in n_labels: sub = n_name
+            
+            if p_labels and "Institution" in p_labels: inst = p_name
+            if p_labels and "Dependency" in p_labels: dep = p_name
+            if p_labels and "Subdependency" in p_labels: sub = p_name
+    neo.close()
+    
+    # Guardar afiliación real en session state para el desacoplamiento
+    st.session_state.selected_academic_real_inst = inst
+    st.session_state.selected_academic_real_dep = dep
+    st.session_state.selected_academic_real_sub = sub
+    
+    # Resolver nombres exactos con la jerarquía
+    valid_inst = None
+    if inst:
+        if inst in instituciones: valid_inst = inst
+        else:
+            for h_inst in instituciones:
+                if inst in h_inst or h_inst in inst:
+                    valid_inst = h_inst
+                    break
+    
+    if valid_inst:
+        st.session_state.selected_institution_sidebar = valid_inst
+        dep_data = hierarchy.get(valid_inst, {})
+        deps = list(dep_data.keys()) if isinstance(dep_data, dict) else list(dep_data)
+        
+        valid_dep = None
+        if dep:
+            if dep in deps: valid_dep = dep
+            else:
+                for h_dep in deps:
+                    if dep in h_dep or h_dep in dep:
+                        valid_dep = h_dep
+                        break
+        
+        if valid_dep:
+            st.session_state.selected_dep_sidebar = valid_dep
+            subs = dep_data.get(valid_dep, []) if isinstance(dep_data, dict) else []
+            
+            valid_sub = None
+            if sub:
+                if sub in subs: valid_sub = sub
+                else:
+                    for h_sub in subs:
+                        if sub in h_sub or h_sub in sub:
+                            valid_sub = h_sub
+                            break
+            if valid_sub:
+                st.session_state.selected_sub_sidebar = valid_sub
+        
+    st.session_state.selected_academic_search = academic_name
+    st.session_state.switch_tab = "Perfiles de Investigadores"
+    st.session_state.global_search_executed = True
+
+
+def select_entity_in_ui(entity_id, entity_name, entity_type=None):
+    from dashboard_analytics import get_institution_hierarchy
+    
+    # 1. Obtener la jerarquía estructurada de la UI
+    hierarchy = get_institution_hierarchy()
+    instituciones = list(hierarchy.keys())
+    
+    # 2. Descomponer el ID jerárquico (ej: "UNIVERSIDAD...||FACULTAD DE CIENCIAS")
+    inst, dep, sub = None, None, None
+    if entity_id:
+        parts = str(entity_id).split("||")
+        if len(parts) >= 1: inst = parts[0]
+        if len(parts) >= 2: dep = parts[1]
+        if len(parts) >= 3: sub = parts[2]
+    else:
+        # Fallback al nombre si no hay ID jerárquico
+        inst = entity_name
+        
+    # 3. Resolver el nombre exacto de la institución en la UI
+    valid_inst = None
+    if inst:
+        if inst in instituciones:
+            valid_inst = inst
+        else:
+            for h_inst in instituciones:
+                if inst in h_inst or h_inst in inst:
+                    valid_inst = h_inst
+                    break
+                    
+    # 4. Si encontramos la institución, resolver dependencia y subdependencia en la UI
+    if valid_inst:
+        st.session_state.selected_institution_sidebar = valid_inst
+        dep_data = hierarchy.get(valid_inst, {})
+        deps = list(dep_data.keys()) if isinstance(dep_data, dict) else list(dep_data)
+        
+        valid_dep = None
+        if dep:
+            if dep in deps:
+                valid_dep = dep
+            else:
+                for h_dep in deps:
+                    if dep in h_dep or h_dep in dep:
+                        valid_dep = h_dep
+                        break
+        
+        if valid_dep:
+            st.session_state.selected_dep_sidebar = valid_dep
+            subs = dep_data.get(valid_dep, []) if isinstance(dep_data, dict) else []
+            
+            valid_sub = None
+            if sub:
+                if sub in subs:
+                    valid_sub = sub
+                else:
+                    for h_sub in subs:
+                        if sub in h_sub or h_sub in sub:
+                            valid_sub = h_sub
+                            break
+            if valid_sub:
+                st.session_state.selected_sub_sidebar = valid_sub
+            else:
+                if "selected_sub_sidebar" in st.session_state:
+                    del st.session_state["selected_sub_sidebar"]
+        else:
+            if "selected_dep_sidebar" in st.session_state:
+                del st.session_state["selected_dep_sidebar"]
+            if "selected_sub_sidebar" in st.session_state:
+                del st.session_state["selected_sub_sidebar"]
+    else:
+        # Fallback de búsqueda global en todo el árbol jerárquico si no se resolvió por ID
+        for h_inst, dep_data in hierarchy.items():
+            if entity_name == h_inst:
+                st.session_state.selected_institution_sidebar = h_inst
+                if "selected_dep_sidebar" in st.session_state:
+                    del st.session_state["selected_dep_sidebar"]
+                if "selected_sub_sidebar" in st.session_state:
+                    del st.session_state["selected_sub_sidebar"]
+                valid_inst = h_inst
+                break
+                
+            deps = list(dep_data.keys()) if isinstance(dep_data, dict) else list(dep_data)
+            for h_dep in deps:
+                if entity_name == h_dep:
+                    st.session_state.selected_institution_sidebar = h_inst
+                    st.session_state.selected_dep_sidebar = h_dep
+                    if isinstance(dep_data, dict):
+                        subs = dep_data.get(h_dep, [])
+                        if subs:
+                            st.session_state.selected_sub_sidebar = subs[0]
+                    valid_inst = h_inst
+                    break
+                    
+                if isinstance(dep_data, dict):
+                    subs = dep_data.get(h_dep, [])
+                    for h_sub in subs:
+                        if entity_name == h_sub:
+                            st.session_state.selected_institution_sidebar = h_inst
+                            st.session_state.selected_dep_sidebar = h_dep
+                            st.session_state.selected_sub_sidebar = h_sub
+                            valid_inst = h_inst
+                            break
+                if valid_inst:
+                    break
+            if valid_inst:
+                break
+                
+    st.session_state.switch_tab = "Panorama Institucional"
+    st.session_state.global_search_executed = True
+
 
 @st.cache_data(ttl=3600)
 def fetch_snii_ror_stats():
@@ -166,9 +381,41 @@ def fetch_snii_ror_stats():
     }
     try:
         # 1. Estadísticas de ROR (Mapeo de Instituciones)
-        mapping_path = BASE / 'ROR' / 'snii_ror_mapping.json'
+        # Intentamos cargar la versión V2 primero, y si no existe el mapeo original
+        mapping_path = BASE / 'data' / 'snii_ror_verified_matches_v2.json'
+        old_mapping_path = BASE / 'ROR' / 'snii_ror_mapping.json'
+        
         if mapping_path.exists():
             with open(mapping_path, 'r', encoding='utf-8') as f:
+                mapping = json.load(f)
+            total_entities = 0
+            with_ror = 0
+            high_conf = 0
+            
+            for inst_name, inst_data in mapping.items():
+                total_entities += 1
+                root = inst_data.get('root_info', {})
+                if root.get('root_ror'):
+                    with_ror += 1
+                    if (root.get('confidence') or 0) >= 70:
+                        high_conf += 1
+                        
+                units = inst_data.get('units', {})
+                for unit_name, unit_data in units.items():
+                    total_entities += 1
+                    if unit_data.get('unit_ror'):
+                        with_ror += 1
+                        if (unit_data.get('confidence') or 0) >= 70:
+                            high_conf += 1
+                            
+            stats["institutions_total"] = total_entities
+            stats["institutions_with_ror"] = with_ror
+            stats["ror_high_confidence"] = high_conf
+            if total_entities > 0:
+                stats["ror_coverage_pct"] = 100.0 * with_ror / total_entities
+
+        elif old_mapping_path.exists():
+            with open(old_mapping_path, 'r', encoding='utf-8') as f:
                 mapping = json.load(f)
             stats["institutions_total"] = len(mapping)
             stats["institutions_with_ror"] = sum(
@@ -184,25 +431,27 @@ def fetch_snii_ror_stats():
         stats["last_error"] = f"Error ROR: {str(e)}"
 
     try:
-        # 2. Estadísticas de Investigadores SNII (Mapeo a OpenAlex/ORCID)
-        # Nota: El archivo real está en data/ no en ingestion/
-        verified_path = BASE / 'data' / 'snii_llm_verified_matches.json'
-        if verified_path.exists():
-            with open(verified_path, 'r', encoding='utf-8') as f:
-                verified = json.load(f)
-            
-            # El archivo es una LISTA de dicts
-            stats["snii_total"] = len(verified)
-            # Contamos los que tienen orcid (en matched_orcid o dentro de snii.orcid)
-            stats["snii_with_orcid"] = sum(
-                1 for x in verified 
-                if isinstance(x, dict) and (x.get('matched_orcid') or x.get('snii', {}).get('orcid'))
-            )
-            # Contamos los que tienen OpenAlex ID
-            stats["snii_with_oa"] = sum(
-                1 for x in verified 
-                if isinstance(x, dict) and x.get('matched_openalex_id')
-            )
+        # 2. Estadísticas de Investigadores SNII (Directo desde Neo4j Graph)
+        try:
+            from database.knowledge_graph import Neo4jGraphStore
+            neo = Neo4jGraphStore()
+            query = """
+            MATCH (p:Person) WHERE p.is_snii = true
+            WITH count(p) AS snii_total,
+                 sum(CASE WHEN size(p.orcids) > 0 THEN 1 ELSE 0 END) AS snii_with_orcid,
+                 sum(CASE WHEN size(p.openalex_ids) > 0 THEN 1 ELSE 0 END) AS snii_with_oa
+            RETURN snii_total, snii_with_orcid, snii_with_oa
+            """
+            with neo.driver.session() as session:
+                result = session.run(query)
+                record = result.single()
+                if record:
+                    stats["snii_total"] = record["snii_total"]
+                    stats["snii_with_orcid"] = record["snii_with_orcid"]
+                    stats["snii_with_oa"] = record["snii_with_oa"]
+        except ImportError:
+            # Fallback en caso de problemas con la librería
+            pass
     except Exception as e:
         if stats["last_error"]:
             stats["last_error"] += f" | Error SNII: {str(e)}"
@@ -337,10 +586,12 @@ with st.sidebar:
     if unam_name in instituciones:
         default_inst_idx = instituciones.index(unam_name)
         
+    if "selected_institution_sidebar" not in st.session_state:
+        st.session_state.selected_institution_sidebar = instituciones[default_inst_idx]
+        
     selected_institution = st.selectbox(
         "Institución de Acreditación",
         instituciones,
-        index=default_inst_idx,
         key="selected_institution_sidebar"
     )
     
@@ -361,10 +612,12 @@ with st.sidebar:
     if selected_institution == unam_name and "SECRETARIA GENERAL" in dependencias:
         default_dep_idx = dependencias.index("SECRETARIA GENERAL")
         
+    if "selected_dep_sidebar" not in st.session_state or st.session_state.selected_dep_sidebar not in dependencias:
+        st.session_state.selected_dep_sidebar = dependencias[default_dep_idx]
+        
     selected_dep = st.selectbox(
         "Dependencia de Acreditación",
         dependencias,
-        index=default_dep_idx,
         key="selected_dep_sidebar"
     )
     
@@ -377,22 +630,37 @@ with st.sidebar:
     if subdependencias:
         if isinstance(subdependencias, list):
             subdependencias = list(subdependencias) # Copia por si es la referencia original
-            if selected_dep not in subdependencias:
-                subdependencias = [selected_dep] + subdependencias # Agregar dependencia como opción agregada
+            
+            agg_option = f"{selected_dep} (Toda la Dependencia)"
+            
+            modified_subs = []
+            for sub in subdependencias:
+                if sub == selected_dep:
+                    modified_subs.append(f"{sub} (Subdependencia)")
+                else:
+                    modified_subs.append(sub)
+            
+            opciones_mostrar = [agg_option] + modified_subs
                 
         # Si hay subdependencias, mostramos el selector
         default_sub_idx = 0
-        if "FACULTAD DE CIENCIAS" in subdependencias:
-            default_sub_idx = subdependencias.index("FACULTAD DE CIENCIAS")
+        if "FACULTAD DE CIENCIAS" in opciones_mostrar:
+            default_sub_idx = opciones_mostrar.index("FACULTAD DE CIENCIAS")
+            
+        if "selected_sub_sidebar" not in st.session_state or st.session_state.selected_sub_sidebar not in opciones_mostrar:
+            st.session_state.selected_sub_sidebar = opciones_mostrar[default_sub_idx]
             
         selected_sub = st.selectbox(
             "Subdependencia de Acreditación",
-            subdependencias,
-            index=default_sub_idx,
+            opciones_mostrar,
             key="selected_sub_sidebar"
         )
-        # La entidad final para filtros es la subdependencia
-        selected_entity = selected_sub
+        
+        # La entidad final para filtros es la subdependencia o la dependencia agregada
+        if selected_sub == agg_option:
+            selected_entity = selected_dep
+        else:
+            selected_entity = selected_sub
     else:
         # Si no hay subdependencias, la entidad es la dependencia
         selected_entity = selected_dep
@@ -410,7 +678,7 @@ with st.sidebar:
 
 
 # ---- Interfaz Principal ----
-st.title("Sinapsis AI: Hub de Ciencia Abierta")
+st.title("Sinapsis AI: Hub de la Ciencia Mexicana")
 st.info("🚀 **Nota:** El sistema se encuentra en fase de desarrollo. Los datos se están cargando y procesando.")
 
 # ---- Buscador Global (Neo4j Full-Text) ----
@@ -422,13 +690,18 @@ with st.container():
         st.caption("⚡ Búsqueda en Grafo Nacional")
 
     if global_query and len(global_query) >= 3:
+        if st.session_state.get("last_global_query") != global_query:
+            st.session_state.global_search_executed = False
+            st.session_state.last_global_query = global_query
+
         neo = Neo4jGraphStore()
         search_results = neo.global_search(global_query)
         neo.close()
         
         if search_results:
-            with st.expander(f"🎯 Resultados para '{global_query}'", expanded=True):
-                for res in search_results:
+            expanded_state = not st.session_state.get("global_search_executed", False)
+            with st.expander(f"🎯 Resultados para '{global_query}'", expanded=expanded_state):
+                for idx, res in enumerate(search_results):
                     c1, c2, c3 = st.columns([1, 4, 2])
                     with c1:
                         icon = "👤" if res['type'] == "Academic" else "🏢"
@@ -437,24 +710,20 @@ with st.container():
                         st.write(f"**{res['name']}**")
                         st.caption(f"Tipo: {res['type']} | Labels: {', '.join(res['labels'])}")
                     with c3:
-                        if st.button("Ver Detalle", key=f"global_res_{res['id']}"):
-                            # Guardar en estado para que las pestañas lo tomen
-                            if res['type'] == "Academic":
-                                st.session_state.selected_academic_search = res['name']
-                                st.success(f"Cargando perfil de {res['name']}... Ve a la pestaña 'Perfil Académico'")
-                            else:
-                                st.session_state.selected_entity_search = res['name']
-                                st.success(f"Cargando {res['name']}... Ve a la pestaña 'Panorama Institucional'")
-                            # st.rerun()
+                        if res['type'] == "Academic":
+                            if st.button("Ver Detalle", key=f"global_res_{res['type']}_{res['id']}_{idx}", on_click=select_academic_in_ui, args=(res['name'],)):
+                                st.success(f"✅ Seleccionado. Ve a la pestaña 'Perfil Académico'")
+                        else:
+                            if st.button("Ver Detalle", key=f"global_res_{res['type']}_{res['id']}_{idx}", on_click=select_entity_in_ui, args=(res['id'], res['name'], res['type'])):
+                                st.success(f"✅ Seleccionado. Ve a la pestaña 'Panorama Institucional'")
         else:
             st.warning("No se encontraron coincidencias exactas. Intenta con un nombre más corto o apellidos.")
 
-st.markdown("Inteligencia Bibliométrica Híbrida")
-
-
 tab_labels = [
+    "🌌 Inicio",
     "🏢 Panorama Institucional",
-    "👤 Perfil Académico",
+    "👤 Perfiles de Investigadores",
+    "🗺️ Mapas de la Ciencia",
     "🤖 Asistente",
     # "🧪 Asistente-Prueba (MCP)",   # Oculta temporalmente
     # "🏛️ Consejo Estratégico",      # Oculta temporalmente
@@ -466,15 +735,77 @@ if user_auth:
     tab_labels.insert(0, "👤 Mi Espacio")
 
 all_tabs = st.tabs(tab_labels)
-
 if user_auth:
-    tab_me, tab_inst, tab_inv, tab_chat, tab_about = all_tabs
+    tab_me, tab_home, tab_inst, tab_inv, tab_maps, tab_chat, tab_about = all_tabs
 else:
-    tab_inst, tab_inv, tab_chat, tab_about = all_tabs
+    tab_home, tab_inst, tab_inv, tab_maps, tab_chat, tab_about = all_tabs
 
 # Pestañas ocultas temporalmente — se definen como None para evitar NameError
 tab_test = None
 tab_council = None
+
+# --- Inyección de comportamiento de Sidebar según la Pestaña ---
+import streamlit.components.v1 as components
+components.html("""
+<script>
+    const parentDoc = window.parent.document;
+    if (!parentDoc.window.__sidebarTabListenerAdded) {
+        parentDoc.window.__sidebarTabListenerAdded = true;
+        parentDoc.addEventListener('click', function(e) {
+            let tab = e.target.closest('button[data-baseweb="tab"], div[role="tab"], button[role="tab"]');
+            if (tab) {
+                let tabText = tab.innerText || tab.textContent || "";
+                let sidebar = parentDoc.querySelector('[data-testid="stSidebar"]');
+                if (sidebar) {
+                    let isExpanded = sidebar.getAttribute('aria-expanded') === 'true';
+                    let openBtn = parentDoc.querySelector('[data-testid="collapsedControl"]');
+                    
+                    // En Streamlit moderno, el botón de cerrar tiene una clase SVG específica o data-testid
+                    let closeBtn = sidebar.querySelector('[data-testid="baseButton-header"]') || 
+                                   sidebar.querySelector('button'); 
+                    
+                    if (tabText.includes("Inicio") && isExpanded) {
+                        if (closeBtn) closeBtn.click();
+                    } else if (!tabText.includes("Inicio") && tabText.trim().length > 0 && !isExpanded) {
+                        if (openBtn) openBtn.click();
+                    }
+                }
+            }
+        });
+           const observer = new MutationObserver(() => {
+            const activeTab = parentDoc.querySelector('button[data-baseweb="tab"]');
+            if (!activeTab) return;
+            const tabText = activeTab.innerText || activeTab.textContent || "";
+            const sidebar = parentDoc.querySelector('[data-testid="stSidebar"]');
+            if (!sidebar) return;
+            const openBtn = parentDoc.querySelector('[data-testid="collapsedControl"]');
+            const closeBtn = sidebar.querySelector('[data-testid="baseButton-header"]') || sidebar.querySelector('button');
+            if (tabText.includes("Inicio")) {
+                if (closeBtn) closeBtn.click();
+            } else if (tabText.trim().length > 0) {
+                if (openBtn) openBtn.click();
+            }
+        });
+        observer.observe(parentDoc, { subtree: true, childList: true });
+    }
+</script>
+""", height=0, width=0)
+
+if "switch_tab" in st.session_state and st.session_state.switch_tab:
+    import streamlit.components.v1 as components
+    js_code = f"""
+    <script>
+    const tabs = window.parent.document.querySelectorAll('button[data-baseweb="tab"] p');
+    for (let i = 0; i < tabs.length; i++) {{
+        if (tabs[i].innerText.includes("{st.session_state.switch_tab}")) {{
+            tabs[i].parentElement.click();
+            break;
+        }}
+    }}
+    </script>
+    """
+    components.html(js_code, height=0, width=0)
+    st.session_state.switch_tab = None
 
 
 # =======================================================
@@ -487,82 +818,155 @@ if user_auth:
         
         neo = Neo4jGraphStore()
         profile = neo.get_user_profile(user_auth.get('orcid'))
-        neo.close()
         
         if profile and profile.get('academic_id'):
+            neo.close()
             st.success(f"✅ Tu cuenta está vinculada al perfil académico: **{profile.get('academic_name')}**")
-            st.info("💡 Ahora puedes ver tus métricas personalizadas y reportes de autoría.")
+            
+            if "queue_message" in st.session_state:
+                st.info(st.session_state.queue_message)
+                del st.session_state.queue_message
+            else:
+                st.info("💡 Ahora puedes ver tus métricas personalizadas y reportes de autoría.")
             
             # Botón de acceso directo a su vista
-            if st.button("📊 Ver mi Producción y Métricas"):
-                st.write("Cargando tu vista personalizada...")
-                render_investigador_view(profile.get('academic_name'), institution_name=selected_institution)
+            if st.button("📊 Ver mi Producción y Métricas", on_click=select_academic_in_ui, args=(profile.get('academic_name'),)):
+                st.success(f"✅ Seleccionado. Ve a la pestaña 'Perfil Académico'")
         else:
-            # FLUJO DE AUTO-DETECCIÓN: ¿Ya tenemos este ORCID en el padrón?
-            suggested_match = neo.find_academic_by_orcid(user_auth['orcid'])
-            
-            if suggested_match:
-                st.info(f"✨ **¡Te hemos identificado!** Encontramos un perfil en el padrón que coincide con tu ORCID.")
-                col_m1, col_m2 = st.columns([3, 1])
-                with col_m1:
-                    st.write(f"**{suggested_match['name']}**")
-                    st.caption(f"ID: {suggested_match['id']}")
-                with col_m2:
-                    if st.button("Sí, soy yo", key="confirm_auto_match"):
-                        neo_local = Neo4jGraphStore()
-                        neo_local.upsert_user(user_auth['orcid'], user_auth['name'])
-                        neo_local.link_user_to_academic(user_auth['orcid'], suggested_match['id'])
-                        neo_local.close()
-                        
-                        # Disparar procesamiento en tiempo real
-                        trigger_background_processing(suggested_match['name'], user_auth['orcid'])
-                        
-                        st.success("✅ Perfil vinculado con éxito. Iniciando descarga de tu producción científica en segundo plano...")
-                        st.rerun()
-                st.write("---")
-                st.write("¿No eres tú? Puedes buscar tu perfil manualmente a continuación:")
-            else:
-                st.warning("⚠️ Tu cuenta aún no está vinculada a un perfil del padrón institucional.")
-                st.write("Vincular tu perfil nos permite ofrecerte análisis precisos de tu producción científica.")
-            
-            with st.expander("🔍 Vincular mi Identidad Digital (Manual)", expanded=not suggested_match):
-                st.write("Busca tu nombre en el padrón para vincular tu ORCID verificado.")
-                search_query_me = st.text_input("Buscar mi nombre en el padrón:", placeholder="Ej: Carrillo Calvet", key="search_me")
+            if st.session_state.get('pending_claim_profile'):
+                pending = st.session_state.pending_claim_profile
+                res = pending['res']
+                other_orcids_str = ", ".join(pending['other_orcids'])
                 
-                if search_query_me:
-                    neo = Neo4jGraphStore()
-                    with neo.driver.session() as session:
-                        q_search = """
-                        MATCH (a:Person)
-                        WHERE a.fullname CONTAINS $q OR a.id CONTAINS $q
-                        RETURN a.id as id, a.fullname as name, a.orcid as existing_orcid
-                        LIMIT 5
-                        """
-                        results = session.run(q_search, q=search_query_me.upper()).data()
-                    neo.close()
+                st.warning(f"⚠️ **Conflicto de ORCID Detectado**")
+                st.write(f"Estás reclamando el perfil **{res['name']}** (ID: {res['id']}).")
+                st.write(f"Nuestros datos previos (identificados mediante algoritmos de vinculación) asocian a esta persona con el/los ORCID: **{other_orcids_str}**.")
+                st.write("¿Qué deseas hacer con el ORCID previo?")
+                
+                choice = st.radio(
+                    "Selecciona una opción:",
+                    [
+                        f"El ORCID ({other_orcids_str}) es incorrecto y debe ser eliminado.",
+                        f"Es otro ORCID mío y deseo conservarlo.",
+                    ],
+                    key="orcid_conflict_choice"
+                )
+                
+                c_btn1, c_btn2 = st.columns([1, 1])
+                with c_btn1:
+                    if st.button("Confirmar Vinculación", type="primary"):
+                        action = 'remove' if "incorrecto" in choice else 'keep'
+                        
+                        neo = Neo4jGraphStore()
+                        neo.resolve_orcid_conflict_and_link(
+                            new_orcid=user_auth['orcid'],
+                            academic_id=res['id'],
+                            conflict_orcids=pending['other_orcids'],
+                            action=action,
+                            user_name=user_auth.get('name')
+                        )
+                        neo.close()
+                        
+                        trigger_background_processing(res['name'], user_auth['orcid'])
+                        
+                        del st.session_state.pending_claim_profile
+                        st.session_state.queue_message = "⏳ Hemos iniciado la descarga de tu producción y el cálculo de tus métricas en segundo plano. Esto puede tardar un par de minutos en verse reflejado en tu dashboard."
+                        st.rerun()
+                with c_btn2:
+                    if st.button("Cancelar"):
+                        del st.session_state.pending_claim_profile
+                        st.rerun()
+            else:
+                # FLUJO DE AUTO-DETECCIÓN: ¿Ya tenemos este ORCID en el padrón?
+                suggested_match = neo.find_academic_by_orcid(user_auth['orcid'])
+                neo.close()
+                
+                if suggested_match:
+                    st.info(f"✨ **¡Te hemos identificado!** Encontramos un perfil en el padrón que coincide con tu ORCID.")
+                    col_m1, col_m2 = st.columns([3, 1])
+                    with col_m1:
+                        st.write(f"**{suggested_match['name']}**")
+                        st.caption(f"ID: {suggested_match['id']}")
+                    with col_m2:
+                        if st.button("Sí, soy yo", key="confirm_auto_match"):
+                            neo_local = Neo4jGraphStore()
+                            neo_local.upsert_user(user_auth['orcid'], user_auth['name'])
+                            neo_local.link_user_to_academic(user_auth['orcid'], suggested_match['id'])
+                            neo_local.close()
+                            
+                            # Disparar procesamiento en tiempo real
+                            trigger_background_processing(suggested_match['name'], user_auth['orcid'])
+                            
+                            st.session_state.queue_message = "⏳ Perfil vinculado con éxito. Hemos iniciado la descarga de tu producción y el cálculo de tus métricas en segundo plano. Esto puede tardar unos minutos en verse reflejado."
+                            st.rerun()
+                    st.write("---")
+                    st.write("¿No eres tú? Puedes buscar tu perfil manualmente a continuación:")
+                else:
+                    st.warning("⚠️ Tu cuenta aún no está vinculada a un perfil del padrón institucional.")
+                    st.write("Vincular tu perfil nos permite ofrecerte análisis precisos de tu producción científica.")
+                
+                with st.expander("🔍 Vincular mi Identidad Digital (Manual)", expanded=not suggested_match):
+                    st.write("Busca tu nombre en el padrón para vincular tu ORCID verificado.")
+                    search_query_me = st.text_input("Buscar mi nombre en el padrón:", placeholder="Ej: Carrillo Calvet", key="search_me")
                     
-                    if results:
-                        for res in results:
-                            col1, col2 = st.columns([3, 1])
-                            with col1:
-                                st.write(f"**{res['name']}**")
-                                st.caption(f"ID: {res['id']} | ORCID previo: {res['existing_orcid'] or 'Ninguno'}")
-                            with col2:
-                                if st.button("Este soy yo", key=f"claim_me_{res['id']}"):
-                                    neo = Neo4jGraphStore()
-                                    neo.upsert_user(user_auth['orcid'], user_auth['name'])
-                                    neo.link_user_to_academic(user_auth['orcid'], res['id'])
-                                    neo.close()
+                    if search_query_me:
+                        neo = Neo4jGraphStore()
+                        with neo.driver.session() as session:
+                            q_search = """
+                            MATCH (a:Person)
+                            WHERE a.fullname CONTAINS $q OR a.id CONTAINS $q
+                            RETURN a.id as id, a.fullname as name, a.orcid as existing_orcid, a.orcids as existing_orcids
+                            LIMIT 5
+                            """
+                            results = session.run(q_search, q=search_query_me.upper()).data()
+                        neo.close()
+                        
+                        if results:
+                            for res in results:
+                                col1, col2 = st.columns([3, 1])
+                                
+                                # Extraer lista de ORCIDs existentes
+                                existing_orcids_list = res.get('existing_orcids') or []
+                                if isinstance(existing_orcids_list, str):
+                                    existing_orcids_list = [existing_orcids_list]
+                                elif not isinstance(existing_orcids_list, list):
+                                    existing_orcids_list = []
+                                
+                                if res.get('existing_orcid') and res.get('existing_orcid') not in existing_orcids_list:
+                                    existing_orcids_list.append(res['existing_orcid'])
                                     
-                                    # Disparar procesamiento en tiempo real
-                                    trigger_background_processing(res['name'], user_auth['orcid'])
-                                    
-                                    st.success(f"✅ ¡Perfil vinculado con éxito! Iniciando procesamiento de tus datos...")
-                                    st.rerun()
-                    else:
-                        st.info("No te encontramos? Prueba buscando solo tu primer apellido o ID de OpenAlex.")
-                        if st.button("Solicitar nuevo registro"):
-                            st.write("Formulario de registro en desarrollo...")
+                                orcid_display = ", ".join(existing_orcids_list) if existing_orcids_list else 'Ninguno'
+                                
+                                with col1:
+                                    st.write(f"**{res['name']}**")
+                                    st.caption(f"ID: {res['id']} | ORCID previo: {orcid_display}")
+                                with col2:
+                                    if st.button("Este soy yo", key=f"claim_me_{res['id']}"):
+                                        # Determinar si hay conflicto
+                                        other_orcids = [o for o in existing_orcids_list if o and o != user_auth['orcid']]
+                                        
+                                        if other_orcids:
+                                            st.session_state.pending_claim_profile = {
+                                                'res': res,
+                                                'other_orcids': other_orcids
+                                            }
+                                            st.rerun()
+                                        else:
+                                            neo = Neo4jGraphStore()
+                                            neo.upsert_user(user_auth['orcid'], user_auth['name'])
+                                            neo.link_user_to_academic(user_auth['orcid'], res['id'])
+                                            neo.close()
+                                            
+                                            # Disparar procesamiento en tiempo real
+                                            trigger_background_processing(res['name'], user_auth['orcid'])
+                                            
+                                            st.session_state.queue_message = "⏳ Hemos iniciado la descarga de tu producción y el cálculo de tus métricas en segundo plano. Esto puede tardar un par de minutos en verse reflejado en tu dashboard."
+                                            st.rerun()
+                        else:
+                            st.info("No te encontramos? Prueba buscando solo tu primer apellido o ID de OpenAlex.")
+                            if st.button("Solicitar nuevo registro"):
+                                st.write("Formulario de registro en desarrollo...")
+
 
 # =======================================================
 # TAB: Consejo Estratégico Virtual
@@ -705,6 +1109,14 @@ if tab_council is not None:
                     if k in st.session_state: del st.session_state[k]
                 st.rerun()
 
+# =======================================================
+# TAB: Mapas de la Ciencia (Deepscatter)
+# =======================================================
+if tab_maps is not None:
+    with tab_maps:
+        from dashboard_maps import render_maps_view
+        render_maps_view()
+
 
 
 
@@ -713,13 +1125,9 @@ if tab_council is not None:
 # =======================================================
 with tab_chat:
     
-    st.markdown("### Selecciona el Modo del Asistente")
-    assistant_type = st.radio(
-        "Tipo de Asistente",
-        ["⚡ Reactivo (Respuestas Rápidas)", "🧠 Analítico (Planificador & Ejecutor)"],
-        horizontal=True,
-        label_visibility="collapsed"
-    )
+    st.markdown("### Asistente Científico")
+    # Oculto temporalmente: st.radio para elegir entre Reactivo y Analítico
+    assistant_type = "⚡ Reactivo (Respuestas Rápidas)"
     
     plan_mode_internal = "plan_and_execute"
     if "Analítico" in assistant_type:
@@ -949,6 +1357,43 @@ if tab_test is not None:
 # =======================================================
 # TAB 2: Vista de la Institución
 # =======================================================
+with tab_home:
+    # El mapa se mostrará sin título ni textos superiores
+    
+    # Renderizamos el mapa de artículos como iframe a pantalla completa
+    # Usamos components.html con JS que calcula la altura dinámica del viewport
+    import streamlit.components.v1 as components
+    iframe_url = "https://dinamica1.fciencias.unam.mx/tiles/map.html?v=26&demo=true&data=https://dinamica1.fciencias.unam.mx/tiles/articles_data.json?v=26"
+    
+    # HTML + JS que calcula la altura disponible restando la posición del iframe
+    map_html = f"""
+    <div id="map-container" style="width:100%; overflow:hidden;">
+        <iframe id="map-iframe" src="{iframe_url}" 
+                style="width:100%; border:none; display:block;" 
+                scrolling="no">
+        </iframe>
+    </div>
+    <script>
+        function resizeMap() {{
+            var iframe = document.getElementById('map-iframe');
+            var container = document.getElementById('map-container');
+            // Altura del viewport menos la posición vertical del iframe menos un pequeño margen para el footer
+            var rect = container.getBoundingClientRect();
+            var availableHeight = window.innerHeight - rect.top - 10;
+            if (availableHeight < 400) availableHeight = 400; // mínimo razonable
+            iframe.style.height = availableHeight + 'px';
+        }}
+        resizeMap();
+        window.addEventListener('resize', resizeMap);
+        // Reintentar tras un breve delay por si Streamlit aún no terminó de renderizar
+        setTimeout(resizeMap, 300);
+        setTimeout(resizeMap, 1000);
+    </script>
+    """
+    with st.spinner("Cargando la galaxia del conocimiento..."):
+        components.html(map_html, height=1080, scrolling=False)
+
+
 with tab_inst:
     st.markdown("### 📊 Perspectiva Analítica")
     view_mode_inst = st.radio(
@@ -956,7 +1401,7 @@ with tab_inst:
         ["Capacidad Instalada", "Producción Institucional"],
         index=0,
         horizontal=True,
-        help="Capacidad Instalada: Suma de la producción de los académicos adscritos a la institución.\nProducción Institucional: Papers firmados explícitamente con tu ROR.",
+        help="Capacidad Instalada: Suma de la producción de los académicos adscritos a la institución.\nProducción Institucional: Papers cargados manualmente o identificados via openalex id o ROR.",
         key="view_mode_inst_tab"
     )
     v_mode_inst_code = "capacidad_instalada" if view_mode_inst == "Capacidad Instalada" else "produccion_institucional"
@@ -981,7 +1426,7 @@ with tab_inv:
 # =======================================================
 with tab_about:
     st.info("""
-        **🛡️ Aviso de Privacidad y Fuentes de Datos**
+        **Aviso de Privacidad y Fuentes de Datos**
         
         La información bibliométrica y de producción científica contenida en **Sinapsis AI** procede exclusivamente de fuentes de datos públicas y repositorios institucionales de acceso libre, incluyendo: **OpenAlex, Scopus, ORCID, SNII (CONAHCYT), SIIA (UNAM)** y otros catálogos académicos globales.
         
@@ -1048,7 +1493,7 @@ with tab_about:
     )
     c5, c6, c7 = st.columns(3)
     c5.metric(
-        "✅ Con ROR asignado",
+        "✅ Con ROR identificado",
         f"{snii_ror.get('institutions_with_ror', 0):,}",
         help="Entidades con un ROR ID identificado (cualquier confianza)."
     )
@@ -1104,46 +1549,40 @@ with tab_about:
     st.markdown("Diagrama de Entidad-Relación que describe cómo se almacena la información estructurada de Sinapsis AI.")
     schema_mermaid = """
     erDiagram
-        Person ||--o{ Paper : AUTHORED
-        Person }o--|| Institution : AFFILIATED_TO
-        Person }o--|| Dependency : AFFILIATED_TO
-        Person }o--|| Subdependency : AFFILIATED_TO
+        %% Entidades Principales
+        Person ||--o{ Paper : ""
+        Person }o--|| Subdependency : ""
+        Person }o--|| Dependency : ""
+        Person }o--|| Institution : ""
         
-        Subdependency }o--|| Dependency : PART_OF
-        Dependency }o--|| Institution : PART_OF
+        %% Estructura Institucional
+        Subdependency }o--|| Dependency : ""
+        Dependency }o--|| Institution : ""
+        Institution }o--|| State : ""
+        Institution }o--|| Country : ""
         
-        Person }o--|| KnowledgeArea : SPECIALIZED_IN
-        Person }o--|| Discipline : SPECIALIZED_IN
-        Person }o--|| Subdiscipline : SPECIALIZED_IN
-        Person }o--|| Specialty : SPECIALIZED_IN
+        %% Vínculos Institucionales del Paper
+        Paper }o--|| Institution : ""
+        Institution ||--o{ Paper : ""
+        Dependency ||--o{ Paper : ""
         
-        Specialty }o--|| Subdiscipline : BELONGS_TO
-        Subdiscipline }o--|| Discipline : BELONGS_TO
-        Discipline }o--|| KnowledgeArea : BELONGS_TO
+        %% Sistema Nacional de Investigadores (SNII)
+        Person }o--|| Specialty : ""
+        Specialty }o--|| Subdiscipline : ""
+        Subdiscipline }o--|| Discipline : ""
+        Discipline }o--|| KnowledgeArea : ""
         
-        Paper ||--o{ Concept : HAS_CONCEPT
-        Paper ||--o{ Topic : HAS_TOPIC
+        %% Taxonomía OpenAlex
+        Paper }o--|| Topic : ""
+        Topic }o--|| TopicSubfield : ""
+        TopicSubfield }o--|| TopicField : ""
+        TopicField }o--|| TopicDomain : ""
         
-        Person {
-            string id
-            string fullname
-            bool is_snii
-        }
-        Paper {
-            string doi
-            string title
-            int year
-            int citations
-        }
-
-        Topic {
-            string id
-            string name
-        }
-        SDG {
-            string id
-            string name
-        }
+        %% Metadatos Extendidos
+        Paper }o--|| SDG : ""
+        Paper }o--|| Funder : ""
+        Paper }o--|| Award : ""
+        Paper }o--|| Concept : ""
     """
     
     html_schema = f"""
@@ -1204,28 +1643,27 @@ with tab_about:
     
     mermaid_code = """
     graph TD
-        G[Neo4j: Knowledge Graph]-->I[Archivos Parquet]
+        A[Fuentes: OpenAlex, ORCID, SNII] --> B[Pipeline de Ingesta]
         
-        G -.-> H[Qdrant: Vector DB]
+        B --> G[Neo4j: Knowledge Graph]
+        B --> CH[ClickHouse: Motor Analítico OLAP]
+        B -.-> H[Qdrant: Vector DB]
         
+        CH --> I[Caché Local Parquet]
+        I --> J[Dashboard de Analítica]
         
-        I --> J[Local Cache]
-        
-        J --> K[Dashboard de Analitica]
-        K --> L[Vistas]
-        L --> M[Perfil Institucional]
-        L --> N[Perfil Académico]
+        J --> K[Vistas Institucional y Académico]
         
         H <--> O[Orquestador RAG]
         G <--> O
+        CH <--> O
         
         O --> P[Local LLM]
-        O --> Q[Cypher Tool]
+        O --> Q[Neo4j Graph Tool]
         O --> R[Semantic Search Tool]
-        O --> S[Open Interpreter]
-        O --> T[Web Search: DuckDuckGo]
-        O --> U[Wikipedia Tool]
-        O --> V[Direct OpenAlex API]
+        O --> S[ClickHouse Analytics Tool]
+        
+        J --> O
     """
     
     # Renderizamos Mermaid JS usando inyección segura de componentes de Streamlit
@@ -1247,24 +1685,20 @@ with tab_about:
     
     mermaid_ingestion = """
     graph TD
-        A[1. Padrón Oficial SNII / Excel] --> B[Lista Base de Investigadores JSON]
-        B --> C[Enriquecimiento Global APIs]
+        A[1. Padrón Oficial SNII / Excel] --> B[Lista Base Investigadores]
+        B --> C[Enriquecimiento APIs]
         C --> D[OpenAlex]
         C --> E[ORCID / Scopus]
-        D --> F[Neo4j: Nodos Person / Paper]
+        
+        D --> F[Procesamiento y Limpieza]
         E --> F
         
-        F --> G[Jerarquía de Conocimiento (4 Niveles)]
-        F --> H[Jerarquía Institucional (3 Niveles)]
+        F --> G[Neo4j: Grafos Relacionales]
+        F --> CH[ClickHouse: Datos Tabulares]
+        F --> Q[Qdrant: Embeddings Densos]
         
-        G --> I[Neo4j: Knowledge Graph]
-        H --> I
-        
-        I --> J[Motor de Cómputo Analítico]
-        J --> K[Métricas Institucionales]
-        J --> L[Métricas por Investigador]
-        K --> M[Dataframe en Caché Parquet]
-        L --> M
+        CH --> Z[Cálculo de Métricas]
+        Z --> Y[Exportación a Parquets para Dashboard]
     """
 
     html_mermaid_ingestion = f"""
@@ -1343,3 +1777,104 @@ st.markdown("""
         📊 Sinapsis AI - UNAM
     </div>
 """, unsafe_allow_html=True)
+
+# =======================================================
+# WIDGET FLOTANTE: ASISTENTE CONTEXTUAL
+# =======================================================
+from utils.ui_context_collector import get_current_ui_context
+
+st.markdown("""
+<style>
+/* El modal ya se centra solo. Puedes inyectar algo extra aquí si quieres */
+</style>
+""", unsafe_allow_html=True)
+
+@st.dialog("💬 Asistente SINAPSIS", width="large")
+def explain_chart_dialog():
+    c_title, c_clear = st.columns([0.8, 0.2])
+    with c_title:
+        st.markdown("#### Análisis en vivo")
+        st.caption("Puedo leer las gráficas que ves y donde haces clic.")
+    with c_clear:
+        if st.button("🗑️ Limpiar", help="Borrar historial del asistente", type="tertiary"):
+            if "chat_history" in st.session_state:
+                st.session_state.chat_history = []
+    
+    # Indicador de selección activa
+    active_selection = ""
+    docs_sel = st.session_state.get("inst_annual_docs", {}) or st.session_state.get("inv_annual_docs", {})
+    if docs_sel and docs_sel.get("selection", {}).get("points"):
+        active_selection = "🎯 **Gráfica seleccionada:** Producción Histórica"
+    fwci_sel = st.session_state.get("inst_annual_fwci", {})
+    if fwci_sel and fwci_sel.get("selection", {}).get("points"):
+        active_selection = "🎯 **Gráfica seleccionada:** Evolución FWCI"
+    sunburst_sel = st.session_state.get("inst_sunburst", {}) or st.session_state.get("inv_sunburst", {})
+    if sunburst_sel and sunburst_sel.get("selection", {}).get("points"):
+        active_selection = "🎯 **Gráfica seleccionada:** Sunburst Temático"
+        
+    if active_selection:
+        st.info(active_selection)
+    
+    float_container = st.container(height=350)
+    
+    # Mostrar historial (compartido con la pestaña principal)
+    with float_container:
+        if "chat_history" in st.session_state:
+            for msg in st.session_state.chat_history[-6:]:
+                with st.chat_message(msg["role"]):
+                    st.markdown(msg["content"])
+                    
+    if float_prompt := st.chat_input("¿Qué quieres saber de esta vista?", key="dialog_chat_input"):
+        if "chat_history" not in st.session_state:
+            st.session_state.chat_history = []
+        st.session_state.chat_history.append({"role": "user", "content": float_prompt})
+        st.session_state.auto_run_float_assistant = float_prompt
+        
+    if st.session_state.get("auto_run_float_assistant"):
+        current_prompt = st.session_state.auto_run_float_assistant
+        st.session_state.auto_run_float_assistant = None
+        
+        with float_container:
+            with st.chat_message("assistant"):
+                placeholder = st.empty()
+                placeholder.markdown("🔍 *Analizando pantalla...*")
+                
+                try:
+                    ui_ctx = get_current_ui_context()
+                    orchestrator = st.session_state.orchestrator
+                    session_id = st.session_state.session_id
+                    
+                    async def ask_float():
+                        return await orchestrator.ask_lightweight(session_id, current_prompt, ui_ctx)
+                        
+                    response = _run_async_in_thread(ask_float())
+                    placeholder.markdown(response)
+                    
+                    st.session_state.chat_history.append({
+                        "role": "assistant",
+                        "content": response
+                    })
+                except Exception as e:
+                    placeholder.error(f"Error: {e}")
+
+# === AUTO-TRIGGER EXPLICAR GRÁFICA / INDICADOR ===
+if "trigger_explain_chart" in st.session_state and st.session_state.trigger_explain_chart:
+    chart_name = st.session_state.trigger_explain_chart
+    chart_data = st.session_state.get("trigger_explain_data", None)
+    
+    st.session_state.trigger_explain_chart = None
+    st.session_state.trigger_explain_data = None
+    
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+        
+    msg = f"💡 Por favor dame un análisis breve e interpretación de este elemento: **{chart_name}**."
+    if chart_data:
+        msg += f"\n\nLos datos actuales en pantalla son:\n```\n{chart_data}\n```\n\nExplícame contextualmente qué significan estas tendencias o valores."
+    else:
+        msg += "\n\nExplícame contextualmente qué significa y por qué es relevante."
+        
+    st.session_state.chat_history.append({"role": "user", "content": msg})
+    st.session_state.auto_run_float_assistant = msg
+    
+    explain_chart_dialog()

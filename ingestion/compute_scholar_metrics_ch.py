@@ -40,10 +40,16 @@ from pathlib import Path
 from dotenv import load_dotenv
 import unicodedata
 from sklearn.preprocessing import StandardScaler
+HAS_CUML = False
 try:
-    from umap import UMAP
+    import cuml
+    from cuml.manifold import UMAP
+    HAS_CUML = True
 except ImportError:
-    UMAP = None
+    try:
+        from umap import UMAP
+    except ImportError:
+        UMAP = None
 
 warnings.filterwarnings('ignore')
 try:
@@ -392,10 +398,168 @@ def _query_prod_neo4j(
     return df_out
 
 
+def _translate_sources_and_authors(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Traduce las URLs de revistas (Source) y coautores (author_names/authors) 
+    a nombres legibles en texto desde ClickHouse para evitar consultas en el dashboard.
+    """
+    if df.empty:
+        return df
+        
+    # 1. Traducir Source (Revistas)
+    source_col = 'Source' if 'Source' in df.columns else ('source' if 'source' in df.columns else None)
+    if source_col:
+        source_ids = df[source_col].dropna().unique().tolist()
+        valid_sids = []
+        for sid in source_ids:
+            if not sid:
+                continue
+            sid_str = str(sid).strip()
+            if sid_str.startswith('https://openalex.org/S'):
+                valid_sids.append(sid_str)
+            elif sid_str.startswith('S') and sid_str[1:].isdigit():
+                valid_sids.append(f'https://openalex.org/{sid_str}')
+                
+        if valid_sids:
+            src_mapping = {}
+            chunk_size = 500
+            for i in range(0, len(valid_sids), chunk_size):
+                chunk = valid_sids[i:i + chunk_size]
+                query = "SELECT id, display_name FROM sources WHERE id IN %(ids)s"
+                try:
+                    df_src = ch_client.query_df(query, {"ids": chunk})
+                    if not df_src.empty:
+                        for _, row in df_src.iterrows():
+                            full_id = row['id']
+                            name = row['display_name']
+                            src_mapping[full_id] = name
+                            short_id = full_id.split('/')[-1]
+                            src_mapping[short_id] = name
+                except Exception:
+                    pass
+            
+            def translate_source(val):
+                if not val:
+                    return val
+                val_str = str(val).strip()
+                if val_str in src_mapping:
+                    return src_mapping[val_str]
+                if val_str.startswith('https://openalex.org/S'):
+                    short = val_str.split('/')[-1]
+                    return src_mapping.get(short, short)
+                return val
+                
+            df[source_col] = df[source_col].apply(translate_source)
+                
+    # 2. Traducir author_names / authors
+    author_col = 'author_names' if 'author_names' in df.columns else ('authors' if 'authors' in df.columns else None)
+    if author_col:
+        all_author_ids = set()
+        for val in df[author_col].dropna():
+            if isinstance(val, (list, np.ndarray)):
+                for aid in val:
+                    aid_str = str(aid).strip()
+                    if aid_str:
+                        if aid_str.startswith('https://openalex.org/A'):
+                            all_author_ids.add(aid_str)
+                        elif aid_str.startswith('A') and aid_str[1:].isdigit():
+                            all_author_ids.add(f'https://openalex.org/{aid_str}')
+            elif isinstance(val, str):
+                val_str = val.strip()
+                if val_str.startswith('['):
+                    try:
+                        import ast
+                        parsed = ast.literal_eval(val_str)
+                        if isinstance(parsed, list):
+                            for aid in parsed:
+                                aid_str = str(aid).strip()
+                                if aid_str.startswith('https://openalex.org/A'):
+                                    all_author_ids.add(aid_str)
+                                elif aid_str.startswith('A') and aid_str[1:].isdigit():
+                                    all_author_ids.add(f'https://openalex.org/{aid_str}')
+                            continue
+                    except Exception:
+                        pass
+                if ',' in val_str:
+                    parts = [p.strip() for p in val_str.split(',')]
+                    for p in parts:
+                        if p:
+                            if p.startswith('https://openalex.org/A'):
+                                all_author_ids.add(p)
+                            elif p.startswith('A') and p[1:].isdigit():
+                                all_author_ids.add(f'https://openalex.org/{p}')
+                else:
+                    if val_str.startswith('https://openalex.org/A'):
+                        all_author_ids.add(val_str)
+                    elif val_str.startswith('A') and val_str[1:].isdigit():
+                        all_author_ids.add(f'https://openalex.org/{val_str}')
+                
+        if all_author_ids:
+            auth_mapping = {}
+            valid_aids = list(all_author_ids)
+            chunk_size = 500
+            for i in range(0, len(valid_aids), chunk_size):
+                chunk = valid_aids[i:i + chunk_size]
+                query = "SELECT id, display_name FROM authors WHERE id IN %(ids)s"
+                try:
+                    df_aut = ch_client.query_df(query, {"ids": chunk})
+                    if not df_aut.empty:
+                        for _, row in df_aut.iterrows():
+                            full_id = row['id']
+                            name = row['display_name']
+                            auth_mapping[full_id] = name
+                            short_id = full_id.split('/')[-1]
+                            auth_mapping[short_id] = name
+                except Exception:
+                    pass
+                    
+            def format_authors_list(val):
+                if val is None:
+                    return []
+                if isinstance(val, (list, np.ndarray)):
+                    if len(val) == 0:
+                        return []
+                else:
+                    if pd.isna(val) or str(val).strip() == "":
+                        return []
+                        
+                def resolve_name(aid):
+                    aid_str = str(aid).strip()
+                    if aid_str in auth_mapping:
+                        return auth_mapping[aid_str]
+                    if aid_str.startswith('https://openalex.org/A'):
+                        short = aid_str.split('/')[-1]
+                        return auth_mapping.get(short, short)
+                    return aid_str
+                    
+                if isinstance(val, (list, np.ndarray)):
+                    return [resolve_name(aid) for aid in val if aid]
+                elif isinstance(val, str):
+                    val_str = val.strip()
+                    if val_str.startswith('['):
+                        try:
+                            import ast
+                            parsed = ast.literal_eval(val_str)
+                            if isinstance(parsed, list):
+                                return [resolve_name(aid) for aid in parsed if aid]
+                        except Exception:
+                            pass
+                    if ',' in val_str:
+                        parts = [p.strip() for p in val_str.split(',')]
+                        return [resolve_name(p) for p in parts if p]
+                    return [resolve_name(val_str)]
+                return [str(val)]
+                
+            df[author_col] = df[author_col].apply(format_authors_list)
+                
+    return df
+
+
 # ── Helpers de normalización ───────────────────────────────────────────────
 
 def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Garantiza columnas mínimas para aggregate_metrics."""
+    df = _translate_sources_and_authors(df)
     num_na = ['fwci', 'citation_normalized_percentile']
     for c in num_na:
         if c not in df.columns:
@@ -485,15 +649,30 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
         df[['velocity', 'recent_cites_3yr', 'early_impact', 'half_life']] = df.apply(_calc_traj, axis=1)
     
     # 3. Visibilidad e Indexación
-    index_cols = [
-        'journal_is_in_doaj', 'journal_is_core', 'any_repository_has_fulltext',
-        'is_wos', 'is_scopus', 'is_pubmed', 'is_openalex', 'is_doaj'
-    ]
-    for c in index_cols:
+    # journal_is_in_doaj / journal_is_core / any_repository_has_fulltext vienen de ClickHouse
+    for c in ['journal_is_in_doaj', 'journal_is_core', 'any_repository_has_fulltext']:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0).astype(int)
         else:
             df[c] = 0
+
+    # is_wos, is_scopus, is_pubmed, is_openalex, is_doaj: si vienen, convertir;
+    # si NO vienen (CH no los provee), dejar NaN para que pct_pubmed/pct_doaj sean NaN
+    for c in ['is_wos', 'is_scopus', 'is_pubmed', 'is_openalex', 'is_doaj']:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0).astype(int)
+        # Si no existe, no crear la columna — aggregate_metrics la ignorará
+
+    # indexed_in: si existe, derivar in_pubmed e in_doaj
+    if 'indexed_in' in df.columns:
+        df['in_pubmed'] = df['indexed_in'].apply(
+            lambda x: int('pubmed' in (x or [])) if isinstance(x, list) else 0
+        )
+        df['in_doaj'] = df['indexed_in'].apply(
+            lambda x: int('doaj' in (x or [])) if isinstance(x, list) else 0
+        )
+    # Si indexed_in no existe (pipeline CH), in_pubmed / in_doaj quedarán ausentes
+    # y aggregate_metrics los omitirá -> pct_pubmed / pct_doaj mostrarán NaN
 
     # 4. APC y Otros
     for c in ['apc_paid_usd', 'apc_list_usd']:
@@ -579,7 +758,7 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
         df['counts_by_year'] = [[] for _ in range(len(df))]
 
     if 'language' not in df.columns:
-        df['language'] = 'en'
+        df['language'] = np.nan  # Sin dato real -> pct_english quedará NaN
     if 'has_oa_data' not in df.columns:
         df['has_oa_data'] = 1
 
@@ -664,16 +843,168 @@ def _safe_name(s: str) -> str:
     return str(s).replace('/', '_').replace('\\', '_')
 
 
+import duckdb
+import json
+import atexit
+
+DUCKDB_PATH = Path('/home/sinapsisai/data/analytics_cache.duckdb')
+DUCKDB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+_GLOBAL_CONN = None
+
+def get_duckdb_conn():
+    global _GLOBAL_CONN
+    if _GLOBAL_CONN is None:
+        import time
+        max_retries = 15
+        retry_delay = 0.5  # segundos
+        for attempt in range(max_retries):
+            try:
+                _GLOBAL_CONN = duckdb.connect(str(DUCKDB_PATH))
+                break
+            except duckdb.IOException as e:
+                if "Could not set lock" in str(e) and attempt < max_retries - 1:
+                    time.sleep(retry_delay * (1.5 ** attempt))
+                else:
+                    raise e
+    return _GLOBAL_CONN
+
+def close_duckdb_conn():
+    global _GLOBAL_CONN
+    if _GLOBAL_CONN is not None:
+        try:
+            _GLOBAL_CONN.close()
+        except:
+            pass
+        _GLOBAL_CONN = None
+
+atexit.register(close_duckdb_conn)
+
+_FILENAME_TO_TABLE = {
+    'institucion_annual.parquet': 'institucion_annual',
+    'investigador_annual.parquet': 'investigador_annual',
+    'institucion_total.parquet': 'institucion_total',
+    'investigador_total.parquet': 'investigador_total',
+    'investigador_recent.parquet': 'investigador_recent',
+    'keywords_institucion.parquet': 'keywords_institucion',
+    'keywords_investigador.parquet': 'keywords_investigador',
+    'papers_institucion.parquet': 'papers_institucion',
+    'papers_profesor.parquet': 'papers_profesor',
+    'thematic_evolution_institucion.parquet': 'thematic_evolution_institucion',
+    'thematic_evolution_investigador.parquet': 'thematic_evolution_investigador',
+    'topics_institucion.parquet': 'topics_institucion',
+    'topics_investigador.parquet': 'topics_investigador',
+    'umap_investigadores.parquet': 'umap_investigadores'
+}
+
+def _save_duckdb(df: pd.DataFrame, path: Path):
+    if df is None or df.empty:
+        return
+        
+    try:
+        parts = path.relative_to(CACHE_DIR).parts
+    except ValueError:
+        return 
+        
+    if not parts:
+        return
+        
+    filename = parts[-1]
+    table_name = _FILENAME_TO_TABLE.get(filename)
+    if not table_name:
+        return
+        
+    level = "UNKNOWN"
+    view_mode = "capacidad_instalada"
+    inst = None
+    ent = None
+    ac = None
+    
+    if len(parts) == 3:
+        inst = parts[0]
+        ent = parts[0]
+        view_mode = parts[1]
+        level = "NATIONAL" if inst.upper() in ["MEXICO", "MÉXICO"] else "INSTITUTION"
+    elif len(parts) == 4:
+        inst = parts[0]
+        ent = parts[1]
+        if parts[2] in ["capacidad_instalada", "produccion_institucional"]:
+            level = "ENTITY"
+            view_mode = parts[2]
+        else:
+            level = "RESEARCHER"
+            ac = parts[2]
+    else:
+        return 
+
+    df_db = df.copy()
+    
+    df_db['db_level'] = level
+    df_db['db_view_mode'] = view_mode
+    df_db['db_institution_name'] = inst
+    df_db['db_entity_name'] = ent
+    df_db['db_academic_name'] = ac
+    
+    con = get_duckdb_conn()
+    
+    where_clauses = ["db_level = ?"]
+    params = [level]
+    
+    if inst:
+        where_clauses.append("db_institution_name = ?")
+        params.append(inst)
+    if ent:
+        where_clauses.append("db_entity_name = ?")
+        params.append(ent)
+    if ac:
+        where_clauses.append("db_academic_name = ?")
+        params.append(ac)
+    if view_mode:
+        where_clauses.append("db_view_mode = ?")
+        params.append(view_mode)
+        
+    where_sql = " AND ".join(where_clauses)
+    
+    table_exists = con.execute(f"SELECT count(*) FROM information_schema.tables WHERE table_name = '{table_name}'").fetchone()[0] > 0
+    
+    for col in df_db.columns:
+        if df_db[col].dtype == object:
+            try:
+                sample = df_db[col].dropna().iloc[0]
+                if isinstance(sample, (list, dict)):
+                    df_db[col] = df_db[col].apply(lambda x: json.dumps(x, ensure_ascii=False) if isinstance(x, (list, dict)) else x)
+            except IndexError:
+                pass
+
+    if table_exists:
+        con.execute(f"DELETE FROM {table_name} WHERE {where_sql}", params)
+        
+        # Dynamic schema evolution
+        existing_columns = con.execute(f"DESCRIBE {table_name}").df()['column_name'].tolist()
+        con.register('df_db', df_db)
+        con.execute("CREATE TEMP TABLE temp_df AS SELECT * FROM df_db")
+        new_cols = con.execute("DESCRIBE temp_df").df()
+        existing_columns_lower = [c.lower() for c in existing_columns]
+        
+        for _, row in new_cols.iterrows():
+            col_name = row['column_name']
+            col_type = row['column_type']
+            if col_name.lower() not in existing_columns_lower:
+                con.execute(f'ALTER TABLE {table_name} ADD COLUMN "{col_name}" {col_type}')
+                
+        con.execute(f"INSERT INTO {table_name} BY NAME SELECT * FROM temp_df")
+        con.execute("DROP TABLE temp_df")
+    else:
+        con.execute(f"CREATE TABLE {table_name} AS SELECT * FROM df_db")
 
 
 def _save_parquet(df: pd.DataFrame, path: Path, updated_files: set = None):
     if df is None or df.empty:
         return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(path, index=False)
-    if updated_files is not None:
-        updated_files.add(str(path.absolute()))
-
+    try:
+        _save_duckdb(df, path)
+    except Exception as e:
+        print(f"  ⚠️ Error guardando en DuckDB ({path.name}): {e}")
 
 def _save_inst_parquets(df: pd.DataFrame, base_dir: Path,
                         group_col: str, updated_files: set = None):
@@ -811,6 +1142,27 @@ def _save_aggregate_parquets(df: pd.DataFrame, out_dir: Path,
     # Convertir a lista ordenada de diccionarios para el JSON
     final_ac_list = sorted(list(ac_map.values()), key=lambda x: x['name'] or '')
     df_tot['academics_list'] = json.dumps(final_ac_list, ensure_ascii=False)
+
+    # 3. Métricas de Identificadores (ORCID y otros)
+    try:
+        neo = Neo4jGraphStore()
+        search_inst = None if not inst or inst.upper() == 'MEXICO' or inst.upper() == 'MÉXICO' else inst
+        stats = neo.get_academic_identifier_metrics(search_inst, dep, sub)
+        neo.close()
+
+        total_ac = stats.get('total_academics', 0)
+        total_sn = stats.get('total_snii', 0)
+
+        df_tot['pct_academic_orcid'] = (stats.get('with_orcid', 0) / max(1, total_ac)) * 100.0 if total_ac > 0 else 0.0
+        df_tot['pct_academic_any_id'] = (stats.get('with_any_id', 0) / max(1, total_ac)) * 100.0 if total_ac > 0 else 0.0
+        df_tot['pct_snii_orcid'] = (stats.get('snii_with_orcid', 0) / max(1, total_sn)) * 100.0 if total_sn > 0 else 0.0
+        df_tot['pct_snii_any_id'] = (stats.get('snii_with_any_id', 0) / max(1, total_sn)) * 100.0 if total_sn > 0 else 0.0
+    except Exception as e:
+        print(f"  ⚠️ Error obteniendo métricas de identificadores: {e}")
+        df_tot['pct_academic_orcid'] = 0.0
+        df_tot['pct_academic_any_id'] = 0.0
+        df_tot['pct_snii_orcid'] = 0.0
+        df_tot['pct_snii_any_id'] = 0.0
 
     # Inyectar conteo oficial SNII 2025
     path_counts = BASE_PATH / 'data' / 'official_snii_counts.json'
@@ -1109,29 +1461,85 @@ def _count_official_census():
     except Exception as e:
         print(f"  ⚠️ Error calculando censo oficial desde Excel: {e}")
 
-def _load_hierarchy_from_json(institution_filter=None):
-    """Carga la jerarquía institucional desde el JSON de auditoría."""
-    AUDIT_PATH = BASE_PATH / 'data' / 'snii_llm_verified_matches.json'
-    if not AUDIT_PATH.exists():
-        print(f"❌ No existe {AUDIT_PATH}")
-        return {}
+def _is_mexican_institution(inst_name, ror=None, country_code=None):
+    """
+    Determina si una institución es mexicana basándose en el catálogo estático,
+    el ROR, el country_code de Neo4j o heurísticas de seguridad.
+    """
+    catalog_path = BASE_PATH / 'data' / 'mexican_institutions.json'
+    if not hasattr(_is_mexican_institution, "_catalog"):
+        if catalog_path.exists():
+            try:
+                with open(catalog_path, 'r', encoding='utf-8') as f:
+                    _is_mexican_institution._catalog = json.load(f)
+            except Exception as e:
+                print(f"⚠️ Error cargando catálogo de instituciones mexicanas: {e}")
+                _is_mexican_institution._catalog = {}
+        else:
+            _is_mexican_institution._catalog = {}
+            
+    import unicodedata
+    def normalize_text(text):
+        if not text: return ""
+        text = "".join(c for c in unicodedata.normalize('NFD', str(text)) if unicodedata.category(c) != 'Mn')
+        return text.upper().strip()
         
+    norm_name = normalize_text(inst_name)
+    if not norm_name or norm_name in ('SIN INSTITUCION', 'NAN', ''):
+        return False
+        
+    # 1. Buscar en el catálogo por nombre normalizado
+    if norm_name in _is_mexican_institution._catalog:
+        return True
+        
+    # 2. Buscar por ROR
+    if ror:
+        clean_ror = str(ror).strip().lower()
+        for cat_inst in _is_mexican_institution._catalog.values():
+            if cat_inst.get('ror') and str(cat_inst['ror']).strip().lower() == clean_ror:
+                return True
+                
+    # 3. Validar por country_code (e.g. desde Neo4j)
+    if country_code and str(country_code).upper().strip() == 'MX':
+        return True
+        
+    # 4. Heurísticas para casos especiales
+    mex_keywords = [
+        "MEXICO", "MEXICANA", "MEXICANO", "UNAM", "IPN", "CONAHCYT", "CONACYT", 
+        "CINVESTAV", "UAM", "COLMEX", "CIDE", "COLEGIO DE POSTGRADUADOS", 
+        "HOSPITAL GENERAL DE", "INSTITUTO NACIONAL DE"
+    ]
+    if any(k in norm_name for k in mex_keywords):
+        return True
+        
+    return False
+
+def _load_hierarchy_from_json(institution_filter=None):
+    """Carga la jerarquía institucional desde el JSON de auditoría SNII
+    y la complementa con los nodos Neo4j (incluye no-SNII), filtrando extranjeras."""
+    AUDIT_PATH = BASE_PATH / 'data' / 'snii_llm_verified_matches.json'
+
     hier = {}
-    with open(AUDIT_PATH, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+
+    # ── Fuente 1: JSON de auditoría SNII ────────────────────────────────────
+    if AUDIT_PATH.exists():
+        with open(AUDIT_PATH, 'r', encoding='utf-8') as f:
+            data = json.load(f)
         for r in data:
             inst = r.get('snii_institution')
             if not inst: continue
-            
             if institution_filter and institution_filter not in inst:
                 continue
 
             ror = r.get('matched_ror') or ''
-            # Fallback para RORs mal formados
             if 'orcid.org' in ror or not ror.startswith('http'):
                 if 'UNAM' in inst: ror = 'https://ror.org/01tmp8f25'
                 else: ror = ''
-                
+
+            # Filtrar si la institución no es mexicana
+            if not _is_mexican_institution(inst, ror):
+                continue
+
             dep = r.get('snii_dependency', 'SIN INFORMACIÓN')
             sub = r.get('snii_subdependency', 'SIN INFORMACIÓN')
 
@@ -1141,13 +1549,77 @@ def _load_hierarchy_from_json(institution_filter=None):
                 hier[inst]['entities'][dep] = {'subs': set()}
             if sub and sub != 'NO APLICA':
                 hier[inst]['entities'][dep]['subs'].add(sub)
-                
+    else:
+        print(f"⚠️  No existe {AUDIT_PATH} — usando sólo Neo4j como fuente de jerarquía.")
+
+    # ── Fuente 2: Neo4j — todos los Person afiliados (incluye no-SNII) ──────
+    try:
+        from database.knowledge_graph import Neo4jGraphStore as _Neo4jHier
+        _neo = _Neo4jHier()
+        _q = """
+        MATCH (a:Person)-[:AFFILIATED_TO]->(ent)
+        WHERE (ent:Institution OR ent:Dependency OR ent:Subdependency)
+          AND a.fullname IS NOT NULL
+        OPTIONAL MATCH (ent)-[:PART_OF*0..2]->(i:Institution)
+        RETURN
+            coalesce(i.name, ent.name)         AS inst,
+            coalesce(i.ror, '')                AS ror,
+            coalesce(i.country_code, ent.country_code, '') AS country_code,
+            CASE labels(ent)[0]
+                WHEN 'Dependency'    THEN ent.name
+                WHEN 'Subdependency' THEN coalesce(
+                    [(ent)-[:PART_OF]->(d:Dependency) | d.name][0], 'SIN INFORMACION')
+                ELSE 'SIN INFORMACION'
+            END AS dep,
+            CASE labels(ent)[0]
+                WHEN 'Subdependency' THEN ent.name
+                ELSE 'SIN INFORMACION'
+            END AS sub
+        """
+        with _neo.driver.session() as _sess:
+            _rows = _sess.run(_q).data()
+        _neo.close()
+
+        _added = 0
+        for row in _rows:
+            inst = (row.get('inst') or '').strip()
+            if not inst:
+                continue
+            if institution_filter and institution_filter not in inst:
+                continue
+
+            ror = row.get('ror') or ''
+            country_code = row.get('country_code') or ''
+
+            # Filtrar si la institución no es mexicana
+            if not _is_mexican_institution(inst, ror, country_code):
+                continue
+
+            dep = (row.get('dep') or 'SIN INFORMACIÓN').strip()
+            sub = (row.get('sub') or 'SIN INFORMACIÓN').strip()
+
+            if inst not in hier:
+                hier[inst] = {'ror': ror, 'entities': {}}
+                _added += 1
+            if not hier[inst]['ror'] and ror:
+                hier[inst]['ror'] = ror
+            if dep not in hier[inst]['entities']:
+                hier[inst]['entities'][dep] = {'subs': set()}
+            if sub and sub not in ('SIN INFORMACIÓN', 'SIN INFORMACION', 'NO APLICA'):
+                hier[inst]['entities'][dep]['subs'].add(sub)
+
+        print(f"  🔗 Neo4j aportó {len(_rows)} relaciones; {_added} institución(es) nueva(s) a la jerarquía filtrada.")
+
+    except Exception as _e:
+        print(f"  ⚠️  No se pudo complementar jerarquía desde Neo4j: {_e}")
+
     # Convertir sets a listas
     for inst in hier:
         for dep in hier[inst]['entities']:
             hier[inst]['entities'][dep]['subs'] = list(hier[inst]['entities'][dep]['subs'])
-            
+
     return hier
+
 
 
 def _process_single_academic(academic_filter: str, updated_files: set):
@@ -1344,9 +1816,12 @@ def process_and_save(entity_filter=None, academic_filter=None, institution_filte
                     # Subdependencias
                     if 'subdependency' in df_dep.columns:
                         for sub_name, df_sub in df_dep[df_dep['subdependency'] != 'SIN INFORMACIÓN'].groupby('subdependency'):
-                            d_sub = CACHE_DIR / safe_inst / _safe_name(sub_name) / 'capacidad_instalada'
+                            safe_sub_name = sub_name
+                            if sub_name == dep_name:
+                                safe_sub_name = f"{sub_name} (Subdependencia)"
+                            d_sub = CACHE_DIR / safe_inst / _safe_name(safe_sub_name) / 'capacidad_instalada'
                             d_sub.mkdir(parents=True, exist_ok=True)
-                            _save_aggregate_parquets(df_sub, d_sub, updated_files, label=sub_name, inst=inst_name, dep=dep_name, sub=sub_name)
+                            _save_aggregate_parquets(df_sub, d_sub, updated_files, label=safe_sub_name, inst=inst_name, dep=dep_name, sub=sub_name)
 
             # Capacidad Institución (Total)
             if not entity_filter:
@@ -1422,23 +1897,58 @@ def process_and_save(entity_filter=None, academic_filter=None, institution_filte
         del df_mx_prod
 
     # ── 5. PRECALCULO DE UMAP (Trayectorias) ──────────────────────────────────
-    if UMAP and institution_filter and not academic_filter:
+    if UMAP and not academic_filter:
         print("\n⏳ Proyectando UMAP de Trayectorias (Desempeño Académico)...")
-        # El DataFrame acumulado de investigadores para esta institución es df_inst (del loop principal)
-        # Pero como se procesa por entidad, necesitamos recolectar los investigadores de la institución.
-        # Por ahora, usaremos los parquets institucionales generados para reconstruir el UMAP.
-        try:
-            # Definir cap_dir para UMAP (respetando filtros)
-            if entity_filter:
-                cap_dir = CACHE_DIR / safe_inst / _safe_name(entity_filter) / 'capacidad_instalada'
-            else:
-                cap_dir = CACHE_DIR / safe_inst / 'capacidad_instalada'
+        
+        # Determinar qué instituciones procesar para UMAP
+        institutions_to_process = []
+        if institution_filter:
+            institutions_to_process = [institution_filter]
+        else:
+            institutions_to_process = list(hier.keys())
+            
+        # 1. Generar UMAP por Institución / Entidad
+        for inst in institutions_to_process:
+            safe_inst = _safe_name(inst)
+            try:
+                if entity_filter:
+                    cap_dir = CACHE_DIR / safe_inst / _safe_name(entity_filter) / 'capacidad_instalada'
+                else:
+                    cap_dir = CACHE_DIR / safe_inst / 'capacidad_instalada'
+                    
+                total_inst_path = cap_dir / 'institucion_total.parquet'
+                if total_inst_path.exists():
+                    inv_files = list(cap_dir.parent.glob('**/investigador_total.parquet'))
+                    if len(inv_files) >= 3:
+                        inv_dfs = [pd.read_parquet(f) for f in inv_files]
+                        umap_df = pd.concat(inv_dfs).drop_duplicates(subset=['academic_name'])
+                        
+                        features = ['pct_top_10', 'pct_1', 'percentile_avg', 'fwci_avg', 
+                                    'gini_topics', 'domain_diversity', 'unique_topics']
+                        valid_df = umap_df.dropna(subset=features).copy()
+                        
+                        if len(valid_df) >= 3:
+                            scaler = StandardScaler()
+                            X_scaled = scaler.fit_transform(valid_df[features])
+                            nn = min(15, len(valid_df) - 1)
+                            reducer = UMAP(n_neighbors=nn, min_dist=0.1, random_state=42)
+                            embedding = reducer.fit_transform(X_scaled)
+                            valid_df['umap_x'] = embedding[:, 0]
+                            valid_df['umap_y'] = embedding[:, 1]
+                            
+                            umap_out = cap_dir / 'umap_investigadores.parquet'
+                            valid_df.to_parquet(umap_out, index=False)
+                            print(f"  ✅ UMAP Generado para {len(valid_df)} investigadores en {cap_dir.relative_to(CACHE_DIR)}")
+                    else:
+                        print(f"  ⚠ Insuficientes investigadores para generar UMAP en {inst}.")
+            except Exception as e:
+                print(f"  ⚠ Error en pre-cálculo de UMAP para {inst}: {e}")
                 
-            total_inst_path = cap_dir / 'institucion_total.parquet'
-            if total_inst_path.exists():
-                # Nota: UMAP requiere las métricas de CADA investigador, no el agregado institucional.
-                # Buscaremos todos los parquets de investigadores bajo la carpeta de la institución.
-                inv_files = list(cap_dir.glob('**/investigador_total.parquet'))
+        # 2. Si es una corrida global, generar el UMAP GLOBAL en CACHE_DIR
+        if not institution_filter and not entity_filter:
+            try:
+                print("\n⏳ Proyectando UMAP GLOBAL de todos los investigadores...")
+                inv_files = list(CACHE_DIR.glob('**/investigador_total.parquet'))
                 if len(inv_files) >= 3:
                     inv_dfs = [pd.read_parquet(f) for f in inv_files]
                     umap_df = pd.concat(inv_dfs).drop_duplicates(subset=['academic_name'])
@@ -1456,13 +1966,13 @@ def process_and_save(entity_filter=None, academic_filter=None, institution_filte
                         valid_df['umap_x'] = embedding[:, 0]
                         valid_df['umap_y'] = embedding[:, 1]
                         
-                        umap_out = cap_dir / 'umap_investigadores.parquet'
+                        umap_out = CACHE_DIR / 'umap_investigadores.parquet'
                         valid_df.to_parquet(umap_out, index=False)
-                        print(f"  ✅ UMAP Generado para {len(valid_df)} investigadores en {cap_dir.name}")
+                        print(f"  ✅ UMAP GLOBAL Generado para {len(valid_df)} investigadores en la raíz de caché.")
                 else:
-                    print("  ⚠ Insuficientes investigadores para generar UMAP.")
-        except Exception as e:
-            print(f"  ⚠ Error en pre-cálculo de UMAP: {e}")
+                    print("  ⚠ Insuficientes investigadores globales para generar UMAP.")
+            except Exception as e:
+                print(f"  ⚠ Error en pre-cálculo de UMAP GLOBAL: {e}")
 
     print(f"\n✅ Completado. {len(updated_files)} archivos actualizados.")
 

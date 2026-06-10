@@ -702,97 +702,170 @@ Esta tabla contiene los articulos de los académicos mexicanos. Se creó para qu
 # NEO4J SCHEMAS
 
 ## Node Labels and Properties
-### `Paper`
-**Properties:** citations, doi, fwci, id, openalex_id, sources, title, year
-
-### `Author`
-**Properties:** cvu, fullname, id, is_snii, orcid, scopus_id
-
-### `Institution`
-**Properties:** name
-
-### `Concept`
-**Properties:** 
-
-### `Academic`
-**Properties:** 
-
-### `Topic`
-**Properties:** id, name
-
-### `SDG`
-**Properties:** name
-
-### `Funder`
-**Properties:** 
-
-### `Award`
-**Properties:** 
-
-### `SNII`
-**Properties:** cvu, fullname, id, is_snii, orcid, scopus_id
-
-### `Subdependency`
-**Properties:** id, name
-
-### `Dependency`
-**Properties:** id, name
-
-### `User`
-**Properties:** 
 
 ### `Person`
-**Properties:** cvu, fullname, id, is_snii, orcid, scopus_id
+**Aliases:** Un mismo nodo puede tener además las etiquetas `Author`, `SNII`, `Academic`.
+
+| Property | Type | Notes |
+|----------|------|-------|
+| id | String | CVU numérico, ORCID, `EXT_NOMBRE`, o nombre completo según jerarquía |
+| fullname | String | Nombre completo normalizado (MAYÚSCULAS, sin acentos) |
+| cvu | String | CVU del SNII |
+| is_snii | Boolean | Si pertenece al padrón SNII |
+| orcids | List\<String\> | Lista de ORCIDs (migrado desde `orcid` singular) |
+| openalex_ids | List\<String\> | Lista de OpenAlex Author IDs |
+| scopus_ids | List\<String\> | Lista de Scopus Author IDs |
+| siia | String | URL del perfil SIIA |
+
+### `Paper`
+| Property | Type | Notes |
+|----------|------|-------|
+| id | String | DOI o OpenAlex ID del paper |
+| title | String | |
+| year | Integer | |
+| doi | String | |
+| citations | Integer | |
+| fwci | Float | Field-Weighted Citation Impact |
+| openalex_id | String | ID del paper en OpenAlex |
+| wos_id | String | ID en Web of Science |
+| scopus_id | String | ID del paper en Scopus |
+| sources | List\<String\> | Fuentes donde se encontró (scopus, orcid, openalex...) |
+
+### `Institution`
+| Property | Type | Notes |
+|----------|------|-------|
+| name | String | Nombre único (restricción UNIQUE) |
+
+### `Dependency`
+| Property | Type | Notes |
+|----------|------|-------|
+| id | String | Compuesto: `"<institución>||<dependencia>"` |
+| name | String | |
+
+### `Subdependency`
+| Property | Type | Notes |
+|----------|------|-------|
+| id | String | Compuesto: `"<institución>||<dependencia>||<subdependencia>"` |
+| name | String | |
 
 ### `KnowledgeArea`
-**Properties:** name
+| Property | Type | Notes |
+|----------|------|-------|
+| name | String | Área de conocimiento del SNII |
 
 ### `Discipline`
-**Properties:** 
+| Property | Type | Notes |
+|----------|------|-------|
+| id | String | `"<área>||<disciplina>"` |
+| name | String | |
 
 ### `Subdiscipline`
-**Properties:** 
+| Property | Type | Notes |
+|----------|------|-------|
+| id | String | `"<área>||<disciplina>||<subdisciplina>"` |
+| name | String | |
 
 ### `Specialty`
-**Properties:** 
+| Property | Type | Notes |
+|----------|------|-------|
+| id | String | `"<área>||<disciplina>||<subdisciplina>||<especialidad>"` |
+| name | String | |
+
+### `Topic`
+| Property | Type | Notes |
+|----------|------|-------|
+| id | String | `"<dominio>||<campo>||<subcampo>||<topic>"` |
+| name | String | |
 
 ### `TopicSubfield`
-**Properties:** id, name
+| Property | Type | Notes |
+|----------|------|-------|
+| id | String | `"<dominio>||<campo>||<subcampo>"` |
+| name | String | |
 
 ### `TopicField`
-**Properties:** id, name
+| Property | Type | Notes |
+|----------|------|-------|
+| id | String | `"<dominio>||<campo>"` |
+| name | String | |
 
 ### `TopicDomain`
-**Properties:** name
+| Property | Type | Notes |
+|----------|------|-------|
+| name | String | |
+
+### `SDG`
+| Property | Type | Notes |
+|----------|------|-------|
+| name | String | Nombre del Objetivo de Desarrollo Sostenible |
+
+### `Funder`
+| Property | Type | Notes |
+|----------|------|-------|
+| name | String | |
+| openalex_id | String | |
+
+### `Award` / `Concept`
+Nodos auxiliares sin propiedades formales definidas.
+
+---
 
 ## Relationship Types and Hierarchies
-### `[:AFFILIATED_TO]`
-- (Author, SNII, Person) -> (:AFFILIATED_TO) -> (Subdependency)
-- (Author, SNII, Person) -> (:AFFILIATED_TO) -> (Dependency)
 
+### Jerarquía Institucional
+```
+(Institution)
+    ↑ [:PART_OF]
+(Dependency)
+    ↑ [:PART_OF]
+(Subdependency)
+    ↑ [:AFFILIATED_TO]
+(Person / Author / SNII)
+```
 
-### `[:HAS_TOPIC]`
-- (Paper) -> (:HAS_TOPIC) -> (Topic)
+**Reglas de afiliación (prioridad descendente):**
+- `(Person) -[:AFFILIATED_TO]-> (Subdependency)` — prioritaria si existe subdependencia
+- `(Person) -[:AFFILIATED_TO]-> (Dependency)` — si no hay subdependencia
+- `(Person) -[:AFFILIATED_TO]-> (Institution)` — si solo se conoce la institución
 
+**Ejemplo concreto:**
+```
+UNAM  ←[:PART_OF]—  SECRETARIA GENERAL  ←[:PART_OF]—  FACULTAD DE CIENCIAS  ←[:AFFILIATED_TO]—  Person
+```
 
-### `[:PART_OF]`
-- (Topic) -> (:PART_OF) -> (TopicSubfield)
+### Jerarquía de Conocimiento SNII
+```
+(KnowledgeArea)
+    ↑ [:BELONGS_TO]
+(Discipline)
+    ↑ [:BELONGS_TO]
+(Subdiscipline)
+    ↑ [:BELONGS_TO]
+(Specialty)
+```
+- `(Person) -[:SPECIALIZED_IN]-> (KnowledgeArea | Discipline | Subdiscipline | Specialty)`
 
+### Jerarquía de Tópicos OpenAlex
+```
+(TopicDomain) ←[:PART_OF]— (TopicField) ←[:PART_OF]— (TopicSubfield) ←[:PART_OF]— (Topic)
+                                                                                           ↑ [:HAS_TOPIC]
+                                                                                        (Paper)
+```
 
-### `[:SPECIALIZED_IN]`
-- (Author, SNII, Person) -> (:SPECIALIZED_IN) -> (KnowledgeArea)
-
-
-### `[:CONTRIBUTES_TO]`
-- (Paper) -> (:CONTRIBUTES_TO) -> (SDG)
-
-
-### `[:AUTHOR_OF]`
-- (Author, SNII, Person) -> (:AUTHOR_OF) -> (Paper)
-
-
-### `[:CREDITED_TO]`
-- (Paper) -> (:CREDITED_TO) -> (Subdependency)
-- (Paper) -> (:CREDITED_TO) -> (Dependency)
-
+### Tabla completa de relaciones
+| Relación | Origen | Destino | Notas |
+|----------|--------|---------|-------|
+| `[:AFFILIATED_TO]` | Person / Author / SNII | Institution / Dependency / Subdependency | Afiliación institucional |
+| `[:PART_OF]` | Dependency / Subdependency / TopicSubfield / TopicField / Topic | Institution / Dependency / TopicField / TopicSubfield / TopicDomain | Jerarquía institucional y de tópicos |
+| `[:AUTHOR_OF]` | Person / Author / SNII | Paper | Autoría de un artículo |
+| `[:CREDITED_TO]` | Paper | Institution / Dependency / Subdependency | Atribución institucional del artículo |
+| `[:HAS_PAPER]` | Institution / Dependency / Subdependency | Paper | Artículos asociados a la entidad |
+| `[:HAS_TOPIC]` | Paper | Topic | Tópico principal OpenAlex |
+| `[:CONTRIBUTES_TO]` | Paper | SDG | Contribución a ODS |
+| `[:FUNDED_BY]` | Paper | Funder | Financiamiento |
+| `[:HAS_AWARD]` | Paper | Award | Premios o reconocimientos |
+| `[:HAS_CONCEPT]` | Paper | Concept | Conceptos OpenAlex |
+| `[:SPECIALIZED_IN]` | Person / Author / SNII | KnowledgeArea / Discipline / Subdiscipline / Specialty | Área científica SNII |
+| `[:BELONGS_TO]` | Discipline / Subdiscipline / Specialty | KnowledgeArea / Discipline / Subdiscipline | Jerarquía científica |
+| `[:LOCATED_IN]` | Institution | Country / State | Ubicación geográfica |
 

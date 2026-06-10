@@ -893,9 +893,9 @@ def aggregate_metrics(df_papers, group_cols):
         'journal_is_core':       'mean',
         'is_retracted':          'mean',
         'any_repository_has_fulltext': 'mean',
-        # Idioma y licencia
-        'is_english': 'sum',
-        'is_cc_by': 'sum'
+        # Idioma y licencia (mean para que *100 = porcentaje correcto)
+        'is_english': 'mean',
+        'is_cc_by': 'mean'
     }
     
     # Validaciones para columnas audit e is_snii (sólo si existen)

@@ -39,17 +39,23 @@ Objetivo: Exponer las nuevas métricas y filtros al usuario final.
 - [ ] **Tarea 5.1**: Actualizar `dashboard_analytics.py` para soportar filtros de "Censo Total" vs "Solo SNII" y limpiar selectores de instituciones extranjeras.
 - [ ] **Tarea 5.2**: Modificar la UI para mostrar claramente la distinción entre **Capacidad Instalada** y **Producción Institucional**.
 
-## Fase 6: Inteligencia Bibliométrica (Embeddings y Clustering)
-Objetivo: Generar representaciones vectoriales multidimensionales para proyecciones atlas y análisis semántico.
+## Fase 6: Mapas de la Ciencia y Desempeño Institucional
+Objetivo: Generar representaciones vectoriales multidimensionales y visualizaciones interactivas a gran escala. Estos mapas se cargarán **bajo demanda** (mediante un botón de "Cargar Mapa") y contarán con un selector para alternar entre ellos en la interfaz.
 
-- [ ] **Tarea 6.1**: Completar Grafo Nacional (Neo4j 7687). Finalizar la ingesta de la producción mexicana total para asegurar que el FastRP refleje la red completa.
-- [ ] **Tarea 6.2**: Motor de Embeddings Multimodal. Desarrollar el orquestador que consolide:
-    - **Semántico (Nomic)**: Recuperar desde Qdrant.
-    - **Científico (SPECTER2)**: Generar para el 100% de la producción en ClickHouse.
-    - **Estructural (FastRP)**: Calcular en Neo4j (7687) y sincronizar.
-- [ ] **Tarea 6.3**: Perfiles Semánticos de Académicos. Calcular el vector promedio (centroide) para cada investigador basado en su producción individual.
-- [ ] **Tarea 6.4**: Proyección y Clustering Atlas. Implementar la reducción de dimensionalidad (UMAP) para visualizar el mapa de la ciencia mexicana y los clusters de expertise académica.
-- [ ] **Tarea 6.5**: Sincronización Maestra a ClickHouse. Poblar las columnas de embeddings en `works_academic_all` y `academics_all` para su explotación en el Dashboard.
+- [ ] **Tarea 6.1**: Extracción de Vectores de Personas (Neo4j). Ejecutar FastRP en la base de datos para generar los embeddings de los nodos `Person` o `Academic` utilizando la mayor dimensionalidad posible. Exportar una tabla o archivo (CSV/Parquet) con el ID del académico y su vector.
+- [ ] **Tarea 6.2**: Extracción de Vectores de Artículos (Qdrant). Extraer los embeddings de los artículos que ya se encuentran vectorizados en Qdrant (usando el embedder de Nomic) y exportarlos en formato tabular (CSV/Parquet).
+- [ ] **Tarea 6.3**: Creación de Vectores de Desempeño (Métricas). Extraer para cada académico un vector de 4 dimensiones correspondiente a sus métricas de desempeño: `% Top 10`, `FWCI`, `% Top 1%`, y `Percentil Promedio`.
+- [ ] **Tarea 6.4**: Reducción a 2D de los mapas (Python). Importar los conjuntos de vectores (Personas, Artículos y Desempeño) a Python y calcular UMAP utilizando una librería dedicada (`umap-learn` o `cuML` de NVIDIA RAPIDS). El resultado serán archivos con las nuevas columnas: `x` y `y`. Para el Mapa de Desempeño, se generarán tres versiones o niveles de proyección: País, Institución y Dependencia/Subdependencia.
+- [ ] **Tarea 6.5**: Clustering de Artículos (HDBSCAN). Aplicar un algoritmo de agrupamiento basado en densidad (como HDBSCAN, si es viable paralelizarlo o procesarlo eficientemente) sobre los artículos para definir los "continentes" o constelaciones temáticas de la galaxia.
+- [ ] **Tarea 6.6**: Etiquetado Semántico de Clústeres. Implementar un algoritmo de etiquetado para cada clúster generado (inspirado en la aproximación de Nomic), extrayendo los tópicos o palabras clave representativas que darán nombre a las regiones del mapa.
+- [ ] **Tarea 6.7**: Teselación con Quadfeather. Utilizar la herramienta `quadfeather` para procesar los archivos con las columnas `x` e `y`. Esto generará conjuntos de archivos `.feather` pequeños (baldosas) para cada uno de los mapas (Personas, Artículos y los 3 niveles de Desempeño).
+- [ ] **Tarea 6.8**: Visualización Institucional (Deepscatter). Integrar [Deepscatter](https://github.com/nomic-ai/deepscatter.git) en la vista institucional con un selector para alternar entre mapas:
+    - **Mapa de Personas**: Mostrar a todos los académicos de la entidad seleccionada a color, y el resto del país en gris claro.
+    - **Mapa de Artículos**: Mostrar los papers de la institución a color, y el resto en gris.
+    - **Mapa de Desempeño Institucional**: Visualizar únicamente a los académicos. Permitir alternar entre las proyecciones de País, Institución y Dependencia/Subdependencia usando el selector.
+- [ ] **Tarea 6.9**: Visualización del Investigador (Deepscatter). Integrar los mapas en la vista individual del investigador.
+    - **Mapa de Personas**: Ubicar al investigador en el mapa nacional.
+    - **Mapa de Artículos**: Resaltar los artículos del investigador con un color distintivo frente al resto del corpus.
 
 ## Fase 7: Autenticación y Registro vía ORCID
 Objetivo: Habilitar la verificación de identidad de los investigadores y el registro de nuevos académicos mediante la autenticación oficial de ORCID.

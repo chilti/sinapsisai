@@ -115,6 +115,9 @@ def obtener_metadatos_de_scopus(scopus_ids):
         match = re.search(r'\d{8,12}', sid)
         if match:
             sid = match.group(0)
+        else:
+            print(f"    ⚠️ ID de Scopus inválido saltado: '{sid}'")
+            continue
             
         try:
             au = AuthorRetrieval(sid)
@@ -199,81 +202,49 @@ def obtener_metadatos_de_orcid(orcid_url):
         print(f"    [ORCID] ID {orcid_id}: {len(metadatos)} documentos encontrados.")
     return metadatos
 
-def obtener_metadatos_de_openalex_autor(openalex_author_id, force_local=False):
-    """Obtiene los trabajos de un autor directamente desde su OpenAlex Author ID.
-    Soporta tanto la API local como la API oficial de pyalex.
+
+def obtener_scopus_ids_de_orcid(orcid_url: str) -> list:
     """
-    if not openalex_author_id:
-        return {}
-    
-    # Normalizar el ID: aceptar URL completa o solo el código (A123456)
-    oa_id_clean = str(openalex_author_id).split('/')[-1].strip()
-    
-    metadatos = {}
-    env_path_local = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
-    load_dotenv(env_path_local)
-    local_api = os.getenv("OPENALEX_LOCAL_API", "http://localhost:5012")
-    
-    # --- Intento 1: API Local ---
-    # Intentar siempre local primero por eficiencia
+    Consulta el endpoint /external-identifiers del perfil ORCID del investigador
+    para recuperar sus Scopus Author IDs vinculados.
+    Retorna una lista de IDs (strings), posiblemente vacía.
+    """
+    if not orcid_url:
+        return []
+    import re
+    orcid_id = str(orcid_url).rstrip('/').split('/')[-1]
+    if not re.search(r'\d{4}-\d{4}-\d{4}-\d{3}[\dX]', orcid_id, re.IGNORECASE):
+        return []
+
+    url = f"https://pub.orcid.org/v3.0/{orcid_id}/external-identifiers"
     try:
-        url = f"{local_api}/works"
-        params = {"filter": f"author.id:{oa_id_clean}", "per_page": 200}
-        with httpx.Client(verify=False, timeout=30) as client:
-            resp = client.get(url, params=params)
-            if resp.status_code == 200:
-                works = resp.json().get('results', [])
-                for w in works:
-                    doi = w.get('doi') or w.get('id')
-                    if doi:
-                        doi_clean = str(doi).replace('https://doi.org/', '').replace('http://doi.org/', '').strip('/')
-                        if doi_clean and doi_clean not in metadatos:
-                            metadatos[doi_clean] = {
-                                'Title': w.get('title', 'Sin Título'),
-                                'Year': w.get('publication_year', 0),
-                                'DOI': doi_clean,
-                                'Source': 'OpenAlex_AuthorID_Local',
-                                'Authors': None,
-                                'Cited_by': w.get('cited_by_count', 0),
-                                'Abstract': None,
-                                'openalex_url': w.get('id'),
-                                '_raw_oa': w
-                            }
-                if metadatos:
-                    print(f"    [OpenAlex Local] Author {oa_id_clean}: {len(metadatos)} trabajos.")
-                    return metadatos
+        resp = requests.get(url, headers={"Accept": "application/json"}, timeout=10)
+        if resp.status_code != 200:
+            return []
+        ext_ids = resp.json().get('external-identifier', [])
+        scopus_ids_found = [
+            str(eid['external-id-value']).strip()
+            for eid in ext_ids
+            if isinstance(eid, dict)
+            and eid.get('external-id-type', '').lower() == 'scopus author id'
+            and eid.get('external-id-value')
+        ]
+        if scopus_ids_found:
+            print(f"    [ORCID External IDs] {orcid_id}: "
+                  f"{len(scopus_ids_found)} Scopus Author ID(s) encontrados: {scopus_ids_found}")
+        return scopus_ids_found
     except Exception as e:
-        print(f"    [WARN] Error API Local OpenAlex Author: {e}")
-    
-    # Si force_local es True y llegamos aquí, no intentamos la oficial
-    if force_local:
-        return {}
-    
-    # --- Intento 2: API Oficial (pyalex) ---
-    try:
-        from pyalex import Works
-        results = Works().filter(authorships={"author": {"id": oa_id_clean}}).paginate(per_page=200)
-        for page in results:
-            for w in page:
-                doi = w.get('doi') or w.get('id')
-                if doi:
-                    doi_clean = str(doi).replace('https://doi.org/', '').replace('http://doi.org/', '').strip('/')
-                    if doi_clean and doi_clean not in metadatos:
-                        metadatos[doi_clean] = {
-                            'Title': w.get('title', 'Sin Título'),
-                            'Year': w.get('publication_year', 0),
-                            'DOI': doi_clean,
-                            'Source': 'OpenAlex_AuthorID_Oficial',
-                            'Authors': None,
-                            'Cited_by': w.get('cited_by_count', 0),
-                            'Abstract': deconstruct_abstract(w.get('abstract_inverted_index')),
-                            'openalex_url': w.get('id') # Persistir ID de OpenAlex
-                        }
-    except Exception as e:
-        print(f"      ⚠ Error obteniendo trabajos de autor en API OpenAlex: {e}")
-        
-    return metadatos
-def ingest_researcher_data(data, force=False, force_local=False, current_idx=None, total=None, save_to_ch=False):
+        print(f"    [WARN] Error obteniendo external-identifiers de ORCID ({orcid_id}): {e}")
+        return []
+
+
+def obtener_metadatos_de_openalex_autor(openalex_author_id, force_local=False):
+    """Delegado a openalex_utils.fetch_all_works_by_author_id (paginación completa)."""
+    return openalex_utils.fetch_all_works_by_author_id(
+        openalex_author_id, force_local=force_local
+    )
+
+def ingest_researcher_data(data: dict, force: bool = False, force_local: bool = False, current_idx: int = 1, total: int = 1, save_to_ch: bool = False, **kwargs):
     """Procesa e ingesta los datos de un único investigador."""
     academic_name = data.get('snii_author')
     if not academic_name: return
@@ -284,6 +255,15 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
         person_id = str(cvu).strip()
     else:
         person_id = "EXT_" + "".join(filter(str.isalnum, academic_name)).upper()
+        
+    def _ensure_list(val):
+        if not val: return []
+        if isinstance(val, list): return val
+        if isinstance(val, str): return [s.strip() for s in val.split(',') if s.strip()]
+        return [val]
+        
+    data['scopus_ids'] = _ensure_list(data.get('scopus_ids') or data.get('scopus_id'))
+    data['openalex_ids'] = _ensure_list(data.get('openalex_ids') or data.get('openalex_id'))
 
     # Preparar datos para ingesta taxonómica
     # Si el JSON viene de snii_llm_verified_matches, mapear nombres
@@ -322,8 +302,8 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
     graph_store.update_academic_metadata(
         academic_id=person_id,
         cvu=cvu,
-        orcid=orcid if data.get('match') is True and verdict != 'FALSE_POSITIVE' else None,
-        scopus_id=data.get('scopus_ids') or data.get('scopus_id'),
+        orcids=[orcid] if (data.get('match') is True and verdict != 'FALSE_POSITIVE' and orcid) else [],
+        scopus_ids=data.get('scopus_ids'),
         audit_verdict=verdict,
         audit_reason=reason,
         audit_confidence=confidence,
@@ -333,12 +313,13 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
 
 
     # --- Enriquecer con IDs desde Neo4j ---
-    neo4j_ids = {"orcid": None, "openalex_id": None}
+    neo4j_ids = {"orcids": [], "openalex_ids": [], "scopus_ids": []}
     if hasattr(graph_store, 'get_academic_ids'):
         neo4j_ids = graph_store.get_academic_ids(person_id)
     
     # Prioridad: data > Neo4j
-    orcid = orcid or neo4j_ids.get('orcid')
+    orcids_list = [orcid] if orcid else neo4j_ids.get('orcids', [])
+    orcid = orcids_list[0] if orcids_list else None # Keep a single orcid for other external API calls for now
     
     oa_ids = data.get('openalex_ids') or []
     if isinstance(oa_ids, str): oa_ids = [oa_ids]
@@ -346,19 +327,71 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
     legacy_oa_id = data.get('matched_openalex_id') or data.get('openalex_id')
     if legacy_oa_id and legacy_oa_id not in oa_ids:
         oa_ids.append(legacy_oa_id)
-    if not oa_ids and neo4j_ids.get('openalex_id'):
-        oa_ids.append(neo4j_ids.get('openalex_id'))
+    
+    for saved_oa in neo4j_ids.get('openalex_ids', []):
+        if saved_oa not in oa_ids:
+            oa_ids.append(saved_oa)
+
+    # Filtrar IDs de OBRAS (W...) que se hayan colado por error en el nodo Person
+    def _is_author_oa_id(oa_id: str) -> bool:
+        """True solo si el ID corresponde a un Author (A...), no a una obra (W...)."""
+        clean = str(oa_id).split('/')[-1]
+        return clean.startswith('A') and clean[1:].isdigit()
+
+    oa_ids_invalid = [i for i in oa_ids if not _is_author_oa_id(i)]
+    oa_ids = [i for i in oa_ids if _is_author_oa_id(i)]
+    if oa_ids_invalid:
+        print(f"  ⚠️  openalex_id(s) inválido(s) detectados y descartados: {oa_ids_invalid}")
+        print(f"     (Son IDs de obra W..., no de autor A... — se re-resolverá el ID correcto)")
+
     scopus_ids = data.get('scopus_ids')
+    if isinstance(scopus_ids, str):
+        scopus_ids = [s.strip() for s in scopus_ids.replace(';', ',').split(',') if s.strip()]
+    if not scopus_ids:
+        scopus_ids = []
+
+    # Enriquecer Scopus IDs desde el perfil ORCID del investigador
+    if orcid:
+        orcid_scopus = obtener_scopus_ids_de_orcid(orcid)
+        for sid in orcid_scopus:
+            if sid not in scopus_ids:
+                scopus_ids.append(sid)
 
     # 3. Determinar si es seguro recolectar publicaciones
     has_openalex_ids = len(oa_ids) > 0
     is_false_positive = verdict == 'FALSE_POSITIVE'
     is_valid_match = data.get('match') is True and not is_false_positive
-    is_safe_match = is_valid_match and (orcid or has_openalex_ids)
-    
+    is_safe_match = is_valid_match and (orcid or has_openalex_ids or scopus_ids)
+
     if not is_safe_match:
         print(f"  ℹ️ Saltando recolección de publicaciones (Match: {data.get('match')}, Veredicto: {audit.get('verdict')}, ORCID: {orcid}, OA_IDs: {oa_ids})")
         return
+
+    # 3b. Resolución activa de OA IDs:
+    #   - Siempre si no tenemos IDs
+    #   - También con --force, para no confiar en valores cacheados en Neo4j
+    #   - Siempre que resolve_oa no sea False
+    if (not oa_ids or force) and kwargs.get('resolve_oa', True):
+        print(f"  🔍 Resolviendo OpenAlex Author ID(s) para {academic_name}...")
+        resolved_oa_list = openalex_utils.resolve_author_oa_id(
+            orcid=orcid,
+            scopus_ids=scopus_ids,
+            force_local=force_local,
+            force_scopus=kwargs.get('force_scopus', False)
+        )
+        if resolved_oa_list:
+            oa_ids.extend(resolved_oa_list)
+            # Persistir TODOS los IDs resueltos en Neo4j (append deduplicado por CSV)
+            try:
+                graph_store.update_academic_metadata(
+                    academic_id=person_id,
+                    openalex_ids=resolved_oa_list
+                )
+                print(f"  ✅ OA ID(s) resueltos y guardados en Neo4j: {resolved_oa_list}")
+            except Exception as _e:
+                print(f"  ⚠️ OA ID(s) resueltos {resolved_oa_list} pero no se guardaron en Neo4j: {_e}")
+        else:
+            print(f"  ⚠️ No se encontró OA Author ID para {academic_name}.")
 
     # 4. Verificar existencia de publicaciones
     if hasattr(graph_store, 'check_academic_exists') and graph_store.check_academic_exists(person_id) and not force:
@@ -405,11 +438,20 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
     
     openalex_blocked = force_local or getattr(openalex_utils, 'OFFICIAL_API_BLOCKED', False)
     batch_results = {}
+    
+    # Optimización: Chequeo Batch en Neo4j
+    existing_in_neo4j = set()
+    if hasattr(graph_store, 'check_papers_exist_batch'):
+        existing_in_neo4j = graph_store.check_papers_exist_batch(list(meta_unificada.keys()))
+        print(f"      🔍 Neo4j Check: {len(existing_in_neo4j)} trabajos ya existen en el grafo de {len(meta_unificada)} totales.")
+        dois_to_fetch = [doi for doi in dois_to_fetch if doi not in existing_in_neo4j]
+
     if dois_to_fetch:
-        print(f"      📡 Consultando lote de {len(dois_to_fetch)} DOIs...")
+        print(f"      📡 Consultando lote de {len(dois_to_fetch)} DOIs en OpenAlex...")
         batch_results = openalex_utils.get_works_batch(dois_to_fetch, local_only=openalex_blocked)
     
     neo4j_batch = []
+    neo4j_link_batch = []
     batch_payloads = []
     batch_texts = []
 
@@ -435,10 +477,14 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
         if _doi_key and _doi_key in batch_results:
             work = batch_results[_doi_key]
         elif not _doi_clean or _doi_key not in batch_results:
-            try:
-                work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'), local_only=openalex_blocked, quiet=True)
-            except:
+            if doi in existing_in_neo4j:
+                # print(f"      📍 Paper {doi} ya existe en el grafo. Saltando API individual...")
                 work = None
+            else:
+                try:
+                    work = openalex_utils.get_work(doi=_doi_clean, title=record.get('Title'), local_only=openalex_blocked, quiet=True)
+                except:
+                    work = None
 
         if work:
             authorships = work.get('authorships', [])
@@ -497,8 +543,7 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
             if g.get("award_id"):
                 awards_list.append(g.get("award_id"))
 
-        # Mapear para ingest_paper_row
-        neo4j_batch.append({
+        paper_data = {
             "system_id": person_id,
             "academic_name": academic_name,
             "doi": doi,
@@ -506,10 +551,13 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
             "year": int(record.get("Year", 0)) if record.get("Year") else 0,
             "citations": int(record.get("Cited_by", 0)) if record.get("Cited_by") else 0,
             "orcid": orcid,
-            "openalex_id": record.get("openalex_url"),
-            "author_openalex_id": ",".join(oa_ids) if oa_ids else None,
+            # openalex_id = ID del AUTOR (A...) → se escribe en Person.openalex_id vía Cypher
+            "openalex_id": ",".join(oa_ids) if oa_ids else None,
+            # paper_openalex_id = ID de la OBRA (W...) → se escribe en Paper.openalex_id
+            "paper_openalex_id": record.get("openalex_url"),
             "wos_id": record.get("wos_id"),
-            "scopus_id": record.get("scopus_id"),
+            # paper_scopus_eid = EID del paper (2-s2.0-...) → NO va a Person.scopus_ids
+            "paper_scopus_eid": record.get("scopus_id"),
             "semantic_id": record.get("semantic_scholar_id"),
             "fwci": record.get("fwci"),
             "topic_domain": record.get("topic_domain"),
@@ -519,18 +567,26 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
             "sdgs": record.get("sdgs", []),
             "author_position": record.get("author_position"),
             "is_corresponding": record.get("is_corresponding", False),
-            "institucion": None, # Deshabilitado para SNII. Solo crear Capacidad Instalada (AUTHOR_OF).
+            "institucion": None,
             "dependencia": None,
             "subdependencia": None,
             "funders": funders_list,
             "awards": list(set(awards_list)),
-            "raw_metadata": json.dumps(record, ensure_ascii=False),
             "audit_verdict": audit.get('verdict') if audit else None
-        })
+        }
+
+        if doi in existing_in_neo4j:
+            neo4j_link_batch.append(paper_data)
+        else:
+            neo4j_batch.append(paper_data)
 
     if neo4j_batch:
-        print(f"      🗄️ Insertando lote de {len(neo4j_batch)} artículos en Neo4j...")
+        print(f"      🗄️ Insertando lote de {len(neo4j_batch)} artículos NUEVOS en Neo4j...")
         graph_store.add_api_papers_batch(neo4j_batch)
+        
+    if neo4j_link_batch and hasattr(graph_store, 'link_api_papers_batch'):
+        print(f"      🔗 Vinculando autoría de {len(neo4j_link_batch)} artículos EXISTENTES en Neo4j...")
+        graph_store.link_api_papers_batch(neo4j_link_batch)
         
     # --- DUAL WRITE TO CLICKHOUSE ---
     if save_to_ch and neo4j_batch:
@@ -544,7 +600,7 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
                 oa_ids_dict = oa_data.get('ids', {})
                 
                 rows_ch.append({
-                    'paper_id': item.get('openalex_id') or item.get('doi'),
+                    'paper_id': item.get('paper_openalex_id') or item.get('doi'),
                     'academic_name': item['academic_name'],
                     'cvu': str(person_id),
                     'orcid': item.get('orcid') or '',
@@ -587,7 +643,7 @@ def ingest_researcher_data(data, force=False, force_local=False, current_idx=Non
             print(f"  ❌ Error en vectores: {e}")
 
 
-def process_and_ingest_snii(json_path, force=False, force_local=False, target_name=None, target_orcid=None, limit_acads=None, confirmed_only=False, offset=0, save_to_ch=False):
+def process_and_ingest_snii(json_path: str, force: bool = False, force_local: bool = False, target_name: str = None, target_orcid: str = None, limit_acads: int = None, confirmed_only: bool = False, offset: int = 0, save_to_ch: bool = False, force_scopus: bool = False):
     if not os.path.exists(json_path):
         print(f"No se encontró el archivo: {json_path}")
         return
@@ -636,7 +692,7 @@ def process_and_ingest_snii(json_path, force=False, force_local=False, target_na
              print(f"      🎯 [Override] Usando ORCID proporcionado: {target_orcid}")
              
         try:
-            ingest_researcher_data(data, force=force, force_local=force_local, current_idx=count, total=len(registros_to_process), save_to_ch=save_to_ch)
+            ingest_researcher_data(data, force=force, force_local=force_local, current_idx=count, total=len(registros_to_process), save_to_ch=save_to_ch, force_scopus=force_scopus)
         except KeyboardInterrupt:
             print("\n\n🛑 [Ctrl+C detectado] Abortando procesamiento de forma segura...")
             break
@@ -653,6 +709,7 @@ if __name__ == "__main__":
     parser.add_argument("--confirmed-only", action="store_true", help="Procesar solo los auditados como CONFIRMED")
     parser.add_argument("--offset", type=int, default=0, help="Empezar desde el registro N")
     parser.add_argument("--ch", action="store_true", help="Sincronizar simultáneamente con ClickHouse (paper_author_map)")
+    parser.add_argument("--scopus", action="store_true", help="Buscar obligatoriamente en Scopus aunque ya se haya resuelto el ID vía ORCID")
     args = parser.parse_args()
     
     try:
@@ -665,7 +722,8 @@ if __name__ == "__main__":
             limit_acads=args.limit,
             confirmed_only=args.confirmed_only,
             offset=args.offset,
-            save_to_ch=args.ch
+            save_to_ch=args.ch,
+            force_scopus=args.scopus
         )
     except KeyboardInterrupt:
         print("\n\n🛑 Proceso interrumpido por el usuario. Cerrando conexiones...")

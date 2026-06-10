@@ -53,6 +53,11 @@ class RAGOrchestrator:
             self.system_prompt = """
 Eres SINAPSIS, un analista experto en bibliometría de la UNAM. Tu misión es proporcionar respuestas precisas sobre investigadores, publicaciones y métricas utilizando una estrategia de datos híbrida donde **EL ACCESO LOCAL ES PRIORITARIO**.
 
+## CONTEXTO DEL ECOSISTEMA DE DATOS
+- **Producción Científica Mexicana**: Los datos en nuestro Grafo de Conocimiento (Neo4j) contienen predominantemente producción científica mexicana.
+- **Jerarquía Institucional (Padrón SNII)**: La estructura jerárquica de las entidades e instituciones en nuestra base de datos está modelada a partir del Padrón del SNII (Sistema Nacional de Investigadoras e Investigadores), el cual representa la estructura académica de todo México.
+- **Flexibilidad de Búsqueda**: El sistema te proveerá la entidad o investigador actualmente seleccionado en la interfaz. Usa ese contexto si la instrucción del usuario está directamente relacionada. Sin embargo, si la pregunta es más amplia o no está relacionada con la selección actual, **sé flexible y amplía tus búsquedas a todo el conjunto de datos nacional disponible**, sin limitarte a la entidad seleccionada.
+
 ## ESTRATEGIA DE DECISIÓN PRIORITARIA
 
 **Paso 1 — Búsqueda Local (OBLIGATORIA Y PRIORITARIA)**
@@ -67,7 +72,7 @@ Usa las herramientas de OpenAlex (`recoverFromOpenAlex`, `searchAuthorInOpenAlex
 2. Necesitas métricas globales muy recientes que aún no han sido procesadas localmente.
 
 **Paso 3 — Reglas Críticas**
-- **Sincronía**: Local = Veracidad institucional UNAM. Externo = Contexto global.
+- **Sincronía**: Local = Veracidad institucional UNAM e instituciones mexicanas. Externo = Contexto global.
 - **Nombres**: En Cypher usa siempre `CONTAINS` (ej. `WHERE toLower(a.name) CONTAINS toLower('alcubierre')`).
 
 ## FORMATO DE RESPUESTA
@@ -155,6 +160,40 @@ Usa las herramientas de OpenAlex (`recoverFromOpenAlex`, `searchAuthorInOpenAlex
             error_msg = f"Error en orquestación: {e}"
             print(error_msg)
             return error_msg
+            
+    async def ask_lightweight(self, session_id: str, query: str, ui_context: str = None) -> str:
+        """
+        Versión ligera del agente. NO utiliza herramientas.
+        Solo usa el historial y el contexto de la UI para responder.
+        """
+        history = self.memory_manager.get_history(session_id, limit=6)
+        
+        from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+        messages = [SystemMessage(content="Eres SINAPSIS, un analista experto en bibliometría de la UNAM. "
+                                          "El usuario te hará preguntas sobre la interfaz que está viendo. "
+                                          "Usa el contexto proporcionado para responder de manera concisa y directa.")]
+        
+        for msg in history:
+            if msg["role"] == "user":
+                messages.append(HumanMessage(content=msg["content"]))
+            else:
+                messages.append(AIMessage(content=msg["content"]))
+                
+        current_query = query
+        if ui_context:
+            current_query = f"[Contexto de Interfaz Actual:\n{ui_context}]\n\nPregunta del usuario: {query}"
+            
+        messages.append(HumanMessage(content=current_query))
+        self.memory_manager.add_message(session_id, "user", query)
+        
+        try:
+            result = await self.llm.ainvoke(messages)
+            response = result.content
+            self.memory_manager.add_message(session_id, "assistant", response)
+            return response
+        except Exception as e:
+            print(f"Error en ask_lightweight: {e}")
+            return f"Error: {e}"
              
     def clear_session(self, session_id: str):
         self.memory_manager.clear_session(session_id)

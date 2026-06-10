@@ -258,6 +258,27 @@ class RORIngestor:
         # Deduplicación local del batch para no repetir vectorización en la misma página
         batch_seen = set()
 
+        # --- OPTIMIZACIÓN: Verificaciones Batch (Neo4j y Qdrant) ---
+        paper_keys = []
+        for w in works:
+            doi_raw = w.get('doi')
+            doi = doi_raw.replace("https://doi.org/", "").strip().lower() if doi_raw else None
+            paper_key = doi if doi else w.get('id')
+            if paper_key: paper_keys.append(paper_key)
+            
+        existing_in_neo4j = set()
+        if hasattr(self.graph_store, 'check_papers_exist_batch'):
+            existing_in_neo4j = self.graph_store.check_papers_exist_batch(paper_keys)
+            
+        existing_in_qdrant = set()
+        if hasattr(self.vector_store, 'filter_existing_ids'):
+            ids_to_check = [{"doi": pk, "title": pk} for pk in paper_keys]
+            missing_qdrant = set(self.vector_store.filter_existing_ids(ids_to_check))
+            existing_in_qdrant = set(paper_keys) - missing_qdrant
+
+        if paper_keys:
+            print(f"      🔍 Batch Check: Neo4j tiene {len(existing_in_neo4j)}, Qdrant tiene {len(existing_in_qdrant)} de {len(paper_keys)} trabajos.")
+
         for work in works:
             doi_raw = work.get('doi')
             doi = doi_raw.replace("https://doi.org/", "").strip().lower() if doi_raw else None
@@ -282,9 +303,9 @@ class RORIngestor:
                         self.graph_store.add_hierarchical_entity_paper_link(inst, dep, sub, 'Subdependency', paper_key)
                 continue
 
-            # 2. Verificar si ya existe en las bases (para DOIs/WIDs no vistos en este run)
-            exists_graph = self.graph_store.check_paper_exists(paper_key)
-            exists_qdrant = self.vector_store.check_document_exists(paper_key)
+            # 2. Verificar si ya existe en las bases usando el set precalculado (Batch)
+            exists_graph = paper_key in existing_in_neo4j
+            exists_qdrant = paper_key in existing_in_qdrant
             
             # 3. Si ya existe en Neo4j, ENRIQUECER en lugar de saltar
             if exists_graph:

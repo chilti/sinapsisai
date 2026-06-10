@@ -23,7 +23,6 @@ except AttributeError:
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.vector_store import QdrantStore
 from database.knowledge_graph import Neo4jGraphStore
-from database.clickhouse_db import ch_client
 from ingestion import openalex_utils
 
 # Es preferible que inicialice si están las librerías
@@ -135,8 +134,8 @@ def obtener_metadatos_de_scopus(scopus_ids):
             else:
                 scopus_ids = [scopus_ids]
         except Exception:
-            # Si falla, podría ser separado por comas
-            scopus_ids = [s.strip() for s in scopus_ids.split(',')]
+            # Si falla, podría ser separado por comas o punto y coma
+            scopus_ids = [s.strip() for s in scopus_ids.replace(';', ',').split(',')]
             
     if not isinstance(scopus_ids, list):
         scopus_ids = [scopus_ids]
@@ -339,6 +338,52 @@ def obtener_metadatos_de_openalex_autor(openalex_author_id: str, force_local: bo
 
 # --- Lógica principal de ingesta ---
 
+def resolve_existing_person_id(graph_store, name, orcid=None, cvu=None) -> str:
+    """
+    Busca en Neo4j si ya existe un nodo Person/Author/Academic por fullname/id, ORCID o CVU,
+    y retorna su ID único. Si no existe, define uno nuevo siguiendo la jerarquía:
+    CVU > ORCID > Nombre.
+    """
+    query = """
+    MATCH (a)
+    WHERE (a:Person OR a:Author OR a:Academic)
+      AND (
+           toLower(trim(replace(a.fullname, ',', ''))) = toLower(trim(replace($name, ',', '')))
+        OR a.id = $name
+        OR (a.orcids IS NOT NULL AND $orcid IS NOT NULL AND $orcid IN a.orcids)
+        OR (a.cvu IS NOT NULL AND $cvu IS NOT NULL AND a.cvu = $cvu)
+      )
+    RETURN a.id AS id
+    LIMIT 1
+    """
+    with graph_store.driver.session() as session:
+        try:
+            clean_orcid = str(orcid).strip() if orcid else None
+            clean_cvu = str(cvu).strip() if cvu else None
+            
+            # Limpiar URL de orcid si es necesario (ej: https://orcid.org/0000-... -> 0000-...)
+            if clean_orcid and "orcid.org/" in clean_orcid:
+                clean_orcid = clean_orcid.split("orcid.org/")[-1].strip()
+            
+            result = session.run(query, name=name, orcid=clean_orcid, cvu=clean_cvu)
+            record = result.single()
+            if record and record["id"]:
+                return record["id"]
+        except Exception as e:
+            print(f"[WARN] Error resolviendo person_id para {name}: {e}")
+            
+    # Si no existe, aplicar jerarquía para el nuevo ID
+    clean_orcid = str(orcid).strip() if orcid else None
+    if clean_orcid and "orcid.org/" in clean_orcid:
+        clean_orcid = clean_orcid.split("orcid.org/")[-1].strip()
+        
+    if cvu:
+        return str(cvu).strip()
+    if clean_orcid:
+        return clean_orcid
+    return name
+
+
 def process_and_ingest_academics(json_path, force=False, force_local=False, target_name=None, is_snii=False, limit_acads=None, override_entity=None, institution_name=None, dependency_name=None, subdependency_name=None, save_to_ch=False, source_override=None):
     if not os.path.exists(json_path):
         print(f"No se encontró el archivo: {json_path}")
@@ -348,16 +393,24 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
         academicos = json.load(f)
 
     # Cargar padrón SNII para verificación de estatus
-    from scripts.tools.match_snii_orcid import SNII_PATH, normalize_text
+    import pandas as pd
+    from scripts.tools.match_snii_orcid import normalize_text
+    
+    # Resolver ruta absoluta al padrón SNII en la raíz del proyecto
+    snii_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "Investigadores_vigentes_2025.xlsx")
+    
     snii_names = set()
-    if os.path.exists(SNII_PATH):
+    if os.path.exists(snii_path):
         try:
-            df_snii = pd.read_excel(SNII_PATH, sheet_name='4T_2025 (44,794)')
+            df_snii = pd.read_excel(snii_path, sheet_name='4T_2025 (44,794)')
             # Usar columna de nombre robusta
             name_col = next((c for c in df_snii.columns if 'NOMBRE' in c.upper()), df_snii.columns[0])
             snii_names = {normalize_text(str(n)).upper() for n in df_snii[name_col].dropna()}
+            print(f"   ✅ Padrón SNII cargado con éxito ({len(snii_names)} registros).")
         except Exception as e:
             print(f"⚠️ No se pudo cargar el padrón SNII para validación: {e}")
+    else:
+        print(f"⚠️ Advertencia: No se encontró el archivo del padrón SNII en '{snii_path}'. No se podrá validar el estatus SNII.")
 
     count = 0
     for academic_name, data in academicos.items():
@@ -372,17 +425,58 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
         original_name = data.get('original_name', academic_name)
         entity_name = override_entity or data.get('entity', 'UNAM')
         
+        scopus_id = data.get('scopus', [])
+        orcid = data.get('orcid', '') or ''
+        siia_url = data.get('siia', '') or data.get('siia_url', '')
+        cvu = data.get('cvu', '') or ''
+        
+        # --- Enriquecer con IDs guardados en Neo4j (por pipeline SNII) ---
+        neo4j_ids = {"orcids": [], "openalex_ids": [], "scopus_ids": []}
+        if hasattr(graph_store, 'get_academic_ids'):
+            neo4j_ids = graph_store.get_academic_ids(academic_name)
+        
+        orcids_list = [orcid] if orcid else neo4j_ids.get('orcids', [])
+        orcid_final = orcids_list[0] if orcids_list else ''
+        
+        openalex_author_id = data.get('openalex_id')
+        oa_ids_list = [openalex_author_id] if openalex_author_id else []
+        for saved_oa in neo4j_ids.get('openalex_ids', []):
+            if saved_oa not in oa_ids_list:
+                oa_ids_list.append(saved_oa)
+                
+        # --- Resolver OpenAlex ID activamente si no existe ---
+        if not oa_ids_list:
+            print(f"  🔍 Resolviendo OpenAlex Author ID(s) activamente para {academic_name}...")
+            
+            sc_list = scopus_id if isinstance(scopus_id, list) else [scopus_id] if scopus_id else []
+            sc_list.extend(neo4j_ids.get('scopus_ids', []))
+            sc_list = list(set(sc_list))
+
+            resolved_oa_list = openalex_utils.resolve_author_oa_id(
+                orcid=orcid_final,
+                scopus_ids=sc_list,
+                force_local=force_local
+            )
+            if resolved_oa_list:
+                oa_ids_list.extend(resolved_oa_list)
+                print(f"  ✅ OA ID(s) resueltos: {resolved_oa_list}")
+                
+        openalex_author_id = oa_ids_list[0] if oa_ids_list else None # Keep primary for single API call
+        
+        # Resolver el ID del nodo Person definitivo en Neo4j (jerárquico y buscando existentes)
+        person_id = resolve_existing_person_id(graph_store, academic_name, orcid=orcid_final, cvu=cvu)
+        
         # Lógica de Integridad SNII
         norm_name = normalize_text(academic_name).upper()
         in_snii_catalog = norm_name in snii_names
         
         if is_snii or in_snii_catalog:
             print(f"🧬 [{academic_name}] Confirmado como SNII (Catálogo o Fuente)...")
-            graph_store.set_academic_snii(academic_name, True)
+            graph_store.set_academic_snii(person_id, True)
             current_is_snii = True
         else:
             print(f"📝 [{academic_name}] No detectado en SNII. Registrando como Personal Académico Extra...")
-            graph_store.set_academic_snii(academic_name, False)
+            graph_store.set_academic_snii(person_id, False)
             current_is_snii = False
             
             # Tarea 1.3: Agregar a extra_academics_matches.json si no es SNII
@@ -400,11 +494,11 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                     "snii_institution": institution_name,
                     "snii_dependency": dependency_name or entity_name,
                     "snii_subdependency": subdependency_name or "NO APLICA",
-                    "snii_cvu": data.get('cvu', ''),
-                    "match": True if data.get('orcid') or data.get('openalex_id') or data.get('scopus') else False,
-                    "matched_orcid": data.get('orcid'),
-                    "matched_openalex_id": data.get('openalex_id'),
-                    "scopus_ids": data.get('scopus'),
+                    "snii_cvu": cvu,
+                    "match": True if orcid or openalex_author_id or scopus_id else False,
+                    "matched_orcid": orcid_final,
+                    "matched_openalex_id": openalex_author_id,
+                    "scopus_ids": scopus_id,
                     "source": "Manual Ingestion (Non-SNII)",
                     "is_snii": False
                 }
@@ -416,48 +510,27 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
         if data.get('already_in_db', False) and not force:
             mapped_name = data.get('mapped_name', academic_name)
             print(f"\n[{academic_name}] Ya existe como '{mapped_name}' (cached en excel). Saltar recoleccion.")
-            graph_store.add_academic_full_affiliation(mapped_name, institution_name, dependency_name, subdependency_name)
+            graph_store.add_academic_full_affiliation(person_id, institution_name, dependency_name, subdependency_name)
             continue
             
         # 2. Checar base de datos directo (por si se interrumpió y se vuelve a correr)
-        # Si ya es SNII en Neo4j, respetamos ese estatus y solo actualizamos afiliación
-        is_already_snii = False
-        if hasattr(graph_store, 'get_academic_ids'):
-            meta = graph_store.get_academic_ids(academic_name)
-            if meta and meta.get('is_snii'):
-                is_already_snii = True
-
-        if (is_already_snii or (hasattr(graph_store, 'check_academic_exists') and graph_store.check_academic_exists(academic_name))) and not force:
-            print(f"\n[{academic_name}] Ya existe en Neo4j (SNII={is_already_snii}). Saltando recopilación API y asegurando afiliación.")
-            graph_store.add_academic_full_affiliation(academic_name, institution_name, dependency_name, subdependency_name)
+        if (hasattr(graph_store, 'check_academic_exists') and graph_store.check_academic_exists(person_id)) and not force:
+            print(f"\n[{academic_name}] Ya existe en Neo4j con artículos vinculados. Saltando recopilación API y asegurando afiliación.")
+            graph_store.add_academic_full_affiliation(person_id, institution_name, dependency_name, subdependency_name)
             continue
 
-        scopus_id = data.get('scopus', [])
-        orcid = data.get('orcid', '') or ''
-        siia_url = data.get('siia', '')
-        
-        # --- Enriquecer con IDs guardados en Neo4j (por pipeline SNII) ---
-        neo4j_ids = {"orcid": None, "openalex_id": None}
-        if hasattr(graph_store, 'get_academic_ids'):
-            neo4j_ids = graph_store.get_academic_ids(academic_name)
-        
-        orcid_final = data.get('orcid', '') or neo4j_ids.get('orcid') or ''
-        openalex_author_id = data.get('openalex_id') or neo4j_ids.get('openalex_id')
-        
         # --- NUEVO: Enriquecer metadatos de la Persona (Person) ---
         scopus_id_input = data.get('scopus', [])
-        siia_url_input = data.get('siia', '')
+        siia_url_input = data.get('siia', '') or data.get('siia_url', '')
         
-        # El ID de la persona para el MATCH es el nombre o el orcid si existe
-        person_id = orcid_final or academic_name
-        
-        print(f"\n[{academic_name}] Enriqueciendo perfil... SIIA={siia_url_input or 'N/A'} | Scopus={scopus_id_input or 'N/A'}")
+        print(f"\n[{academic_name}] Enriqueciendo perfil (ID: {person_id})... SIIA={siia_url_input or 'N/A'} | Scopus={scopus_id_input or 'N/A'}")
         graph_store.update_academic_metadata(
             academic_id=person_id,
-            orcid=orcid_final,
-            scopus_id=scopus_id_input,
+            orcids=orcids_list,
+            scopus_ids=scopus_id_input,
+            openalex_ids=oa_ids_list,
             siia=siia_url_input,
-            is_snii=is_already_snii or data.get('is_snii', False)
+            is_snii=current_is_snii
         )
         
         print(f"[{academic_name}] Iniciando recopilación API... ORCID={orcid_final or 'N/A'} | OA_ID={openalex_author_id or 'N/A'}")
@@ -678,9 +751,9 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
 
                 scopus_str = "; ".join(scopus_id) if isinstance(scopus_id, list) else scopus_id
                 neo4j_batch.append({
-                    "system_id":    orcid or academic_name,
+                    "system_id":    person_id,
                     "academic_name": academic_name,
-                    "orcid":        orcid or None,
+                    "orcid":        orcid_final or None,
                     "openalex_id":  openalex_author_id or None,
                     "scopus_id":    scopus_str,
                     "siia_url":     siia_url,
@@ -697,10 +770,6 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
 
         # --- Inserción en lote en Neo4j ---
         if neo4j_batch:
-            # Sincronización con ClickHouse (Dual Write)
-            if save_to_ch:
-                _sync_to_clickhouse(neo4j_batch, institution_name, dependency_name, subdependency_name, current_is_snii, source_override=source_override)
-
             if hasattr(graph_store, 'add_api_papers_batch'):
                 print(f"      🗄️ Insertando lote de {len(neo4j_batch)} artículos en Neo4j...")
                 graph_store.add_api_papers_batch(neo4j_batch)
@@ -714,7 +783,7 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
                                               siia_url=item["siia_url"], entity_name=item["entity_name"])
 
         # Afiliación del académico a su Entidad e Institución (3 niveles)
-        graph_store.add_academic_full_affiliation(academic_name, institution_name, dependency_name, subdependency_name)
+        graph_store.add_academic_full_affiliation(person_id, institution_name, dependency_name, subdependency_name)
             
         # Vectorización e inserción en Qdrant
         if batch_texts:
@@ -734,87 +803,7 @@ def process_and_ingest_academics(json_path, force=False, force_local=False, targ
 
 
 
-def _sync_to_clickhouse(batch_data, inst, dep, sub, is_snii, source_override=None):
-    """Sincroniza los artículos con las tablas paper_author_map y paper_entity_map de ClickHouse."""
-    try:
-        import pandas as pd
-        ch = ch_client.get_client()
-        author_rows = []
-        entity_rows = []
-        
-        for item in batch_data:
-            doi = item['doi']
-            raw = json.loads(item['raw_metadata'])
-            ids = raw.get('ids', {})
-            
-            # Determinar banderas de indización
-            src_ov = str(source_override).lower() if source_override else ""
-            is_wos = 1 if (src_ov == 'wos' or 'wos' in ids or 'wos' in str(raw.get('indexed_in', [])).lower()) else 0
-            is_scopus = 1 if (src_ov == 'scopus' or 'scopus' in ids or 'scopus' in str(raw.get('indexed_in', [])).lower()) else 0
-            is_pubmed = 1 if (src_ov == 'pubmed' or 'pmid' in ids) else 0
-            is_doaj = 1 if (src_ov == 'doaj' or raw.get('journal_is_in_doaj')) else 0
 
-            # 1. Preparar fila para paper_author_map (Capacidad Instalada)
-            author_rows.append({
-                'paper_id': doi,
-                'academic_name': item['academic_name'],
-                'cvu': item.get('cvu', ''),
-                'orcid': item['orcid'] or '',
-                'openalex_id': item['openalex_id'] or '',
-                'institution': inst or '',
-                'institution_ror': '',
-                'dependency': dep or '',
-                'dependency_id': '',
-                'subdependency': sub or '',
-                'subdependency_id': '',
-                'paper_title': item['title'],
-                'paper_year': int(item['year']),
-                'citations': int(item['citations']),
-                'is_snii': 1 if is_snii else 0,
-                'is_wos': is_wos,
-                'is_scopus': is_scopus,
-                'is_pubmed': is_pubmed,
-                'is_openalex': 1,
-                'is_doaj': is_doaj,
-                'is_semantic_scholar': 1 if 'mag' in ids else 0,
-                'is_dimensions': 1 if 'mag' in ids else 0,
-                'is_lens': 1 if 'mag' in ids or 'pmid' in ids else 0,
-                'source': f'Ingest_APIs_{source_override}' if source_override else 'Ingest_APIs_Dual'
-            })
-            
-            # 2. Preparar fila para paper_entity_map (Producción Institucional)
-            entity_rows.append({
-                'paper_id': doi,
-                'institution': inst or '',
-                'institution_ror': '',
-                'dependency': dep or '',
-                'dependency_id': '',
-                'subdependency': sub or '',
-                'subdependency_id': '',
-                'paper_title': item['title'],
-                'paper_year': int(item['year']),
-                'citations': int(item['citations']),
-                'is_wos': is_wos,
-                'is_scopus': is_scopus,
-                'is_pubmed': is_pubmed,
-                'is_openalex': 1,
-                'is_doaj': is_doaj,
-                'is_semantic_scholar': 1 if 'mag' in ids else 0,
-                'is_dimensions': 1 if 'mag' in ids else 0,
-                'is_lens': 1 if 'mag' in ids or 'pmid' in ids else 0,
-                'source': f'Entity_Sync_{source_override}' if source_override else 'Ingest_APIs_Entity_Sync'
-            })
-            
-        if author_rows:
-            ch.insert_df('paper_author_map', pd.DataFrame(author_rows))
-        if entity_rows:
-            df_ent = pd.DataFrame(entity_rows).drop_duplicates(subset=['paper_id', 'institution', 'dependency', 'subdependency'])
-            ch.insert_df('paper_entity_map', df_ent)
-            print(f"      📊 [ClickHouse] {len(df_ent)} entidades únicas sincronizadas.")
-            
-        print(f"      📊 [ClickHouse] {len(author_rows)} autores sincronizados (Dual Write).")
-    except Exception as e:
-        print(f"      [WARN] Error sincronizando con ClickHouse: {e}")
 
 if __name__ == "__main__":
     import argparse
@@ -825,7 +814,6 @@ if __name__ == "__main__":
     parser.add_argument("--name", type=str, help="Filtrar por un académico específico")
     parser.add_argument("--force", action="store_true", help="Re-ingestar académicos existentes")
     parser.add_argument("--local", action="store_true", help="Usar SDK nativa de lmstudio para embeddings")
-    parser.add_argument("--ch", action="store_true", help="Sincronizar con ClickHouse (Dual Write)")
     parser.add_argument("--source", type=str, help="Forzar origen de indización (wos, scopus, pubmed, doaj)")
     parser.add_argument("--hierarchy", type=str, help="Jerarquía completa: Institución || Dependencia || Subdependencia")
     
@@ -885,7 +873,7 @@ if __name__ == "__main__":
                 institution_name=h_inst,
                 dependency_name=h_dep,
                 subdependency_name=h_sub,
-                save_to_ch=args.ch,
+                save_to_ch=False,
                 source_override=args.source
             )
             

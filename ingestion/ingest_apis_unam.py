@@ -127,64 +127,17 @@ def _resolve_hierarchy(entity_name: str, entity_map: dict) -> tuple[str, str | N
     return INST_NAME, entity_name, None
 
 
-def _resolve_openalex_author_id(orcid: str, scopus_ids: list, force_local: bool = False) -> str | None:
+def _resolve_openalex_author_id(orcid: str, scopus_ids: list, force_local: bool = False) -> list:
     """
-    Resuelve el OpenAlex Author ID consultando primero ClickHouse (tabla authors),
-    que tiene los datos locales de OpenAlex. Fallback a pyalex si no se encuentra.
-
-    Orden de búsqueda:
-      1. orcid  → SELECT id FROM authors WHERE orcid = ?
-      2. scopus → JSONExtractString(raw_data, 'ids', 'scopus') = ?  (en raw_data)
-      3. pyalex (fallback para autores no en la BD local)
+    Delegado a openalex_utils.resolve_author_oa_id (devuelve lista de Author IDs).
     """
-    from database.clickhouse_db import ch_client
-    ch = ch_client.get_client()
+    from ingestion import openalex_utils
+    return openalex_utils.resolve_author_oa_id(
+        orcid=orcid,
+        scopus_ids=scopus_ids,
+        force_local=force_local,
+    )
 
-    # 1. Por ORCID (columna directa — búsqueda eficiente)
-    if orcid:
-        orcid_clean = orcid.strip().replace('https://orcid.org/', '')
-        try:
-            rows = ch.query(
-                "SELECT id FROM authors WHERE orcid = {orcid:String} LIMIT 1",
-                parameters={'orcid': orcid_clean}
-            ).result_rows
-            if rows:
-                return rows[0][0]
-        except Exception as e:
-            print(f"      [CH resolve] Error por ORCID {orcid_clean}: {e}")
-
-    # 2. Por Scopus ID (en raw_data JSON)
-    for sid in (scopus_ids or []):
-        sid_str = str(sid).strip()
-        try:
-            rows = ch.query(
-                """SELECT id FROM authors
-                   WHERE JSONExtractString(raw_data, 'ids', 'scopus') = {sid:String}
-                   LIMIT 1""",
-                parameters={'sid': sid_str}
-            ).result_rows
-            if rows:
-                return rows[0][0]
-        except Exception as e:
-            print(f"      [CH resolve] Error por Scopus {sid_str}: {e}")
-
-    # 3. Fallback: pyalex (cubre autores no presentes en la BD local)
-    if not force_local:
-        try:
-            import pyalex
-            if orcid:
-                orcid_clean = orcid.strip().replace('https://orcid.org/', '')
-                results = pyalex.Authors().filter(orcid=orcid_clean).get()
-                if results:
-                    return results[0].get('id')
-            for sid in (scopus_ids or []):
-                results = pyalex.Authors().filter(ids={'scopus': str(sid).strip()}).get()
-                if results:
-                    return results[0].get('id')
-        except Exception as e:
-            print(f"      [OA fallback] Error: {e}")
-
-    return None
 
 
 def _enrich_json_with_openalex_ids(json_path: str, force_local: bool = False) -> int:
@@ -212,11 +165,13 @@ def _enrich_json_with_openalex_ids(json_path: str, force_local: bool = False) ->
         if not orcid and not scopus:
             continue
 
-        oa_id = _resolve_openalex_author_id(orcid, scopus, force_local=force_local)
-        if oa_id:
-            rec['openalex_id'] = oa_id
+        oa_ids_found = _resolve_openalex_author_id(orcid, scopus, force_local=force_local)
+        if oa_ids_found:
+            rec['openalex_id']  = oa_ids_found[0]
+            if len(oa_ids_found) > 1:
+                rec['openalex_ids'] = oa_ids_found
             nuevos += 1
-            print(f"      🔑 OA ID resuelto para {name}: {oa_id}")
+            print(f"      🔑 OA ID(s) resueltos para {name}: {oa_ids_found}")
 
     if nuevos:
         with open(json_path, 'w', encoding='utf-8') as f:
@@ -257,14 +212,15 @@ def main():
         elif os.path.isdir(p):
             input_paths = sorted([
                 os.path.join(p, f) for f in os.listdir(p)
-                if f.startswith('profesores_SNII_') and f.endswith('.json')
+                if f.startswith('profesores_') and f.endswith('.json')
             ])
-    else:
+    
+    if not input_paths:
         data_dir = os.path.abspath(DATA_DIR)
         if os.path.exists(data_dir):
             input_paths = sorted([
                 os.path.join(data_dir, f) for f in os.listdir(data_dir)
-                if f.startswith('profesores_SNII_') and f.endswith('.json')
+                if f.startswith('profesores_') and f.endswith('.json')
             ])
 
     if not input_paths:
@@ -290,12 +246,14 @@ def main():
             if nuevos_oa:
                 print(f"   🔍 {nuevos_oa} OpenAlex Author ID(s) nuevos resueltos y guardados en JSON.")
 
+            # Determinar si el archivo es de SNII o de académicos generales
+            is_snii_file = os.path.basename(json_file).startswith('profesores_SNII_')
             process_and_ingest_academics(
                 json_file,
                 force=args.force,
                 force_local=args.local,
                 target_name=args.name,
-                is_snii=True,           # Todos los archivos SNII_ son SNII
+                is_snii=is_snii_file,           # True solo para archivos profesores_SNII_*
                 limit_acads=args.limit_acads,
                 override_entity=h_sub or h_dep,
                 institution_name=h_inst,

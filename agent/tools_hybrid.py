@@ -181,15 +181,15 @@ search_scientific_papers = search_scientific_papers_semantic
 def get_author_coauthors_graph(author_name: str) -> str:
     """
     Consulta el Grafo de Conocimiento (Neo4j) para encontrar coautores de un investigador.
-    Ústil para mapear redes de colaboración y líneas de investigación compartidas.
+    Útil para mapear redes de colaboración y líneas de investigación compartidas.
     Usa búsqueda parcial: proporciona solo el apellido o parte del nombre.
     """
     print(f"✨️ Consultando grafo de coautoría para: '{author_name}'")
     with neo4j.driver.session() as session:
         result = session.run(
-            "MATCH (a1:Author)-[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(a2:Author) "
-            "WHERE toLower(a1.name) CONTAINS toLower($name) AND a1 <> a2 "
-            "RETURN DISTINCT a2.name AS coauthor, count(p) AS shared_papers "
+            "MATCH (a1:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)<-[:AUTHOR_OF|AUTHORED]-(a2:Person) "
+            "WHERE (toLower(a1.fullname) CONTAINS toLower($name) OR toLower(a1.name) CONTAINS toLower($name)) AND a1 <> a2 "
+            "RETURN DISTINCT coalesce(a2.fullname, a2.name) AS coauthor, count(p) AS shared_papers "
             "ORDER BY shared_papers DESC LIMIT 20",
             name=author_name
         )
@@ -207,32 +207,32 @@ def query_knowledge_graph_cypher(cypher_query: str) -> str:
     con X y también han publicado sobre el concepto Y?', o '¿Cuál es la evolución de citas de este grupo?'.
     
     REGLA: El esquema real de la base de datos usa etiquetas universales:
-    - Autores externos: etiqueta `(a:Author)`. Atributos: `id`, `name`.
-    - Académicos UNAM: etiqueta múltiple `(a:Academic:Author)`. Atributos: `id`, `name`, `orcid`, `scopus_id`, `siia_url`.
+    - Autores/Académicos: etiqueta `(a:Person)`. También etiquetados como `:Author`. Atributos: `id`, `fullname` (nombre completo en mayúsculas), `name` (nombre simple/fallback), `orcid`, `scopus_id`, `siia_url`.
     - Artículos: etiqueta genérica `(p:Paper)`. Atributos: `doi`, `title`, `year`, `citations`.
-    - Entidades UNAM: etiqueta múltiple `(e:Entity:Institution)`. Atributos: `name`.
-    - Tópicos Temáticos: `(t:Topic)`. Atributos: `id` (slug en inglés), `name` (nombre en inglés).
+    - Entidades UNAM/Instituciones: etiquetas `(i:Institution)`, `(d:Dependency)`, `(s:Subdependency)`. Atributos: `id`, `name`.
+    - Tópicos Temáticos: `(t:Topic)`. Atributos: `id` (slug compuesto en inglés), `name` (nombre en inglés).
+    - Objetivos de Desarrollo Sostenible (ODS): `(s:SDG)`. Atributos: `name`.
     
     RELACIONES IMPORTANTES PRECISAS:
-    - Publicación: `(a:Author)-[:AUTHORED]->(p:Paper)`
-    - Afiliación: `(a:Academic)-[:AFFILIATED_TO]->(e:Entity)`
+    - Publicación: `(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)`
+    - Afiliación: `(a:Person)-[:AFFILIATED_TO]->(entity)` donde `entity` puede ser `:Institution`, `:Dependency` o `:Subdependency`.
     - Tópicos: `(p:Paper)-[:HAS_TOPIC]->(t:Topic)`. **IMPORTANTE: Los tópicos están en INGLÉS**. Traduce siempre los términos de búsqueda (ej. de "microscopía" a "microscopy") antes de filtrar `t.name`.
+    - SDGs: `(p:Paper)-[:CONTRIBUTES_TO]->(s:SDG)`.
     
     PATRONES DE CONSULTA RECOMENDADOS (SINTAXIS CORRECTA):
-    - Filtrar por entidad y tópico exacto: `MATCH (e:Entity {name: 'Instituto de Investigaciones Nucleares'})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic) WHERE toLower(t.name) CONTAINS 'microscopy' RETURN p.title, a.name, p.year ORDER BY p.year DESC LIMIT 20`
-    - Filtrar papers por entidad (sin tópico): `MATCH (e:Entity)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper) WHERE toLower(e.name) CONTAINS 'ciencias' AND p.year >= 2018 RETURN p.doi, p.title, p.year, p.citations ORDER BY p.year DESC LIMIT 20`
+    - Filtrar por dependencia y tópico exacto: `MATCH (d:Dependency {name: 'FACULTAD DE CIENCIAS'})<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic) WHERE toLower(t.name) CONTAINS 'microscopy' RETURN p.title, coalesce(a.fullname, a.name) AS name, p.year ORDER BY p.year DESC LIMIT 20`
+    - Filtrar papers por dependencia (sin tópico): `MATCH (d:Dependency)<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper) WHERE toLower(d.name) CONTAINS 'ciencias' AND p.year >= 2018 RETURN p.doi, p.title, p.year, p.citations ORDER BY p.year DESC LIMIT 20`
     - Filtrar por tópico AMPLIO (usa OR para cubrir variantes): `WHERE toLower(t.name) CONTAINS 'diabetes' OR toLower(t.name) CONTAINS 'insulin' OR toLower(t.name) CONTAINS 'metabolic'`
-    - Búsqueda por nombre de persona (usa CONTAINS, NUNCA match exacto):
-      `MATCH (a:Author)-[:AUTHORED]->(p:Paper) WHERE toLower(a.name) CONTAINS toLower('alcubierre') RETURN p.title, a.name, p.year ORDER BY p.year DESC LIMIT 20`
+    - Búsqueda por nombre de persona (usa CONTAINS con fullname o name, NUNCA match exacto):
+      `MATCH (a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper) WHERE toLower(coalesce(a.fullname, a.name)) CONTAINS toLower('alcubierre') RETURN p.title, coalesce(a.fullname, a.name) AS name, p.year ORDER BY p.year DESC LIMIT 20`
       RAZÓN: Los nombres están almacenados en formato 'APELLIDO PATERNO, NOMBRE' en MAYÚSCULAS (ej. 'ALCUBIERRE MOYA, MIGUEL'). Un match exacto con el nombre coloquial SIEMPRE fallará.
     
     ❌ ERRORES PROHIBIDOS — NUNCA hagas esto:
     - NO uses parámetros Cypher ($variable). Esta herramienta NO acepta un dict de params separado. Incrusta los valores directamente en el string de la query. INCORRECTO: `WHERE a.id IN $ids`. CORRECTO: `WHERE a.id IN ['id1','id2']`
-    - NO uses `(p:Paper)-[:AFFILIATED_TO]->(:Institution)`. Los Papers NO tienen relación AFFILIATED_TO. La afiliación es SIEMPRE a través del académico: `(a:Academic)-[:AFFILIATED_TO]->(e:Entity)`.
+    - NO uses `(p:Paper)-[:AFFILIATED_TO]->(:Institution)`. Los Papers NO tienen relación AFFILIATED_TO. La afiliación es SIEMPRE a través del académico: `(a:Person)-[:AFFILIATED_TO]->(e)`.
     - NO uses `EXISTS()` con patrones complejos. Usa `MATCH` directos.
-    - Para SDGs usa `(p:Paper)-[:ADDRESSES]->(s:SDG)`. La relación se llama :ADDRESSES, no :RELEVANT_TO.
-      Ejemplo: `MATCH (p:Paper)-[:ADDRESSES]->(s:SDG) RETURN s.id, s.name, count(p) AS papers ORDER BY papers DESC`
-
+    - Para SDGs usa `(p:Paper)-[:CONTRIBUTES_TO]->(s:SDG)`. La relación se llama :CONTRIBUTES_TO, no :ADDRESSES ni :RELEVANT_TO.
+      Ejemplo: `MATCH (p:Paper)-[:CONTRIBUTES_TO]->(s:SDG) RETURN s.name, count(p) AS papers ORDER BY papers DESC`
     
     IMPORTANTE: Esta herramienta solo encuentra trabajos con tópicos etiquetados explícitamente. Usa SIEMPRE en paralelo con `search_scientific_papers_semantic` para encontrar trabajos cuyo tópico no coincide textualmente. SIEMPRE usa `LIMIT 20` por defecto en tus consultas Cypher.
     """
@@ -445,23 +445,26 @@ def get_entity_statistics(entity_name: str) -> str:
         with neo4j.driver.session() as session:
             # Total papers y académicos
             counts = session.run("""
-                MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)
+                MATCH (e) WHERE (e:Institution OR e:Dependency OR e:Subdependency) AND e.name = $entity
+                MATCH (e)<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)
                 RETURN count(DISTINCT p) AS total_papers, count(DISTINCT a) AS total_academics,
                        min(p.year) AS year_min, max(p.year) AS year_max
             """, entity=entity_name).single()
 
             # Top tópicos
             topics = session.run("""
-                MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic)
+                MATCH (e) WHERE (e:Institution OR e:Dependency OR e:Subdependency) AND e.name = $entity
+                MATCH (e)<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic)
                 RETURN t.name AS topic, count(p) AS papers
                 ORDER BY papers DESC LIMIT 10
             """, entity=entity_name).data()
 
             # Top 5 más citados
             top_cited = session.run("""
-                MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)
+                MATCH (e) WHERE (e:Institution OR e:Dependency OR e:Subdependency) AND e.name = $entity
+                MATCH (e)<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)
                 WHERE p.citations IS NOT NULL AND p.citations > 0
-                RETURN p.title AS title, p.year AS year, p.citations AS citations, a.name AS author
+                RETURN p.title AS title, p.year AS year, p.citations AS citations, coalesce(a.fullname, a.name) AS author
                 ORDER BY citations DESC LIMIT 5
             """, entity=entity_name).data()
 
@@ -494,9 +497,10 @@ def get_researcher_profile(name_fragment: str) -> str:
         with neo4j.driver.session() as session:
             # Datos básicos del investigador
             profile = session.run("""
-                MATCH (a:Academic)-[:AFFILIATED_TO]->(e:Entity)
-                WHERE toLower(a.name) CONTAINS toLower($name)
-                RETURN a.name AS name, a.orcid AS orcid, a.scopus_id AS scopus_id,
+                MATCH (a:Person)-[:AFFILIATED_TO]->(e)
+                WHERE (e:Institution OR e:Dependency OR e:Subdependency)
+                  AND (toLower(a.fullname) CONTAINS toLower($name) OR toLower(a.name) CONTAINS toLower($name))
+                RETURN coalesce(a.fullname, a.name) AS name, a.orcid AS orcid, a.scopus_id AS scopus_id,
                        a.siia_url AS siia_url, e.name AS entity
                 LIMIT 3
             """, name=name_fragment).data()
@@ -510,22 +514,24 @@ def get_researcher_profile(name_fragment: str) -> str:
 
                 # Total papers y rango de años
                 paper_stats = session.run("""
-                    MATCH (a:Academic {name: $name})-[:AUTHORED]->(p:Paper)
+                    MATCH (a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)
+                    WHERE coalesce(a.fullname, a.name) = $name
                     RETURN count(p) AS total, min(p.year) AS year_min, max(p.year) AS year_max,
                            sum(p.citations) AS total_citations
                 """, name=academic_name).single()
 
                 # Top tópicos
                 topics = session.run("""
-                    MATCH (a:Academic {name: $name})-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic)
+                    MATCH (a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic)
+                    WHERE coalesce(a.fullname, a.name) = $name
                     RETURN t.name AS topic, count(p) AS papers ORDER BY papers DESC LIMIT 5
                 """, name=academic_name).data()
 
                 # Top coautores
                 coauthors = session.run("""
-                    MATCH (a1:Author)-[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(a2:Author)
-                    WHERE a1.name = $name AND a1 <> a2
-                    RETURN a2.name AS coauthor, count(p) AS shared ORDER BY shared DESC LIMIT 5
+                    MATCH (a1:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)<-[:AUTHOR_OF|AUTHORED]-(a2:Person)
+                    WHERE coalesce(a1.fullname, a1.name) = $name AND a1 <> a2
+                    RETURN coalesce(a2.fullname, a2.name) AS coauthor, count(p) AS shared ORDER BY shared DESC LIMIT 5
                 """, name=academic_name).data()
 
                 results.append({
@@ -557,7 +563,8 @@ def get_trending_topics(entity_name: Optional[str] = None, start_year: int = 201
         with neo4j.driver.session() as session:
             if entity_name:
                 query = """
-                    MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic)
+                    MATCH (e) WHERE (e:Institution OR e:Dependency OR e:Subdependency) AND e.name = $entity
+                    MATCH (e)<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic)
                     WHERE p.year >= $year
                     RETURN t.name AS topic, count(p) AS papers, collect(DISTINCT p.year) AS years
                     ORDER BY papers DESC LIMIT 15
@@ -602,9 +609,10 @@ def get_coauthorship_network_for_entity(entity_name: str, start_year: int = 2015
         with neo4j.driver.session() as session:
             # Nodos: autores internos de la entidad con sus papers
             nodes_q = """
-            MATCH (e:Entity)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)
-            WHERE toLower(e.name) CONTAINS toLower($entity) AND p.year >= $year
-            RETURN a.name AS name, count(DISTINCT p) AS papers_count
+            MATCH (e) WHERE (e:Institution OR e:Dependency OR e:Subdependency) AND toLower(e.name) CONTAINS toLower($entity)
+            MATCH (e)<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)
+            WHERE p.year >= $year
+            RETURN coalesce(a.fullname, a.name) AS name, count(DISTINCT p) AS papers_count
             ORDER BY papers_count DESC
             LIMIT $limit
             """
@@ -618,10 +626,10 @@ def get_coauthorship_network_for_entity(entity_name: str, start_year: int = 2015
 
             # Aristas: pares de autores que comparten papers
             edges_q = """
-            MATCH (e:Entity)<-[:AFFILIATED_TO]-(a1:Academic)-[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(a2:Author)
-            WHERE toLower(e.name) CONTAINS toLower($entity) AND p.year >= $year
-              AND id(a1) < id(a2)
-            RETURN a1.name AS source, a2.name AS target,
+            MATCH (e) WHERE (e:Institution OR e:Dependency OR e:Subdependency) AND toLower(e.name) CONTAINS toLower($entity)
+            MATCH (e)<-[:AFFILIATED_TO]-(a1:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)<-[:AUTHOR_OF|AUTHORED]-(a2:Person)
+            WHERE p.year >= $year AND id(a1) < id(a2)
+            RETURN coalesce(a1.fullname, a1.name) AS source, coalesce(a2.fullname, a2.name) AS target,
                    count(DISTINCT p) AS shared_papers,
                    collect(DISTINCT p.year)[..3] AS sample_years
             ORDER BY shared_papers DESC
@@ -662,9 +670,9 @@ def get_topic_evolution(entity_name: str, start_year: int = 2018, end_year: int 
     try:
         with neo4j.driver.session() as session:
             query = """
-            MATCH (e:Entity)<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic)
-            WHERE toLower(e.name) CONTAINS toLower($entity)
-              AND p.year >= $start_year AND p.year <= $end_year
+            MATCH (e) WHERE (e:Institution OR e:Dependency OR e:Subdependency) AND toLower(e.name) CONTAINS toLower($entity)
+            MATCH (e)<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic)
+            WHERE p.year >= $start_year AND p.year <= $end_year
             RETURN t.name AS topic, p.year AS year,
                    count(DISTINCT p) AS paper_count,
                    round(avg(coalesce(p.citations, 0)), 2) AS avg_citations
@@ -712,8 +720,8 @@ def get_sdg_distribution(
 ) -> str:
     """
     Distribución de publicaciones por Objetivo de Desarrollo Sostenible (ODS/SDG) para
-    una entidad UNAM. Requiere que los nodos :SDG y la relación :ADDRESSES estén
-    materializados en Neo4j (usar ingest_sdg.py o materialize_sdg_relations.py).
+    una entidad UNAM. Requiere que los nodos :SDG y la relación :CONTRIBUTES_TO estén
+    materializados en Neo4j.
 
     Retorna:
     - Conteo de papers por SDG
@@ -726,10 +734,10 @@ def get_sdg_distribution(
 
         # 1. Distribución global por SDG
         dist_query = """
-        MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)
-              -[:ADDRESSES]->(s:SDG)
+        MATCH (e) WHERE (e:Institution OR e:Dependency OR e:Subdependency) AND e.name = $entity
+        MATCH (e)<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)-[:CONTRIBUTES_TO]->(s:SDG)
         WHERE p.year >= $start AND p.year <= $end
-        RETURN s.id AS sdg_id,
+        RETURN s.name AS sdg_id,
                s.name AS sdg_name,
                count(DISTINCT p) AS papers,
                count(DISTINCT a) AS researchers,
@@ -739,21 +747,21 @@ def get_sdg_distribution(
 
         # 2. Evolución temporal
         evol_query = """
-        MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)
-              -[:ADDRESSES]->(s:SDG)
+        MATCH (e) WHERE (e:Institution OR e:Dependency OR e:Subdependency) AND e.name = $entity
+        MATCH (e)<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)-[:CONTRIBUTES_TO]->(s:SDG)
         WHERE p.year >= $start AND p.year <= $end
-        RETURN s.id AS sdg_id, s.name AS sdg_name, p.year AS year,
+        RETURN s.name AS sdg_id, s.name AS sdg_name, p.year AS year,
                count(DISTINCT p) AS papers
-        ORDER BY s.id, p.year
+        ORDER BY s.name, p.year
         """
 
         # 3. Top investigadores por SDG
         top_query = """
-        MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)-[:AUTHORED]->(p:Paper)
-              -[:ADDRESSES]->(s:SDG)
+        MATCH (e) WHERE (e:Institution OR e:Dependency OR e:Subdependency) AND e.name = $entity
+        MATCH (e)<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)-[:CONTRIBUTES_TO]->(s:SDG)
         WHERE p.year >= $start AND p.year <= $end
-        RETURN s.id AS sdg_id, a.name AS researcher, count(DISTINCT p) AS papers
-        ORDER BY s.id, papers DESC
+        RETURN s.name AS sdg_id, coalesce(a.fullname, a.name) AS researcher, count(DISTINCT p) AS papers
+        ORDER BY s.name, papers DESC
         """
 
         params = {"entity": entity_name, "start": start_year, "end": end_year}
@@ -768,8 +776,7 @@ def get_sdg_distribution(
         if not dist_rows:
             return json.dumps({
                 "entity": entity_name,
-                "mensaje": "No se encontraron relaciones :ADDRESSES con nodos :SDG. "
-                           "Ejecuta ingest_sdg.py o materialize_sdg_relations.py primero.",
+                "mensaje": "No se encontraron relaciones :CONTRIBUTES_TO con nodos :SDG.",
                 "distribucion": []
             }, ensure_ascii=False)
 
@@ -827,7 +834,7 @@ def get_international_collaboration_stats(
     - Top investigadores más activos en colaboración internacional
 
     Funciona en dos modos:
-    1. Modo grafo: usa nodos :Author con country_code (requiere patch_author_affiliations.py)
+    1. Modo grafo: usa nodos :Person con country_code
     2. Modo fallback: lee campo `countries` de raw_metadata al nivel del paper
     """
     try:
@@ -835,46 +842,47 @@ def get_international_collaboration_stats(
         params = {"entity": entity_name, "start": start_year, "end": end_year}
 
         with graph.driver.session() as session:
-            # Detectar si los :Author externos tienen country_code
+            # Detectar si los :Person externos tienen country_code
             probe = session.run(
-                "MATCH (a:Author) WHERE NOT (a:Academic) AND a.country_code IS NOT NULL "
+                "MATCH (a:Person) WHERE a.country_code IS NOT NULL AND NOT (a)-[:AFFILIATED_TO]->(:Institution|Dependency|Subdependency) "
                 "RETURN count(a) AS n LIMIT 1"
             )
             has_country_code = (probe.single()["n"] > 0)
 
         if has_country_code:
-            # ── Modo grafo (datos de :Author enriquecidos) ──────────────────────
+            # ── Modo grafo (datos de :Person enriquecidos) ──────────────────────
             top_q = """
-            MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)
-                  -[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(ext:Author)
-            WHERE NOT (ext:Academic)
-              AND ext.country_code IS NOT NULL
+            MATCH (e) WHERE (e:Institution OR e:Dependency OR e:Subdependency) AND e.name = $entity
+            MATCH (e)<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)<-[:AUTHOR_OF|AUTHORED]-(ext:Person)
+            WHERE ext.country_code IS NOT NULL
+              AND NOT (ext)-[:AFFILIATED_TO]->(:Institution|Dependency|Subdependency)
               AND p.year >= $start AND p.year <= $end
             RETURN ext.country_code AS country,
                    count(DISTINCT p) AS papers,
                    count(DISTINCT ext) AS coauthors,
-                   collect(DISTINCT a.name)[..5] AS researchers
+                   collect(DISTINCT coalesce(a.fullname, a.name))[..5] AS researchers
             ORDER BY papers DESC LIMIT 30
             """
             evol_q = """
-            MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)
-                  -[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(ext:Author)
-            WHERE NOT (ext:Academic)
-              AND ext.country_code IS NOT NULL
+            MATCH (e) WHERE (e:Institution OR e:Dependency OR e:Subdependency) AND e.name = $entity
+            MATCH (e)<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)<-[:AUTHOR_OF|AUTHORED]-(ext:Person)
+            WHERE ext.country_code IS NOT NULL
+              AND NOT (ext)-[:AFFILIATED_TO]->(:Institution|Dependency|Subdependency)
               AND p.year >= $start AND p.year <= $end
             RETURN p.year AS year, count(DISTINCT p) AS intl_papers
             ORDER BY year
             """
             total_q = """
-            MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)
-                  -[:AUTHORED]->(p:Paper)
+            MATCH (e) WHERE (e:Institution OR e:Dependency OR e:Subdependency) AND e.name = $entity
+            MATCH (e)<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)
             WHERE p.year >= $start AND p.year <= $end
             RETURN count(DISTINCT p) AS total
             """
             intl_q = """
-            MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)
-                  -[:AUTHORED]->(p:Paper)<-[:AUTHORED]-(ext:Author)
-            WHERE NOT (ext:Academic) AND ext.country_code IS NOT NULL
+            MATCH (e) WHERE (e:Institution OR e:Dependency OR e:Subdependency) AND e.name = $entity
+            MATCH (e)<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)<-[:AUTHOR_OF|AUTHORED]-(ext:Person)
+            WHERE ext.country_code IS NOT NULL
+              AND NOT (ext)-[:AFFILIATED_TO]->(:Institution|Dependency|Subdependency)
               AND p.year >= $start AND p.year <= $end
             RETURN count(DISTINCT p) AS intl_papers
             """
@@ -888,11 +896,11 @@ def get_international_collaboration_stats(
         else:
             # ── Modo fallback (campo 'countries' en raw_metadata del paper) ─────
             raw_q = """
-            MATCH (e:Entity {name: $entity})<-[:AFFILIATED_TO]-(a:Academic)
-                  -[:AUTHORED]->(p:Paper)
+            MATCH (e) WHERE (e:Institution OR e:Dependency OR e:Subdependency) AND e.name = $entity
+            MATCH (e)<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)
             WHERE p.raw_metadata IS NOT NULL
               AND p.year >= $start AND p.year <= $end
-            RETURN p.id AS doi, p.year AS year, a.name AS researcher,
+            RETURN p.id AS doi, p.year AS year, coalesce(a.fullname, a.name) AS researcher,
                    p.raw_metadata AS meta
             """
             import json, ast

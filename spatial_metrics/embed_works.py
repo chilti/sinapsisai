@@ -59,16 +59,6 @@ def embed_batch(client_llm, texts: list[str], model: str) -> list[list[float]]:
 
 def upsert_embeddings(client_ch, ids: list[str], vecs: list, col: str):
     """Acumula los vectores de embeddings en la tabla temporal tmp_embs_to_apply."""
-    # Asegurar que la tabla de acumulación exista
-    client_ch.command(f"""
-        CREATE TABLE IF NOT EXISTS {ACCUM_TABLE} (
-            id String,
-            embedding_nomic Array(Float32) DEFAULT [],
-            embedding_specter Array(Float32) DEFAULT []
-        ) ENGINE = MergeTree
-        ORDER BY id
-    """)
-
     df_tmp = pd.DataFrame({
         "id": ids,
         "embedding_nomic": [v if col == "embedding_nomic" else [] for v in vecs],
@@ -135,6 +125,16 @@ def apply_accumulated_embeddings(client_ch):
 # ── Fase Nomic ─────────────────────────────────────────────────────────────────
 
 def phase_nomic(client_ch, client_llm, model, limit=None, batch_size=DEFAULT_BATCH, dry_run=False):
+    if not dry_run:
+        client_ch.command(f"""
+            CREATE TABLE IF NOT EXISTS {ACCUM_TABLE} (
+                id String,
+                embedding_nomic Array(Float32) DEFAULT [],
+                embedding_specter Array(Float32) DEFAULT []
+            ) ENGINE = MergeTree
+            ORDER BY id
+        """)
+
     r = client_ch.query(f"SELECT count() FROM {TABLE} WHERE length(embedding_nomic) = 0")
     pending = r.result_rows[0][0]
     print(f"\n📊 [Nomic] Sin embedding_nomic: {pending:,}")
@@ -152,7 +152,9 @@ def phase_nomic(client_ch, client_llm, model, limit=None, batch_size=DEFAULT_BAT
         n = min(CHUNK_SIZE, pending - processed)
         df_chunk = client_ch.query_df(
             f"SELECT id, title, topic, subfield FROM {TABLE} "
-            f"WHERE length(embedding_nomic) = 0 LIMIT {n}"
+            f"WHERE length(embedding_nomic) = 0 "
+            f"AND id NOT IN (SELECT id FROM {ACCUM_TABLE} WHERE length(embedding_nomic) > 0) "
+            f"LIMIT {n}"
         )
         if df_chunk.empty:
             break
@@ -191,6 +193,16 @@ def phase_specter(client_ch, dry_run=False, limit=None, batch_size=DEFAULT_BATCH
     1. Copia embedding_specter2 desde embeddings_cache hacia la tabla temporal.
     2. Genera en la GPU localmente usando SPECTER2 para los que queden vacíos.
     """
+    if not dry_run:
+        client_ch.command(f"""
+            CREATE TABLE IF NOT EXISTS {ACCUM_TABLE} (
+                id String,
+                embedding_nomic Array(Float32) DEFAULT [],
+                embedding_specter Array(Float32) DEFAULT []
+            ) ENGINE = MergeTree
+            ORDER BY id
+        """)
+
     # ── 1. Copiar desde embeddings_cache ──
     r = client_ch.query(
         f"SELECT count() FROM {TABLE} WHERE length(embedding_specter) = 0"

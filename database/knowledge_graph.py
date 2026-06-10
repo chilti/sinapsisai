@@ -338,19 +338,19 @@ class Neo4jGraphStore:
         WITH a
         CALL (a) {
             WITH a WHERE $orcid IS NOT NULL
-            SET a.orcid = $orcid
+            SET a.orcids = apoc.coll.toSet(coalesce(a.orcids, []) + [$orcid])
         }
         CALL (a) {
             WITH a WHERE $openalex_id IS NOT NULL
-            SET a.openalex_id = $openalex_id
+            SET a.openalex_ids = apoc.coll.toSet(coalesce(a.openalex_ids, []) + [$openalex_id])
         }
         CALL (a) {
             WITH a WHERE $scopus_id IS NOT NULL
-            SET a.scopus_id = $scopus_id
+            SET a.scopus_ids = apoc.coll.toSet(coalesce(a.scopus_ids, []) + [$scopus_id])
         }
         CALL (a) {
             WITH a WHERE $siia_url IS NOT NULL AND $siia_url <> ''
-            SET a.siia_url = $siia_url
+            SET a.siia = $siia_url
         }
         CALL (a) {
             WITH a WHERE $audit_verdict IS NOT NULL
@@ -388,12 +388,81 @@ class Neo4jGraphStore:
     def add_api_papers_batch(self, batch_data: List[Dict[str, Any]]):
         """
         Versión optimizada para ingesta masiva de artículos vinculados a Person.
+        Crea únicamente la relación (Person)-[:AUTHOR_OF]->(Paper).
         """
         if not batch_data:
             return
 
-        for row in batch_data:
-            self.ingest_paper_row(row)
+        query = """
+        UNWIND $batch as row
+        // 1. Identificar o Crear la Persona
+        MERGE (a:Person {id: row.system_id})
+        SET a:Author
+        SET a.fullname = row.academic_name
+        
+        // Actualizar identificadores
+        WITH a, row
+        CALL (a, row) {
+            WITH a, row WHERE row.orcid IS NOT NULL AND row.orcid <> ""
+            SET a.orcids = apoc.coll.toSet(coalesce(a.orcids, []) + [row.orcid])
+        }
+        CALL (a, row) {
+            WITH a, row WHERE row.openalex_id IS NOT NULL AND row.openalex_id <> ""
+            SET a.openalex_ids = apoc.coll.toSet(coalesce(a.openalex_ids, []) + [row.openalex_id])
+        }
+        CALL (a, row) {
+            WITH a, row WHERE row.scopus_id IS NOT NULL AND row.scopus_id <> ""
+            SET a.scopus_ids = apoc.coll.toSet(coalesce(a.scopus_ids, []) + [row.scopus_id])
+        }
+        CALL (a, row) {
+            WITH a, row WHERE row.siia_url IS NOT NULL AND row.siia_url <> ""
+            SET a.siia = row.siia_url
+        }
+
+        // 2. Identificar o Crear el Paper
+        WITH a, row
+        MERGE (p:Paper {id: coalesce(row.doi, row.paper_openalex_id, row.system_id + "_" + row.title)})
+        SET p.title = row.title,
+            p.year = row.year,
+            p.citations = row.citations,
+            p.doi = row.doi,
+            p.openalex_id = row.paper_openalex_id,
+            p.raw_metadata = row.raw_metadata
+
+        // 3. Crear Relación de Autoría
+        MERGE (a)-[:AUTHOR_OF]->(p)
+        """
+        with self.driver.session() as session:
+            try:
+                session.run(query, batch=batch_data)
+            except Exception as e:
+                print(f"[ERROR] add_api_papers_batch: {e}")
+
+    def link_api_papers_batch(self, batch_data: List[Dict[str, Any]]):
+        """
+        Versión ultrarrápida para artículos que sabemos que ya existen.
+        Solo crea la relación de autoría y actualiza IDs de la persona.
+        """
+        if not batch_data: return
+        query = """
+        UNWIND $batch as row
+        // 1. Identificar a la Persona
+        MERGE (a:Person {id: row.system_id})
+        SET a:Author
+        SET a.fullname = row.academic_name
+        
+        // 2. Identificar al Paper por DOI o ID
+        WITH a, row
+        MATCH (p:Paper) WHERE p.id = row.doi OR p.doi = row.doi OR p.id = row.paper_openalex_id
+        
+        // 3. Crear Relación
+        MERGE (a)-[:AUTHOR_OF]->(p)
+        """
+        with self.driver.session() as session:
+            try:
+                session.run(query, batch=batch_data)
+            except Exception as e:
+                print(f"[ERROR] link_api_papers_batch: {e}")
 
     def ingest_paper_row(self, row: Dict[str, Any]):
         query = """
@@ -515,15 +584,15 @@ class Neo4jGraphStore:
 
     def get_academic_ids(self, academic_name: str) -> dict:
         """
-        Recupera los identificadores externos (orcid, openalex_id) de un nodo Academic.
-        Útil para enriquecer la ingesta cuando el JSON local no tiene estos datos
-        pero ya fueron persistidos desde el pipeline SNII de matching.
-        Retorna dict con claves 'orcid' y 'openalex_id' (pueden ser None).
+        Recupera los identificadores externos (orcids, openalex_ids, scopus_ids) de un nodo Academic.
+        Retorna dict con claves 'orcids', 'openalex_ids' y 'scopus_ids' (listas de strings, pueden estar vacías).
         """
         query = """
         MATCH (a:Person)
         WHERE a.fullname = $name OR a.id = $name
-        RETURN a.orcid AS orcid, a.openalex_id AS openalex_id
+        RETURN coalesce(a.orcids, []) AS orcids, 
+               coalesce(a.openalex_ids, []) AS openalex_ids,
+               coalesce(a.scopus_ids, []) AS scopus_ids
         LIMIT 1
         """
         with self.driver.session() as session:
@@ -531,10 +600,14 @@ class Neo4jGraphStore:
                 result = session.run(query, name=academic_name)
                 record = result.single()
                 if record:
-                    return {"orcid": record["orcid"], "openalex_id": record["openalex_id"]}
+                    return {
+                        "orcids": record["orcids"], 
+                        "openalex_ids": record["openalex_ids"],
+                        "scopus_ids": record["scopus_ids"]
+                    }
             except Exception as e:
                 print(f"[WARN] get_academic_ids para {academic_name}: {e}")
-        return {"orcid": None, "openalex_id": None}
+        return {"orcids": [], "openalex_ids": [], "scopus_ids": []}
 
     def mark_paper_as_indexed(self, doi: str, source: str):
         """
@@ -839,6 +912,51 @@ class Neo4jGraphStore:
             except Exception:
                 return False
 
+    def check_papers_exist_batch(self, paper_ids: List[str]) -> set:
+        """
+        Verifica si un lote de artículos ya existe en Neo4j buscando por ID o DOI.
+        Retorna un set con los IDs/DOIs que ya existen.
+        """
+        if not paper_ids:
+            return set()
+            
+        # Limpiamos los DOIs (para checkear ambas formas)
+        clean_ids = []
+        for pid in paper_ids:
+            if pid:
+                clean_ids.append(pid.replace("https://doi.org/", "").strip().lower())
+                clean_ids.append(pid)
+                
+        # Eliminamos duplicados
+        search_list = list(set(clean_ids))
+        
+        query = """
+        UNWIND $ids AS search_id
+        MATCH (p:Paper)
+        WHERE p.id = search_id OR p.doi = search_id
+        RETURN DISTINCT p.id AS existing_id, p.doi AS existing_doi
+        """
+        
+        existing = set()
+        with self.driver.session() as session:
+            try:
+                result = session.run(query, ids=search_list)
+                for record in result:
+                    if record["existing_id"]: existing.add(record["existing_id"])
+                    if record["existing_doi"]: existing.add(record["existing_doi"])
+            except Exception as e:
+                print(f"[WARN] check_papers_exist_batch: {e}")
+                
+        # Retornamos el subset de paper_ids originales que mapearon a un existente
+        found_original_ids = set()
+        for pid in paper_ids:
+            if not pid: continue
+            clean_pid = pid.replace("https://doi.org/", "").strip().lower()
+            if pid in existing or clean_pid in existing:
+                found_original_ids.add(pid)
+                
+        return found_original_ids
+
     def add_academic_affiliation(self, academic_name: str, entity_name: str):
         """
         Vincula un Academic con un Entity institucional.
@@ -951,21 +1069,45 @@ class Neo4jGraphStore:
             except Exception as e:
                 print(f"Error marcando SNII para {academic_id}: {e}")
 
-    def update_academic_metadata(self, academic_id: str, cvu: str = None, orcid: str = None, scopus_id: str = None,
+    def update_academic_metadata(self, academic_id: str, cvu: str = None, 
+                                  orcids=None, scopus_ids=None, openalex_ids=None,
                                   audit_verdict: str = None, audit_reason: str = None, 
                                   audit_confidence: int = None, audit_timestamp: str = None,
                                   match_reason: str = None, is_snii: bool = True,
                                   discarded_candidates: list = None, siia: str = None):
         """
-        Actualiza metadatos de un académico (CVU, ORCID, auditoría, SNII, SIIA, Scopus).
+        Actualiza metadatos de un académico (CVU, ORCIDs, auditoría, SNII, SIIA, Scopus IDs, OpenAlex IDs).
         """
         import json
         
-        # Normalizar scopus_id a lista si viene como string
-        sc_ids = []
-        if scopus_id:
-            if isinstance(scopus_id, list): sc_ids = scopus_id
-            else: sc_ids = [s.strip() for s in str(scopus_id).split(';') if s.strip()]
+        # Helper interno para normalizar a lista de strings válidos
+        def _to_list(val):
+            if not val: return []
+            
+            def split_str(s):
+                s = str(s).strip()
+                if ';' in s: return [x.strip() for x in s.split(';') if x.strip()]
+                if ',' in s: return [x.strip() for x in s.split(',') if x.strip()]
+                return [s] if s else []
+                
+            raw_items = []
+            if isinstance(val, str):
+                raw_items = split_str(val)
+            elif isinstance(val, list):
+                for v in val:
+                    raw_items.extend(split_str(v))
+            
+            clean_items = []
+            for item in raw_items:
+                if "orcid.org/" in item:
+                    item = item.split("orcid.org/")[-1].strip()
+                if item and item not in clean_items:
+                    clean_items.append(item)
+            return clean_items
+
+        clean_orcids = _to_list(orcids)
+        clean_scopus = _to_list(scopus_ids)
+        clean_openalex = _to_list(openalex_ids)
 
         query = """
         MERGE (a:Person {id: $academic_id})
@@ -973,8 +1115,8 @@ class Neo4jGraphStore:
         SET a.is_snii = (CASE WHEN $is_snii = true THEN true ELSE coalesce(a.is_snii, false) END)
         WITH a
         CALL (a) {
-            WITH a WHERE $orcid IS NOT NULL AND $orcid <> ""
-            SET a.orcid = $orcid
+            WITH a WHERE size($clean_orcids) > 0
+            SET a.orcids = apoc.coll.toSet(coalesce(a.orcids, []) + $clean_orcids)
         }
         CALL (a) {
             WITH a WHERE $cvu IS NOT NULL AND $cvu <> ""
@@ -985,16 +1127,21 @@ class Neo4jGraphStore:
             SET a.siia = $siia
         }
         CALL (a) {
-            WITH a WHERE size($sc_ids) > 0
-            SET a.scopus_ids = apoc.coll.toSet(coalesce(a.scopus_ids, []) + $sc_ids)
+            WITH a WHERE size($clean_scopus) > 0
+            SET a.scopus_ids = apoc.coll.toSet(coalesce(a.scopus_ids, []) + $clean_scopus)
+        }
+        CALL (a) {
+            WITH a WHERE size($clean_openalex) > 0
+            SET a.openalex_ids = apoc.coll.toSet(coalesce(a.openalex_ids, []) + $clean_openalex)
         }
         """
         params = {
             "academic_id": academic_id,
-            "orcid": orcid,
+            "clean_orcids": clean_orcids,
             "cvu": cvu,
-            "sc_ids": sc_ids,
+            "clean_scopus": clean_scopus,
             "siia": siia,
+            "clean_openalex": clean_openalex,
             "audit_verdict": audit_verdict,
             "audit_reason": audit_reason,
             "audit_confidence": audit_confidence,
@@ -1320,16 +1467,42 @@ class Neo4jGraphStore:
         query = """
         MATCH (u:User {orcid: $orcid})
         MATCH (a:Person {id: $academic_id})
+        WITH u, a, coalesce(a.orcid, '') as old_orcid
         MERGE (u)-[r:REPRESENTS]->(a)
         SET r.verification_date = datetime(),
             a.verified = true,
             a.verified_orcid = $orcid
+        RETURN old_orcid
         """
         with self.driver.session() as session:
             try:
-                session.run(query, orcid=orcid, academic_id=academic_id)
+                res = session.run(query, orcid=orcid, academic_id=academic_id).single()
+                if res and not res["old_orcid"]:
+                    self._trigger_academic_queue(academic_id, orcid)
             except Exception as e:
                 print(f"Error vinculando User {orcid} a Academic {academic_id}: {e}")
+
+    def _trigger_academic_queue(self, academic_id: str, orcid: str):
+        """Dispara el pipeline de ingesta y analytics en background mediante SQLite queue."""
+        query = """
+        MATCH (a:Person {id: $academic_id})
+        OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(node)
+        OPTIONAL MATCH (node)-[:PART_OF*0..2]->(i:Institution)
+        RETURN a.fullname as name, i.name as institution
+        LIMIT 1
+        """
+        with self.driver.session() as session:
+            try:
+                res = session.run(query, academic_id=academic_id).single()
+                if res and res["name"]:
+                    import sys
+                    import os
+                    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+                    from ingestion.task_queue import push_academic_pipeline, trigger_worker_in_background
+                    push_academic_pipeline(res["name"], res.get("institution"), orcid)
+                    trigger_worker_in_background()
+            except Exception as e:
+                print(f"Error encolando tarea para academic {academic_id}: {e}")
 
     def get_user_profile(self, orcid: str) -> dict:
         """Recupera el perfil de usuario y su académico vinculado si existe."""
@@ -1359,6 +1532,49 @@ class Neo4jGraphStore:
             if record:
                 return dict(record)
         return None
+
+    def resolve_orcid_conflict_and_link(self, new_orcid: str, academic_id: str, conflict_orcids: List[str], action: str, user_name: str = None):
+        """
+        Resuelve el conflicto de ORCID para un académico y vincula el nuevo usuario.
+        
+        action: 'remove' o 'keep'
+        """
+        self.upsert_user(new_orcid, user_name)
+        
+        with self.driver.session() as session:
+            try:
+                if action == 'remove':
+                    # Elimina relaciones de representación previas para los ORCIDs en disputa
+                    query_remove = """
+                    MATCH (a:Person {id: $academic_id})
+                    OPTIONAL MATCH (u:User)-[r:REPRESENTS]->(a)
+                    WHERE u.orcid IN $conflict_orcids
+                    DELETE r
+                    WITH a
+                    SET a.orcids = [x IN coalesce(a.orcids, []) WHERE NOT x IN $conflict_orcids]
+                    SET a.orcid = CASE WHEN a.orcid IN $conflict_orcids THEN null ELSE a.orcid END
+                    """
+                    session.run(query_remove, academic_id=academic_id, conflict_orcids=conflict_orcids)
+                
+                # Vincula el nuevo ORCID del usuario
+                query_link = """
+                MATCH (u:User {orcid: $new_orcid})
+                MATCH (a:Person {id: $academic_id})
+                WITH u, a, coalesce(a.orcid, '') as old_orcid
+                MERGE (u)-[r:REPRESENTS]->(a)
+                SET r.verification_date = datetime(),
+                    a.verified = true,
+                    a.verified_orcid = $new_orcid,
+                    a.orcid = $new_orcid,
+                    a.orcids = apoc.coll.toSet(coalesce(a.orcids, []) + [$new_orcid])
+                RETURN old_orcid
+                """
+                res = session.run(query_link, new_orcid=new_orcid, academic_id=academic_id).single()
+                if res and not res["old_orcid"]:
+                    self._trigger_academic_queue(academic_id, new_orcid)
+            except Exception as e:
+                print(f"Error resolviendo conflicto de ORCID e identificando academic {academic_id}: {e}")
+
 
     def global_search(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         """
@@ -1465,4 +1681,90 @@ class Neo4jGraphStore:
             except Exception as e:
                 print(f"Error en get_hierarchical_academic_census: {e}")
                 return []
+
+    def get_academic_identifier_metrics(self, inst: str, dep: str = None, sub: str = None) -> dict:
+        """
+        Obtiene estadísticas de identificadores (ORCID, otros IDs) de los académicos
+        afiliados a una entidad jerárquica en Neo4j.
+        """
+        def _is_valid(val):
+            return val and str(val).upper() not in ["SIN INFORMACIÓN", "SIN INFORMACIN", "NO APLICA", "SIN INSTITUCION", "SIN INSTITUCIN", "NAN", "NONE", "NULL"]
+
+        # Identificar si tiene al menos un identificador
+        # Consideramos ORCID, openalex_id, o scopus_id
+        id_cond = "size(coalesce(a.orcids, [])) > 0 or a.orcid is not null or size(coalesce(a.openalex_ids, [])) > 0 or a.openalex_id is not null or size(coalesce(a.scopus_ids, [])) > 0 or a.scopus_id is not null"
+        orcid_cond = "size(coalesce(a.orcids, [])) > 0 or a.orcid is not null"
+
+        if not inst or inst == 'MEXICO' or inst == 'MÉXICO':
+            query = f"""
+            MATCH (a:Person)
+            WHERE a.fullname IS NOT NULL
+            WITH distinct a
+            RETURN count(a) as total_academics,
+                   sum(case when a.is_snii = true then 1 else 0 end) as total_snii,
+                   sum(case when {orcid_cond} then 1 else 0 end) as with_orcid,
+                   sum(case when (a.is_snii = true) and ({orcid_cond}) then 1 else 0 end) as snii_with_orcid,
+                   sum(case when {id_cond} then 1 else 0 end) as with_any_id,
+                   sum(case when (a.is_snii = true) and ({id_cond}) then 1 else 0 end) as snii_with_any_id
+            """
+            params = {}
+        elif _is_valid(sub):
+            query = f"""
+            MATCH (i:Institution {{name: $inst}})<-[:PART_OF]-(d:Dependency {{id: $inst + "||" + $dep}})<-[:PART_OF]-(e:Subdependency {{id: $inst + "||" + $dep + "||" + $sub}})
+            MATCH (a:Person)-[:AFFILIATED_TO]->(e)
+            WITH distinct a
+            RETURN count(a) as total_academics,
+                   sum(case when a.is_snii = true then 1 else 0 end) as total_snii,
+                   sum(case when {orcid_cond} then 1 else 0 end) as with_orcid,
+                   sum(case when (a.is_snii = true) and ({orcid_cond}) then 1 else 0 end) as snii_with_orcid,
+                   sum(case when {id_cond} then 1 else 0 end) as with_any_id,
+                   sum(case when (a.is_snii = true) and ({id_cond}) then 1 else 0 end) as snii_with_any_id
+            """
+            params = {"inst": inst, "dep": dep, "sub": sub}
+        elif _is_valid(dep):
+            query = f"""
+            MATCH (i:Institution {{name: $inst}})<-[:PART_OF]-(d:Dependency {{id: $inst + "||" + $dep}})
+            OPTIONAL MATCH (d)<-[:PART_OF]-(s:Subdependency)
+            WITH d, s
+            MATCH (a:Person)-[:AFFILIATED_TO]->(node)
+            WHERE node = d OR node = s
+            WITH distinct a
+            RETURN count(a) as total_academics,
+                   sum(case when a.is_snii = true then 1 else 0 end) as total_snii,
+                   sum(case when {orcid_cond} then 1 else 0 end) as with_orcid,
+                   sum(case when (a.is_snii = true) and ({orcid_cond}) then 1 else 0 end) as snii_with_orcid,
+                   sum(case when {id_cond} then 1 else 0 end) as with_any_id,
+                   sum(case when (a.is_snii = true) and ({id_cond}) then 1 else 0 end) as snii_with_any_id
+            """
+            params = {"inst": inst, "dep": dep}
+        else:
+            query = f"""
+            MATCH (i:Institution {{name: $inst}})
+            OPTIONAL MATCH (i)<-[:PART_OF]-(d:Dependency)
+            OPTIONAL MATCH (d)<-[:PART_OF]-(s:Subdependency)
+            WITH collect(distinct i) + collect(distinct d) + collect(distinct s) AS targets
+            UNWIND targets AS node
+            MATCH (a:Person)-[:AFFILIATED_TO]->(node)
+            WITH distinct a
+            RETURN count(a) as total_academics,
+                   sum(case when a.is_snii = true then 1 else 0 end) as total_snii,
+                   sum(case when {orcid_cond} then 1 else 0 end) as with_orcid,
+                   sum(case when (a.is_snii = true) and ({orcid_cond}) then 1 else 0 end) as snii_with_orcid,
+                   sum(case when {id_cond} then 1 else 0 end) as with_any_id,
+                   sum(case when (a.is_snii = true) and ({id_cond}) then 1 else 0 end) as snii_with_any_id
+            """
+            params = {"inst": inst}
+
+        with self.driver.session() as session:
+            try:
+                res = session.run(query, **params).single()
+                if res:
+                    return dict(res)
+            except Exception as e:
+                print(f"Error en get_academic_identifier_metrics: {e}")
+        return {
+            'total_academics': 0, 'total_snii': 0, 'with_orcid': 0,
+            'snii_with_orcid': 0, 'with_any_id': 0, 'snii_with_any_id': 0
+        }
+
 

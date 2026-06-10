@@ -77,7 +77,7 @@ def extract_people_vectors_neo4j():
             RETURN p.id AS person_id, 
                    p.fullname AS fullname, 
                    p.is_snii AS is_snii, 
-                   p.nivel AS snii_level,
+                   coalesce(p.snii_level, '') AS snii_level,
                    coalesce(inst.name, 'Sin Institución') AS institution,
                    p.embedding_fastrp AS embedding
             """
@@ -151,7 +151,7 @@ def extract_people_topics_vectors_neo4j():
             RETURN p.id AS person_id, 
                    p.fullname AS fullname, 
                    p.is_snii AS is_snii, 
-                   p.nivel AS snii_level,
+                   coalesce(p.snii_level, '') AS snii_level,
                    coalesce(inst.name, 'Sin Institución') AS institution,
                    p.embedding_fastrp_topics AS embedding
             """
@@ -247,7 +247,7 @@ def extract_articles_vectors_qdrant():
 
 def extract_performance_vectors_clickhouse():
     """
-    Extrae el vector 4D de métricas de desempeño aprovechando los parquets
+    Extrae el vector de métricas de desempeño aprovechando los parquets
     ya generados por ingestion/compute_scholar_metrics_ch.py
     """
     output_path = os.path.join(OUTPUT_DIR, "performance_vectors.parquet")
@@ -255,7 +255,7 @@ def extract_performance_vectors_clickhouse():
         print(f"  -> {output_path} ya existe. Saltando extracción...")
         return
 
-    print("📊 [Métricas] Construyendo vectores de Desempeño 4D desde caché...")
+    print("📊 [Métricas] Construyendo vectores de Desempeño desde caché...")
     
     from pathlib import Path
     cache_dir = Path("data/cache_ch")
@@ -276,6 +276,12 @@ def extract_performance_vectors_clickhouse():
         return
         
     df = pd.concat(dfs, ignore_index=True).drop_duplicates(subset=['academic_name'])
+    
+    # Asegurar y filtrar académicos que no tengan artículos
+    if 'num_documents' not in df.columns:
+        df['num_documents'] = df.get('neo4j_total_papers', 0)
+    df['num_documents'] = df['num_documents'].fillna(0).astype(int)
+    df = df[df['num_documents'] > 0]
     
     # Asegurar que existan las métricas
     for c in ['pct_top_10', 'fwci_avg', 'pct_1', 'percentile_avg']:
@@ -301,14 +307,19 @@ def extract_performance_vectors_clickhouse():
         'fwci_avg': df['fwci_avg'].round(2),
         'pct_1': df['pct_1'].round(2),
         'percentile_avg': df['percentile_avg'].round(2),
+        'num_documents': df['num_documents'],
         'embedding': df['embedding']
     })
 
     output_path = os.path.join(OUTPUT_DIR, "performance_vectors.parquet")
     out_df.to_parquet(output_path, index=False)
-    print(f"✅ [Métricas] Guardado {len(out_df)} vectores 4D en {output_path}")
+    print(f"✅ [Métricas] Guardado {len(out_df)} vectores en {output_path}")
 
 
+def extract_articles_nomic_clickhouse():
+    """
+    Extrae los embeddings Nomic de artículos directamente desde ClickHouse.
+    """
     output_path = os.path.join(OUTPUT_DIR, "articles_nomic_vectors.parquet")
     if '--force' not in sys.argv and os.path.exists(output_path):
         print(f"  -> {output_path} ya existe. Saltando extracción...")
@@ -336,6 +347,10 @@ def extract_performance_vectors_clickhouse():
         print(f"⚠️ Error al extraer artículos Nomic desde ClickHouse: {e}")
 
 
+def extract_articles_specter_clickhouse():
+    """
+    Extrae los embeddings SPECTER2 de artículos directamente desde ClickHouse.
+    """
     output_path = os.path.join(OUTPUT_DIR, "articles_specter_vectors.parquet")
     if '--force' not in sys.argv and os.path.exists(output_path):
         print(f"  -> {output_path} ya existe. Saltando extracción...")
@@ -363,6 +378,10 @@ def extract_performance_vectors_clickhouse():
         print(f"⚠️ Error al extraer artículos SPECTER2 desde ClickHouse: {e}")
 
 
+def extract_people_semantic_clickhouse():
+    """
+    Extrae los perfiles semánticos SPECTER2 de los académicos desde ClickHouse.
+    """
     output_path = os.path.join(OUTPUT_DIR, "people_semantic_vectors.parquet")
     if '--force' not in sys.argv and os.path.exists(output_path):
         print(f"  -> {output_path} ya existe. Saltando extracción...")
@@ -385,6 +404,10 @@ def extract_performance_vectors_clickhouse():
             WHERE length(a.embedding_specter) > 0 AND pm.openalex_id != ''
             GROUP BY a.id, a.snii_level, a.embedding_specter
         """)
+        if df.empty:
+            print("  -> ⚠️ No se encontraron académicos con perfiles semánticos en ClickHouse (0 registros).")
+            return
+
         df['fullname'] = df['fullname'].fillna(df['person_id'])
         df['institution'] = df['institution'].fillna('Sin Institución')
         df['is_snii'] = df['is_snii'].fillna(0).astype(int)

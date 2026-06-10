@@ -67,7 +67,7 @@ def generate_wordcloud_image(
             color_func=_unam_color_func,
             prefer_horizontal=0.85,
             relative_scaling=0.5,
-            min_font_size=10,
+            min_font_size=6,
             max_font_size=80,
         )
         wc.generate_from_frequencies(word_freq)

@@ -4,6 +4,13 @@ import hdbscan
 import umap
 import time
 import json
+
+try:
+    import cuml
+    from cuml.manifold import UMAP as GPU_UMAP
+    HAS_CUML = True
+except ImportError:
+    HAS_CUML = False
 import os
 import sys
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -74,16 +81,43 @@ def cluster_and_label(csv_path, parquet_path='data/maps/articles_vectors.parquet
     else:
         print("Ejecutando UMAP para reducción de dimensionalidad latente (5D)...")
         start = time.time()
-        reducer = umap.UMAP(
-            n_components=5,
-            n_neighbors=15,
-            min_dist=0.0, # 0.0 para maximizar la densidad local y ayudar a HDBSCAN
-            metric='cosine',
-            random_state=42,
-            n_jobs=-1
-        )
-        embeddings_5d = reducer.fit_transform(vectors)
-        print(f"UMAP 5D completado en {time.time() - start:.1f} segundos.")
+        vectors = vectors.astype(np.float32)
+        if HAS_CUML:
+            print("  -> [GPU] Intentando cUML (GPU-acelerado) para UMAP 5D...")
+            try:
+                reducer = GPU_UMAP(
+                    n_components=5,
+                    n_neighbors=15,
+                    min_dist=0.0,
+                    metric='cosine',
+                    random_state=42
+                )
+                embeddings_5d = reducer.fit_transform(vectors)
+                print(f"UMAP 5D completado en {time.time() - start:.1f} segundos usando GPU.")
+            except Exception as e:
+                print(f"  -> ⚠️ Error en GPU UMAP 5D ({e}). Cayendo en CPU UMAP...")
+                reducer = umap.UMAP(
+                    n_components=5,
+                    n_neighbors=15,
+                    min_dist=0.0,
+                    metric='cosine',
+                    random_state=42,
+                    n_jobs=-1
+                )
+                embeddings_5d = reducer.fit_transform(vectors)
+                print(f"UMAP 5D completado en {time.time() - start:.1f} segundos usando CPU.")
+        else:
+            print("  -> [CPU] Usando umap-learn (CPU) para UMAP 5D...")
+            reducer = umap.UMAP(
+                n_components=5,
+                n_neighbors=15,
+                min_dist=0.0, # 0.0 para maximizar la densidad local y ayudar a HDBSCAN
+                metric='cosine',
+                random_state=42,
+                n_jobs=-1
+            )
+            embeddings_5d = reducer.fit_transform(vectors)
+            print(f"UMAP 5D completado en {time.time() - start:.1f} segundos usando CPU.")
         
         print("Ejecutando HDBSCAN sobre el espacio 5D...")
         start = time.time()

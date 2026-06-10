@@ -1,0 +1,6 @@
+[server]
+runOnSave = false
+headless = true
+
+[browser]
+gatherUsageStats = false

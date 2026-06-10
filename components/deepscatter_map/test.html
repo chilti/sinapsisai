@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Deepscatter Map</title>
+    <!-- Incluir la librería de componentes de Streamlit -->
+    <script src="https://unpkg.com/streamlit-component-lib@1.3.0/dist/streamlit.js"></script>
+    <style>
+        body, html { 
+            margin: 0; padding: 0; 
+            height: 100%; width: 100%; 
+            overflow: hidden; 
+            background-color: #0e1117; /* Color de fondo oscuro de Streamlit */
+            color: white;
+            font-family: 'Inter', sans-serif;
+        }
+        #deepscatter { width: 100vw; height: 100vh; }
+        #tooltip { 
+            position: absolute; 
+            background: rgba(0,0,0,0.85); 
+            color: white; 
+            padding: 8px 12px; 
+            border-radius: 6px; 
+            pointer-events: none; 
+            display: none; 
+            font-size: 13px; 
+            z-index: 1000;
+            border: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(4px);
+        }
+    </style>
+</head>
+<body>
+    <div id="deepscatter"></div>
+    <div id="tooltip"></div>
+
+    <script type="module">
+        import Scatterplot from 'https://unpkg.com/deepscatter?module';
+
+        const plot = new Scatterplot('#deepscatter');
+        
+        plot.plotAPI({
+            source_url: 'http://localhost/tiles/people/',
+            max_points: 1000000,
+            alpha: 50, 
+            bg_color: '#0e1117',
+            point_size: 2,
+            zoom_balance: 0.35,
+            encoding: {
+                x: { field: 'x' },
+                y: { field: 'y' },
+                color: {
+                    field: 'institution',
+                    range: 'category10',
+                }
+            },
+            tooltip_html: (datum) => {
+                if (!datum) return "";
+                // Soporte para mapa de personas (fullname) y artículos (title)
+                const titulo = datum.fullname || datum.title || 'Punto';
+                const sub1 = datum.institution || datum.year || '';
+                const sub2 = datum.dependency || '';
+                return `<b>${titulo}</b><br>${sub1}<br>${sub2}`;
+            }
+        });
+    </script>
+</body>
+</html>

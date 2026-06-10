@@ -11,6 +11,13 @@ except ImportError:
     print("⚠️ Faltan dependencias. Por favor instala: pip install umap-learn")
     sys.exit(1)
 
+try:
+    import cuml
+    from cuml.manifold import UMAP as GPU_UMAP
+    HAS_CUML = True
+except ImportError:
+    HAS_CUML = False
+
 INPUT_DIR = "data/maps"
 OUTPUT_DIR = "public/tiles"
 
@@ -32,23 +39,47 @@ def run_umap(df, vector_col='embedding', n_neighbors=15, min_dist=0.1, metric='c
     """
     Ejecuta UMAP sobre una columna de vectores en un DataFrame y devuelve x e y.
     """
-    print(f"  -> Ejecutando UMAP ({len(df)} puntos)... esto puede tardar un momento.")
-    vectors = np.stack(df[vector_col].values)
-    
-    
-    # Configuramos UMAP
-    reducer = umap.UMAP(
-        n_neighbors=n_neighbors,
-        min_dist=min_dist,
-        spread=spread,
-        metric=metric,
-        random_state=42, # Para reproducibilidad
-        n_jobs=-1        # Usar todos los cores disponibles
-    )
+    print(f"  -> Ejecutando UMAP ({len(df)} puntos)...")
+    vectors = np.stack(df[vector_col].values).astype(np.float32)
     
     start_time = time.time()
-    embedding_2d = reducer.fit_transform(vectors)
-    print(f"  -> UMAP completado en {time.time() - start_time:.1f} segundos.")
+    
+    if HAS_CUML:
+        print("  -> [GPU] Intentando cUML (GPU-acelerado) para el cálculo de UMAP...")
+        try:
+            reducer = GPU_UMAP(
+                n_neighbors=n_neighbors,
+                min_dist=min_dist,
+                spread=spread,
+                metric=metric,
+                random_state=42
+            )
+            embedding_2d = reducer.fit_transform(vectors)
+            print(f"  -> UMAP completado en {time.time() - start_time:.1f} segundos usando GPU.")
+        except Exception as e:
+            print(f"  -> ⚠️ Error en GPU UMAP ({e}). Cayendo en CPU UMAP...")
+            reducer = umap.UMAP(
+                n_neighbors=n_neighbors,
+                min_dist=min_dist,
+                spread=spread,
+                metric=metric,
+                random_state=42,
+                n_jobs=-1
+            )
+            embedding_2d = reducer.fit_transform(vectors)
+            print(f"  -> UMAP completado en {time.time() - start_time:.1f} segundos usando CPU.")
+    else:
+        print("  -> [CPU] Usando umap-learn (CPU) para el cálculo de UMAP...")
+        reducer = umap.UMAP(
+            n_neighbors=n_neighbors,
+            min_dist=min_dist,
+            spread=spread,
+            metric=metric,
+            random_state=42,
+            n_jobs=-1
+        )
+        embedding_2d = reducer.fit_transform(vectors)
+        print(f"  -> UMAP completado en {time.time() - start_time:.1f} segundos usando CPU.")
     
     # Jitter post-UMAP: Aplicamos el ruido a las coordenadas 2D finales. 
     # Así preservamos la topología general pero expandimos los "agujeros negros".
@@ -151,7 +182,7 @@ def process_articles_map():
     # NOTA: Ya no usamos quadfeather, usamos JSON.
 
 def process_performance_maps():
-    print("\n🗺️ Procesando Mapas de Desempeño Institucional (4D)...")
+    print("\n🗺️ Procesando Mapas de Desempeño Institucional...")
     input_file = os.path.join(INPUT_DIR, "performance_vectors.parquet")
     if not os.path.exists(input_file):
         print("  -> Archivo no encontrado. Ejecuta extract_vectors.py primero.")

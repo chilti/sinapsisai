@@ -42,13 +42,15 @@ NEO4J_PASS = os.getenv("NEO4J_PASS")
 # Definir rutas absolutas basadas en la ubicacin del script
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-SEED_PATH = os.path.join(SCRIPT_DIR, "..", "data", "authors_mexico_seed.json")
-SNII_PATH = os.path.join(SCRIPT_DIR, "..", "data", "Investigadores_vigentes_2025.xlsx")
+SEED_PATH = os.path.join(SCRIPT_DIR, "..", "..", "data", "authors_mexico_seed.json")
+#SNII_PATH = os.path.join(SCRIPT_DIR, "..", "..", "data", "Investigadores_vigentes_2025.xlsx")
+#/home/sinapsisai/data/snii/snii_historico_nuevos.xlsx
+SNII_PATH = os.path.join(SCRIPT_DIR, "..", "..", "data", "snii", "snii_historico_nuevos.xlsx")
 EXCEL_FILES = [
-    os.path.join(SCRIPT_DIR, "..", "data", "C3-autores.xlsx"),
-    os.path.join(SCRIPT_DIR, "..", "data", "ListadoICN-ORCID.xlsx")
+    os.path.join(SCRIPT_DIR, "..", "..", "data", "C3-autores.xlsx"),
+    os.path.join(SCRIPT_DIR, "..", "..", "data", "ListadoICN-ORCID.xlsx")
 ]
-OUTPUT_PATH = os.path.join(SCRIPT_DIR, "..", "data", "authors_matched_orcid.json")
+OUTPUT_PATH = os.path.join(SCRIPT_DIR, "..", "..", "data", "snii", "snii_historico_matched_orcid.json")
 
 def normalize_text(text):
     if not text: return ""

@@ -1,6 +1,7 @@
 import os
 import json
 import numpy as np
+from datetime import datetime
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -62,18 +63,19 @@ def get_llm_analysis(prompt: str, system_prompt: str = "Eres un analista bibliom
     except Exception as e:
         return f"*(Error al generar análisis con el LLM: {str(e)})*"
 
-def get_report_path(entity_type: str, entity_name: str) -> tuple[str, str]:
+def get_report_path(entity_type: str, entity_name: str, view_mode: str = "capacidad_instalada") -> tuple[str, str]:
     safe_name = "".join([c if c.isalnum() else "_" for c in entity_name])
-    return os.path.join(REPORTS_DIR, f"report_{entity_type}_{safe_name}.html"), safe_name
+    suffix = f"_{view_mode}" if entity_type == "inst" else ""
+    return os.path.join(REPORTS_DIR, f"report_{entity_type}{suffix}_{safe_name}.html"), safe_name
 
 def fig_to_html(fig):
     if not fig: return ""
     # Injecting the plotly lib via CDN unconditionally since this HTML isn't tied to a JS framework header
     return "<div class='chart'>" + pio.to_html(fig, full_html=False, include_plotlyjs='cdn') + "</div>"
 
-def generate_html_report(entity_type: str, entity_name: str, entity_context: str = None) -> str:
+def generate_html_report(entity_type: str, entity_name: str, entity_context: str = None, institution_name: str = None, view_mode: str = "capacidad_instalada") -> str:
     """Generates a comprehensive HTML report for an institution or researcher."""
-    file_path, safe_name = get_report_path(entity_type, entity_name)
+    file_path, safe_name = get_report_path(entity_type, entity_name, view_mode)
     print(f"Iniciando generación de reporte para {entity_name}...")
     
     # 1. Fetch ALL relevant data
@@ -83,11 +85,11 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     ent_param = entity_name if entity_type == "inst" else entity_context
     ac_param  = None if entity_type == "inst" else entity_name
 
-    df_tot = da.get_cached_data("institucion_total.parquet" if entity_type == "inst" else "investigador_total.parquet", entity_name=ent_param, academic_name=ac_param)
-    df_ann = da.get_cached_data("institucion_annual.parquet" if entity_type == "inst" else "investigador_annual.parquet", entity_name=ent_param, academic_name=ac_param)
-    df_pap = da.get_cached_data("papers_institucion.parquet" if entity_type == "inst" else "papers_profesor.parquet", entity_name=ent_param, academic_name=ac_param)
-    df_top = da.get_cached_data("topics_institucion.parquet" if entity_type == "inst" else "topics_investigador.parquet", entity_name=ent_param, academic_name=ac_param)
-    df_kw = da.get_cached_data("keywords_institucion.parquet" if entity_type == "inst" else "keywords_investigador.parquet", entity_name=ent_param, academic_name=ac_param)
+    df_tot = da.get_cached_data("institucion_total.parquet" if entity_type == "inst" else "investigador_total.parquet", entity_name=ent_param, academic_name=ac_param, institution_name=institution_name, view_mode=view_mode)
+    df_ann = da.get_cached_data("institucion_annual.parquet" if entity_type == "inst" else "investigador_annual.parquet", entity_name=ent_param, academic_name=ac_param, institution_name=institution_name, view_mode=view_mode)
+    df_pap = da.get_cached_data("papers_institucion.parquet" if entity_type == "inst" else "papers_profesor.parquet", entity_name=ent_param, academic_name=ac_param, institution_name=institution_name, view_mode=view_mode)
+    df_top = da.get_cached_data("topics_institucion.parquet" if entity_type == "inst" else "topics_investigador.parquet", entity_name=ent_param, academic_name=ac_param, institution_name=institution_name, view_mode=view_mode)
+    df_kw = da.get_cached_data("keywords_institucion.parquet" if entity_type == "inst" else "keywords_investigador.parquet", entity_name=ent_param, academic_name=ac_param, institution_name=institution_name, view_mode=view_mode)
     
     if df_tot is None or df_tot.empty:
         raise ValueError("Datos totales no disponibles en caché para esta entidad/académico.")
@@ -127,10 +129,21 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     print("Generando SubReporte 2/8: Desempeño Histórico...")
     html_hist_fig = ""
     if not df_ann_ent.empty:
+        # Rango temporal: max(1950, año mínimo) → año en curso
+        _cur_year = datetime.now().year
+        _yr_min = int(df_ann_ent['year'].min())
+        _x_min = max(1950, _yr_min)
         if entity_type == 'inst':
-            fig_hist = px.area(df_ann_ent, x='year', y='num_documents', title="Documentos Publicados por Año", color_discrete_sequence=['#ff7f0e'])
+            fig_hist = px.area(df_ann_ent, x='year', y='num_documents',
+                               title="Documentos Publicados por Año",
+                               color_discrete_sequence=['#ff7f0e'],
+                               range_x=[_x_min, _cur_year])
         else:
-            fig_hist = px.bar(df_ann_ent, x='year', y='num_documents', title="Documentos Publicados por Año", color_discrete_sequence=['#ff7f0e'])
+            fig_hist = px.bar(df_ann_ent, x='year', y='num_documents',
+                              title="Documentos Publicados por Año",
+                              color_discrete_sequence=['#ff7f0e'],
+                              range_x=[_x_min - 0.5, _cur_year + 0.5])
+        fig_hist.update_xaxes(tickformat='d', dtick=5)
         html_hist_fig = fig_to_html(fig_hist)
         
     p_hist = f"El {entity_type} ({entity_name}) produjo {m_docs} documentos históricos. Redacta un párrafo formal observando la importancia de mantener una producción sostenida."
@@ -148,8 +161,13 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     
     html_fwci_fig = ""
     if not df_ann_ent.empty and 'fwci_avg' in df_ann_ent.columns:
-        fig_fwci = px.line(df_ann_ent, x='year', y='fwci_avg', markers=True, title="Evolución FWCI Promedio Histórico")
+        _cur_year_f = datetime.now().year
+        _x_min_f = max(1950, int(df_ann_ent['year'].min()))
+        fig_fwci = px.line(df_ann_ent, x='year', y='fwci_avg', markers=True,
+                           title="Evolución FWCI Promedio Histórico",
+                           range_x=[_x_min_f, _cur_year_f])
         fig_fwci.add_hline(y=1.0, line_dash="dash", line_color="red", annotation_text="Base Mundial (1.0)")
+        fig_fwci.update_xaxes(tickformat='d', dtick=5)
         html_fwci_fig = fig_to_html(fig_fwci)
         
     p_exc = f"La calidad del impacto de {entity_name} se resume en: Percentil Promedio (posicionamiento global de citas) = {m_perc:.1f}, % Top 10% más citado = {m_top10:.1f}%, % Top 1% = {m_top1:.1f}%, FWCI (impacto normalizado) = {m_fwci:.2f} donde 1.0 es la media mundial. Redacta un párrafo estricto analizando la excelencia de este impacto métrico."
@@ -166,94 +184,50 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     """
 
     # -------------------------------------------------------------------------
-    # SECCIÓN 4: Velocidad y Colaboración
+    # SECCIÓN 4: Dinámica de Citación
     # -------------------------------------------------------------------------
-    print("Generando SubReporte 4/8: Velocidad y Colaboración...")
+    print("Generando SubReporte 4/8: Dinámica de Citación...")
     m_vel = data.get('velocity_avg', 0)
     m_intl = data.get('pct_international', 0)
-    
-    html_collab_figs = ""
+
+    html_vel_fig = ""
     if not df_pap_ent.empty:
         # Velocidad Sparkline NATIVA
         try:
             df_vel = df_pap_ent.copy()
-            df_vel['age'] = 2025 - df_vel['year']
+            df_vel['age'] = datetime.now().year - df_vel['year']
             df_vel['age'] = df_vel['age'].replace(0, 1)
             df_vel['velocity'] = df_vel['citations'] / df_vel['age']
             top_vel = df_vel.sort_values('velocity', ascending=False).head(20).sort_values('year')
             fig_vel = go.Figure()
-            fig_vel.add_trace(go.Scatter(x=top_vel['year'], y=top_vel['velocity'], mode='lines+markers', line=dict(color='#8B0000', width=2), marker=dict(size=4, color='#D4AF37')))
-            fig_vel.update_layout(height=180, margin=dict(t=30,b=10,l=10,r=10), title="Desempeño Acelerado: Artículos con captura rápida de citas", template="plotly_white")
-            html_collab_figs += fig_to_html(fig_vel)
-        except Exception as e: print("Error vela: ", e)
-        
-        # Choropleth NATIVO
-        try:
-            from collections import Counter
-            cnt = Counter()
-            for val in df_pap_ent["countries"]:
-                if isinstance(val, list): cnt.update(c for c in val if c and c != "MX")
-            if cnt:
-                df_cnt = pd.DataFrame(cnt.most_common(80), columns=["iso_a2", "papers"])
-                fig_choro = px.choropleth(df_cnt, locations="iso_a2", color="papers", color_continuous_scale="Blues", title="Países colaboradores", hover_name="iso_a2")
-                fig_choro.update_layout(height=380, margin=dict(t=30,b=0,l=0,r=0), geo=dict(showframe=False, showcoastlines=True, bgcolor="rgba(0,0,0,0)"))
-                html_collab_figs += fig_to_html(fig_choro)
-        except Exception as e: print("Error choro: ", e)
+            fig_vel.add_trace(go.Scatter(
+                x=top_vel['year'], y=top_vel['velocity'],
+                mode='lines+markers',
+                line=dict(color='#8B0000', width=2),
+                marker=dict(size=4, color='#D4AF37')
+            ))
+            fig_vel.update_layout(
+                height=200, margin=dict(t=30, b=10, l=10, r=10),
+                title="Desempeño Acelerado: Artículos con captura rápida de citas",
+                template="plotly_white"
+            )
+            html_vel_fig = fig_to_html(fig_vel)
+        except Exception as e:
+            print("Error vel: ", e)
 
-    # Neo4j Network
-    html_network = ""
-    try:
-        neo = Neo4jGraphStore()
-        graph_data = None
-        if entity_type == "inst":
-            if entity_name == "FACULTAD DE CIENCIAS":
-                graph_data = neo.get_collaboration_sample_graph("FACULTAD DE CIENCIAS", "INSTITUTO DE CIENCIAS NUCLEARES", limit=100)
-            else:
-                graph_data = neo.get_funder_sample_graph(entity_name, limit=100)
-        # TODO: Add specific sub-graph query for investigator if needed
-        neo.close()
-
-        if graph_data and "nodes" in graph_data and "edges" in graph_data and len(graph_data["nodes"]) > 0:
-            net = Network(height="400px", width="100%", bgcolor="#ffffff", font_color="black", notebook=False)
-            node_ids = set()
-            for n in graph_data["nodes"]:
-                node_id = n["id"]
-                node_ids.add(node_id)
-                
-                # In Neo4j output: 'label' holds the Node class (e.g. Academic), 'title' holds the actual name
-                node_class = n.get("label", "Unknown")
-                visible_name = n.get("title", str(node_id))
-                
-                color = "#97C2FC" # default
-                if node_class == "Academic": color = "#FFC0CB"
-                elif node_class == "Paper": color = "#ADD8E6"
-                elif node_class == "Institution": color = "#D4AF37"
-                elif node_class == "Entity": color = "#D4AF37"
-                elif node_class == "Funder": color = "#8FBC8F"
-                
-                net.add_node(node_id, label=visible_name, title=f"{node_class}: {visible_name}", color=color, group=node_class)
-            for e in graph_data["edges"]:
-                source = e["source"]
-                target = e["target"]
-                if source in node_ids and target in node_ids:
-                    net.add_edge(source, target, title=e.get("label", ""))
-            net.set_options('{"physics": {"forceAtlas2Based": {"springLength": 100}, "minVelocity": 0.75, "solver": "forceAtlas2Based"}}')
-            safe_html = __import__('html').escape(net.generate_html())
-            html_network = f"<div class='chart'><h3>Red Topológica de Colaboración</h3><iframe srcdoc='{safe_html}' width='100%' height='420px' style='border:1px solid #ddd; border-radius: 8px;'></iframe></div>"
-    except Exception as e:
-        print(f"Error generando red Neo4j: {e}")
-
-    p_col = f"La entidad ({entity_name}) tiene una velocidad de captura de citas de {m_vel:.1f} citas/año y un {m_intl:.1f}% de sus publicaciones se co-autorizan internacionalmente. Redacta un párrafo formal evaluando cómo estas dos métricas impulsan la visibilidad de su obra en redes de colaboración mundial."
+    p_col = (
+        f"La entidad ({entity_name}) tiene una velocidad promedio de captura de citas de "
+        f"{m_vel:.1f} citas/año por artículo. Redacta un párrafo formal evaluando "
+        f"cómo esta métrica refleja la visibilidad y el impacto temprano de su producción científica."
+    )
     llm_col = markdown.markdown(get_llm_analysis(p_col))
-    
+
     sections_html += f"""
-    <h2>4. Dinámica de Citación y Redes de Colaboración</h2><div class='markdown-text'>{llm_col}</div>
+    <h2>4. Dinámica de Citación</h2><div class='markdown-text'>{llm_col}</div>
     <div class="metrics-grid">
         <div class="metric-card"><div class="metric-value">{m_vel:.1f}</div><div class="metric-label">Velocidad (Citas/Año)</div></div>
-        <div class="metric-card"><div class="metric-value">{m_intl:.1f}%</div><div class="metric-label">Colaboración Internacional</div></div>
     </div>
-    {html_collab_figs}
-    {html_network}
+    {html_vel_fig}
     """
 
     # -------------------------------------------------------------------------
@@ -280,7 +254,13 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
             df_oa_melt = df_ann_ent[['year'] + oa_cols].melt(id_vars='year', var_name='tipo_oa', value_name='pct')
             df_oa_melt['tipo_oa'] = df_oa_melt['tipo_oa'].str.replace('pct_oa_','').str.capitalize()
             color_map = {'Gold':'#FFD700','Green':'#2ECC71','Hybrid':'#3498DB','Bronze':'#CD7F32','Closed':'#95A5A6'}
-            fig_stack = px.bar(df_oa_melt, x='year', y='pct', color='tipo_oa', color_discrete_map=color_map, barmode='stack', title="Evolución Distribución OA (%)")
+            _cur_year_oa = datetime.now().year
+            _x_min_oa = max(1950, int(df_ann_ent['year'].min()))
+            fig_stack = px.bar(df_oa_melt, x='year', y='pct', color='tipo_oa',
+                               color_discrete_map=color_map, barmode='stack',
+                               title="Evolución Distribución OA (%)",
+                               range_x=[_x_min_oa - 0.5, _cur_year_oa + 0.5])
+            fig_stack.update_xaxes(tickformat='d', dtick=5)
             html_oa_figs += fig_to_html(fig_stack)
 
     p_oa = f"En acceso abierto, {entity_name} alcanza un {m_oa:.1f}% de apertura global, estimando un costo de APC (Article Processing Charges) de lista de todos los papers en los que figura por ${m_apc:,.0f} USD. Redacta un párrafo puramente descriptivo sobre su adopción de vías abiertas y la inversión relacionada al modelo APC."
@@ -296,28 +276,71 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     """
 
     # -------------------------------------------------------------------------
-    # SECCIÓN 6: Perfil Temático
+    # SECCIÓN 6: Perfil Temático + Nube de Palabras
     # -------------------------------------------------------------------------
     print("Generando SubReporte 6/8: Perfil Temático...")
     m_gini = data.get('gini_topics', 0)
     m_dom = data.get('top_domain', 'Desconocido')
-    
+
     html_top_figs = ""
+
+    # ── Sunburst taxonómico ───────────────────────────────────────────────────
     if df_top is not None and not df_top.empty:
         df_top_ent = df_top
         if not df_top_ent.empty:
             top_topics = df_top_ent.sort_values('value', ascending=False).head(100)
-            fig_sun = px.sunburst(top_topics, path=['domain', 'field', 'subfield', 'topic'], values='value', color='value', color_continuous_scale='Blues', title="Concentración Taxonómica")
+            fig_sun = px.sunburst(top_topics, path=['domain', 'field', 'subfield', 'topic'],
+                                  values='value', color='value',
+                                  color_continuous_scale='Blues', title="Concentración Taxonómica")
             fig_sun.update_layout(height=600)
             html_top_figs += fig_to_html(fig_sun)
-            
-    if df_kw is not None and not df_kw.empty:
-        try:
-            fig_kw = da._render_keywords_section(df_kw, col_name, entity_name, return_fig=True)
-            if fig_kw: html_top_figs += fig_to_html(fig_kw)
-        except: pass
 
-    p_top = f"El investigador o institución ({entity_name}) presenta un enfoque principalmente en el dominio '{m_dom}' y posee un Índice de Gini de concentración temática de {m_gini:.3f} (donde cercano a 0 es foco puro, y 1 es amplia diversidad/dispersión temática). Genera un breve análisis formal sobre qué significa que tengan esta distribución y dominio central."
+    # ── Nube de palabras ─────────────────────────────────────────────────────
+    top_kw_list = []   # Para el prompt del LLM
+    html_wordcloud = ""
+    if df_kw is not None and not df_kw.empty and col_name in df_kw.columns:
+        df_k = df_kw[df_kw[col_name] == entity_name].sort_values("freq", ascending=False).head(50)
+        if not df_k.empty:
+            freq_dict = dict(zip(df_k["keyword"], df_k["freq"]))
+            top_kw_list = [kw for kw in list(freq_dict.keys())[:20]]
+
+            # Intentar generar WordCloud como imagen base64
+            try:
+                from lib import wordcloud_helper as _wc
+                img_bytes = _wc.generate_wordcloud_image(freq_dict, width=900, height=380)
+                if img_bytes:
+                    import base64
+                    b64 = base64.b64encode(img_bytes).decode("utf-8")
+                    html_wordcloud = (
+                        "<div style='text-align:center; margin: 18px 0;'>"
+                        f"<img src='data:image/png;base64,{b64}' "
+                        "style='max-width:100%; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.10);' "
+                        "alt='Nube de palabras clave'/>"
+                        "<p style='font-size:12px;color:#888;margin-top:6px;'>Vocabulario científico más frecuente</p>"
+                        "</div>"
+                    )
+            except Exception as e:
+                print(f"WordCloud no disponible en reporte: {e}")
+
+            # Fallback a gráfica de barras si no hay wordcloud
+            if not html_wordcloud:
+                try:
+                    fig_kw = da._render_keywords_section(df_kw, col_name, entity_name, return_fig=True)
+                    if fig_kw:
+                        html_top_figs += fig_to_html(fig_kw)
+                except Exception:
+                    pass
+
+    # ── LLM: descripción enriquecida con keywords ─────────────────────────────
+    kw_snippet = (", ".join(top_kw_list[:20]) + ".") if top_kw_list else "No disponible."
+    p_top = (
+        f"El investigador o institución ({entity_name}) presenta un enfoque principalmente en el dominio "
+        f"'{m_dom}' y posee un Índice de Gini de concentración temática de {m_gini:.3f} "
+        f"(donde cercano a 0 es foco puro, y 1 es amplia diversidad/dispersión temática). "
+        f"Las 20 palabras clave más frecuentes en su producción son: {kw_snippet} "
+        f"Genera un análisis formal que integre el dominio principal, el índice de Gini y las "
+        f"palabras clave para describir la identidad temática de investigación."
+    )
     llm_top = markdown.markdown(get_llm_analysis(p_top))
 
     sections_html += f"""
@@ -326,6 +349,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
         <div class="metric-card"><div class="metric-value">{m_gini:.3f}</div><div class="metric-label">Índice de Gini Temático</div></div>
         <div class="metric-card"><div class="metric-value" style="font-size:16px;">{m_dom}</div><div class="metric-label">Dominio Principal</div></div>
     </div>
+    {html_wordcloud}
     {html_top_figs}
     """
 
@@ -375,7 +399,9 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     if entity_type == 'inv':
         print("Generando SubReporte UMAP...")
         html_umap = ""
-        df_umap = da.get_cached_data("umap_investigadores.parquet")
+        df_umap = da.get_cached_data("umap_investigadores.parquet", entity_name=entity_context, institution_name=institution_name)
+        if df_umap is None or df_umap.empty:
+            df_umap = da.get_cached_data("umap_investigadores.parquet", institution_name=institution_name)
         if df_umap is not None and not df_umap.empty:
             fig_umap = go.Figure()
             otros = df_umap[df_umap['academic_name'] != entity_name]
@@ -393,6 +419,131 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
         llm_umap = markdown.markdown(get_llm_analysis(p_umap))
         
         sections_html += f"<h2>9. Posicionamiento en el Padrón (UMAP)</h2><div class='markdown-text'>{llm_umap}</div>{html_umap}"
+
+    # -------------------------------------------------------------------------
+    # SECCIÓN FINAL: Redes de Colaboración Internacional
+    # -------------------------------------------------------------------------
+    sec_num = 10 if entity_type == 'inv' else 9
+    print(f"Generando SubReporte {sec_num}: Colaboración Internacional...")
+    m_intl = data.get('pct_international', 0)
+
+    html_collab_figs = ""
+
+    # ── Mapa mundi de países colaboradores ──────────────────────────────────
+    top_countries = []
+    if not df_pap_ent.empty:
+        try:
+            import pytz
+            from collections import Counter
+            cnt = Counter()
+            col_countries = 'countries' if 'countries' in df_pap_ent.columns else 'all_country_codes'
+            if col_countries in df_pap_ent.columns:
+                for val in df_pap_ent[col_countries]:
+                    if isinstance(val, (list, np.ndarray)):
+                        cnt.update(c for c in val if c and c not in ('MX', ''))
+            if cnt:
+                df_cnt = pd.DataFrame(cnt.most_common(80), columns=["iso_a2", "papers"])
+                # Convertir ISO-2 → ISO-3 (Plotly necesita ISO-3 para choropleth)
+                df_cnt['iso_a3'] = df_cnt['iso_a2'].map(da.ISO2_TO_ISO3).fillna(df_cnt['iso_a2'])
+                df_cnt['País'] = df_cnt['iso_a2'].apply(lambda x: pytz.country_names.get(x, x))
+                top_countries = df_cnt.head(10)['País'].tolist()
+                fig_choro = px.choropleth(
+                    df_cnt, locations="iso_a3", locationmode="ISO-3",
+                    color="papers",
+                    color_continuous_scale="Blues",
+                    title="Países Colaboradores (Excluyendo México)",
+                    hover_name="País",
+                    labels={"papers": "Papers conjuntos"},
+                )
+                fig_choro.update_layout(
+                    height=420, margin=dict(t=40, b=0, l=0, r=0),
+                    geo=dict(showframe=False, showcoastlines=True,
+                             bgcolor="rgba(0,0,0,0)",
+                             showland=True, landcolor="#f0f0f0")
+                )
+                html_collab_figs += fig_to_html(fig_choro)
+        except Exception as e:
+            print("Error choropleth:", e)
+
+    # ── Gráfica temporal % Colaboración Internacional ───────────────────────
+    if not df_ann_ent.empty and 'pct_international' in df_ann_ent.columns:
+        try:
+            _cur_yr_c = datetime.now().year
+            _x_min_c = max(1950, int(df_ann_ent['year'].min()))
+            df_intl_ann = df_ann_ent.dropna(subset=['pct_international']).sort_values('year')
+            if not df_intl_ann.empty:
+                fig_intl = px.line(
+                    df_intl_ann, x='year', y='pct_international',
+                    markers=True,
+                    title="Evolución Anual: % Colaboración Internacional",
+                    range_x=[_x_min_c, _cur_yr_c],
+                    labels={'pct_international': '% Colaboración Intl.', 'year': 'Año'}
+                )
+                fig_intl.update_traces(line=dict(color='#003F8A', width=2), marker=dict(color='#D4AF37', size=7))
+                fig_intl.update_xaxes(tickformat='d', dtick=5)
+                fig_intl.update_layout(template='plotly_white', height=280, margin=dict(t=40, b=10))
+                html_collab_figs += fig_to_html(fig_intl)
+        except Exception as e:
+            print("Error intl temporal:", e)
+
+    # ── Red Neo4j ────────────────────────────────────────────────────────────
+    html_network = ""
+    try:
+        neo = Neo4jGraphStore()
+        graph_data = None
+        if entity_type == "inst":
+            if entity_name == "FACULTAD DE CIENCIAS":
+                graph_data = neo.get_collaboration_sample_graph(
+                    "FACULTAD DE CIENCIAS", "INSTITUTO DE CIENCIAS NUCLEARES", limit=100
+                )
+            else:
+                graph_data = neo.get_funder_sample_graph(entity_name, limit=100)
+        neo.close()
+
+        if graph_data and graph_data.get("nodes"):
+            net = Network(height="400px", width="100%", bgcolor="#ffffff", font_color="black", notebook=False)
+            node_ids = set()
+            for n in graph_data["nodes"]:
+                node_id = n["id"]
+                node_ids.add(node_id)
+                node_class = n.get("label", "Unknown")
+                visible_name = n.get("title", str(node_id))
+                color_map_net = {"Academic": "#FFC0CB", "Paper": "#ADD8E6",
+                                  "Institution": "#D4AF37", "Entity": "#D4AF37", "Funder": "#8FBC8F"}
+                color = color_map_net.get(node_class, "#97C2FC")
+                net.add_node(node_id, label=visible_name, title=f"{node_class}: {visible_name}",
+                             color=color, group=node_class)
+            for e in graph_data["edges"]:
+                if e["source"] in node_ids and e["target"] in node_ids:
+                    net.add_edge(e["source"], e["target"], title=e.get("label", ""))
+            net.set_options('{"physics": {"forceAtlas2Based": {"springLength": 100}, "minVelocity": 0.75, "solver": "forceAtlas2Based"}}')
+            safe_html = __import__('html').escape(net.generate_html())
+            html_network = (
+                "<div class='chart'><h3>Red Topológica de Colaboración</h3>"
+                f"<iframe srcdoc='{safe_html}' width='100%' height='420px' "
+                "style='border:1px solid #ddd; border-radius: 8px;'></iframe></div>"
+            )
+    except Exception as e:
+        print(f"Error red Neo4j: {e}")
+
+    # ── LLM con datos reales ─────────────────────────────────────────────────
+    countries_snippet = ", ".join(top_countries[:10]) if top_countries else "No disponible"
+    p_collab = (
+        f"La entidad ({entity_name}) tiene un {m_intl:.1f}% de publicaciones co-autorizadas "
+        f"internacionalmente. Sus principales países colaboradores son: {countries_snippet}. "
+        f"Genera un párrafo formal analizando la red de colaboración internacional, "
+        f"destacando los países con mayor vínculo y lo que esto implica para su posicionamiento global."
+    )
+    llm_collab = markdown.markdown(get_llm_analysis(p_collab))
+
+    sections_html += f"""
+    <h2>{sec_num}. Redes de Colaboración Internacional</h2><div class='markdown-text'>{llm_collab}</div>
+    <div class="metrics-grid">
+        <div class="metric-card"><div class="metric-value">{m_intl:.1f}%</div><div class="metric-label">Colaboración Internacional</div></div>
+    </div>
+    {html_collab_figs}
+    {html_network}
+    """
 
     # 4. Assemble HTML
     # 4. Assemble HTML
@@ -439,7 +590,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     <body>
         <div style="text-align: right; color: #666; font-size: 12px;">Generado por Inteligencia Artificial (SINAPSIS)</div>
         <h1>Informe Bibliométrico</h1>
-        <p style="background:none; border:none; padding:0; font-size:18px;"><strong>Perfil Analizado:</strong> {entity_name} ({'Institución' if entity_type == 'inst' else 'Investigador'})</p>
+        <p style="background:none; border:none; padding:0; font-size:18px;"><strong>Perfil Analizado:</strong> {entity_name} ({'Institución (Capacidad Instalada)' if (entity_type == 'inst' and view_mode == 'capacidad_instalada') else 'Institución (Producción Institucional)' if entity_type == 'inst' else 'Investigador'})</p>
 
         {sections_html}
         
@@ -459,9 +610,11 @@ if __name__ == "__main__":
     parser.add_argument("--type", choices=['inst', 'inv'], required=True)
     parser.add_argument("--name", required=True)
     parser.add_argument("--entity", required=False, help="Contexto institucional para cargar la caché del investigador.")
+    parser.add_argument("--institution", required=False, help="Institución de acreditación.")
+    parser.add_argument("--view_mode", default="capacidad_instalada", choices=["capacidad_instalada", "produccion_institucional"], help="Modo de vista.")
     args = parser.parse_args()
     try:
-        path = generate_html_report(args.type, args.name, args.entity)
+        path = generate_html_report(args.type, args.name, args.entity, args.institution, args.view_mode)
         print(f"Ruta: {path}")
     except Exception as e:
         print(f"Error fatal generando reporte: {e}")

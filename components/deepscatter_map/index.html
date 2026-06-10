@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Deepscatter Map</title>
+    <!-- Incluir la librería de componentes de Streamlit -->
+    <script src="https://unpkg.com/streamlit-component-lib@1.3.0/dist/streamlit.js"></script>
+    <style>
+        body, html { 
+            margin: 0; padding: 0; 
+            height: 100%; width: 100%; 
+            overflow: hidden; 
+            background-color: #0e1117; /* Color de fondo oscuro de Streamlit */
+            color: white;
+            font-family: 'Inter', sans-serif;
+        }
+        #deepscatter { width: 100vw; height: 100vh; }
+        #tooltip { 
+            position: absolute; 
+            background: rgba(0,0,0,0.85); 
+            color: white; 
+            padding: 8px 12px; 
+            border-radius: 6px; 
+            pointer-events: none; 
+            display: none; 
+            font-size: 13px; 
+            z-index: 1000;
+            border: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(4px);
+        }
+    </style>
+</head>
+<body>
+    <div id="debug" style="position: absolute; top: 0; left: 0; color: lime; background: rgba(0,0,0,0.8); padding: 10px; z-index: 9999; font-family: monospace; max-width: 50%; max-height: 100%; overflow: auto;">[Log] Inicializando...</div>
+    <div id="deepscatter"></div>
+    <div id="tooltip"></div>
+
+    <script type="module">
+        const dbg = document.getElementById('debug');
+        function log(msg) { dbg.innerHTML += '<br>' + msg; console.log(msg); }
+        
+        window.addEventListener('error', function(event) { log('<span style="color:red">Global Error: ' + event.message + '</span>'); });
+        window.addEventListener('unhandledrejection', function(event) { log('<span style="color:red">Promise Error: ' + event.reason + '</span>'); });
+
+        log('[Log] Cargando módulo Deepscatter...');
+        try {
+            import('https://unpkg.com/deepscatter?module').then(module => {
+                log('[Log] Módulo importado. Instanciando Scatterplot...');
+                const Scatterplot = module.default;
+                const plot = new Scatterplot('#deepscatter');
+                
+                log('[Log] Llamando plotAPI a {{TILE_URL}} ...');
+                plot.plotAPI({
+                    source_url: '{{TILE_URL}}',
+                    max_points: 1000000,
+                    alpha: 50, 
+                    bg_color: '#0e1117',
+                    point_size: 2,
+                    zoom_balance: 0.35,
+                    encoding: {
+                        x: { field: 'x' },
+                        y: { field: 'y' },
+                        color: {
+                            field: 'institution',
+                            range: 'category10',
+                        }
+                    },
+                    tooltip_html: (datum) => {
+                        if (!datum) return "";
+                        const titulo = datum.fullname || datum.title || 'Punto';
+                        const sub1 = datum.institution || datum.year || '';
+                        const sub2 = datum.dependency || '';
+                        return `<b>${titulo}</b><br>${sub1}<br>${sub2}`;
+                    }
+                });
+                log('[Log] plotAPI configurado correctamente. Esperando renderizado WebGL...');
+            }).catch(e => {
+                log('<span style="color:red">Error importando módulo: ' + e.message + '</span>');
+            });
+        } catch (err) {
+            log('<span style="color:red">Catch Error: ' + err.message + '</span>');
+        }
+    </script>
+</body>
+</html>

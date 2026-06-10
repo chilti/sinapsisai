@@ -119,120 +119,57 @@ class EmbeddingSync:
             self.ch.command("DROP TABLE academics_all")
             self.ch.command("RENAME TABLE academics_all_temp TO academics_all")
             self.ch.command("DROP TABLE IF EXISTS tmp_ac_fastrp_join")
-            
         self.ch.command("DROP TABLE IF EXISTS tmp_ac_fastrp_all")
         print(f"✅ Académicos OK. (Nuevos insertados: {total_inserts:,}, Actualizados: {total_updates:,})")
 
     def sync_nomic_from_qdrant(self, batch_size=2000):
-        print("\n📥 Sincronizando Nomic desde Qdrant (vía UUID determinista)...")
-        df = self.ch.query_df("SELECT id, doi FROM works_academic_all WHERE length(embedding_nomic) = 0")
-        total = len(df)
-        
-        if total == 0:
-            print("✅ Todos los artículos ya tienen Nomic.")
-            return
-
-        self.ch.command("DROP TABLE IF EXISTS tmp_nomic_all")
-        self.ch.command("""
-            CREATE TABLE tmp_nomic_all (
-                id String,
-                nomic Array(Float32)
-            ) ENGINE = Memory
-        """)
-
-        print(f"🚀 Recuperando vectores de Qdrant en lotes...")
-        inserted_count = 0
-        for i in range(0, total, batch_size):
-            batch_df = df.iloc[i:i+batch_size]
-            
-            id_map = {}
-            uuids = []
-            for _, row in batch_df.iterrows():
-                unique_str = row['doi'] if row['doi'] and row['doi'] != 'None' else row['id']
-                u = self.generate_qdrant_id(unique_str)
-                if u:
-                    id_map[u] = row['id']
-                    uuids.append(u)
-            
-            try:
-                results = self.qdrant.retrieve(
-                    collection_name="api_papers",
-                    ids=uuids,
-                    with_vectors=True
-                )
-                
-                if results:
-                    rows = [[id_map[r.id], r.vector] for r in results if r.vector]
-                    if rows:
-                        self.ch.insert("tmp_nomic_all", rows, column_names=['id', 'nomic'])
-                        inserted_count += len(rows)
-            except Exception as e:
-                print(f"\n  ⚠️ Error recuperando lote de Qdrant: {e}")
-            
-            print(f"  -> {i+len(batch_df):,}/{total:,} procesados de Qdrant (encontrados: {inserted_count:,}).", end="\r")
-
-        if inserted_count > 0:
-            print(f"\n⏳ Aplicando mutación única de Nomic en ClickHouse ({inserted_count:,} vectores)...")
-            self.ch.command("DROP TABLE IF EXISTS tmp_nomic_join")
-            self.ch.command("CREATE TABLE tmp_nomic_join (id String, nomic Array(Float32), val_exists UInt8) ENGINE = Join(ANY, LEFT, id)")
-            self.ch.command("""
-                INSERT INTO tmp_nomic_join
-                SELECT id, nomic, 1
-                FROM tmp_nomic_all
-            """)
-            
-            # Reemplazo de tabla 100% síncrono y fiable en ClickHouse
-            self.ch.command("DROP TABLE IF EXISTS works_academic_all_temp")
-            self.ch.command("CREATE TABLE works_academic_all_temp AS works_academic_all")
-            self.ch.command("""
-                INSERT INTO works_academic_all_temp
-                SELECT 
-                    id, raw_data, doi, title, publication_year, cited_by_count, is_oa, type, updated_date, is_xpac, source_id,
-                    author_names, institution_rors, institution_names, primary_topic_id, institution_ids, subfield, field, domain,
-                    topic, language, oa_status, fwci, percentile, is_top_10, is_top_1, country_code, source_type, sdg_ids, awards,
-                    concept_ids, all_country_codes, apc_paid_usd, apc_list_usd, counts_by_year, is_doaj_indexed, is_doaj_journal,
-                    is_core_journal, is_retracted, has_repository_fulltext, license, referenced_works_count, keywords, sdgs,
-                    journal_is_in_doaj, journal_is_core, any_repository_has_fulltext,
-                    if(joinGet('tmp_nomic_join', 'val_exists', id) = 1, joinGet('tmp_nomic_join', 'nomic', id), embedding_nomic) AS embedding_nomic,
-                    embedding_specter,
-                    embedding_fastrp
-                FROM works_academic_all
-            """)
-            self.ch.command("DROP TABLE works_academic_all")
-            self.ch.command("RENAME TABLE works_academic_all_temp TO works_academic_all")
-            self.ch.command("DROP TABLE IF EXISTS tmp_nomic_join")
-
-        self.ch.command("DROP TABLE IF EXISTS tmp_nomic_all")
-        print("\n✅ Nomic OK.")
+        print("\n📥 [SALTADO] Sincronización de Nomic desde Qdrant desactivada (los embeddings ya están en ClickHouse).")
+        return
 
     def compute_academic_semantic_profiles(self):
-        print("\n🧠 Calculando Perfiles Semánticos para Académicos (Promedio SPECTER)...")
+        print("\n🧠 Calculando Perfiles Semánticos para Académicos (Promedios SPECTER y Nomic)...")
         df_avg = self.ch.query_df("""
             SELECT 
                 pm.openalex_id as id,
-                groupArray(embedding_specter) as all_vecs
+                groupArray(embedding_specter) as all_specter,
+                groupArray(embedding_nomic) as all_nomic
             FROM works_academic_all wf
             JOIN paper_author_map pm ON (
                 wf.id = pm.paper_id 
                 OR (pm.paper_id NOT LIKE 'https://%' AND lower(replaceOne(wf.doi, 'https://doi.org/', '')) = lower(pm.paper_id))
             )
-            WHERE length(wf.embedding_specter) > 0 AND pm.openalex_id != ''
+            WHERE (length(wf.embedding_specter) > 0 OR length(wf.embedding_nomic) > 0) AND pm.openalex_id != ''
             GROUP BY id
         """)
         
         print(f"  -> {len(df_avg):,} perfiles semánticos a calcular...")
         rows = []
         for _, row in df_avg.iterrows():
-            vecs = [v for v in row['all_vecs'] if len(v) > 0]
-            if vecs:
-                avg = np.mean(vecs, axis=0).tolist()
-                rows.append([row['id'], avg])
+            spec_vecs = [v for v in row['all_specter'] if len(v) > 0]
+            nomic_vecs = [v for v in row['all_nomic'] if len(v) > 0]
+            
+            avg_spec = np.mean(spec_vecs, axis=0).tolist() if spec_vecs else []
+            avg_nomic = np.mean(nomic_vecs, axis=0).tolist() if nomic_vecs else []
+            
+            if avg_spec or avg_nomic:
+                rows.append([row['id'], avg_nomic, avg_spec])
         
         if rows:
             self.ch.command("DROP TABLE IF EXISTS tmp_ac_spec_join")
-            self.ch.command("CREATE TABLE tmp_ac_spec_join (id String, spec Array(Float32), val_exists UInt8) ENGINE = Join(ANY, LEFT, id)")
+            self.ch.command("""
+                CREATE TABLE tmp_ac_spec_join (
+                    id String,
+                    nomic Array(Float32),
+                    spec Array(Float32),
+                    val_exists UInt8
+                ) ENGINE = Join(ANY, LEFT, id)
+            """)
             rows_with_flag = [r + [1] for r in rows]
-            self.ch.insert("tmp_ac_spec_join", rows_with_flag, column_names=['id', 'spec', 'val_exists'])
+            batch_size = 2000
+            for start_idx in range(0, len(rows_with_flag), batch_size):
+                batch = rows_with_flag[start_idx : start_idx + batch_size]
+                self.ch.insert("tmp_ac_spec_join", batch, column_names=['id', 'nomic', 'spec', 'val_exists'])
+            
             
             # Reemplazo de tabla 100% síncrono y fiable en ClickHouse
             self.ch.command("DROP TABLE IF EXISTS academics_all_temp")
@@ -241,8 +178,8 @@ class EmbeddingSync:
                 INSERT INTO academics_all_temp
                 SELECT 
                     id, name, institution, dependency, subdependency, snii_level, orcid, paper_count, citation_count,
-                    embedding_nomic,
-                    if(joinGet('tmp_ac_spec_join', 'val_exists', id) = 1, joinGet('tmp_ac_spec_join', 'spec', id), embedding_specter) AS embedding_specter,
+                    if(joinGet('tmp_ac_spec_join', 'val_exists', id) = 1 AND length(joinGet('tmp_ac_spec_join', 'nomic', id)) > 0, joinGet('tmp_ac_spec_join', 'nomic', id), embedding_nomic) AS embedding_nomic,
+                    if(joinGet('tmp_ac_spec_join', 'val_exists', id) = 1 AND length(joinGet('tmp_ac_spec_join', 'spec', id)) > 0, joinGet('tmp_ac_spec_join', 'spec', id), embedding_specter) AS embedding_specter,
                     embedding_fastrp
                 FROM academics_all
             """)

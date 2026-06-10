@@ -119,6 +119,40 @@ python ingestion/compute_scholar_metrics_ch.py --academic "APELLIDO, NOMBRE"
 
 ---
 
+## 🔁 Sincronización Continua de Producción (`sync_works.py`)
+
+Para mantener el sistema actualizado, el script `ingestion/sync_works.py` actúa como un **orquestador de sincronización continua**. Su propósito principal es buscar y descargar periódicamente los artículos más recientes de los investigadores y entidades que ya se encuentran registrados en el Grafo de Conocimiento (Neo4j).
+
+**Características principales:**
+- **Sincronización de Académicos**: Lee los nodos `Person` en Neo4j y consulta de forma combinada ORCID y OpenAlex para obtener nuevas publicaciones.
+- **Sincronización Institucional**: Lee los nodos jerárquicos (Institución, Dependencia, Subdependencia) validados con ROR y actualiza su producción.
+- **Rendimiento Ultrarrápido**: Emplea comprobaciones en lote (Batch Checks) y consultas en memoria para saltarse de forma instantánea todos los trabajos que ya existen en el sistema, ahorrando cuotas de API y minimizando la escritura en disco.
+
+**Ejemplos de uso:**
+```bash
+# 1. Sincronizar los trabajos de TODOS los académicos registrados en Neo4j
+python ingestion/sync_works.py --all --local --no-resolve-oa
+
+# 2. Sincronizar la producción de las dependencias de una institución específica
+python ingestion/sync_works.py --sync-entities --name "UNAM" --limit 10
+
+# Banderas de optimización:
+# --no-resolve-oa : Evita la resolución pasiva/redundante de IDs de OpenAlex, acelerando masivamente el proceso para registros existentes.
+```
+
+**⚠️ Pasos Posteriores Obligatorios:**
+Después de que `sync_works.py` termine de traer los nuevos artículos a Neo4j, es necesario sincronizar estos cambios hacia ClickHouse y recalcular las métricas del dashboard ejecutando en orden:
+
+```bash
+# 1. Sincronizar mapas de autoría e ingestar metadatos a ClickHouse
+python ingestion/sync_analytics_pipeline.py
+
+# 2. Recalcular las métricas e indicadores cacheados
+python ingestion/compute_scholar_metrics_ch.py --all
+```
+
+---
+
 ## 📂 Documentación Histórica
 El proceso legacy (basado en scrapers SIIA manuales y Neo4j puro) ha sido movido a:
 👉 [**LEGACY_README.md**](docs/LEGACY_README.md)

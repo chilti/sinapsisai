@@ -14,6 +14,10 @@ import unicodedata
 import pandas as pd
 import argparse
 import sys
+from dotenv import load_dotenv
+
+# Cargar variables de entorno desde .env
+load_dotenv()
 
 # Configurar encoding para consola
 try:
@@ -45,8 +49,43 @@ def limpiar_nombre(nombre):
     if not isinstance(nombre, str):
         return ""
     nombre_sin_prefijo = re.sub(r'^(DR\.|DRA\.)\s*', '', nombre, flags=re.IGNORECASE).strip()
-    nombre_normalizado = unicodedata.normalize('NFD', nombre_sin_prefijo)
-    return ''.join(c for c in nombre_normalizado if unicodedata.category(c) != 'Mn').upper()
+    # Protegemos la letra ñ y Ñ para no perderla en la normalización NFD
+    s = nombre_sin_prefijo.replace('ñ', '##n##').replace('Ñ', '##N##')
+    nombre_normalizado = unicodedata.normalize('NFD', s)
+    s_sin_acentos = ''.join(c for c in nombre_normalizado if unicodedata.category(c) != 'Mn').upper()
+    # Restauramos la ñ/Ñ
+    return s_sin_acentos.replace('##N##', 'Ñ').replace('##n##', 'ñ')
+
+def normalizar_palabras_nombre(nombre):
+    clean = limpiar_nombre(nombre)
+    # Separar en palabras, eliminar conectores y ordenar para comparación insensible al orden
+    palabras = [p for p in clean.split() if p not in {"DE", "DEL", "LA", "LAS", "LOS", "Y"}]
+    return "".join(sorted(palabras))
+
+def agrupar_partes_nombre(texto):
+    """
+    Agrupa partículas como 'DE', 'LA', 'DEL', 'Y' con la palabra que les sigue
+    para evitar que se tomen como apellidos independientes al dividir nombres.
+    """
+    particulas = {"DE", "DEL", "LA", "LAS", "LOS", "MAC", "MC", "SAN", "SANTA", "Y"}
+    palabras = texto.split()
+    agrupadas = []
+    temp = []
+    
+    for p in palabras:
+        if p in particulas:
+            temp.append(p)
+        else:
+            temp.append(p)
+            agrupadas.append(" ".join(temp))
+            temp = []
+            
+    if temp and agrupadas:
+        agrupadas[-1] += " " + " ".join(temp)
+    elif temp:
+        agrupadas.append(" ".join(temp))
+        
+    return agrupadas
 
 def buscar_en_siia_con_reintentos(original_name, cleaned_name):
     """
@@ -56,12 +95,12 @@ def buscar_en_siia_con_reintentos(original_name, cleaned_name):
     ap_pat, ap_mat, nombre_pila = "", "", ""
     if ',' in original_name:
         apellidos, nombres = original_name.split(',', 1)
-        aps = apellidos.split()
+        aps = agrupar_partes_nombre(apellidos)
         ap_pat = aps[0] if len(aps) >= 1 else ""
         ap_mat = " ".join(aps[1:]) if len(aps) >= 2 else ""
         nombre_pila = nombres.strip()
     else:
-        parts = cleaned_name.split()
+        parts = agrupar_partes_nombre(cleaned_name)
         if len(parts) >= 3:
             ap_pat, ap_mat = parts[0], parts[1]
             nombre_pila = " ".join(parts[2:])
@@ -178,25 +217,54 @@ def verify_and_scrape_siia(driver, name_to_verify, url, is_retry=False):
 
 def main():
     parser = argparse.ArgumentParser(description="Scraper SIIA para Investigadores SNII-UNAM")
+    parser.add_argument("--file", type=str, help="Ruta al archivo Excel de entrada (padrón SNII o lista simple de nombres)")
     parser.add_argument("--subdependency", type=str, help="Filtrar por una subdependencia específica")
     parser.add_argument("--limit", type=int, help="Límite de profesores por entidad para pruebas")
     args = parser.parse_args()
 
     # 1. Cargar y Filtrar Excel
-    print(f"📋 Cargando SNII desde {SNII_PATH}...")
-    df = pd.read_excel(SNII_PATH, sheet_name=SNII_SHEET)
+    has_snii_cols = False
+    excel_path = args.file if args.file else SNII_PATH
+    print(f"📋 Cargando datos desde {excel_path}...")
     
-    inst_col    = 'INSTITUCION DE ACREDITACION'          # Sin tilde (como viene en el Excel)
-    sub_inst_col = 'SUBDEPENDENCIA DE ACREDITACIÓN'
-    name_col    = 'NOMBRE DEL INVESTIGADOR'
-    
-    # Filtrar UNAM
-    df_unam = df[df[inst_col] == "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)"].copy()
-    print(f"🎯 Investigadores UNAM encontrados: {len(df_unam)}")
-    
-    if args.subdependency:
-        df_unam = df_unam[df_unam[sub_inst_col].str.contains(args.subdependency, case=False, na=False)]
-        print(f"🔎 Filtrando por subdependencia '{args.subdependency}': {len(df_unam)} registros.")
+    try:
+        # Detectar formato del Excel
+        df_temp = pd.read_excel(excel_path, nrows=5)
+        has_snii_cols = 'INSTITUCION DE ACREDITACION' in df_temp.columns or 'NOMBRE DEL INVESTIGADOR' in df_temp.columns
+        
+        if has_snii_cols:
+            df = pd.read_excel(excel_path, sheet_name=SNII_SHEET if excel_path == SNII_PATH else 0)
+            inst_col    = 'INSTITUCION DE ACREDITACION'          # Sin tilde (como viene en el Excel)
+            sub_inst_col = 'SUBDEPENDENCIA DE ACREDITACIÓN'
+            name_col    = 'NOMBRE DEL INVESTIGADOR'
+            
+            # Filtrar UNAM
+            df_unam = df[df[inst_col] == "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)"].copy()
+            print(f"🎯 Investigadores UNAM encontrados: {len(df_unam)}")
+            
+            if args.subdependency:
+                df_unam = df_unam[df_unam[sub_inst_col].str.contains(args.subdependency, case=False, na=False)]
+                print(f"🔎 Filtrando por subdependencia '{args.subdependency}': {len(df_unam)} registros.")
+        else:
+            # Es una lista simple de nombres (1 sola columna, sin cabeceras)
+            df = pd.read_excel(excel_path, header=None)
+            df.columns = ['name']
+            
+            # Construir DataFrame compatible
+            subdep_val = args.subdependency if args.subdependency else "FACULTAD DE CIENCIAS"
+            df_unam = pd.DataFrame({
+                'NOMBRE DEL INVESTIGADOR': df['name'].dropna().astype(str),
+                'INSTITUCION DE ACREDITACION': "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)",
+                'SUBDEPENDENCIA DE ACREDITACIÓN': subdep_val
+            })
+            inst_col = 'INSTITUCION DE ACREDITACION'
+            sub_inst_col = 'SUBDEPENDENCIA DE ACREDITACIÓN'
+            name_col = 'NOMBRE DEL INVESTIGADOR'
+            print(f"🎯 Lista simple de nombres cargada: {len(df_unam)} registros para '{subdep_val}'.")
+            
+    except Exception as e:
+        print(f"❌ Error al leer el archivo Excel: {e}")
+        return
 
     # 2. Configurar Selenium
     options = webdriver.ChromeOptions()
@@ -208,19 +276,65 @@ def main():
 
     # 3. Cache de Neo4j (opcional — si falla, el JSON es la fuente de verdad)
     graph_store = None
-    existing_academics = set()
+    existing_academics = {}
     try:
+        from database.knowledge_graph import Neo4jGraphStore
         graph_store = Neo4jGraphStore()
         with graph_store.driver.session() as session:
-            res = session.run("MATCH (a:Academic) RETURN a.name AS name")
-            existing_academics = {limpiar_nombre(r["name"]) for r in res}
-        print(f"   ✅ Neo4j: {len(existing_academics)} académicos cargados en cache.")
+            # Filtrar por UNAM en el grafo para optimizar y asegurar precisión
+            query = """
+            MATCH (a:Person)-[:AFFILIATED_TO]->(sub)
+            OPTIONAL MATCH (sub)-[:PART_OF*0..2]->(inst:Institution)
+            WHERE inst.name CONTAINS 'UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO'
+            RETURN a.fullname AS name, a.siia AS siia_url, a.orcid AS orcid, a.scopus_ids AS scopus_ids, a.is_snii AS is_snii
+            """
+            res = session.run(query)
+            for r in res:
+                if r["name"]:
+                    norm_name = normalizar_palabras_nombre(r["name"])
+                    existing_academics[norm_name] = {
+                        "fullname": r["name"],
+                        "siia_url": r["siia_url"],
+                        "orcid": r["orcid"],
+                        "scopus": r["scopus_ids"],
+                        "is_snii": r["is_snii"]
+                    }
+        print(f"   ✅ Neo4j: {len(existing_academics)} académicos de la UNAM cargados en cache (búsqueda flexible).")
     except Exception as e:
         print(f"   ⚠️  Neo4j no disponible ({e.__class__.__name__}). Usando solo cache JSON.")
         graph_store = None
+
+    # 4. Cargar nombres del padrón SNII master para verificar is_snii cuando el
+    #    archivo de entrada es una lista simple (sin columnas SNII propias).
+    snii_master_norms = set()
+    try:
+        _snii_audit = os.path.join(_ROOT, 'data', 'snii_llm_verified_matches.json')
+        if os.path.exists(_snii_audit):
+            with open(_snii_audit, 'r', encoding='utf-8') as _f:
+                _audit_data = json.load(_f)
+            for _r in _audit_data:
+                _n = _r.get('academic_name') or _r.get('name')
+                if _n:
+                    snii_master_norms.add(normalizar_palabras_nombre(_n))
+            print(f"   📋 Padrón SNII master: {len(snii_master_norms)} nombres cargados para validación.")
+        else:
+            # Fallback: leer directo del Excel master (más lento)
+            if os.path.exists(SNII_PATH):
+                _df_snii = pd.read_excel(SNII_PATH, sheet_name=SNII_SHEET, usecols=['NOMBRE DEL INVESTIGADOR'])
+                for _n in _df_snii['NOMBRE DEL INVESTIGADOR'].dropna():
+                    snii_master_norms.add(normalizar_palabras_nombre(str(_n)))
+                print(f"   📋 Padrón SNII Excel: {len(snii_master_norms)} nombres cargados para validación.")
+    except Exception as _e:
+        print(f"   ⚠️  No se pudo cargar padrón SNII master: {_e}")
+
     
-    # Asegurar directorio de salida
-    unam_data_dir = os.path.join("data", "UNAM")
+    # Asegurar directorio de salida en la misma ruta que el Excel procesado (salvo default)
+    if excel_path == SNII_PATH:
+        unam_data_dir = os.path.join("data", "UNAM")
+    else:
+        unam_data_dir = os.path.dirname(excel_path)
+        if not unam_data_dir:
+            unam_data_dir = "."
     os.makedirs(unam_data_dir, exist_ok=True)
     
     entities = df_unam[sub_inst_col].unique()
@@ -230,13 +344,28 @@ def main():
             if pd.isna(entity): continue
             
             safe_entity = entity.replace(' ', '_').replace(',', '').replace('/', '_')
-            out_path = os.path.join(unam_data_dir, f"profesores_SNII_{safe_entity}.json")
+            prefix = "profesores_SNII" if has_snii_cols else "profesores"
+            out_path = os.path.join(unam_data_dir, f"{prefix}_{safe_entity}.json")
             
             # Cargar progreso si existe
             profesores_data = {}
             if os.path.exists(out_path):
                 with open(out_path, "r", encoding='utf-8') as f:
                     profesores_data = json.load(f)
+            
+            # Intentar cargar cache del JSON SNII existente en data/UNAM para optimizar
+            snii_json_cache = {}
+            snii_json_path = os.path.join("data", "UNAM", f"profesores_SNII_{safe_entity}.json")
+            if os.path.exists(snii_json_path):
+                try:
+                    with open(snii_json_path, "r", encoding='utf-8') as f:
+                        raw_cache = json.load(f)
+                        for k, v in raw_cache.items():
+                            norm_k = normalizar_palabras_nombre(k)
+                            snii_json_cache[norm_k] = v
+                    print(f"   📂 Cargado cache SNII JSON con {len(snii_json_cache)} perfiles para búsqueda flexible.")
+                except Exception as e:
+                    print(f"   ⚠️ No se pudo cargar cache SNII JSON ({e})")
             
             df_entity = df_unam[df_unam[sub_inst_col] == entity]
             lista_nombres = df_entity[name_col].values
@@ -256,10 +385,55 @@ def main():
                     print(f"    📂 {p_name} ya tiene perfil SIIA. Saltando.")
                     continue
                 
-                # Info: si ya está en Neo4j pero sin perfil SIIA, se re-intenta de todas formas
-                if p_name in existing_academics and not cached:
-                    print(f"    ℹ️  {p_name} en Neo4j pero sin perfil SIIA previo. Buscando...")
+                p_norm = normalizar_palabras_nombre(original_name)
                 
+                # REVISIÓN JSON SNII PREVIO (data/UNAM/profesores_SNII_*.json)
+                json_data = snii_json_cache.get(p_norm)
+                if json_data and json_data.get('siia_url') and "No encont" not in str(json_data.get('siia_url')):
+                    orig_n = json_data.get('original_name', p_name)
+                    print(f"    📄 {p_name} coincide con '{orig_n}' en el JSON de SNIIs previo. Copiando datos...")
+                    profesores_data[p_name] = {
+                        'name': p_name,
+                        'original_name': str(original_name),
+                        'entity': entity,
+                        'siia': json_data.get('siia_url') or json_data.get('siia'),
+                        'siia_url': json_data.get('siia_url') or json_data.get('siia'),
+                        'orcid': json_data.get('orcid', ''),
+                        'scopus': json_data.get('scopus', ''),
+                        'is_snii': True,
+                        'areas': [] # Obviamos los temas si viene de cache
+                    }
+                    with open(out_path, "w", encoding='utf-8') as f:
+                        json.dump(profesores_data, f, indent=4, ensure_ascii=False)
+                    continue
+                
+                # REVISIÓN NEO4J: si el académico ya está en Neo4j y tiene siia_url válido
+                neo4j_data = existing_academics.get(p_norm)
+                if neo4j_data and neo4j_data.get('siia_url') and "No encont" not in str(neo4j_data.get('siia_url')):
+                    db_fullname = neo4j_data.get("fullname")
+                    print(f"    🧠 {p_name} coincide con '{db_fullname}' en Neo4j. Extrayendo datos...")
+                    sc_ids = neo4j_data.get("scopus")
+                    neo_scopus = "; ".join(sc_ids) if isinstance(sc_ids, list) else sc_ids
+                    
+                    profesores_data[p_name] = {
+                        'name': p_name,
+                        'original_name': str(original_name),
+                        'entity': entity,
+                        'siia': neo4j_data.get('siia_url'),
+                        'siia_url': neo4j_data.get('siia_url'),
+                        'orcid': neo4j_data.get('orcid', ''),
+                        'scopus': neo_scopus or '',
+                        'is_snii': bool(neo4j_data.get('is_snii')),
+                        'areas': [] # Obviamos los temas si viene de Neo4j
+                    }
+                    with open(out_path, "w", encoding='utf-8') as f:
+                        json.dump(profesores_data, f, indent=4, ensure_ascii=False)
+                    continue
+                
+                # Info: si ya está en Neo4j pero sin perfil SIIA, se re-intenta de todas formas
+                if p_norm in existing_academics and not cached:
+                    db_fullname = existing_academics[p_norm].get("fullname")
+                    print(f"    ℹ️  {p_name} coincide con '{db_fullname}' en Neo4j pero sin perfil SIIA previo válido. Buscando...")                
                 print(f"  🔍 Buscando: {p_name}")
                 siia_links = buscar_en_siia_con_reintentos(str(original_name), p_name)
                 
@@ -273,20 +447,40 @@ def main():
                         is_retry = len(siia_links) > 1 or "reintentando" in str(sys.stdout) 
                         found_data = verify_and_scrape_siia(driver, p_name, res['link'], is_retry=is_retry)
                         if found_data:
+                            found_data['siia'] = res['link']
                             found_data['siia_url'] = res['link']
                             found_data['original_name'] = str(original_name)
                             found_data['entity'] = entity
                             break
                 
                 if found_data:
+                    # is_snii: True si el archivo ya lo confirma (has_snii_cols),
+                    # o si está en el padrón SNII master, o si Neo4j lo marca así
+                    _p_norm_snii = normalizar_palabras_nombre(found_data.get('name', p_name))
+                    found_data['is_snii'] = (
+                        has_snii_cols
+                        or (_p_norm_snii in snii_master_norms)
+                        or (bool(neo4j_data.get('is_snii')) if neo4j_data else False)
+                    )
                     profesores_data[p_name] = found_data
                     orcid_str  = found_data.get('orcid') or '—'
                     scopus_str = found_data.get('scopus') or '—'
                     areas_n    = len(found_data.get('areas', []))
-                    print(f"       ORCID: {orcid_str}  |  Scopus: {scopus_str}  |  Áreas: {areas_n}")
+                    print(f"       ORCID: {orcid_str}  |  Scopus: {scopus_str}  |  Áreas: {areas_n}  |  SNII: {found_data['is_snii']}")
                 else:
-                    profesores_data[p_name] = {'original_name': str(original_name), 'siia': 'No encontrado', 'entity': entity}
-                    print(f"    ❌ No encontrado en SIIA: {p_name}")
+                    _p_norm_snii = normalizar_palabras_nombre(p_name)
+                    is_snii_val = (
+                        has_snii_cols
+                        or (_p_norm_snii in snii_master_norms)
+                        or (bool(neo4j_data.get('is_snii')) if neo4j_data else False)
+                    )
+                    profesores_data[p_name] = {
+                        'original_name': str(original_name), 
+                        'siia': 'No encontrado', 
+                        'entity': entity,
+                        'is_snii': is_snii_val
+                    }
+                    print(f"    ❌ No encontrado en SIIA: {p_name}  |  SNII: {is_snii_val}")
                 
                 # Guardado progresivo por entidad
                 with open(out_path, "w", encoding='utf-8') as f:
