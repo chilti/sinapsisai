@@ -13,6 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from dotenv import load_dotenv
 from ingestion.wos_parser import WoSParser
 from ingestion.bib_parser import BibParser
+from ingestion.scopus_csv_parser import ScopusCSVParser
 from database.vector_store import QdrantStore
 from database.knowledge_graph import Neo4jGraphStore
 from ingestion import openalex_utils
@@ -39,6 +40,9 @@ class EntityDocsIngestor:
         
         if file_path.endswith('.bib'):
             records = BibParser.parse_file(file_path)
+        elif file_path.endswith('.csv'):
+            print(f"   📊 Formato detectado: CSV de Scopus")
+            records = ScopusCSVParser.parse_file(file_path)
         else:
             records = WoSParser.parse_file(file_path)
             
@@ -58,11 +62,11 @@ class EntityDocsIngestor:
             print(f"❌ Error: {directory_path} no es un directorio válido.")
             return
 
-        files = [os.path.join(directory_path, f) for f in os.listdir(directory_path) 
-                 if f.endswith('.txt') or f.endswith('.bib') or f.endswith('.txt.txt')]
+        files = [os.path.join(directory_path, f) for f in os.listdir(directory_path)
+                 if f.endswith('.txt') or f.endswith('.bib') or f.endswith('.txt.txt') or f.endswith('.csv')]
         
         if not files:
-            print(f"⚠️ No se encontraron archivos de soporte (.txt, .bib) en {directory_path}")
+            print(f"⚠️ No se encontraron archivos de soporte (.txt, .bib, .csv) en {directory_path}")
             return
 
         print(f"🔍 Encontrados {len(files)} archivos para procesar.")
