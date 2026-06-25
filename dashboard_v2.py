@@ -580,12 +580,9 @@ with st.sidebar:
     st.markdown("---")
 
     # --- Sección de Usuario / ORCID ---
-    st.markdown("---")
-    st.subheader("👤 Mi Perfil")
-
-    if not NEO4J_AVAILABLE:
-        st.info("🔌 Identificación con ORCID no disponible en este entorno (requiere Neo4j).")
-    else:
+    if NEO4J_AVAILABLE:
+        st.markdown("---")
+        st.subheader("👤 Mi Perfil")
         user = st.session_state.authenticated_user
         if user:
             st.write(f"**Hola, {user.get('name', 'Investigador')}**")
