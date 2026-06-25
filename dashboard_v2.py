@@ -841,13 +841,15 @@ if "switch_tab" in st.session_state and st.session_state.switch_tab:
     import streamlit.components.v1 as components
     js_code = f"""
     <script>
-    const tabs = window.parent.document.querySelectorAll('button[data-baseweb="tab"] p');
-    for (let i = 0; i < tabs.length; i++) {{
-        if (tabs[i].innerText.includes("{st.session_state.switch_tab}")) {{
-            tabs[i].parentElement.click();
-            break;
+    setTimeout(() => {{
+        const tabs = window.parent.document.querySelectorAll('button[data-baseweb="tab"] p');
+        for (let i = 0; i < tabs.length; i++) {{
+            if (tabs[i].innerText.includes("{st.session_state.switch_tab}")) {{
+                tabs[i].parentElement.click();
+                break;
+            }}
         }}
-    }}
+    }}, 500);
     </script>
     """
     components.html(js_code, height=0, width=0)
