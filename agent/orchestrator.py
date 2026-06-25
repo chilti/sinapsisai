@@ -204,3 +204,37 @@ class RAGOrchestrator:
     def clear_session(self, session_id: str):
         self.memory_manager.clear_session(session_id)
         print(f"Sesión {session_id} limpiada.")
+
+    def ask_lightweight_stream_sync(self, session_id: str, query: str, ui_context: str = None):
+        """
+        Versión ligera del agente (Síncrona con Streaming). NO utiliza herramientas.
+        """
+        history = self.memory_manager.get_history(session_id, limit=6)
+
+        from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+        messages = [SystemMessage(content="Eres SINAPSIS, un analista experto en bibliometría de la UNAM. "
+                                          "El usuario te hará preguntas sobre la interfaz que está viendo. "
+                                          "Usa el contexto proporcionado para responder de manera concisa y directa.")]
+        for msg in history:
+            if msg["role"] == "user":
+                messages.append(HumanMessage(content=msg["content"]))
+            else:
+                messages.append(AIMessage(content=msg["content"]))
+
+        current_query = query
+        if ui_context:
+            current_query = f"[Contexto de Interfaz Actual:\n{ui_context}]\n\nPregunta del usuario: {query}"
+
+        messages.append(HumanMessage(content=current_query))
+        self.memory_manager.add_message(session_id, "user", query)
+
+        try:
+            full_response = ""
+            for chunk in self.llm.stream(messages):
+                if chunk.content:
+                    full_response += chunk.content
+                    yield chunk.content
+            self.memory_manager.add_message(session_id, "assistant", full_response)
+        except Exception as e:
+            print(f"Error en ask_lightweight_stream_sync: {e}")
+            yield f"\n\nError: {e}"
