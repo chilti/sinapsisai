@@ -445,7 +445,12 @@ def _get_sources_display_names_v3(source_ids):
     """Obtiene el display_name de las fuentes/revistas desde ClickHouse en lotes seguros."""
     if not source_ids:
         return {}
-    from database.clickhouse_db import ch_client
+    
+    try:
+        from database.clickhouse_db import ch_client
+    except ImportError:
+        return {}
+
     valid_ids = []
     for sid in source_ids:
         if not sid:
