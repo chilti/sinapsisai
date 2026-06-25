@@ -1907,10 +1907,6 @@ def explain_chart_dialog():
                     })
                 except Exception as e:
                     placeholder.error(f"Error: {e}")
-                    
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("Cerrar ventana y ver historial", type="primary", use_container_width=True):
-            st.rerun()
 
 # === AUTO-TRIGGER EXPLICAR GRÁFICA / INDICADOR ===
 if "trigger_explain_chart" in st.session_state and st.session_state.trigger_explain_chart:
