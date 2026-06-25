@@ -37,7 +37,7 @@ load_dotenv()
 # ---- Configuración de página ----
 st.set_page_config(
     page_title="Sinapsis AI: Hub de la Ciencia Mexicana",
-    page_icon="🔬",
+    page_icon="assets/microscopio.png",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -569,7 +569,7 @@ with st.sidebar:
     </style>
     """, unsafe_allow_html=True)
     import os
-    logo_path = os.path.join(os.path.dirname(__file__), "assets", "logo.png")
+    logo_path = os.path.join(os.path.dirname(__file__), "assets", "microscopio.png")
     if os.path.exists(logo_path):
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
