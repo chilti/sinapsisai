@@ -578,9 +578,6 @@ with st.sidebar:
     else:
         st.title("🔬 Sinapsis AI")
     st.markdown("---")
-    st.subheader("Estado del Sistema")
-    st.success("✅ Orquestador: Activo")
-    st.info(f"ID Sesión: {st.session_state.session_id}")
 
     # --- Sección de Usuario / ORCID ---
     st.markdown("---")
@@ -713,14 +710,7 @@ with st.sidebar:
     
     st.selectbox("Modelo", ["openai/gpt-oss-20b"], index=0)
 
-    st.markdown("---")
-    st.markdown("### Capas de Datos Activas")
-    st.markdown(f"{'✅' if NEO4J_AVAILABLE else '❌'} **Neo4j** (Grafos Local)")
-    st.markdown(f"{'✅' if QDRANT_AVAILABLE else '❌'} **Qdrant** (Semántica Local)")
-    st.markdown("- ✅ **OpenAlex** (Global)")
-    st.markdown("- ✅ **OpenInterpreter** (Código)")
-    if not NEO4J_AVAILABLE or not QDRANT_AVAILABLE:
-        st.caption("⚠️ Algunos servicios no están disponibles en este entorno.")
+
 
 
 # ---- Interfaz Principal ----
