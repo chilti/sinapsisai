@@ -285,6 +285,9 @@ def select_academic_in_ui(academic_name):
         
     st.session_state.selected_academic_search = academic_name
     st.session_state.switch_tab = "Perfiles de Investigadores"
+    st.query_params["academic"] = academic_name
+    st.query_params.pop("entity_id", None)
+    st.query_params.pop("entity_name", None)
     st.session_state['tab_inv_loaded'] = True  # Auto-cargar la pestaña
     st.session_state.global_search_executed = True
 
@@ -396,6 +399,9 @@ def select_entity_in_ui(entity_id, entity_name, entity_type=None):
                 break
                 
     st.session_state.switch_tab = "Panorama Institucional"
+    st.query_params["entity_id"] = entity_id
+    st.query_params["entity_name"] = entity_name
+    st.query_params.pop("academic", None)
     st.session_state['tab_inst_loaded'] = True  # Auto-cargar la pestaña
     st.session_state.global_search_executed = True
 
