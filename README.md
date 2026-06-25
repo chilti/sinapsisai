@@ -4,7 +4,8 @@ Sistema de Inteligencia Bibliométrica Híbrida y Orquestador RAG para entidades
 
 ### 📍 Acceso al Sistema
 El sistema se encuentra desplegado para la comunidad UNAM en:
-👉 [**https://dinamica1.fciencias.unam.mx/sinapsisai/**](https://dinamica1.fciencias.unam.mx/sinapsisai/)
+- **Instalación principal:** 👉 [https://dinamica1.fciencias.unam.mx/sinapsisai/](https://dinamica1.fciencias.unam.mx/sinapsisai/)
+- **Instalación alternativa:** 👉 [https://www.dynamics.unam.mx/sinapsisai/](https://www.dynamics.unam.mx/sinapsisai/)
 
 ---
 
