@@ -609,8 +609,6 @@ with st.sidebar:
                 st.link_button("🆔 Identifícate con ORCID", login_url, type="primary", use_container_width=True)
             else:
                 st.error("Error en configuración de ORCID")
-
-
     st.markdown("---")
     st.subheader("Configuración")
     
@@ -618,6 +616,8 @@ with st.sidebar:
     st.markdown("### 🗺️ Jerarquía de Navegación")
     hierarchy = get_institution_hierarchy()
     instituciones = sorted(list(hierarchy.keys()))
+    if not instituciones:
+        instituciones = ["(No hay datos de instituciones disponibles)"]
     
     # Selector 1: Institución
     default_inst_idx = 0

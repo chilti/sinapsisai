@@ -27,3 +27,4 @@ cachetools
 uvicorn
 pillow
 pyarrow
+openpyxl
