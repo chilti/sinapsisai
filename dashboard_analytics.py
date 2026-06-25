@@ -312,7 +312,6 @@ def load_hierarchy():
     """
     # Ruta al Excel del padrón 2025 (fuente de verdad)
     excel_paths = [
-        os.path.join(BASE_PATH, 'SNII', 'Investigadores_vigentes_2025.xlsx'),
         os.path.join(BASE_PATH, 'data', 'Investigadores_vigentes_2025.xlsx'),
     ]
     sheet_name = '4T_2025 (44,794)'
