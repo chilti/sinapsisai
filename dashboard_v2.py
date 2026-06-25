@@ -10,6 +10,7 @@ from pathlib import Path
 from PIL import Image
 import json
 from dotenv import load_dotenv
+load_dotenv()
 
 # Asegurar que el directorio raíz está en el path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")))
@@ -32,7 +33,6 @@ from lib.coauthra_integration import render_coauthra
 from agent.tools_mcp import get_mcp_tools_sync
 from lib import auth
 
-load_dotenv()
 
 # ---- Configuración de página ----
 st.set_page_config(
