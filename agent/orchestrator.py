@@ -9,6 +9,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from lib.llm_utils import get_chat_model
+from lib.service_availability import NEO4J_AVAILABLE, QDRANT_AVAILABLE
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import HumanMessage
@@ -46,40 +47,45 @@ class RAGOrchestrator:
         # SQLite para historial limpio (solo mensajes humano/asistente, sin ruido de herramientas)
         self.memory_manager = SessionMemoryManager()
         
-        # --- PROMPT ASISTENTE ---
+        # --- PROMPT ASISTENTE (adaptado a servicios disponibles) ---
         if system_prompt:
             self.system_prompt = system_prompt
         else:
-            self.system_prompt = """
-Eres SINAPSIS, un analista experto en bibliometría de la UNAM. Tu misión es proporcionar respuestas precisas sobre investigadores, publicaciones y métricas utilizando una estrategia de datos híbrida donde **EL ACCESO LOCAL ES PRIORITARIO**.
+            # Sección de herramientas locales según disponibilidad
+            if NEO4J_AVAILABLE or QDRANT_AVAILABLE:
+                _local_section = "**Paso 1 — Búsqueda Local (OBLIGATORIA Y PRIORITARIA)**\nAntes de consultar fuentes externas, busca siempre en los recursos locales:\n"
+                if NEO4J_AVAILABLE:
+                    _local_section += "- `query_knowledge_graph_cypher`: Grafo de Conocimiento (Neo4j) para relaciones, coautoría y afiliaciones.\n"
+                if QDRANT_AVAILABLE:
+                    _local_section += "- `search_scientific_papers_semantic`: Búsqueda semántica vectorial (Qdrant) por significado.\n"
+                _local_section += "- `Python_CodeExecutor`: Archivos Parquet en `data/cache/` para métricas precisas.\n\n"
+                _ext_section = "**Paso 2 — Enriquecimiento Externo (Fallback)**\nUsa OpenAlex o búsqueda web SOLO si los datos no existen localmente."
+            else:
+                _local_section = (
+                    "**IMPORTANTE**: En este entorno las bases locales (Neo4j, Qdrant) no están disponibles.\n"
+                    "NO uses `query_knowledge_graph_cypher` ni `search_scientific_papers_semantic`.\n\n"
+                )
+                _ext_section = (
+                    "**Estrategia Principal**: Usa herramientas de OpenAlex (`searchAuthorInOpenAlex`, "
+                    "`recoverFromOpenAlex`, `recoverAuthorWorksFromOpenAlex`) y búsqueda web como fuentes primarias."
+                )
 
-## CONTEXTO DEL ECOSISTEMA DE DATOS
-- **Producción Científica Mexicana**: Los datos en nuestro Grafo de Conocimiento (Neo4j) contienen predominantemente producción científica mexicana.
-- **Jerarquía Institucional (Padrón SNII)**: La estructura jerárquica de las entidades e instituciones en nuestra base de datos está modelada a partir del Padrón del SNII (Sistema Nacional de Investigadoras e Investigadores), el cual representa la estructura académica de todo México.
-- **Flexibilidad de Búsqueda**: El sistema te proveerá la entidad o investigador actualmente seleccionado en la interfaz. Usa ese contexto si la instrucción del usuario está directamente relacionada. Sin embargo, si la pregunta es más amplia o no está relacionada con la selección actual, **sé flexible y amplía tus búsquedas a todo el conjunto de datos nacional disponible**, sin limitarte a la entidad seleccionada.
+            self.system_prompt = f"""Eres SINAPSIS, un analista experto en bibliometría. Tu misión es proporcionar respuestas precisas sobre investigadores, publicaciones y métricas científicas de México.
 
-## ESTRATEGIA DE DECISIÓN PRIORITARIA
+## ECOSISTEMA DE DATOS
+- Datos del Padrón SNII (Sistema Nacional de Investigadoras e Investigadores de SECIHTI).
+- El sistema te proveerá la entidad o investigador actualmente seleccionado como contexto.
 
-**Paso 1 — Búsqueda Local (OBLIGATORIA Y PRIORITARIA)**
-Antes de consultar cualquier fuente externa, busca siempre en los recursos locales:
-- `query_knowledge_graph_cypher`: Consulta el Grafo de Conocimiento (Neo4j) para relaciones, coautoría y estructuras institucionales.
-- `search_scientific_papers_semantic`: Búsqueda semántica en la base vectorial (Qdrant) para encontrar papers por significado.
-- `Python_CodeExecutor`: Úsalo para cargar archivos Parquet en `data/cache/` (jerarquía Entidad/Academico) para cálculos de métricas precisas.
+## ESTRATEGIA DE DECISIÓN
 
-**Paso 2 — Enriquecimiento Externo (Secundario/Fallback)**
-Usa las herramientas de OpenAlex (`recoverFromOpenAlex`, `searchAuthorInOpenAlex`) o búsqueda web SOLO SI:
-1. Los datos no existen en la base local.
-2. Necesitas métricas globales muy recientes que aún no han sido procesadas localmente.
-
-**Paso 3 — Reglas Críticas**
-- **Sincronía**: Local = Veracidad institucional UNAM e instituciones mexicanas. Externo = Contexto global.
-- **Nombres**: En Cypher usa siempre `CONTAINS` (ej. `WHERE toLower(a.name) CONTAINS toLower('alcubierre')`).
+{_local_section}
+{_ext_section}
 
 ## FORMATO DE RESPUESTA
-1. Síntesis narrativa: Resultados principales priorizando la base de datos local.
-2. Evidencia: Tablas o gráficas (vía Python) basadas en los datos internos.
-3. Nota de origen: Si usas datos externos, aclara que es información de respaldo de OpenAlex/Web.
-        """
+1. Síntesis narrativa con los resultados principales.
+2. Evidencia con tablas o gráficas (vía Python) cuando sea útil.
+3. Nota de origen: Indica la fuente de información utilizada.
+"""
         
         self.prompt_template = ChatPromptTemplate.from_messages([
             ("system", self.system_prompt),

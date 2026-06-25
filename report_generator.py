@@ -204,7 +204,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
                 x=top_vel['year'], y=top_vel['velocity'],
                 mode='lines+markers',
                 line=dict(color='#8B0000', width=2),
-                marker=dict(size=4, color='#D4AF37')
+                marker=dict(size=4, color='#E39918')
             ))
             fig_vel.update_layout(
                 height=200, margin=dict(t=30, b=10, l=10, r=10),
@@ -366,7 +366,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
         vals = [data.get(c, 0) for c in vis_cols]
         if any(vals):
             fig_rad = go.Figure()
-            fig_rad.add_trace(go.Scatterpolar(r=vals + [vals[0]], theta=labels + [labels[0]], fill='toself', name='Visibilidad', line=dict(color='#D4AF37')))
+            fig_rad.add_trace(go.Scatterpolar(r=vals + [vals[0]], theta=labels + [labels[0]], fill='toself', name='Visibilidad', line=dict(color='#E39918')))
             fig_rad.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 100], ticksuffix="%")), height=350, margin=dict(t=30,b=30,l=30,r=30), title="Perfil de Indexación y Formato", template="plotly_white")
             html_rad = fig_to_html(fig_rad)
     except Exception as e: print("Error radar:", e)
@@ -407,10 +407,13 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
             otros = df_umap[df_umap['academic_name'] != entity_name]
             sel_row = df_umap[df_umap['academic_name'] == entity_name]
             
+            max_docs = df_umap['num_documents'].max() if 'num_documents' in df_umap.columns else 1
+            sizeref = 2.0 * max(max_docs, 1) / (50. ** 2)
+
             if not otros.empty:
-                fig_umap.add_trace(go.Scatter(x=otros['umap_x'], y=otros['umap_y'], mode='markers', name='Resto del padrón', text=otros['academic_name'], marker=dict(size=8, color='#002B5C', opacity=0.3, line=dict(width=1, color='darkgray'))))
+                fig_umap.add_trace(go.Scatter(x=otros['umap_x'], y=otros['umap_y'], mode='markers', name='Resto del padrón', text=otros['academic_name'], marker=dict(size=otros['num_documents'].fillna(0).clip(lower=0.1), sizemode='area', sizeref=sizeref, sizemin=2, color='#003D64', opacity=0.3, line=dict(width=1, color='darkgray'))))
             if not sel_row.empty:
-                fig_umap.add_trace(go.Scatter(x=sel_row['umap_x'], y=sel_row['umap_y'], mode='markers', name=entity_name, text=sel_row['academic_name'], marker=dict(size=14, color='#D4AF37', symbol='star', line=dict(width=2, color='#b6932b'))))
+                fig_umap.add_trace(go.Scatter(x=sel_row['umap_x'], y=sel_row['umap_y'], mode='markers', name=entity_name, text=sel_row['academic_name'], marker=dict(size=sel_row['num_documents'].fillna(0).clip(lower=0.1), sizemode='area', sizeref=sizeref, sizemin=2, color='#E8442A', symbol='circle', line=dict(width=2, color='#E8442A'))))
                 
             fig_umap.update_layout(title="Mapa de Desempeño Cuantitativo (UMAP)", hovermode="closest", template="plotly_white")
             html_umap = fig_to_html(fig_umap)
@@ -479,7 +482,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
                     range_x=[_x_min_c, _cur_yr_c],
                     labels={'pct_international': '% Colaboración Intl.', 'year': 'Año'}
                 )
-                fig_intl.update_traces(line=dict(color='#003F8A', width=2), marker=dict(color='#D4AF37', size=7))
+                fig_intl.update_traces(line=dict(color='#003F8A', width=2), marker=dict(color='#E39918', size=7))
                 fig_intl.update_xaxes(tickformat='d', dtick=5)
                 fig_intl.update_layout(template='plotly_white', height=280, margin=dict(t=40, b=10))
                 html_collab_figs += fig_to_html(fig_intl)
@@ -509,7 +512,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
                 node_class = n.get("label", "Unknown")
                 visible_name = n.get("title", str(node_id))
                 color_map_net = {"Academic": "#FFC0CB", "Paper": "#ADD8E6",
-                                  "Institution": "#D4AF37", "Entity": "#D4AF37", "Funder": "#8FBC8F"}
+                                  "Institution": "#E39918", "Entity": "#E39918", "Funder": "#8FBC8F"}
                 color = color_map_net.get(node_class, "#97C2FC")
                 net.add_node(node_id, label=visible_name, title=f"{node_class}: {visible_name}",
                              color=color, group=node_class)
@@ -568,13 +571,13 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
             .markdown-text strong {{ color: #111; font-family: 'Open Sans', sans-serif; }}
             
             /* Dropcap for Executive Summary */
-            .summary-box {{ padding: 20px; margin: 25px 0; font-size: 16px; border-top: 2px solid #D4AF37; border-bottom: 2px solid #D4AF37; text-align: justify; }}
-            .summary-box p:first-of-type::first-letter {{ color: #002B5C; float: left; font-size: 55px; line-height: 45px; padding-top: 4px; padding-right: 8px; padding-left: 3px; font-family: 'Georgia', serif; }}
+            .summary-box {{ padding: 20px; margin: 25px 0; font-size: 16px; border-top: 2px solid #E39918; border-bottom: 2px solid #E39918; text-align: justify; }}
+            .summary-box p:first-of-type::first-letter {{ color: #003D64; float: left; font-size: 55px; line-height: 45px; padding-top: 4px; padding-right: 8px; padding-left: 3px; font-family: 'Georgia', serif; }}
             
             /* Minimalist Metrics Grid */
             .metrics-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 40px; margin-top: 10px; }}
             .metric-card {{ background: transparent; padding: 15px 5px; text-align: center; border-bottom: 1px dashed #ccc; }}
-            .metric-value {{ font-family: 'Open Sans', sans-serif; font-size: 26px; font-weight: 600; color: #002B5C; }}
+            .metric-value {{ font-family: 'Open Sans', sans-serif; font-size: 26px; font-weight: 600; color: #003D64; }}
             .metric-label {{ font-family: 'Open Sans', sans-serif; font-size: 12px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; }}
             
             .chart {{ margin-top: 20px; margin-bottom: 40px; width: 100%; overflow: hidden; background: #fff; border: 1px solid #eaeaea; box-shadow: 0 1px 3px rgba(0,0,0,0.05); padding: 15px; box-sizing: border-box; }}

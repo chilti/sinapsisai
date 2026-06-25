@@ -1589,11 +1589,18 @@ class Neo4jGraphStore:
         
         cypher = """
         CALL db.index.fulltext.queryNodes("person_name_search", $q + "~") YIELD node, score
-        RETURN node.fullname as name, node.id as id, labels(node) as labels, score, "Academic" as type
+        OPTIONAL MATCH path = (node)-[:AFFILIATED_TO]->()-[:PART_OF*0..2]->(i:Institution)
+        // Agrupar por nodo y score, tomar el primer path si hay múltiples
+        WITH node, score, collect(path)[0] AS p
+        WITH node, score, CASE WHEN p IS NOT NULL THEN [n IN nodes(p) WHERE n <> node AND n.name IS NOT NULL | n.name] ELSE [] END AS parents
+        RETURN node.fullname as name, node.id as id, labels(node) as labels, score, "Academic" as type, parents
         LIMIT $limit
         UNION
         CALL db.index.fulltext.queryNodes("institution_name_search", $q + "~") YIELD node, score
-        RETURN node.name as name, node.id as id, labels(node) as labels, score, "Institution" as type
+        OPTIONAL MATCH path = (node)-[:PART_OF*1..2]->(i:Institution)
+        WITH node, score, collect(path)[0] AS p
+        WITH node, score, CASE WHEN p IS NOT NULL THEN [n IN nodes(p) WHERE n <> node AND n.name IS NOT NULL | n.name] ELSE [] END AS parents
+        RETURN node.name as name, node.id as id, labels(node) as labels, score, "Institution" as type, parents
         LIMIT $limit
         """
         results = []

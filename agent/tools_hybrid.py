@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import httpx
 import pyalex
 from pyalex import Works, Authors
@@ -11,6 +12,9 @@ from database.vector_store import QdrantStore
 from database.knowledge_graph import Neo4jGraphStore
 from langdetect import detect, LangDetectException
 from dotenv import load_dotenv
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from lib.service_availability import NEO4J_AVAILABLE, QDRANT_AVAILABLE
 
 load_dotenv()
 
@@ -38,6 +42,11 @@ async_client = httpx.AsyncClient(verify=False)
 # URL del servicio LLM para traducciones (mismo que el principal)
 LLM_URL = auth_url.rstrip('/') + '/chat/completions'
 LLM_MODEL = os.getenv('LLM_MODEL', 'openai/gpt-oss-20b')
+
+# Inicialización condicional de conexiones externas
+qdrant_docs = QdrantStore(collection_name="scientific_papers") if QDRANT_AVAILABLE else None
+qdrant_apis = QdrantStore(collection_name="api_papers") if QDRANT_AVAILABLE else None
+neo4j = Neo4jGraphStore() if NEO4J_AVAILABLE else None
 
 def translate_to_english(text: str) -> str:
     """
@@ -75,11 +84,6 @@ def translate_to_english(text: str) -> str:
         print(f"  ⚠️  Error en traducción: {e}. Usando query original.")
         return text
 
-# Inicialización de las conexiones
-qdrant_docs = QdrantStore(collection_name="scientific_papers")
-qdrant_apis = QdrantStore(collection_name="api_papers")
-neo4j = Neo4jGraphStore()
-
 def get_embedding(text: str) -> list:
     """
     Obtiene el vector (embedding) de un texto usando directamente la API (httpx).
@@ -110,24 +114,22 @@ def get_embedding(text: str) -> list:
 def search_scientific_papers_semantic(query: str, limit: int = 20, entity_context: Optional[str] = None) -> dict:
     """
     Realiza una búsqueda semántica en la base de datos vectorial (Qdrant).
-    Útil para encontrar temas relacionados, conceptos abstractos o papers que hablen
-    de algo aunque no compartan palabras clave exactas.
-
+    Busca papers por significado semántico, no solo por palabras clave.
+    Retorna títulos, resumen, autores, año, doi, y puntaje de relevancia.
     Las colecciones disponibles en Qdrant son EXACTAMENTE dos:
-    - `scientific_papers`: papers académicos (la principal).
-    - `api_papers`: papers obtenidos de APIs externas.
-    NO existe ninguna otra colección. Esta herramienta busca en ambas automáticamente.
+    - scientific_papers: papers de Scopus (abstract completo, fuente confiable para métricas).
+    - api_papers: papers del pipeline local de ClickHouse (abstract, métricas básicas).
+    Busca en AMBAS y combina los resultados deduplicados (por DOI).
 
-    IMPORTANTE: La query debe contener ÚNICAMENTE el tema científico o concepto buscado.
-    NUNCA incluyas el nombre de la institución en la query semántica — eso degrada los resultados.
-    - CORRECTO: query="diabetes"
-    - INCORRECTO: query="Instituto de Investigaciones Nucleares diabetes"
-
-    Usa el parámetro entity_context para filtrar por institución de forma nativa y eficiente.
-    Ejemplo: entity_context="Instituto de Investigaciones Nucleares"
-
-    La query puede estar en español o inglés — se traducirá automáticamente al inglés.
+    Args:
+        query: El texto de la búsqueda semántica.
+        limit: Número máximo de resultados por colección.
+        entity_context: Nombre de la entidad para filtrar resultados por 'entity' del payload.
     """
+    if not QDRANT_AVAILABLE:
+        return {"error": "Búsqueda semántica no disponible: Qdrant no está conectado en este entorno.",
+                "results": []}
+
     # Traducir al inglés si es necesario (los papers están en inglés)
     query_en = translate_to_english(query)
     
@@ -181,9 +183,10 @@ search_scientific_papers = search_scientific_papers_semantic
 def get_author_coauthors_graph(author_name: str) -> str:
     """
     Consulta el Grafo de Conocimiento (Neo4j) para encontrar coautores de un investigador.
-    Útil para mapear redes de colaboración y líneas de investigación compartidas.
-    Usa búsqueda parcial: proporciona solo el apellido o parte del nombre.
+    Retorna los 15 coautores más frecuentes del investigador dado.
     """
+    if not NEO4J_AVAILABLE:
+        return "Grafo de conocimiento no disponible: Neo4j no está conectado en este entorno."
     print(f"✨️ Consultando grafo de coautoría para: '{author_name}'")
     with neo4j.driver.session() as session:
         result = session.run(
@@ -203,11 +206,6 @@ def get_author_coauthors_graph(author_name: str) -> str:
 def query_knowledge_graph_cypher(cypher_query: str) -> str:
     """
     Ejecuta una consulta Cypher directa sobre el Grafo de Conocimiento (Neo4j).
-    Útil para preguntas complejas sobre relaciones, como: '¿Qué autores han colaborado 
-    con X y también han publicado sobre el concepto Y?', o '¿Cuál es la evolución de citas de este grupo?'.
-    
-    REGLA: El esquema real de la base de datos usa etiquetas universales:
-    - Autores/Académicos: etiqueta `(a:Person)`. También etiquetados como `:Author`. Atributos: `id`, `fullname` (nombre completo en mayúsculas), `name` (nombre simple/fallback), `orcid`, `scopus_id`, `siia_url`.
     - Artículos: etiqueta genérica `(p:Paper)`. Atributos: `doi`, `title`, `year`, `citations`.
     - Entidades UNAM/Instituciones: etiquetas `(i:Institution)`, `(d:Dependency)`, `(s:Subdependency)`. Atributos: `id`, `name`.
     - Tópicos Temáticos: `(t:Topic)`. Atributos: `id` (slug compuesto en inglés), `name` (nombre en inglés).
@@ -441,6 +439,8 @@ def get_entity_statistics(entity_name: str) -> str:
     Usar cuando el usuario pregunte por el perfil o productividad de una institución.
     """
     print(f"📊 Calculando estadísticas para entidad: '{entity_name}'")
+    if not NEO4J_AVAILABLE:
+        return "Estadísticas de grafo no disponibles: Neo4j no está conectado en este entorno."
     try:
         with neo4j.driver.session() as session:
             # Total papers y académicos
@@ -493,6 +493,8 @@ def get_researcher_profile(name_fragment: str) -> str:
     Usar cuando el usuario pregunte por un investigador específico.
     """
     print(f"👤 Buscando perfil del investigador: '{name_fragment}'")
+    if not NEO4J_AVAILABLE:
+        return "Perfil de grafo no disponible: Neo4j no está conectado en este entorno."
     try:
         with neo4j.driver.session() as session:
             # Datos básicos del investigador
@@ -559,6 +561,8 @@ def get_trending_topics(entity_name: Optional[str] = None, start_year: int = 201
     Útil para identificar áreas emergentes o tendencias en producción científica.
     """
     print(f"📈 Calculando tópicos con tendencia desde {start_year}" + (f" para '{entity_name}'" if entity_name else ""))
+    if not NEO4J_AVAILABLE:
+        return "Tópicos de grafo no disponibles: Neo4j no está conectado en este entorno."
     try:
         with neo4j.driver.session() as session:
             if entity_name:
@@ -605,6 +609,8 @@ def get_coauthorship_network_for_entity(entity_name: str, start_year: int = 2015
     - edges: lista de {source, target, shared_papers, topics}
     """
     print(f"🕸️ Construyendo red de coautoría para: {entity_name}")
+    if not NEO4J_AVAILABLE:
+        return "Red de coautoría no disponible: Neo4j no está conectado en este entorno."
     try:
         with neo4j.driver.session() as session:
             # Nodos: autores internos de la entidad con sus papers
@@ -667,6 +673,8 @@ def get_topic_evolution(entity_name: str, start_year: int = 2018, end_year: int 
     Usa entity_name con el nombre EXACTO de la entidad en el grafo.
     """
     print(f"📊 Calculando evolución temática para '{entity_name}' ({start_year}-{end_year})")
+    if not NEO4J_AVAILABLE:
+        return "Evolución temática no disponible: Neo4j no está conectado en este entorno."
     try:
         with neo4j.driver.session() as session:
             query = """
@@ -729,6 +737,8 @@ def get_sdg_distribution(
     - Top 5 investigadores más activos en cada SDG
     - Temas (topics) dominantes por SDG
     """
+    if not NEO4J_AVAILABLE:
+        return "Distribución SDG no disponible: Neo4j no está conectado en este entorno."
     try:
         graph = Neo4jGraphStore()
 
@@ -837,6 +847,8 @@ def get_international_collaboration_stats(
     1. Modo grafo: usa nodos :Person con country_code
     2. Modo fallback: lee campo `countries` de raw_metadata al nivel del paper
     """
+    if not NEO4J_AVAILABLE:
+        return "Colaboración internacional no disponible: Neo4j no está conectado en este entorno."
     try:
         graph = Neo4jGraphStore()
         params = {"entity": entity_name, "start": start_year, "end": end_year}
@@ -1018,8 +1030,8 @@ downloadPaperByDOI = CallableTool(tool(downloadPaperByDOI), downloadPaperByDOI)
 search_scientific_papers = search_scientific_papers_semantic
 
 # Lista de herramientas híbridas para exportar (RAGOrchestrator)
-hybrid_tools = [
-    search_scientific_papers_semantic.tool,
+# Las herramientas de Neo4j y Qdrant solo se incluyen si sus servicios están disponibles
+_neo4j_tools = [
     get_author_coauthors_graph.tool,
     get_coauthorship_network_for_entity.tool,
     query_knowledge_graph_cypher.tool,
@@ -1029,6 +1041,13 @@ hybrid_tools = [
     get_topic_evolution.tool,
     get_sdg_distribution.tool,
     get_international_collaboration_stats.tool,
+] if NEO4J_AVAILABLE else []
+
+_qdrant_tools = [
+    search_scientific_papers_semantic.tool,
+] if QDRANT_AVAILABLE else []
+
+_base_tools = [
     web_search.tool,
     wikipedia_search.tool,
     recoverFromOpenAlex.tool,
@@ -1040,6 +1059,8 @@ hybrid_tools = [
     getAuthorWorksByYear.tool,
     downloadPaperByDOI.tool
 ]
+
+hybrid_tools = _neo4j_tools + _qdrant_tools + _base_tools
 
 # Herramientas estrictamente MCP (solo Web/Wikipedia/OpenAlex/SciHub)
 # Estas se usarán para el Agente Reactivo

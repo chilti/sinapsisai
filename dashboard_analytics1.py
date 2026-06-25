@@ -267,8 +267,8 @@ def _render_velocity_sparkline(df_papers, name_col, name_val, key_suffix="", ret
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=years, y=cites, mode="lines+markers",
-        line=dict(color="#002B5C", width=2.5),
-        marker=dict(size=5, color="#D4AF37", line=dict(width=1, color="#b6932b")),
+        line=dict(color="#003D64", width=2.5),
+        marker=dict(size=5, color="#E39918", line=dict(width=1, color="#b6932b")),
         fill="tozeroy", fillcolor="rgba(0,43,92,0.07)",
         hovertemplate="%{x}: <b>%{y:,}</b> citas<extra></extra>",
     ))
@@ -376,8 +376,8 @@ def _render_radar_visibilidad(data_row, title="Perfil de Visibilidad", key_suffi
     fig = go.Figure(data=go.Scatterpolar(
         r=values, theta=cats, fill="toself",
         fillcolor="rgba(0,43,92,0.12)",
-        line=dict(color="#002B5C", width=2),
-        marker=dict(color="#D4AF37", size=7),
+        line=dict(color="#003D64", width=2),
+        marker=dict(color="#E39918", size=7),
     ))
     fig.update_layout(
         title=dict(text=title, font_size=14, x=0.5),
@@ -447,7 +447,7 @@ def render_institucion_view(entity_name, institution_name=None):
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.08);
             text-align: center;
-            border-top: 4px solid #D4AF37;
+            border-top: 4px solid #E39918;
             border-bottom: 1px solid #eaeaea;
             border-left: 1px solid #eaeaea;
             border-right: 1px solid #eaeaea;
@@ -462,7 +462,7 @@ def render_institucion_view(entity_name, institution_name=None):
         [data-testid="stMetricValue"] {
             font-size: 30px !important;
             font-weight: 700;
-            color: #002B5C;
+            color: #003D64;
         }
         /* Ajustar el delta si existe para que quede centrado también */
         [data-testid="stMetricDelta"] {
@@ -617,8 +617,8 @@ def render_institucion_view(entity_name, institution_name=None):
                     fig_intl.add_trace(go.Scatter(
                         x=df_ia['year'], y=df_ia['pct_international'],
                         mode='lines+markers', name='% Internacional',
-                        line=dict(color='#002B5C', width=2.5),
-                        marker=dict(size=6, color='#D4AF37'),
+                        line=dict(color='#003D64', width=2.5),
+                        marker=dict(size=6, color='#E39918'),
                         fill='tozeroy', fillcolor='rgba(0,43,92,0.07)',
                         hovertemplate="%{x}: <b>%{y:.1f}%</b><extra></extra>",
                     ))
@@ -771,7 +771,7 @@ def render_investigador_view(entity_name, institution_name=None):
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.08);
             text-align: center;
-            border-top: 4px solid #D4AF37;
+            border-top: 4px solid #E39918;
             border-bottom: 1px solid #eaeaea;
             border-left: 1px solid #eaeaea;
             border-right: 1px solid #eaeaea;
@@ -786,7 +786,7 @@ def render_investigador_view(entity_name, institution_name=None):
         [data-testid="stMetricValue"] {
             font-size: 30px !important;
             font-weight: 700;
-            color: #002B5C;
+            color: #003D64;
         }
         [data-testid="stMetricDelta"] {
             justify-content: center;
@@ -1108,7 +1108,7 @@ def render_investigador_view(entity_name, institution_name=None):
                 mode='markers',
                 name='Resto del padrón',
                 text=otros['academic_name'],
-                marker=dict(size=8, color='#002B5C', opacity=0.3, line=dict(width=1, color='darkgray')),
+                marker=dict(size=8, color='#003D64', opacity=0.3, line=dict(width=1, color='darkgray')),
                 hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>FWCI: %{customdata[1]:.2f}",
                 customdata=otros[['num_documents', 'fwci_avg']]
             ))
@@ -1121,7 +1121,7 @@ def render_investigador_view(entity_name, institution_name=None):
                 mode='markers',
                 name=selected_inv,
                 text=sel_row['academic_name'],
-                marker=dict(size=14, color='#D4AF37', symbol='star', line=dict(width=2, color='#b6932b')),
+                marker=dict(size=14, color='#E39918', symbol='star', line=dict(width=2, color='#b6932b')),
                 hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>FWCI: %{customdata[1]:.2f}",
                 customdata=sel_row[['num_documents', 'fwci_avg']]
             ))

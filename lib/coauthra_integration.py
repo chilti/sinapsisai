@@ -14,8 +14,8 @@ def render_coauthra(author_id=None, height=900):
     
     # --- Estilo y Atribución ---
     st.markdown("""
-        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 10px; border-left: 5px solid #002B5C; margin-bottom: 20px;">
-            <h4 style="margin: 0; color: #002B5C;">🕸️ Red de Colaboración Científica</h4>
+        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 10px; border-left: 5px solid #003D64; margin-bottom: 20px;">
+            <h4 style="margin: 0; color: #003D64;">🕸️ Red de Colaboración Científica</h4>
             <p style="margin: 10px 0; font-size: 14px; color: #475569;">
                 Esta visualización interactiva es proporcionada por <b>CoAuthra</b>.
                 Sinapsis AI integra esta herramienta para potenciar el análisis de grafos de colaboración en la UNAM.

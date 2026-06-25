@@ -51,22 +51,22 @@ st.markdown("""
     section[data-testid="stSidebar"] * {
         color: #f1f5f9 !important;
     }
-    h1, h2, h3 { color: #002B5C !important; font-family: 'Inter', sans-serif; font-weight: 600; }
+    h1, h2, h3 { color: #003D64 !important; font-family: 'Inter', sans-serif; font-weight: 600; }
     .footer {
         position: fixed; left: 0; bottom: 0; width: 100%;
-        background-color: #002B5C; color: #D4AF37;
+        background-color: #003D64; color: #E39918;
         text-align: center; padding: 5px; font-size: 11px;
-        border-top: 1px solid #D4AF37;
+        border-top: 1px solid #E39918;
     }
     .stButton>button {
-        background-color: #D4AF37; color: #002B5C;
+        background-color: #E39918; color: #003D64;
         border: 1px solid #b6932b;
         border-radius: 6px; padding: 0.5rem 1rem; font-weight: 600;
     }
     .stButton>button:hover {
         background-color: #b6932b;
         border-color: #8c7121;
-        color: #002B5C;
+        color: #003D64;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -1100,6 +1100,6 @@ with tab_about:
 # ---- Footer ----
 st.markdown("""
     <div class="footer">
-        📊 Sinapsis AI - UNAM
+        📊 Sinapsis AI - C1ε(η)C1α∫x | UNAM
     </div>
 """, unsafe_allow_html=True)

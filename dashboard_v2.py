@@ -16,8 +16,15 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")))
 
 import pandas as pd
 import plotly.express as px
-from database.knowledge_graph import Neo4jGraphStore
-from database.vector_store import QdrantStore
+
+# Detectar servicios externos antes de importarlos
+from lib.service_availability import NEO4J_AVAILABLE, QDRANT_AVAILABLE
+
+if NEO4J_AVAILABLE:
+    from database.knowledge_graph import Neo4jGraphStore
+if QDRANT_AVAILABLE:
+    from database.vector_store import QdrantStore
+
 from agent.orchestrator import RAGOrchestrator
 from agent.interpreter_agent import InterpreterOrchestrator
 from dashboard_analytics import render_institucion_view, render_investigador_view, load_cached_data, get_institution_hierarchy
@@ -63,6 +70,15 @@ st.markdown("""
     div.block-container {
         padding-top: 1rem !important;
     }
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Montserrat', sans-serif;
+    }
+    /* Proteger la fuente de los iconos de Material Design de Streamlit */
+    .st-emotion-cache-1n76uvr, .stIconMaterial, [data-testid="stIconMaterial"], .material-symbols-rounded {
+        font-family: 'Material Symbols Rounded', sans-serif !important;
+    }
     .stChatMessage {
         background-color: #ffffff;
         border-radius: 10px;
@@ -76,22 +92,33 @@ st.markdown("""
     section[data-testid="stSidebar"] * {
         color: #f1f5f9 !important;
     }
-    h1, h2, h3 { color: #002B5C !important; font-family: 'Inter', sans-serif; font-weight: 600; }
+    h1, h2, h3 { color: #003D64 !important; font-family: 'Montserrat', sans-serif; font-weight: 700; }
+    .sidebar-title-custom {
+        text-align: center;
+        margin-top: 5px;
+        font-size: 36px !important;
+        font-weight: 700;
+        font-family: 'Montserrat', sans-serif;
+        color: #f1f5f9 !important;
+    }
     .footer {
         position: fixed; left: 0; bottom: 0; width: 100%;
-        background-color: #002B5C; color: #D4AF37;
-        text-align: center; padding: 5px; font-size: 11px;
-        border-top: 1px solid #D4AF37;
+        background-color: #003D64; color: #EAEDEF;
+        text-align: center; padding: 8px; font-size: 12px;
+        border-top: 4px solid #E39918;
+        font-weight: 600;
+        z-index: 9999;
     }
     .stButton>button {
-        background-color: #D4AF37; color: #002B5C;
+        background-color: #E39918; color: #003D64;
         border: 1px solid #b6932b;
         border-radius: 6px; padding: 0.5rem 1rem; font-weight: 600;
+        font-family: 'Montserrat', sans-serif;
     }
     .stButton>button:hover {
-        background-color: #b6932b;
-        border-color: #8c7121;
-        color: #002B5C;
+        background-color: #E8442A;
+        border-color: #E8442A;
+        color: #ffffff !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -112,31 +139,35 @@ def _run_async_in_thread(coro):
 @st.cache_data(ttl=30)
 def fetch_database_live_stats(entity_name=None):
     """Obtiene los conteos globales de forma cacheada para no saturar las DBs."""
-    try:
-        neo = Neo4jGraphStore()
-        graph_stats = neo.get_database_statistics()
-        
-        if entity_name == "FACULTAD DE CIENCIAS":
-            # Caso especial: Colaboración FC - ICN
-            graph_sample = neo.get_collaboration_sample_graph("FACULTAD DE CIENCIAS", "INSTITUTO DE CIENCIAS NUCLEARES", limit=150)
-        elif entity_name:
-            graph_sample = neo.get_funder_sample_graph(entity_name, limit=150)
-        else:
-            graph_sample = neo.get_sample_graph(limit=80)
-            
-        neo.close()
-    except Exception as e:
-        graph_stats = {"error": str(e), "nodes": {}, "relationships": 0}
-        graph_sample = {"error": str(e)}
-        
-    try:
-        qdrant = QdrantStore(collection_name="api_papers")
-        qdrant_stats = qdrant.get_collection_stats()
-        qdrant_schema = qdrant.get_schema_info()
-    except Exception as e:
-        qdrant_stats = {"total_vectors": 0, "error": str(e)}
-        qdrant_schema = {"error": str(e)}
-        
+    graph_stats = {"nodes": {}, "relationships": 0}
+    graph_sample = {}
+    qdrant_stats = {"total_vectors": 0}
+    qdrant_schema = {}
+
+    if NEO4J_AVAILABLE:
+        try:
+            neo = Neo4jGraphStore()
+            graph_stats = neo.get_database_statistics()
+            if entity_name == "FACULTAD DE CIENCIAS":
+                graph_sample = neo.get_collaboration_sample_graph("FACULTAD DE CIENCIAS", "INSTITUTO DE CIENCIAS NUCLEARES", limit=150)
+            elif entity_name:
+                graph_sample = neo.get_funder_sample_graph(entity_name, limit=150)
+            else:
+                graph_sample = neo.get_sample_graph(limit=80)
+            neo.close()
+        except Exception as e:
+            graph_stats = {"error": str(e), "nodes": {}, "relationships": 0}
+            graph_sample = {"error": str(e)}
+
+    if QDRANT_AVAILABLE:
+        try:
+            qdrant = QdrantStore(collection_name="api_papers")
+            qdrant_stats = qdrant.get_collection_stats()
+            qdrant_schema = qdrant.get_schema_info()
+        except Exception as e:
+            qdrant_stats = {"total_vectors": 0, "error": str(e)}
+            qdrant_schema = {"error": str(e)}
+
     return graph_stats, qdrant_stats, graph_sample, qdrant_schema
 
 
@@ -254,6 +285,7 @@ def select_academic_in_ui(academic_name):
         
     st.session_state.selected_academic_search = academic_name
     st.session_state.switch_tab = "Perfiles de Investigadores"
+    st.session_state['tab_inv_loaded'] = True  # Auto-cargar la pestaña
     st.session_state.global_search_executed = True
 
 
@@ -364,6 +396,7 @@ def select_entity_in_ui(entity_id, entity_name, entity_type=None):
                 break
                 
     st.session_state.switch_tab = "Panorama Institucional"
+    st.session_state['tab_inst_loaded'] = True  # Auto-cargar la pestaña
     st.session_state.global_search_executed = True
 
 
@@ -535,7 +568,15 @@ with st.sidebar:
     }
     </style>
     """, unsafe_allow_html=True)
-    st.title("🔬 Sinapsis AI")
+    import os
+    logo_path = os.path.join(os.path.dirname(__file__), "assets", "logo.png")
+    if os.path.exists(logo_path):
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.image(logo_path, use_container_width=True)
+        st.markdown("<div class='sidebar-title-custom'>Sinapsis AI</div>", unsafe_allow_html=True)
+    else:
+        st.title("🔬 Sinapsis AI")
     st.markdown("---")
     st.subheader("Estado del Sistema")
     st.success("✅ Orquestador: Activo")
@@ -544,32 +585,36 @@ with st.sidebar:
     # --- Sección de Usuario / ORCID ---
     st.markdown("---")
     st.subheader("👤 Mi Perfil")
-    user = st.session_state.authenticated_user
-    if user:
-        st.write(f"**Hola, {user.get('name', 'Investigador')}**")
-        st.caption(f"ORCID: {user.get('orcid')}")
-        
-        # Consultar si ya está vinculado en Neo4j
-        neo = Neo4jGraphStore()
-        profile = neo.get_user_profile(user.get('orcid'))
-        neo.close()
-        
-        if profile and profile.get('academic_id'):
-            st.success(f"✅ Perfil Verificado: {profile.get('academic_name')}")
-        else:
-            st.warning("⚠️ Perfil no vinculado")
-            if st.button("🔗 Vincular mi Perfil"):
-                st.session_state.show_claim_profile = True
-        
-        if st.button("Log out"):
-            st.session_state.authenticated_user = None
-            st.rerun()
+
+    if not NEO4J_AVAILABLE:
+        st.info("🔌 Identificación con ORCID no disponible en este entorno (requiere Neo4j).")
     else:
-        login_url = auth.get_orcid_login_url()
-        if login_url:
-            st.link_button("🆔 Identifícate con ORCID", login_url, type="primary", use_container_width=True)
+        user = st.session_state.authenticated_user
+        if user:
+            st.write(f"**Hola, {user.get('name', 'Investigador')}**")
+            st.caption(f"ORCID: {user.get('orcid')}")
+            
+            # Consultar si ya está vinculado en Neo4j
+            neo = Neo4jGraphStore()
+            profile = neo.get_user_profile(user.get('orcid'))
+            neo.close()
+            
+            if profile and profile.get('academic_id'):
+                st.success(f"✅ Perfil Verificado: {profile.get('academic_name')}")
+            else:
+                st.warning("⚠️ Perfil no vinculado")
+                if st.button("🔗 Vincular mi Perfil"):
+                    st.session_state.show_claim_profile = True
+            
+            if st.button("Log out"):
+                st.session_state.authenticated_user = None
+                st.rerun()
         else:
-            st.error("Error en configuración de ORCID")
+            login_url = auth.get_orcid_login_url()
+            if login_url:
+                st.link_button("🆔 Identifícate con ORCID", login_url, type="primary", use_container_width=True)
+            else:
+                st.error("Error en configuración de ORCID")
 
 
     st.markdown("---")
@@ -670,11 +715,12 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("### Capas de Datos Activas")
-    st.markdown("- ✅ **Neo4j** (Grafos Local)")
-    st.markdown("- ✅ **Qdrant** (Semántica Local)")    
+    st.markdown(f"{'✅' if NEO4J_AVAILABLE else '❌'} **Neo4j** (Grafos Local)")
+    st.markdown(f"{'✅' if QDRANT_AVAILABLE else '❌'} **Qdrant** (Semántica Local)")
     st.markdown("- ✅ **OpenAlex** (Global)")
     st.markdown("- ✅ **OpenInterpreter** (Código)")
-    #st.markdown("- ✅ **Sci-Hub** (Descargas)")
+    if not NEO4J_AVAILABLE or not QDRANT_AVAILABLE:
+        st.caption("⚠️ Algunos servicios no están disponibles en este entorno.")
 
 
 # ---- Interfaz Principal ----
@@ -685,11 +731,14 @@ st.info("🚀 **Nota:** El sistema se encuentra en fase de desarrollo. Los datos
 with st.container():
     col_search, col_stats = st.columns([3, 1])
     with col_search:
-        global_query = st.text_input("🔍 Búsqueda Global", placeholder="Encuentra investigadores, facultades, institutos...", label_visibility="collapsed")
+        global_query = st.text_input("🔍 Búsqueda Global", placeholder="Encuentra investigadores, facultades, institutos...", label_visibility="collapsed", disabled=not NEO4J_AVAILABLE)
     with col_stats:
-        st.caption("⚡ Búsqueda en Grafo Nacional")
+        if NEO4J_AVAILABLE:
+            st.caption("⚡ Búsqueda en Grafo Nacional")
+        else:
+            st.caption("🔌 Grafo no disponible")
 
-    if global_query and len(global_query) >= 3:
+    if NEO4J_AVAILABLE and global_query and len(global_query) >= 3:
         if st.session_state.get("last_global_query") != global_query:
             st.session_state.global_search_executed = False
             st.session_state.last_global_query = global_query
@@ -708,6 +757,10 @@ with st.container():
                         st.markdown(f"### {icon}")
                     with c2:
                         st.write(f"**{res['name']}**")
+                        if res.get('parents'):
+                            # Los nodos vienen del nivel inferior al superior. Invertimos para mostrar Institución ➔ Dependencia
+                            breadcrumbs = " ➔ ".join(reversed(res['parents']))
+                            st.caption(f"📍 {breadcrumbs}")
                         st.caption(f"Tipo: {res['type']} | Labels: {', '.join(res['labels'])}")
                     with c3:
                         if res['type'] == "Academic":
@@ -1395,29 +1448,42 @@ with tab_home:
 
 
 with tab_inst:
-    st.markdown("### 📊 Perspectiva Analítica")
-    view_mode_inst = st.radio(
-        "Vista",
-        ["Capacidad Instalada", "Producción Institucional"],
-        index=0,
-        horizontal=True,
-        help="Capacidad Instalada: Suma de la producción de los académicos adscritos a la institución.\nProducción Institucional: Papers cargados manualmente o identificados via openalex id o ROR.",
-        key="view_mode_inst_tab"
-    )
-    v_mode_inst_code = "capacidad_instalada" if view_mode_inst == "Capacidad Instalada" else "produccion_institucional"
-    # Determinar el padre (Dependencia) si estamos viendo una Subdependencia
-    parent = selected_dep if selected_sub and selected_entity == selected_sub else None
-    
-    render_institucion_view(selected_entity, institution_name=selected_institution, view_mode=v_mode_inst_code, parent_name=parent)
+    if not st.session_state.get('tab_inst_loaded', False):
+        st.markdown("### 🏢 Panorama Institucional")
+        st.info("📊 Esta vista analiza la producción de la entidad seleccionada. Haz clic en **Cargar** para comenzar.")
+        if st.button("▶️ Cargar Panorama Institucional", use_container_width=True, key="load_tab_inst"):
+            st.session_state['tab_inst_loaded'] = True
+            st.rerun()
+    else:
+        st.markdown("### 📊 Perspectiva Analítica")
+        view_mode_inst = st.radio(
+            "Vista",
+            ["Capacidad Instalada", "Producción Institucional"],
+            index=0,
+            horizontal=True,
+            help="Capacidad Instalada: Suma de la producción de los académicos adscritos a la institución.\nProducción Institucional: Papers cargados manualmente o identificados via openalex id o ROR.",
+            key="view_mode_inst_tab"
+        )
+        v_mode_inst_code = "capacidad_instalada" if view_mode_inst == "Capacidad Instalada" else "produccion_institucional"
+        # Determinar el padre (Dependencia) si estamos viendo una Subdependencia
+        parent = selected_dep if selected_sub and selected_entity == selected_sub else None
+        
+        render_institucion_view(selected_entity, institution_name=selected_institution, view_mode=v_mode_inst_code, parent_name=parent)
 
 # =======================================================
 # TAB 3: Vista por Investigador
 # =======================================================
 with tab_inv:
-    # La vista de investigador siempre es por Capacidad Instalada (sus propios papers)
-    v_mode_inv_code = "capacidad_instalada"
-    
-    render_investigador_view(selected_entity, institution_name=selected_institution, view_mode=v_mode_inv_code)
+    if not st.session_state.get('tab_inv_loaded', False):
+        st.markdown("### 👤 Perfiles de Investigadores")
+        st.info("🔍 Esta vista carga el perfil completo del investigador seleccionado. Haz clic en **Cargar** para comenzar.")
+        if st.button("▶️ Cargar Perfil de Investigador", use_container_width=True, key="load_tab_inv"):
+            st.session_state['tab_inv_loaded'] = True
+            st.rerun()
+    else:
+        # La vista de investigador siempre es por Capacidad Instalada (sus propios papers)
+        v_mode_inv_code = "capacidad_instalada"
+        render_investigador_view(selected_entity, institution_name=selected_institution, view_mode=v_mode_inv_code)
 
 # =======================================================
 
@@ -1444,12 +1510,13 @@ with tab_about:
     col_team1, col_team2 = st.columns(2)
     
     with col_team1:
-        st.markdown("#### FACULTAD DE CIENCIAS")
+        st.markdown("#### FACULTAD DE CIENCIAS y CENTRO DE CIENCIAS DE LA COMPLEJIDAD (UNAM)")
         st.markdown("- Dr. Humberto Andrés Carrillo Calvet")
         st.markdown("- Dr. José Luis Jiménez Andrade")
+        st.markdown("#### FACULTAD DE CIENCIAS")
         st.markdown("- Dra. María Victoria Guzmán Sánchez")
         
-        st.markdown("#### Centro de Ciencias de la Complejidad")
+        st.markdown("####  CENTRO DE CIENCIAS DE LA COMPLEJIDAD")
         st.markdown("- Dr. Ricardo Arencibia Jorge")
         st.markdown("- M. en C. Romel Calero Ramos")
         st.markdown("- M. en C. Lorena Delago Quiroz")
@@ -1774,7 +1841,7 @@ with tab_about:
 # ---- Footer ----
 st.markdown("""
     <div class="footer">
-        📊 Sinapsis AI - UNAM
+        📊 Sinapsis AI - C1ε(η)C1α∫x - UNAM
     </div>
 """, unsafe_allow_html=True)
 

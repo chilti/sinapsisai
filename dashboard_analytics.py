@@ -8,6 +8,14 @@ import os
 import sys
 import json
 import numpy as np
+from scipy.ndimage import gaussian_filter
+import base64
+import io
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+import matplotlib.cm as mcm
 from datetime import datetime
 from lib import viz_ods  # Nuevo módulo para pintar la matriz de ODS
 from lib.coauthra_integration import render_coauthra
@@ -622,6 +630,197 @@ def _prepare_papers_table(df_papers):
     return df
 
 
+def _compute_umap_kde(df, z_col, resolution=120, sigma_frac=0.06):
+    """
+    Puerto fiel del algoritmo de Gaussian Splatting de LabSOM/UmapHeatmap.tsx.
+    
+    Para cada punto (umap_x, umap_y, valor), irradia su valor a los píxeles
+    vecinos con peso gaussiano. Produce:
+      - value_grid: promedio ponderado del indicador por píxel
+      - alpha_grid: densidad (opacidad) normalizada por píxel
+    """
+    xs = df['umap_x'].values
+    ys = df['umap_y'].values
+    vs = df[z_col].fillna(0).values
+
+    if len(xs) == 0:
+        return None, None, None, None, None, None
+
+    # Rango con padding (igual que LabSOM)
+    rng_x = xs.max() - xs.min() or 1.0
+    rng_y = ys.max() - ys.min() or 1.0
+    pad_x, pad_y = rng_x * 0.1, rng_y * 0.1
+    min_x, max_x = xs.min() - pad_x, xs.max() + pad_x
+    min_y, max_y = ys.min() - pad_y, ys.max() + pad_y
+    safe_x = max_x - min_x
+    safe_y = max_y - min_y
+
+    # Sigma en píxeles (igual que LabSOM: sigma * resolution)
+    s = max(sigma_frac, 0.01) * resolution
+    radius = int(np.ceil(3 * s))
+
+    density_map   = np.zeros((resolution, resolution), dtype=np.float64)
+    value_map     = np.zeros((resolution, resolution), dtype=np.float64)
+    weight_sum    = np.zeros((resolution, resolution), dtype=np.float64)
+
+    for x, y, v in zip(xs, ys, vs):
+        gx = ((x - min_x) / safe_x) * resolution
+        gy = ((y - min_y) / safe_y) * resolution
+        cx = int(round(gx))
+        cy = int(round(gy))
+        x0, x1 = max(0, cx - radius), min(resolution - 1, cx + radius)
+        y0, y1 = max(0, cy - radius), min(resolution - 1, cy + radius)
+
+        # Vectorizado sobre el parche (mucho más rápido que el doble loop Python)
+        pxs = np.arange(x0, x1 + 1)
+        pys = np.arange(y0, y1 + 1)
+        PX, PY = np.meshgrid(pxs, pys)
+        d2 = (gx - PX) ** 2 + (gy - PY) ** 2
+        mask = d2 <= 9 * s * s
+        w = np.exp(-d2 / (2 * s * s)) * mask
+        density_map[y0:y1+1, x0:x1+1] += w
+        weight_sum [y0:y1+1, x0:x1+1] += w
+        value_map  [y0:y1+1, x0:x1+1] += w * v
+
+    # Promedio ponderado del valor (igual que LabSOM)
+    nonzero = weight_sum > 0
+    value_map[nonzero] /= weight_sum[nonzero]
+
+    # Normalizar densidad: opacidad plena al 8% de la densidad máxima (igual que LabSOM)
+    max_density = density_map.max()
+    alpha_norm = max_density * 0.08 if max_density > 0 else 1.0
+    alpha_grid = np.clip(density_map / alpha_norm, 0, 1)
+
+    # Umbral de densidad mínima: corta las colas débiles de la gaussiana.
+    # Con threshold=4% del máximo, un punto aislado es visible hasta ~2.5σ,
+    # mostrando la forma de campana claramente sin extenderse al borde.
+    density_threshold = max_density * 0.04  # 4% del máximo
+    visible = nonzero & (density_map >= density_threshold)
+
+    # Recorte percentil 2-98 para la escala de color (igual que LabSOM)
+    vals_valid = value_map[visible]
+    clip_min = np.percentile(vals_valid, 2) if len(vals_valid) > 0 else 0
+    clip_max = np.percentile(vals_valid, 98) if len(vals_valid) > 0 else 1
+    value_map_clipped = np.clip(value_map, clip_min, clip_max)
+
+    # Aplicar máscara: NaN en zonas sin densidad suficiente (plotly las omite)
+    value_map_clipped[~visible] = np.nan
+    alpha_grid[~visible] = np.nan
+
+    # Ejes en el espacio original para plotly
+    x_axis = np.linspace(min_x, max_x, resolution)
+    y_axis = np.linspace(min_y, max_y, resolution)
+
+    return value_map_clipped, alpha_grid, x_axis, y_axis, clip_min, clip_max
+
+
+def _create_umap_heatmap_fig(df, z_col, title, show_contour_lines=True):
+    """
+    Genera un mapa de calor UMAP con Gaussian Splatting idéntico al de LabSOM.
+    El KDE se renderiza como imagen RGBA (control per-pixel de alpha) via
+    matplotlib, se codifica en base64 y se incrusta en Plotly como layout_image.
+    El go.Scatter invisible encima mantiene el hover interactivo.
+    """
+    fig = go.Figure()
+
+    value_grid, alpha_grid, x_axis, y_axis, clip_min, clip_max = _compute_umap_kde(df, z_col)
+    if value_grid is None:
+        return fig
+
+    res = value_grid.shape[0]
+    min_x, max_x = x_axis[0], x_axis[-1]
+    min_y, max_y = y_axis[0], y_axis[-1]
+
+    # --- Renderizar imagen RGBA con matplotlib (igual que el Canvas de LabSOM) ---
+    cmap = mcm.get_cmap('Blues')
+    v_range = clip_max - clip_min if clip_max > clip_min else 1.0
+    norm_grid = np.clip((value_grid - clip_min) / v_range, 0, 1)
+
+    # RGBA: (R, G, B) del colormap + Alpha de la densidad
+    rgba = cmap(norm_grid)  # shape (res, res, 4)
+    # Aplicar alpha de densidad pixel a pixel (igual que LabSOM)
+    alpha_safe = np.where(np.isnan(alpha_grid), 0.0, np.clip(alpha_grid, 0, 1))
+    rgba[..., 3] = alpha_safe  # sobreescribir canal alpha
+    # Donde value es NaN (sin datos), forzar transparente
+    nan_mask = np.isnan(value_grid)
+    rgba[nan_mask, 3] = 0.0
+
+    # Exportar a PNG en memoria
+    buf = io.BytesIO()
+    # La imagen matplotlib tiene origen en la esquina superior izquierda,
+    # Plotly usa el sistema de ejes (y crece hacia arriba), así que invertimos Y
+    fig_mpl, ax_mpl = plt.subplots(figsize=(res / 72, res / 72), dpi=72)
+    ax_mpl.imshow(
+        rgba[::-1],  # Invertir eje Y para que coincida con Plotly
+        extent=[min_x, max_x, min_y, max_y],
+        aspect='auto', interpolation='bilinear'
+    )
+    ax_mpl.axis('off')
+    fig_mpl.subplots_adjust(left=0, right=1, top=1, bottom=0)
+    fig_mpl.savefig(buf, format='png', transparent=True, bbox_inches='tight', pad_inches=0)
+    plt.close(fig_mpl)
+    buf.seek(0)
+    img_b64 = base64.b64encode(buf.read()).decode('utf-8')
+    img_src = f'data:image/png;base64,{img_b64}'
+
+    # Curvas de nivel como traza Plotly separada (toggleable)
+    if show_contour_lines:
+        fig.add_trace(go.Contour(
+            z=value_grid,
+            x=x_axis,
+            y=y_axis,
+            showscale=False,
+            name='',
+            showlegend=False,
+            contours=dict(coloring='none', showlabels=False),
+            line=dict(width=0.8, color='rgba(0,43,92,0.35)'),
+            hoverinfo='skip',
+        ))
+
+    # Scatter invisible encima para el hover interactivo
+    z_vals = df[z_col].fillna(0).clip(lower=0)
+    fig.add_trace(go.Scatter(
+        x=df['umap_x'], y=df['umap_y'],
+        mode='markers',
+        text=df['academic_name'],
+        marker=dict(
+            size=5,
+            color=z_vals,
+            colorscale='Blues',
+            cmin=clip_min,
+            cmax=clip_max,
+            opacity=0.9,
+            line=dict(width=0.5, color='rgba(0,43,92,0.4)')
+        ),
+        hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>FWCI: %{customdata[1]:.2f}<br>% Top 10: %{customdata[2]:.1f}%<br>% Top 1%: %{customdata[3]:.1f}%",
+        customdata=df[['num_documents', 'fwci_avg', 'pct_top_10', 'pct_1']],
+        showlegend=False
+    ))
+
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=14)),
+        hovermode='closest',
+        height=300,
+        margin=dict(l=10, r=10, t=30, b=10),
+        xaxis=dict(visible=False, range=[min_x, max_x]),
+        yaxis=dict(visible=False, range=[min_y, max_y]),
+        template='plotly_white',
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        images=[dict(
+            source=img_src,
+            xref='x', yref='y',
+            x=min_x, y=max_y,
+            sizex=max_x - min_x,
+            sizey=max_y - min_y,
+            sizing='stretch',
+            opacity=1.0,
+            layer='below'
+        )]
+    )
+    return fig
+
+
 def _render_umap_plot(df_umap, selected_inv, title_context, key_suffix=""):
     """
     Renderiza un gráfico de Plotly go.Scatter con el UMAP de desempeño
@@ -631,11 +830,35 @@ def _render_umap_plot(df_umap, selected_inv, title_context, key_suffix=""):
         st.info(f"El mapa UMAP ({title_context}) no está disponible o faltan datos base calculados.")
         return
 
+    metrics_map = {
+        "Documentos": "num_documents",
+        "Impacto (FWCI)": "fwci_avg",
+        "Excelencia (% Top 10)": "pct_top_10",
+        "Citas Totales": "citations"
+    }
+    
+    available_metrics = {k: v for k, v in metrics_map.items() if v in df_umap.columns}
+    if not available_metrics:
+        available_metrics = {"Documentos": "num_documents"}
+        df_umap["num_documents"] = 1
+        
+    default_idx = 0
+    if "Documentos" in available_metrics:
+        default_idx = list(available_metrics.keys()).index("Documentos")
+        
+    size_metric_label = st.selectbox(
+        "Métrica para el tamaño de la burbuja:", 
+        options=list(available_metrics.keys()),
+        index=default_idx,
+        key=f"umap_size_metric_{key_suffix}"
+    )
+    size_metric_col = available_metrics[size_metric_label]
+
     fig_umap = go.Figure()
 
-    # Configurar escalado de burbujas basado en número de documentos
-    max_docs = df_umap['num_documents'].max() if 'num_documents' in df_umap.columns else 1
-    sizeref = 2.0 * max(max_docs, 1) / (30. ** 2)
+    # Configurar escalado de burbujas basado en la métrica seleccionada
+    max_metric = df_umap[size_metric_col].max() if size_metric_col in df_umap.columns else 1
+    sizeref = 2.0 * max(max_metric, 0.001) / (50. ** 2)
 
     # Otros investigadores (Puntos grises)
     otros = df_umap[df_umap['academic_name'] != selected_inv]
@@ -646,11 +869,11 @@ def _render_umap_plot(df_umap, selected_inv, title_context, key_suffix=""):
             name='Resto de investigadores',
             text=otros['academic_name'],
             marker=dict(
-                size=otros['num_documents'],
+                size=otros[size_metric_col].fillna(0).clip(lower=0.1),
                 sizemode='area',
                 sizeref=sizeref,
-                sizemin=5,
-                color='#002B5C', opacity=0.3, line=dict(width=1, color='darkgray')
+                sizemin=2,
+                color='#003D64', opacity=0.3, line=dict(width=1, color='darkgray')
             ),
             hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>FWCI: %{customdata[1]:.2f}<br>% Top 10: %{customdata[2]:.1f}%<br>% Top 1%: %{customdata[3]:.1f}%",
             customdata=otros[['num_documents', 'fwci_avg', 'pct_top_10', 'pct_1']]
@@ -665,11 +888,11 @@ def _render_umap_plot(df_umap, selected_inv, title_context, key_suffix=""):
             name=selected_inv,
             text=sel_row['academic_name'],
             marker=dict(
-                size=sel_row['num_documents'],
+                size=sel_row[size_metric_col].fillna(0).clip(lower=0.1),
                 sizemode='area',
                 sizeref=sizeref,
-                sizemin=8,
-                color='#D4AF37', symbol='star', line=dict(width=2, color='#b6932b')
+                sizemin=2,
+                color='#E8442A', symbol='circle', line=dict(width=2, color='#E8442A')
             ),
             hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>FWCI: %{customdata[1]:.2f}<br>% Top 10: %{customdata[2]:.1f}%<br>% Top 1%: %{customdata[3]:.1f}%",
             customdata=sel_row[['num_documents', 'fwci_avg', 'pct_top_10', 'pct_1']]
@@ -685,6 +908,57 @@ def _render_umap_plot(df_umap, selected_inv, title_context, key_suffix=""):
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     st.plotly_chart(fig_umap, use_container_width=True, key=f"umap_chart_{key_suffix}")
+
+    # --- Lazy-loading de Mapas de Calor ---
+    # st.expander siempre ejecuta su contenido en Python aunque esté cerrado.
+    # Usamos session_state para que el cálculo KDE+matplotlib solo ocurra
+    # cuando el usuario lo solicite explícitamente.
+    hm_state_key = f"heatmaps_loaded_{key_suffix}"
+    hm_contour_key = f"contour_lines_{key_suffix}"
+
+    if hm_state_key not in st.session_state:
+        st.session_state[hm_state_key] = False
+
+    with st.expander("Ver Mapas de Calor por Indicador (Densidad)", expanded=False):
+        if not st.session_state[hm_state_key]:
+            if st.button(
+                "📊 Generar Mapas de Calor",
+                key=f"load_hm_btn_{key_suffix}",
+                help="Los mapas de calor requieren un cálculo adicional. Haz clic para generarlos.",
+                use_container_width=True
+            ):
+                st.session_state[hm_state_key] = True
+                st.rerun()
+        else:
+            chart_container = st.container()
+
+            st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+            col_chk, col_reset = st.columns([4, 1])
+            with col_chk:
+                show_contour_lines = st.checkbox(
+                    "Mostrar curvas de nivel", value=True, key=hm_contour_key
+                )
+            with col_reset:
+                if st.button("↺ Limpiar", key=f"clear_hm_{key_suffix}", help="Descarga los mapas de la memoria"):
+                    st.session_state[hm_state_key] = False
+                    st.rerun()
+
+            with chart_container:
+                col1, col2 = st.columns(2)
+                heatmaps = []
+                for name, col_name in metrics_map.items():
+                    if col_name in df_umap.columns:
+                        fig_hm = _create_umap_heatmap_fig(df_umap, col_name, name, show_contour_lines)
+                        heatmaps.append(fig_hm)
+
+                for i, fig_hm in enumerate(heatmaps):
+                    if i % 2 == 0:
+                        with col1:
+                            st.plotly_chart(fig_hm, use_container_width=True, key=f"hm_{i}_{key_suffix}")
+                    else:
+                        with col2:
+                            st.plotly_chart(fig_hm, use_container_width=True, key=f"hm_{i}_{key_suffix}")
+
 
 
 def _render_document_types_pie(df_papers, key_suffix=""):
@@ -738,7 +1012,7 @@ def _render_document_types_pie(df_papers, key_suffix=""):
 
     # Colores premium (paleta UNAM adaptada)
     colors = [
-        "#002B5C", "#D4AF37", "#1E6FB5", "#B6932B", 
+        "#003D64", "#E39918", "#1E6FB5", "#B6932B", 
         "#2ECC71", "#3498DB", "#E74C3C", "#9B59B6",
         "#1ABC9C", "#95A5A6", "#34495E"
     ]
@@ -785,8 +1059,8 @@ def _render_velocity_sparkline(df_papers, name_col, name_val, key_suffix="", ret
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=years, y=cites, mode="lines+markers",
-        line=dict(color="#002B5C", width=2.5),
-        marker=dict(size=5, color="#D4AF37", line=dict(width=1, color="#b6932b")),
+        line=dict(color="#003D64", width=2.5),
+        marker=dict(size=5, color="#E39918", line=dict(width=1, color="#b6932b")),
         fill="tozeroy", fillcolor="rgba(0,43,92,0.07)",
         hovertemplate="%{x}: <b>%{y:,}</b> citas<extra></extra>",
     ))
@@ -886,8 +1160,8 @@ def _render_radar_visibilidad(data_row, title="Perfil de Visibilidad", key_suffi
     fig = go.Figure(data=go.Scatterpolar(
         r=values, theta=cats, fill="toself",
         fillcolor="rgba(0,43,92,0.12)",
-        line=dict(color="#002B5C", width=2),
-        marker=dict(color="#D4AF37", size=7),
+        line=dict(color="#003D64", width=2),
+        marker=dict(color="#E39918", size=7),
     ))
     fig.update_layout(
         title=dict(text=title, font_size=14, x=0.5),
@@ -957,7 +1231,7 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.08);
             text-align: center;
-            border-top: 4px solid #D4AF37;
+            border-top: 4px solid #E39918;
             border-bottom: 1px solid #eaeaea;
             border-left: 1px solid #eaeaea;
             border-right: 1px solid #eaeaea;
@@ -977,7 +1251,7 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
         [data-testid="stMetricValue"] {
             font-size: 30px !important;
             font-weight: 700;
-            color: #002B5C;
+            color: #003D64;
         }
         /* Ajustar el delta si existe para que quede centrado también */
         [data-testid="stMetricDelta"] {
@@ -1349,8 +1623,8 @@ def render_institucion_view(entity_name, institution_name=None, view_mode="capac
                     fig_intl.add_trace(go.Scatter(
                         x=df_ia['year'], y=df_ia['pct_international'],
                         mode='lines+markers', name='% Internacional',
-                        line=dict(color='#002B5C', width=2.5),
-                        marker=dict(size=6, color='#D4AF37'),
+                        line=dict(color='#003D64', width=2.5),
+                        marker=dict(size=6, color='#E39918'),
                         fill='tozeroy', fillcolor='rgba(0,43,92,0.07)',
                         hovertemplate="%{x}: <b>%{y:.1f}%</b><extra></extra>",
                     ))
@@ -1650,7 +1924,7 @@ def render_investigador_view(entity_name, institution_name=None):
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.08);
             text-align: center;
-            border-top: 4px solid #D4AF37;
+            border-top: 4px solid #E39918;
             border-bottom: 1px solid #eaeaea;
             border-left: 1px solid #eaeaea;
             border-right: 1px solid #eaeaea;
@@ -1665,7 +1939,7 @@ def render_investigador_view(entity_name, institution_name=None):
         [data-testid="stMetricValue"] {
             font-size: 30px !important;
             font-weight: 700;
-            color: #002B5C;
+            color: #003D64;
         }
         [data-testid="stMetricDelta"] {
             justify-content: center;
@@ -1684,7 +1958,7 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.08);
             text-align: center;
-            border-top: 4px solid #D4AF37;
+            border-top: 4px solid #E39918;
             border-bottom: 1px solid #eaeaea;
             border-left: 1px solid #eaeaea;
             border-right: 1px solid #eaeaea;
@@ -1891,12 +2165,12 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
     inv_data = df_inv_tot.iloc[0]
     academicos_dict = cargar_lista_academicos()
     academico_info = academicos_dict.get(selected_inv, {})
-    neo_orcid, neo_scopus, neo_openalex, neo_siia, neo_cvu, neo_is_snii = None, None, None, None, None, None
+    neo_orcid, neo_scopus, neo_openalex, neo_siia, neo_cvu, neo_is_snii, neo_snii_level = None, None, None, None, None, None, None
     try:
         from database.knowledge_graph import Neo4jGraphStore
         neo = Neo4jGraphStore()
         with neo.driver.session() as session:
-            record = session.run("MATCH (a:Person) WHERE a.id = $name OR a.fullname = $name RETURN coalesce(a.orcids, []) as orcids, coalesce(a.scopus_ids, []) as scopus_ids, coalesce(a.openalex_ids, []) as openalex_ids, a.siia as siia, a.cvu as cvu, a.is_snii as is_snii LIMIT 1", name=selected_inv).single()
+            record = session.run("MATCH (a:Person) WHERE a.id = $name OR a.fullname = $name RETURN coalesce(a.orcids, []) as orcids, coalesce(a.scopus_ids, []) as scopus_ids, coalesce(a.openalex_ids, []) as openalex_ids, a.siia as siia, a.cvu as cvu, a.is_snii as is_snii, coalesce(a.snii_max_level, a.snii_level) as snii_level LIMIT 1", name=selected_inv).single()
             if record:
                 o_ids = record.get("orcids")
                 neo_orcid = ", ".join(o_ids) if o_ids else None
@@ -1910,6 +2184,7 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
                 neo_siia = record.get("siia")
                 neo_cvu = record.get("cvu")
                 neo_is_snii = record.get("is_snii")
+                neo_snii_level = record.get("snii_level")
         neo.close()
     except Exception:
         pass
@@ -1920,6 +2195,7 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
     inv_siia = neo_siia or inv_data.get('siia_url') or academico_info.get("siia")
     inv_cvu = neo_cvu or inv_data.get('cvu')
     is_snii_val = bool(neo_is_snii) if neo_is_snii is not None else (bool(inv_data.get('is_snii', False)) or bool(academico_info.get("is_snii", False)))
+    inv_snii_level = neo_snii_level or inv_data.get('snii_level') or academico_info.get("snii_level") or academico_info.get("nivel")
     
     # Cargar info de SNII Verificado (IA)
     snii_matches = load_snii_matches()
@@ -1974,6 +2250,8 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
         # Pertenencia al SNII
         if is_snii_val:
             st.markdown("- **Miembro del SNII (SECIHTI):** Sí ✅")
+            if inv_snii_level and str(inv_snii_level).strip() and str(inv_snii_level).strip() != "SIN NIVEL" and str(inv_snii_level).strip() != "None":
+                st.markdown(f"- **Nivel SNII:** {inv_snii_level}")
         else:
             st.markdown("- **Miembro del SNII (SECIHTI):** No ❌")
 
@@ -1982,7 +2260,10 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
         # Mostrar Auditoría y Razonamiento IA
         audit_verdict = inv_data.get('audit_verdict')
         match_reason = inv_reason
-        is_snii = inv_data.get('is_snii', False) or bool(snii_info)
+        
+        raw_is_snii = inv_data.get('is_snii', False)
+        is_snii_flag = False if pd.isna(raw_is_snii) else bool(raw_is_snii)
+        is_snii = is_snii_flag or bool(snii_info)
         
         if is_snii and match_reason:
             st.info(f"🤖 **Buscado usando IA**\n\n**Argumento de la IA:** {match_reason}")
@@ -2082,7 +2363,7 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
     datos_gen_inv = f"""
     Investigador: {selected_inv}
     Producción Total (Censo): {total_census}
-    Indizada (Analítica): {indexed_count}
+    IDENTIFICA EN OPENALEX (Analítica): {indexed_count}
     Índice H: {int(inv_data.get('h_index',0))}
     Total Citas: {int(inv_data.get('citations',0))}
     % Open Access: {inv_data.get('pct_open_access',0):.1f}%
@@ -2256,7 +2537,7 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
                 
                 c_btn, c_title = st.columns([0.6, 10])
                 with c_btn: render_explain_button(f"Áreas de Expertise de {selected_inv}", "inv_expertise", top_c)
-                with c_title: st.subheader("Foco Temático (Top 10 Topics)")
+                with c_title: st.subheader("Foco Temático (Top 10 OpenAlex Topics)")
                 
                 fig_bar = px.bar(top_c, x='value', y='topic', orientation='h', title="")
                 fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
@@ -2308,13 +2589,13 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
                 fig_intl.add_trace(go.Scatter(
                     x=df_ia['year'], y=df_ia['pct_international'],
                     mode='lines+markers', name='% Internacional',
-                    line=dict(color='#002B5C', width=2.5),
-                    marker=dict(size=6, color='#D4AF37'),
+                    line=dict(color='#003D64', width=2.5),
+                    marker=dict(size=6, color='#E39918'),
                     fill='tozeroy', fillcolor='rgba(0,43,92,0.07)',
                     hovertemplate="%{x}: <b>%{y:.1f}%</b><extra></extra>",
                 ))
                 fig_intl.update_layout(
-                    height=220, margin=dict(t=5,b=5,l=40,r=10),
+                    height=250, margin=dict(t=40,b=5,l=40,r=10),
                     yaxis=dict(ticksuffix="%", range=[0,100]),
                     xaxis=dict(showgrid=False, tickformat="d"),
                     template="plotly_white",
