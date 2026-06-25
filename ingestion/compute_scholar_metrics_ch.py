@@ -843,6 +843,12 @@ def _safe_name(s: str) -> str:
     return str(s).replace('/', '_').replace('\\', '_')
 
 
+def _normalize_entity(entity: str, institution: str) -> str:
+    if not entity or str(entity).upper() in ('SIN INFORMACIÓN', 'SIN INFORMACION', 'NO APLICA', 'NAN', '', 'UNKNOWN', 'SIN INSTITUCION'):
+        return institution
+    return entity
+
+
 import duckdb
 import json
 import atexit
@@ -1672,6 +1678,7 @@ def _process_single_academic(academic_filter: str, updated_files: set):
 
     institution = df['institution'].mode().iloc[0] if 'institution' in df.columns else 'SIN INSTITUCIÓN'
     entity      = df['entity'].mode().iloc[0]
+    entity      = _normalize_entity(entity, institution)
 
     df = _ensure_columns(df.copy())
     _flush_academic(academic_filter, df, entity, institution, updated_files)
@@ -1759,6 +1766,7 @@ def process_and_save(entity_filter=None, academic_filter=None, institution_filte
 
             # 3. Nivel Académico (ClickHouse + Censo Neo4j)
             df_full_cap['entity'] = df_full_cap['subdependency'].fillna(df_full_cap['dependency']).fillna(df_full_cap['institution'])
+            df_full_cap['entity'] = df_full_cap.apply(lambda r: _normalize_entity(r['entity'], r['institution']), axis=1)
 
             # Obtener censo completo de esta institución desde Neo4j
             census_map = {}
@@ -1789,6 +1797,8 @@ def process_and_save(entity_filter=None, academic_filter=None, institution_filte
                         ac_entity = c_info.get('dependency')
                     if not ac_entity or ac_entity == 'SIN INFORMACIÓN':
                         ac_entity = inst_name
+                
+                ac_entity = _normalize_entity(ac_entity, inst_name)
 
                 # Filtro de entidad: si está activo, solo procesar académicos de esa entidad
                 if entity_filter:

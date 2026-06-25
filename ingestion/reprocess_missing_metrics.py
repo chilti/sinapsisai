@@ -178,12 +178,26 @@ def main():
         if os.path.exists(db_path):
             try:
                 con = duckdb.connect(db_path, read_only=True)
-                res = con.execute("SELECT db_entity_name FROM investigador_total WHERE academic_name = ? LIMIT 1", [args.academic]).fetchone()
+                # Intentar buscar coincidencia exacta o parcial de institución para este académico
+                res = con.execute("""
+                    SELECT db_institution_name, db_entity_name 
+                    FROM investigador_total 
+                    WHERE academic_name = ? AND (db_institution_name = ? OR db_institution_name LIKE ?)
+                    LIMIT 1
+                """, [args.academic, args.institution, f"%{args.institution}%"]).fetchone()
                 if res:
-                    db_ent = res[0]
+                    resolved_inst, resolved_ent = res
+                    print(f"🎯 [Auto-resolved hierarchy] {args.academic} -> Inst: '{resolved_inst}', Ent: '{resolved_ent}'")
+                    args.institution = resolved_inst
+                    db_ent = resolved_ent
+                else:
+                    # Fallback por si no coincide la institución pero sí el académico
+                    res_ent = con.execute("SELECT db_entity_name FROM investigador_total WHERE academic_name = ? LIMIT 1", [args.academic]).fetchone()
+                    if res_ent:
+                        db_ent = res_ent[0]
                 con.close()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"⚠️ [DuckDB Resolve Error] {e}")
         candidates = [(args.academic, args.institution, db_ent, 0)]
         print(f"🎯 Modo académico individual: {args.academic} ({args.institution})")
     else:
