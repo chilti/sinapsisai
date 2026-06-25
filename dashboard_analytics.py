@@ -1995,7 +1995,27 @@ def render_investigador_view(entity_name, institution_name=None, view_mode="capa
 
             # Sobreescribir variables para la carga física de parquets
             institution_name = real_inst
-            entity_name = real_sub if real_sub and real_sub != 'SIN INFORMACIÓN' else (real_dep if real_dep and real_dep != 'SIN INFORMACIÓN' else real_inst)
+            _INVALID_ENTITIES = {'SIN INFORMACIÓN', 'SIN INFORMACION', 'NO APLICA', 'NO APLICA.', ''}
+            _ent_sub = real_sub if real_sub and real_sub.strip() not in _INVALID_ENTITIES else None
+            _ent_dep = real_dep if real_dep and real_dep.strip() not in _INVALID_ENTITIES else None
+            _candidate = _ent_sub or _ent_dep  # primera opción no nula/inválida
+
+            # Validar que el candidato pertenezca a la jerarquía de la institución
+            # (evita usar entidades de afiliaciones cruzadas con otras instituciones)
+            if _candidate and real_inst:
+                try:
+                    _hierarchy = get_institution_hierarchy()
+                    _inst_deps = _hierarchy.get(real_inst, {})
+                    _valid_entities = set(_inst_deps.keys())
+                    for _dep_subs in _inst_deps.values():
+                        if isinstance(_dep_subs, list):
+                            _valid_entities.update(_dep_subs)
+                    if _candidate not in _valid_entities:
+                        _candidate = None  # entidad de otra institución; usar la raíz
+                except Exception:
+                    pass  # si falla la jerarquía, conservar candidato
+
+            entity_name = _candidate or real_inst
             investigadores = [search_inv]
 
     st.header(f"👤 Vista por Investigador: {entity_name if not is_search_active else search_inv}")
