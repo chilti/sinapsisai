@@ -12,7 +12,7 @@ def render_explain_button(context_name: str, key_suffix: str, context_data=None)
         key_suffix (str): Sufijo único para el key del botón (ej. "inst_docs").
         context_data (any, optional): Datos en crudo (DataFrame, lista, int) a inyectar al LLM.
     """
-    if st.button("🔬", help=f"¡Analizar a fondo: {context_name}!", key=f"btn_explain_{key_suffix}", type="tertiary"):
+    if st.button("💡", help=f"¡Ilumíname sobre: {context_name}!", key=f"btn_explain_{key_suffix}", type="tertiary"):
         st.session_state.trigger_explain_chart = context_name
         
         # Formatear dataframes a markdown para no colapsar tokens
