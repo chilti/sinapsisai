@@ -1898,11 +1898,8 @@ def explain_chart_dialog():
                     orchestrator = st.session_state.orchestrator
                     session_id = st.session_state.session_id
                     
-                    async def ask_float():
-                        return await orchestrator.ask_lightweight(session_id, current_prompt, ui_ctx)
-                        
-                    response = _run_async_in_thread(ask_float())
-                    placeholder.markdown(response)
+                    placeholder.empty()
+                    response = st.write_stream(orchestrator.ask_lightweight_stream_sync(session_id, current_prompt, ui_ctx))
                     
                     st.session_state.chat_history.append({
                         "role": "assistant",
@@ -1910,6 +1907,10 @@ def explain_chart_dialog():
                     })
                 except Exception as e:
                     placeholder.error(f"Error: {e}")
+                    
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("Cerrar ventana y ver historial", type="primary", use_container_width=True):
+            st.rerun()
 
 # === AUTO-TRIGGER EXPLICAR GRÁFICA / INDICADOR ===
 if "trigger_explain_chart" in st.session_state and st.session_state.trigger_explain_chart:
