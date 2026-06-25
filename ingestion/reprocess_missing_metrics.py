@@ -163,31 +163,51 @@ def main():
     parser.add_argument("--limit", type=int, help="Límite de académicos a procesar")
     parser.add_argument("--threads", type=int, default=3, help="Número máximo de hilos concurrentes")
     parser.add_argument("--dry-run", action="store_true", help="Modo simulación (imprime comandos sin ejecutar)")
+    parser.add_argument("--academic", type=str, help="Procesar un académico específico por nombre")
+    parser.add_argument("--institution", type=str, help="Institución del académico (requerido si se especifica --academic)")
     args = parser.parse_args()
     
-    # 1. Obtener candidatos desde DuckDB
+    # 1. Obtener candidatos desde DuckDB o usar el parámetro
     db_path = os.path.join(BASE_PATH, 'data', 'analytics_cache.duckdb')
-    if not os.path.exists(db_path):
-        print(f"❌ No se encontró el caché analítico en {db_path}.")
-        sys.exit(1)
-        
-    con = duckdb.connect(db_path, read_only=True)
-    query = """
-        SELECT academic_name, db_institution_name, db_entity_name, neo4j_total_papers
-        FROM investigador_total
-        WHERE neo4j_total_papers >= 2 AND (num_documents IS NULL OR num_documents = 0)
-        ORDER BY neo4j_total_papers DESC
-    """
-    candidates = con.execute(query).fetchall()
-    con.close()
     
-    total_candidates = len(candidates)
-    print(f"🔍 Se encontraron {total_candidates} académicos candidatos (censo >= 2 e indizada == 0).")
-    
-    if args.limit:
-        candidates = candidates[:args.limit]
-        print(f"📌 Límite aplicado: procesando solo los primeros {len(candidates)} académicos.")
+    if args.academic:
+        if not args.institution:
+            print("❌ Error: Debes especificar --institution al usar --academic.")
+            sys.exit(1)
+        db_ent = "NO APLICA"
+        if os.path.exists(db_path):
+            try:
+                con = duckdb.connect(db_path, read_only=True)
+                res = con.execute("SELECT db_entity_name FROM investigador_total WHERE academic_name = ? LIMIT 1", [args.academic]).fetchone()
+                if res:
+                    db_ent = res[0]
+                con.close()
+            except Exception:
+                pass
+        candidates = [(args.academic, args.institution, db_ent, 0)]
+        print(f"🎯 Modo académico individual: {args.academic} ({args.institution})")
+    else:
+        if not os.path.exists(db_path):
+            print(f"❌ No se encontró el caché analítico en {db_path}.")
+            sys.exit(1)
+            
+        con = duckdb.connect(db_path, read_only=True)
+        query = """
+            SELECT academic_name, db_institution_name, db_entity_name, neo4j_total_papers
+            FROM investigador_total
+            WHERE neo4j_total_papers >= 2 AND (num_documents IS NULL OR num_documents = 0)
+            ORDER BY neo4j_total_papers DESC
+        """
+        candidates = con.execute(query).fetchall()
+        con.close()
         
+        total_candidates = len(candidates)
+        print(f"🔍 Se encontraron {total_candidates} académicos candidatos (censo >= 2 e indizada == 0).")
+        
+        if args.limit:
+            candidates = candidates[:args.limit]
+            print(f"📌 Límite aplicado: procesando solo los primeros {len(candidates)} académicos.")
+            
     if not candidates:
         print("🎉 No hay académicos para re-procesar.")
         sys.exit(0)
@@ -222,8 +242,9 @@ def main():
         
     # 3. Lanzar procesamiento concurrente
     results = {}
-    print(f"\n🚀 Lanzando {args.threads} hilos para el procesamiento...")
-    with ThreadPoolExecutor(max_workers=args.threads) as executor:
+    threads_count = 1 if args.academic else args.threads
+    print(f"\n🚀 Lanzando {threads_count} hilos para el procesamiento...")
+    with ThreadPoolExecutor(max_workers=threads_count) as executor:
         futures = {
             executor.submit(
                 process_academic, 
