@@ -504,6 +504,14 @@ def fetch_snii_ror_stats():
 auth.init_auth_session()
 auth.handle_orcid_callback()
 
+# ---- Gestión de URL (Permalink) ----
+if "url_parsed" not in st.session_state:
+    st.session_state.url_parsed = True
+    if "academic" in st.query_params and NEO4J_AVAILABLE:
+        select_academic_in_ui(st.query_params["academic"])
+    elif "entity_id" in st.query_params and "entity_name" in st.query_params:
+        select_entity_in_ui(st.query_params["entity_id"], st.query_params["entity_name"])
+
 # ---- Inicialización del Orquestador ----
 if "orchestrator" not in st.session_state:
     with st.spinner("Inicializando el Cerebro del Sistema..."):
