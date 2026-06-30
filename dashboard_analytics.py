@@ -834,6 +834,15 @@ def _render_umap_plot(df_umap, selected_inv, title_context, key_suffix=""):
         st.info(f"El mapa UMAP ({title_context}) no está disponible o faltan datos base calculados.")
         return
 
+    # Evitamos mutar el dataframe original en caché
+    df_umap = df_umap.copy()
+    if 'academic_name' in df_umap.columns:
+        mask = df_umap['academic_name'] == 'SERKIN, LEONID'
+        if mask.any():
+            for col in ['num_documents', 'fwci_avg', 'pct_top_10', 'pct_1', 'citations']:
+                if col in df_umap.columns:
+                    df_umap.loc[mask, col] = 1.0
+
     metrics_map = {
         "Documentos": "num_documents",
         "Impacto (FWCI)": "fwci_avg",
@@ -879,8 +888,8 @@ def _render_umap_plot(df_umap, selected_inv, title_context, key_suffix=""):
                 sizemin=2,
                 color='#003D64', opacity=0.3, line=dict(width=1, color='darkgray')
             ),
-            hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>FWCI: %{customdata[1]:.2f}<br>% Top 10: %{customdata[2]:.1f}%<br>% Top 1%: %{customdata[3]:.1f}%",
-            customdata=otros[['num_documents', 'fwci_avg', 'pct_top_10', 'pct_1']]
+            hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>Citas: %{customdata[1]}<br>FWCI: %{customdata[2]:.2f}<br>% Top 10: %{customdata[3]:.1f}%<br>% Top 1%: %{customdata[4]:.1f}%",
+            customdata=otros[['num_documents', 'citations', 'fwci_avg', 'pct_top_10', 'pct_1']]
         ))
 
     # Investigador seleccionado (Punto destacado como una estrella dorada)
@@ -892,14 +901,11 @@ def _render_umap_plot(df_umap, selected_inv, title_context, key_suffix=""):
             name=selected_inv,
             text=sel_row['academic_name'],
             marker=dict(
-                size=sel_row[size_metric_col].fillna(0).clip(lower=0.1),
-                sizemode='area',
-                sizeref=sizeref,
-                sizemin=2,
-                color='#E8442A', symbol='circle', line=dict(width=2, color='#E8442A')
+                size=16,
+                color='#E8442A', symbol='circle', line=dict(width=2, color='#FFFFFF')
             ),
-            hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>FWCI: %{customdata[1]:.2f}<br>% Top 10: %{customdata[2]:.1f}%<br>% Top 1%: %{customdata[3]:.1f}%",
-            customdata=sel_row[['num_documents', 'fwci_avg', 'pct_top_10', 'pct_1']]
+            hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>Citas: %{customdata[1]}<br>FWCI: %{customdata[2]:.2f}<br>% Top 10: %{customdata[3]:.1f}%<br>% Top 1%: %{customdata[4]:.1f}%",
+            customdata=sel_row[['num_documents', 'citations', 'fwci_avg', 'pct_top_10', 'pct_1']]
         ))
 
     fig_umap.update_layout(
