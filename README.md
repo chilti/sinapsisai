@@ -1,4 +1,4 @@
-# Sinapsis AI - Hub de Inteligencia Bibliométrica (SNII-First)
+# SNII Info TlachIA - Hub de Inteligencia Bibliométrica (SNII-First)
 
 Sistema de Inteligencia Bibliométrica Híbrida y Orquestador RAG para entidades académicas mexicanas. Esta versión del sistema prioriza la identificación de investigadores nacionales mediante el padrón oficial del SNII (Sistema Nacional de Investigadoras e Investigadores) y una arquitectura de datos distribuida (Neo4j + ClickHouse + Qdrant).
 

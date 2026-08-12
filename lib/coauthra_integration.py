@@ -4,7 +4,7 @@ import os
 
 def render_coauthra(author_id=None, height=900):
     """
-    Renderiza la aplicación CoAuthra dentro de Sinapsis AI.
+    Renderiza la aplicación CoAuthra dentro de SNII Info TlachIA.
     
     Args:
         author_id (str, optional): OpenAlex ID del investigador (ej: A5012345678). 
@@ -18,7 +18,7 @@ def render_coauthra(author_id=None, height=900):
             <h4 style="margin: 0; color: #003D64;">🕸️ Red de Colaboración Científica</h4>
             <p style="margin: 10px 0; font-size: 14px; color: #475569;">
                 Esta visualización interactiva es proporcionada por <b>CoAuthra</b>.
-                Sinapsis AI integra esta herramienta para potenciar el análisis de grafos de colaboración en la UNAM.
+                SNII Info TlachIA integra esta herramienta para potenciar el análisis de grafos de colaboración en la UNAM.
             </p>
             <p style="margin: 0; font-size: 12px; color: #64748b;">
                 Tecnología original desarrollada por <b>Joe Barnier</b>. 
@@ -61,14 +61,14 @@ def render_coauthra(author_id=None, height=900):
                             const authorId = '{clean_id}';
                             // Si detectamos un OpenAlex ID (empieza con A seguido de números)
                             if (authorId.startsWith('A') && /^[A-Z]?\\d+/.test(authorId)) {{
-                                console.log('Sinapsis AI: Detectado OpenAlex ID. Cargando directamente.');
+                                console.log('SNII Info TlachIA: Detectado OpenAlex ID. Cargando directamente.');
                                 loadAuthor({{ 
                                     id: 'https://openalex.org/' + authorId, 
                                     display_name: 'Investigador (ID: ' + authorId + ')' 
                                 }});
                             }} else {{
                                 // Fallback para ORCID o nombres (usa el buscador interno)
-                                console.log('Sinapsis AI: Usando buscador de CoAuthra.');
+                                console.log('SNII Info TlachIA: Usando buscador de CoAuthra.');
                                 document.getElementById('qinput').value = authorId;
                                 setMode('orcid'); 
                                 doSearch();

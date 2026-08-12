@@ -56,7 +56,7 @@ class InterpreterOrchestrator:
             
             # SOBRESCRIBIR mensaje del sistema con ESQUEMAS REALES Y PATRONES DE IMPORTACIÓN
             self.interpreter.system_message = """
-            Eres un agente 'Plan-and-Execute' de Sinapsis AI, experto en análisis de datos científicos.
+            Eres un agente 'Plan-and-Execute' de SNII Info TlachIA, experto en análisis de datos científicos.
             Tu misión es analizar la producción científica mexicana usando Python de manera iterativa.
 
             CONTEXTO Y FLEXIBILIDAD:

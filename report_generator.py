@@ -591,7 +591,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
         </style>
     </head>
     <body>
-        <div style="text-align: right; color: #666; font-size: 12px;">Generado por Inteligencia Artificial (SINAPSIS)</div>
+        <div style="text-align: right; color: #666; font-size: 12px;">Generado por Inteligencia Artificial (SNII Info TlachIA)</div>
         <h1>Informe Bibliométrico</h1>
         <p style="background:none; border:none; padding:0; font-size:18px;"><strong>Perfil Analizado:</strong> {entity_name} ({'Institución (Capacidad Instalada)' if (entity_type == 'inst' and view_mode == 'capacidad_instalada') else 'Institución (Producción Institucional)' if entity_type == 'inst' else 'Investigador'})</p>
 

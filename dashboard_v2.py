@@ -36,7 +36,7 @@ from lib import auth
 
 # ---- Configuración de página ----
 st.set_page_config(
-    page_title="Sinapsis AI: Hub de la Ciencia Mexicana",
+    page_title="SNII Info TlachIA: Hub de la Ciencia Mexicana",
     page_icon="assets/microscopio.png",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -588,9 +588,9 @@ with st.sidebar:
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             st.image(logo_path, use_container_width=True)
-        st.markdown("<div class='sidebar-title-custom'>Sinapsis AI</div>", unsafe_allow_html=True)
+        st.markdown("<div class='sidebar-title-custom'>SNII Info TlachIA</div>", unsafe_allow_html=True)
     else:
-        st.title("🔬 Sinapsis AI")
+        st.title("🔬 SNII Info TlachIA")
     st.markdown("---")
 
     # --- Sección de Usuario / ORCID ---
@@ -725,7 +725,7 @@ with st.sidebar:
 
 
 # ---- Interfaz Principal ----
-st.title("Sinapsis AI: Hub de la Ciencia Mexicana")
+st.title("SNII Info TlachIA: Hub de la Ciencia Mexicana")
 st.info("🚀 **Nota:** El sistema se encuentra en fase de desarrollo. Los datos se están cargando y procesando.")
 
 # ---- Buscador Global (Neo4j Full-Text) ----
@@ -1497,7 +1497,7 @@ with tab_about:
     st.info("""
         **Aviso de Privacidad y Fuentes de Datos**
         
-        La información bibliométrica y de producción científica contenida en **Sinapsis AI** procede exclusivamente de fuentes de datos públicas y repositorios institucionales de acceso libre, incluyendo: **OpenAlex, Scopus, ORCID, SNII (CONAHCYT), SIIA (UNAM)** y otros catálogos académicos globales.
+        La información bibliométrica y de producción científica contenida en **SNII Info TlachIA** procede exclusivamente de fuentes de datos públicas y repositorios institucionales de acceso libre, incluyendo: **OpenAlex, Scopus, ORCID, SNII (CONAHCYT), SIIA (UNAM)** y otros catálogos académicos globales.
         
         **Privacidad y Datos Personales:** Este sistema no almacena ni procesa datos personales sensibles. La plataforma se limita exclusivamente al análisis de metadatos de carácter público relacionados con la trayectoria científica y académica, con el objetivo de fomentar la Ciencia Abierta y la transparencia en la investigación nacional.
     """)
@@ -1616,7 +1616,7 @@ with tab_about:
     
     # --- Neo4j Schema ER Diagram ---
     st.markdown("#### Esquema Conceptual de Neo4j (Metamodelo)")
-    st.markdown("Diagrama de Entidad-Relación que describe cómo se almacena la información estructurada de Sinapsis AI.")
+    st.markdown("Diagrama de Entidad-Relación que describe cómo se almacena la información estructurada de SNII Info TlachIA.")
     schema_mermaid = """
     erDiagram
         %% Entidades Principales
@@ -1709,7 +1709,7 @@ with tab_about:
     st.markdown("---")
     
     st.header("Arquitectura del Sistema Híbrido")
-    st.markdown("Este diagrama describe el flujo de datos global de **Sinapsis AI**, desde la recolección de metadatos hasta la Inteligencia Híbrida del Agente RAG.")
+    st.markdown("Este diagrama describe el flujo de datos global de **SNII Info TlachIA**, desde la recolección de metadatos hasta la Inteligencia Híbrida del Agente RAG.")
     
     mermaid_code = """
     graph TD
@@ -1844,7 +1844,7 @@ with tab_about:
 # ---- Footer ----
 st.markdown("""
     <div class="footer">
-        📊 Sinapsis AI - C1ε(η)C1α∫x - UNAM
+        📊 SNII Info TlachIA - C1ε(η)C1α∫x - UNAM
     </div>
 """, unsafe_allow_html=True)
 
@@ -1859,7 +1859,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-@st.dialog("💬 Asistente SINAPSIS", width="large")
+@st.dialog("💬 Asistente SNII Info TlachIA", width="large")
 def explain_chart_dialog():
     c_title, c_clear = st.columns([0.8, 0.2])
     with c_title:

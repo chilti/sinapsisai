@@ -70,7 +70,7 @@ class RAGOrchestrator:
                     "`recoverFromOpenAlex`, `recoverAuthorWorksFromOpenAlex`) y búsqueda web como fuentes primarias."
                 )
 
-            self.system_prompt = f"""Eres SINAPSIS, un analista experto en bibliometría. Tu misión es proporcionar respuestas precisas sobre investigadores, publicaciones y métricas científicas de México.
+            self.system_prompt = f"""Eres SNII Info TlachIA, un analista experto en bibliometría. Tu misión es proporcionar respuestas precisas sobre investigadores, publicaciones y métricas científicas de México.
 
 ## ECOSISTEMA DE DATOS
 - Datos del Padrón SNII (Sistema Nacional de Investigadoras e Investigadores de SECIHTI).
@@ -175,7 +175,7 @@ class RAGOrchestrator:
         history = self.memory_manager.get_history(session_id, limit=6)
         
         from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
-        messages = [SystemMessage(content="Eres SINAPSIS, un analista experto en bibliometría de la UNAM. "
+        messages = [SystemMessage(content="Eres SNII Info TlachIA, un analista experto en bibliometría de la UNAM. "
                                           "El usuario te hará preguntas sobre la interfaz que está viendo. "
                                           "Usa el contexto proporcionado para responder de manera concisa y directa.")]
         
@@ -212,7 +212,7 @@ class RAGOrchestrator:
         history = self.memory_manager.get_history(session_id, limit=6)
 
         from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
-        messages = [SystemMessage(content="Eres SINAPSIS, un analista experto en bibliometría de la UNAM. "
+        messages = [SystemMessage(content="Eres SNII Info TlachIA, un analista experto en bibliometría de la UNAM. "
                                           "El usuario te hará preguntas sobre la interfaz que está viendo. "
                                           "Usa el contexto proporcionado para responder de manera concisa y directa.")]
         for msg in history:
