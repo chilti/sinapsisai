@@ -1,40 +1,13 @@
 import os
-import httpx
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
+from lib.llm_utils import get_chat_model
 from antigravity_automation import AntigravityClient
 
 # 1. Cargar configuración desde tu .env 
 load_dotenv()
 
-# 2. Construir la URL con autenticación 
-user = os.getenv("LLM_USER")
-password = os.getenv("LLM_PASSWORD")
-base_url = os.getenv("LLM_BASE_URL")
-
-# Limpieza de URL
-if not base_url.endswith("/"): 
-    base_url += "/"
-
-if user and password:
-    proto, rest = base_url.split("://", 1)
-    # Resultado: https://rag_user:plm+cuan... @dinamica1... 
-    auth_url = f"{proto}://{user}:{password}@{rest}"
-else:
-    auth_url = base_url
-
-# 3. Configurar el cliente HTTP (saltando verificación SSL si es necesario)
-http_client = httpx.Client(verify=False, timeout=120)
-llm_model_name = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
-
-# 4. Instanciar el modelo compatible con Antigravity
-llm = ChatOpenAI(
-    model=llm_model_name,
-    base_url=auth_url,
-    api_key="lm-studio",
-    http_client=http_client,
-    temperature=0
-)
+# 2. Instanciar el modelo compatible con Antigravity usando lib.llm_utils centralizado
+llm = get_chat_model(temperature=0)
 # --- 4. CONEXIÓN AL IDE ---
 def iniciar_agente():
     """

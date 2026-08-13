@@ -19,22 +19,13 @@ BASE_PATH = os.path.dirname(os.path.abspath(__file__))
 REPORTS_DIR = os.path.join(BASE_PATH, 'reports')
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
-# Setup LLM Connectivity
-user = os.getenv("LLM_USER")
-password = os.getenv("LLM_PASSWORD")
-base_url = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1/")
-api_key = os.getenv("LLM_API_KEY", "lm-studio")
-llm_model = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
+from lib.llm_utils import LLMConfig
 
 def get_llm_analysis(prompt: str, system_prompt: str = "Eres un analista bibliométrico experto. Escribe siempre en un tono formal, objetivo y académico, evitando adjetivos exagerados. Sé conciso.") -> str:
     try:
-        auth_url = base_url
-        if user and password:
-            if "://" in base_url:
-                protocol, rest = base_url.split("://", 1)
-                auth_url = f"{protocol}://{user}:{password}@{rest}"
-            else:
-                auth_url = f"http://{user}:{password}@{base_url}"
+        auth_url = LLMConfig.get_auth_url()
+        api_key = LLMConfig.get_api_key()
+        llm_model = LLMConfig.get_model_name()
 
         url = auth_url.rstrip("/") + "/chat/completions"
         

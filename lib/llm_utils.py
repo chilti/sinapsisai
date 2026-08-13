@@ -10,20 +10,10 @@ load_dotenv()
 class LLMConfig:
     @staticmethod
     def get_auth_url():
-        """Construye la URL con Basic Auth para LM Studio/Remote LLM."""
-        user = os.getenv("LLM_USER")
-        password = os.getenv("LLM_PASSWORD")
+        """Construye la URL limpia para LM Studio/Remote LLM (usa Token Auth en encabezado)."""
         base_url = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1/")
-        
         if not base_url.endswith("/"):
             base_url += "/"
-            
-        if user and password:
-            if "://" in base_url:
-                proto, rest = base_url.split("://", 1)
-                return f"{proto}://{user}:{password}@{rest}"
-            else:
-                return f"http://{user}:{password}@{base_url}"
         return base_url
 
     @staticmethod
@@ -36,10 +26,20 @@ class LLMConfig:
 
     @staticmethod
     def get_api_key():
-        return os.getenv("LLM_API_KEY", "lm-studio")
+        return os.getenv("LLM_API_KEY") or os.getenv("LLM_APYKEY") or "lm-studio"
 
-def get_http_client(async_mode=False, timeout=120):
-    """Retorna un cliente httpx configurado para saltar validación SSL."""
+    @staticmethod
+    def sanitize_input(text: str, max_chars: int = 1500) -> str:
+        """Recorta y sanitiza las entradas de usuario para evitar desbordamiento de contexto."""
+        if not text:
+            return ""
+        text = str(text).strip()
+        if len(text) > max_chars:
+            return text[:max_chars] + "... [Texto recortado por seguridad]"
+        return text
+
+def get_http_client(async_mode=False, timeout=60):
+    """Retorna un cliente httpx configurado para saltar validación SSL (timeout por defecto 60s)."""
     if async_mode:
         return httpx.AsyncClient(verify=False, timeout=timeout)
     return httpx.Client(verify=False, timeout=timeout)

@@ -1895,10 +1895,18 @@ def explain_chart_dialog():
                     st.markdown(msg["content"])
                     
     if float_prompt := st.chat_input("¿Qué quieres saber de esta vista?", key="dialog_chat_input"):
-        if "chat_history" not in st.session_state:
-            st.session_state.chat_history = []
-        st.session_state.chat_history.append({"role": "user", "content": float_prompt})
-        st.session_state.auto_run_float_assistant = float_prompt
+        import time
+        now = time.time()
+        last_msg = st.session_state.get("last_assistant_msg_time", 0)
+        if now - last_msg < 3:
+            st.toast("⏳ Por favor espera un momento antes de enviar otra consulta.", icon="⚠️")
+        else:
+            st.session_state.last_assistant_msg_time = now
+            float_prompt = float_prompt[:1000]  # Limitar a máximo 1,000 caracteres
+            if "chat_history" not in st.session_state:
+                st.session_state.chat_history = []
+            st.session_state.chat_history.append({"role": "user", "content": float_prompt})
+            st.session_state.auto_run_float_assistant = float_prompt
         
     if st.session_state.get("auto_run_float_assistant"):
         current_prompt = st.session_state.auto_run_float_assistant

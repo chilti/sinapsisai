@@ -19,21 +19,12 @@ class InterpreterOrchestrator:
         if interpreter:
             self.interpreter = interpreter.core.core.OpenInterpreter()
             
-            # Cargamos configuración de LLM desde el entorno (igual que RAGOrchestrator)
-            base_url = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1/")
-            model_id = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
-            api_key = os.getenv("OPENAI_API_KEY", "lm-studio")
-            user = os.getenv("LLM_USER")
-            password = os.getenv("LLM_PASSWORD")
-
-            # Construir URL con Basic Auth si es necesario
-            auth_url = base_url
-            if user and password:
-                if "://" in base_url:
-                    protocol, rest = base_url.split("://", 1)
-                    auth_url = f"{protocol}://{user}:{password}@{rest}"
-                else:
-                    auth_url = f"http://{user}:{password}@{base_url}"
+            from lib.llm_utils import LLMConfig
+            
+            # Cargamos configuración de LLM desde lib.llm_utils centralizado
+            auth_url = LLMConfig.get_auth_url()
+            model_id = LLMConfig.get_model_name()
+            api_key = LLMConfig.get_api_key()
 
             # Para que litellm (usado por OI) envíe EXACTAMENTE el model_id al servidor OpenAI-compatible,
             # debemos prefijar el proveedor. Si queremos enviar 'openai/gpt-oss-20b', 

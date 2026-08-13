@@ -2,13 +2,15 @@ import json
 import os
 import base64
 import httpx
+import time
+import hashlib
 from dotenv import load_dotenv
 
 # Asegurar que el directorio raíz esté en el path para importar lib.llm_utils
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from lib.llm_utils import get_chat_model
+from lib.llm_utils import get_chat_model, LLMConfig
 from lib.service_availability import NEO4J_AVAILABLE, QDRANT_AVAILABLE
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
@@ -27,6 +29,7 @@ class RAGOrchestrator:
         """
         # Delegamos la creación del LLM y el cliente HTTP a la fábrica centralizada
         self.llm = get_chat_model(temperature=0)
+        self._response_cache = {}  # Caché inteligente de respuestas para focos/consultas idénticas
         
         # Guardamos referencia del cliente http (opcional, para limpieza posterior si se requiere)
         self.http_client = self.llm.http_async_client
@@ -208,7 +211,22 @@ class RAGOrchestrator:
     def ask_lightweight_stream_sync(self, session_id: str, query: str, ui_context: str = None):
         """
         Versión ligera del agente (Síncrona con Streaming). NO utiliza herramientas.
+        Incluye sanitización de entrada y caché inteligente de 30 minutos.
         """
+        # 1. Sanitizar entrada
+        query = LLMConfig.sanitize_input(query, max_chars=1500)
+        
+        # 2. Verificar Caché para evitar consultas duplicadas
+        cache_key = hashlib.md5(f"{query}:{ui_context}".encode('utf-8')).hexdigest()
+        now = time.time()
+        if cache_key in self._response_cache:
+            ts, cached_resp = self._response_cache[cache_key]
+            if now - ts < 1800: # 30 minutos de caché
+                self.memory_manager.add_message(session_id, "user", query)
+                self.memory_manager.add_message(session_id, "assistant", cached_resp)
+                yield cached_resp
+                return
+
         history = self.memory_manager.get_history(session_id, limit=6)
 
         from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
@@ -234,6 +252,9 @@ class RAGOrchestrator:
                 if chunk.content:
                     full_response += chunk.content
                     yield chunk.content
+            
+            # Guardar en Caché
+            self._response_cache[cache_key] = (now, full_response)
             self.memory_manager.add_message(session_id, "assistant", full_response)
         except Exception as e:
             print(f"Error en ask_lightweight_stream_sync: {e}")
