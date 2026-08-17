@@ -83,16 +83,16 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Queries ClickHouse ─────────────────────────────────────────────────────
 
-# Capacidad Instalada — JOIN dual: W-ID directo (nuevos) + DOI normalizado (legacy)
-_Q_CAP_DOI = """
+# Capacidad Instalada — Consulta unificada que preserva publicaciones ORCID/Scopus y OpenAlex local
+_Q_CAP_ALL = """
 SELECT
     pm.academic_name, pm.institution, pm.dependency, pm.subdependency,
     pm.orcid, pm.openalex_id, pm.is_snii, pm.audit_verdict,
-    wf.id           AS paper_id,
-    wf.doi,
-    wf.title        AS Title,
-    wf.publication_year AS year,
-    wf.cited_by_count   AS citations,
+    coalesce(nullIf(wf.id, ''), pm.paper_id) AS paper_id,
+    coalesce(nullIf(wf.doi, ''), pm.paper_id) AS doi,
+    coalesce(nullIf(wf.title, ''), nullIf(pm.paper_title, ''), 'Sin título') AS Title,
+    coalesce(nullIf(wf.publication_year, 0), pm.paper_year, 0) AS year,
+    coalesce(wf.cited_by_count, pm.citations, 0) AS citations,
     wf.fwci,
     wf.percentile   AS citation_normalized_percentile,
     wf.is_top_10 AS is_in_top_10_percent,
@@ -110,40 +110,13 @@ SELECT
     inst.type AS institution_type,
     inst.country_code AS institution_country
 FROM paper_author_map pm
-JOIN works_academic_all wf ON lower(replaceOne(wf.doi, %(doi_prefix)s, %(doi_empty)s)) = lower(pm.paper_id)
+LEFT JOIN works_academic_all wf ON (
+    lower(replaceOne(wf.doi, %(doi_prefix)s, %(doi_empty)s)) = lower(replaceOne(pm.paper_id, %(doi_prefix)s, %(doi_empty)s))
+    OR wf.id = pm.paper_id
+    OR wf.id = 'https://openalex.org/' || pm.paper_id
+)
 LEFT JOIN institutions inst ON pm.institution_ror = inst.ror
-{filter} AND pm.paper_id LIKE %(doi_like)s
-"""
-
-_Q_CAP_WID = """
-SELECT
-    pm.academic_name, pm.institution, pm.dependency, pm.subdependency,
-    pm.orcid, pm.openalex_id, pm.is_snii, pm.audit_verdict,
-    wf.id           AS paper_id,
-    wf.doi,
-    wf.title        AS Title,
-    wf.publication_year AS year,
-    wf.cited_by_count   AS citations,
-    wf.fwci,
-    wf.percentile   AS citation_normalized_percentile,
-    wf.is_top_10 AS is_in_top_10_percent,
-    wf.is_top_1 AS is_in_top_1_percent,
-    wf.is_oa, wf.oa_status,
-    wf.topic, wf.subfield, wf.field, wf.domain,
-    wf.language, wf.type,
-    wf.source_id AS Source, wf.source_type,
-    wf.is_retracted, wf.referenced_works_count, wf.keywords, if(empty(pm.ODS), wf.sdgs, pm.ODS) AS ODS,
-    wf.author_names, wf.all_country_codes,
-    wf.apc_paid_usd, wf.apc_list_usd, wf.counts_by_year, wf.license,
-    wf.journal_is_in_doaj, wf.journal_is_core, wf.any_repository_has_fulltext,
-    inst.ror AS ror_id,
-    inst.id AS institution_id,
-    inst.type AS institution_type,
-    inst.country_code AS institution_country
-FROM paper_author_map pm
-JOIN works_academic_all wf ON wf.id = 'https://openalex.org/' || pm.paper_id
-LEFT JOIN institutions inst ON pm.institution_ror = inst.ror
-{filter} AND pm.paper_id LIKE 'W%%'
+{filter}
 """
 
 _Q_PROD_DOI = """
@@ -255,13 +228,10 @@ _DOI_PARAMS  = {'doi_prefix': _DOI_PREFIX, 'doi_empty': '', 'doi_like': '10.%'}
 def _query_cap(filter_sql: str, params: dict = None) -> pd.DataFrame:
     p = dict(_DOI_PARAMS)
     p.update(params or {})
-    
-    df_doi = ch_client.query_df(_Q_CAP_DOI.format(filter=filter_sql), parameters=p)
-    df_wid = ch_client.query_df(_Q_CAP_WID.format(filter=filter_sql), parameters=p)
-    
-    if df_doi.empty and df_wid.empty:
+    df_all = ch_client.query_df(_Q_CAP_ALL.format(filter=filter_sql), parameters=p)
+    if df_all.empty:
         return pd.DataFrame()
-    return pd.concat([df_doi, df_wid], ignore_index=True)
+    return df_all.drop_duplicates(subset=['academic_name', 'paper_id'])
 
 
 def _query_prod(filter_sql: str, params: dict = None) -> pd.DataFrame:
