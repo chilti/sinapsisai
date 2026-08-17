@@ -614,54 +614,45 @@ with st.sidebar:
                 if st.button("🔗 Vincular mi Perfil"):
                     st.session_state.show_claim_profile = True
             
-            # Botón de alto contraste disponible para CUALQUIER usuario autenticado
-            if st.button("🔄 Sincronizar mis publicaciones de ORCID", type="primary", use_container_width=True, help="Encola una actualización en segundo plano de tus publicaciones desde ORCID, Scopus y OpenAlex"):
+            # --- Botón de Sincronización Contextual Inteligente ---
+            current_academic = st.session_state.get("selected_academic_search") or st.query_params.get("academic")
+            current_inst = st.session_state.get("selected_institution_sidebar") or st.query_params.get("institution") or st.session_state.get("selected_inst_sidebar")
+            if current_inst in ["MÉXICO", "MEXICO", "Todas las Instituciones", "TODAS"]:
+                current_inst = None
+
+            if current_academic:
+                button_label = f"🔄 Actualizar perfil de {current_academic}"
+                help_text = f"Encola la actualización de publicaciones desde ORCID, Scopus y OpenAlex para {current_academic}"
+            elif current_inst:
+                button_label = f"🔄 Actualizar datos de {current_inst}"
+                help_text = f"Regenera las métricas y archivos de caché para {current_inst}"
+            else:
+                button_label = "🔄 Actualizar mis publicaciones"
+                help_text = "Encola la actualización en segundo plano de tus publicaciones desde ORCID, Scopus y OpenAlex"
+
+            if st.button(button_label, type="primary", use_container_width=True, help=help_text):
                 from lib.auth import trigger_background_sync
-                orcid_val = user.get('orcid')
-                user_name = user.get('name') or (profile.get('academic_name') if profile else "")
-                trigger_background_sync(orcid_val, user_name, force=True)
-                st.toast("🚀 Sincronización iniciada. Tus publicaciones y métricas se están actualizando...", icon="🔄")
-
-            # --- Panel de Administración Adicional para Admins ---
-            user_orcid_bare = str(user.get('orcid', '')).replace('https://orcid.org/', '').replace('http://orcid.org/', '').strip()
-            admin_env = os.getenv("admins", "")
-            admin_orcids = [o.strip().replace('https://orcid.org/', '').replace('http://orcid.org/', '') for o in admin_env.split(",") if o.strip()]
-            is_admin = user_orcid_bare in admin_orcids or user.get('orcid') in admin_env
-
-            if is_admin:
-                st.markdown("---")
-                st.markdown("##### ⚙️ Sincronización de Administrador")
-                st.caption("Sincroniza perfiles de otros investigadores o métricas de instituciones")
-                
-                sync_type = st.radio("Objetivo a sincronizar:", ["👤 Investigador", "🏛️ Institución"], key="admin_sync_target", horizontal=True)
-                
-                if sync_type == "👤 Investigador":
-                    target_acad = st.text_input("ORCID o Nombre:", placeholder="Ej: 0000-0001-8907-2454 o Nombre", key="admin_target_acad")
-                    if st.button("🚀 Sincronizar Investigador", type="primary", use_container_width=True):
-                        if target_acad.strip():
-                            from lib.auth import trigger_background_sync
-                            trigger_background_sync(target_acad.strip(), force=True)
-                            st.toast(f"🚀 Sincronización iniciada para: {target_acad.strip()}", icon="🔄")
-                        else:
-                            st.warning("Por favor ingresa un ORCID o Nombre válido.")
+                if current_academic:
+                    trigger_background_sync(current_academic, force=True)
+                    st.toast(f"🚀 Sincronización iniciada para: {current_academic}", icon="🔄")
+                elif current_inst:
+                    import threading
+                    import subprocess
+                    def _sync_inst_worker(inst_name):
+                        try:
+                            cmd = [sys.executable, "ingestion/compute_scholar_metrics_ch.py", "--institution", inst_name]
+                            subprocess.run(cmd, cwd=os.path.dirname(__file__), capture_output=True, text=True)
+                            print(f"✅ [Context Sync] Métricas actualizadas para institución: {inst_name}")
+                        except Exception as e:
+                            print(f"❌ [Context Sync] Error en sync institucional: {e}")
+                    t = threading.Thread(target=_sync_inst_worker, args=(current_inst,), daemon=True)
+                    t.start()
+                    st.toast(f"🚀 Sincronización de métricas iniciada para: {current_inst}", icon="🏛️")
                 else:
-                    target_inst = st.text_input("Nombre de la Institución:", placeholder="Ej: Universidad Autónoma de la Ciudad de México", key="admin_target_inst")
-                    if st.button("🚀 Sincronizar Institución", type="primary", use_container_width=True):
-                        if target_inst.strip():
-                            import threading
-                            def _sync_inst_worker(inst_name):
-                                try:
-                                    import subprocess
-                                    cmd = [sys.executable, "ingestion/compute_scholar_metrics_ch.py", "--institution", inst_name]
-                                    subprocess.run(cmd, cwd=os.path.dirname(__file__), capture_output=True, text=True)
-                                    print(f"✅ [Admin Sync] Métricas actualizadas para institución: {inst_name}")
-                                except Exception as e:
-                                    print(f"❌ [Admin Sync] Error en sync institucional: {e}")
-                            t = threading.Thread(target=_sync_inst_worker, args=(target_inst.strip(),), daemon=True)
-                            t.start()
-                            st.toast(f"🚀 Sincronización institucional iniciada para: {target_inst.strip()}", icon="🏛️")
-                        else:
-                            st.warning("Por favor ingresa el nombre de una institución.")
+                    orcid_val = user.get('orcid')
+                    user_name = user.get('name') or (profile.get('academic_name') if profile else "")
+                    trigger_background_sync(orcid_val, user_name, force=True)
+                    st.toast("🚀 Sincronización iniciada. Tus publicaciones se están actualizando...", icon="🔄")
 
             st.markdown(" ")
             if st.button("🚪 Cerrar Sesión", use_container_width=True):
