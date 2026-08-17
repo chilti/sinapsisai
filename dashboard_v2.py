@@ -826,14 +826,30 @@ tab_labels = [
 ]
 
 user_auth = st.session_state.get("authenticated_user")
+is_admin = False
+if user_auth:
+    user_orcid_bare = str(user_auth.get('orcid', '')).replace('https://orcid.org/', '').replace('http://orcid.org/', '').strip()
+    admin_env = os.getenv("admins", "")
+    admin_orcids = [o.strip().replace('https://orcid.org/', '').replace('http://orcid.org/', '') for o in admin_env.split(",") if o.strip()]
+    is_admin = user_orcid_bare in admin_orcids or user_auth.get('orcid') in admin_env
+
 if user_auth:
     tab_labels.insert(0, "👤 Mi Espacio")
+    if is_admin:
+        tab_labels.insert(1, "⚙️ Administración")
 
 all_tabs = st.tabs(tab_labels)
+
 if user_auth:
-    tab_me, tab_home, tab_inst, tab_inv, tab_maps, tab_chat, tab_about = all_tabs
+    if is_admin:
+        tab_me, tab_admin, tab_home, tab_inst, tab_inv, tab_maps, tab_chat, tab_about = all_tabs
+    else:
+        tab_me, tab_home, tab_inst, tab_inv, tab_maps, tab_chat, tab_about = all_tabs
+        tab_admin = None
 else:
     tab_home, tab_inst, tab_inv, tab_maps, tab_chat, tab_about = all_tabs
+    tab_me = None
+    tab_admin = None
 
 # Pestañas ocultas temporalmente — se definen como None para evitar NameError
 tab_test = None
@@ -1063,6 +1079,79 @@ if user_auth:
                             st.info("No te encontramos? Prueba buscando solo tu primer apellido o ID de OpenAlex.")
                             if st.button("Solicitar nuevo registro"):
                                 st.write("Formulario de registro en desarrollo...")
+
+
+# =======================================================
+# TAB: Administración (Solo Admins)
+# =======================================================
+if tab_admin is not None:
+    with tab_admin:
+        st.header("⚙️ Panel de Administración del Sistema")
+        st.caption("Herramientas avanzadas de gestión, mantenimiento e ingesta masiva de datos.")
+        
+        st.markdown("---")
+        st.subheader("📚 1. Sincronización Global de Trabajos (`sync_works.py`)")
+        st.markdown("""
+        Esta herramienta ejecuta el pipeline de sincronización masiva de publicaciones desde las APIs de **OpenAlex, Scopus y ORCID**
+        para los investigadores e instituciones alojados en **Neo4j** y **ClickHouse**.
+        """)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            sync_academics_flag = st.checkbox("👤 Sincronizar por Académicos (`--sync-academics`)", value=True, help="Sincroniza artículos para los nodos Person registrados en Neo4j.")
+            sync_entities_flag = st.checkbox("🏛️ Sincronizar por Instituciones (`--sync-entities`)", value=False, help="Sincroniza artículos para las entidades institucionales con ROR validado.")
+            save_ch_flag = st.checkbox("📊 Sincronizar simultáneamente con ClickHouse (`--ch`)", value=True, help="Escribe los registros mapeados en la tabla paper_author_map de ClickHouse.")
+            
+        with col2:
+            force_local_flag = st.checkbox("⚡ Modo Local sin Cuotas API (`--local`)", value=False, help="Usa API local de OpenAlex y SDK nativa de LM Studio.")
+            resolve_oa_flag = st.checkbox("🔍 Resolver Author IDs de OpenAlex", value=True, help="Intenta resolver activamente los IDs de autor en OpenAlex.")
+            limit_val = st.number_input("🔢 Límite de procesamientos (0 = sin límite):", min_value=0, max_value=100000, value=0, help="Limita el número de elementos a procesar.")
+            name_filter = st.text_input("🎯 Filtrar por Nombre específico (opcional):", placeholder="Ej: ARENCIBIA JORGE, RICARDO", help="Si se especifica, solo sincroniza ese académico o entidad.")
+
+        if st.button("🚀 Iniciar Sincronización Global de Trabajos (`sync_works.py`)", type="primary", use_container_width=True):
+            import threading
+            import subprocess
+            
+            cmd = [sys.executable, "ingestion/sync_works.py"]
+            if sync_academics_flag and not sync_entities_flag:
+                cmd.append("--sync-academics")
+            elif sync_entities_flag and not sync_academics_flag:
+                cmd.append("--sync-entities")
+            else:
+                cmd.append("--all")
+
+            if save_ch_flag:
+                cmd.append("--ch")
+            if force_local_flag:
+                cmd.append("--local")
+            if not resolve_oa_flag:
+                cmd.append("--no-resolve-oa")
+            if limit_val > 0:
+                cmd.extend(["--limit", str(limit_val)])
+            if name_filter.strip():
+                cmd.extend(["--name", name_filter.strip()])
+                
+            cmd_str = " ".join(cmd)
+            st.session_state["last_admin_cmd"] = cmd_str
+            
+            def _run_admin_sync_works(command):
+                try:
+                    print(f"🚀 [Admin Task] Ejecutando: {' '.join(command)}")
+                    res = subprocess.run(command, cwd=os.path.dirname(__file__), capture_output=True, text=True)
+                    if res.returncode == 0:
+                        print("✅ [Admin Task] sync_works.py completado exitosamente.")
+                    else:
+                        print(f"❌ [Admin Task] Error en sync_works.py:\nSTDOUT:\n{res.stdout[-1000:]}\nSTDERR:\n{res.stderr[-1000:]}")
+                except Exception as e:
+                    print(f"❌ [Admin Task] Excepción: {e}")
+
+            t = threading.Thread(target=_run_admin_sync_works, args=(cmd,), daemon=True)
+            t.start()
+            st.success(f"🚀 Tarea en segundo plano iniciada:\n`{cmd_str}`")
+            st.toast("🚀 Sincronización global iniciada en segundo plano.", icon="⚙️")
+
+        if "last_admin_cmd" in st.session_state:
+            st.info(f"Última tarea encolada: `{st.session_state['last_admin_cmd']}`")
 
 
 # =======================================================
