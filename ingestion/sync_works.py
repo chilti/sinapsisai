@@ -212,6 +212,7 @@ if __name__ == "__main__":
     parser.add_argument("--local", action="store_true", help="Usar API local de OpenAlex y SDK nativa de LM Studio")
     parser.add_argument("--ch", action="store_true", help="Guardar mapeos secundarios en ClickHouse")
     parser.add_argument("--no-resolve-oa", action="store_true", help="No intentar resolver activamente los IDs de OpenAlex si no existen")
+    parser.add_argument("--recompute-metrics", action="store_true", help="Recalcular automáticamente métricas y parquets al finalizar la ingesta")
     
     args = parser.parse_args()
     
@@ -230,6 +231,16 @@ if __name__ == "__main__":
             print("🚀 INICIANDO SINCRONIZACIÓN DE ENTIDADES (ROR)")
             print("="*50)
             sync_entities(limit=args.limit, target_name=args.name, force_local=args.local, save_to_ch=args.ch, skip=args.skip)
+
+        if args.recompute_metrics:
+            print("\n" + "="*50)
+            print("📊 RECALCULANDO MÉTRICAS Y PARQUETS DE CACHÉ DE ACADÉMICOS E INSTITUCIONES")
+            print("="*50)
+            import subprocess
+            cmd = [sys.executable, "ingestion/compute_scholar_metrics_ch.py"]
+            if args.name:
+                cmd.extend(["--academic", args.name])
+            subprocess.run(cmd, cwd=os.path.dirname(os.path.dirname(__file__)))
             
     except KeyboardInterrupt:
         print("\n🛑 Proceso interrumpido por el usuario.")

@@ -87,13 +87,36 @@ def _run_sync_worker(orcid_input: str, user_name: str, force: bool):
         print(f"🚀 [Background Sync] Iniciando ingesta de publicaciones para {author_name} ({orcid_url})...")
         ingest_researcher_data(data, force=force, save_to_ch=True)
         
-        # Regenerar parquets de métricas para el dashboard
+        # 1. Regenerar parquets de métricas para el académico
         print(f"📊 [Background Sync] Regenerando archivos Parquet de caché para {author_name}...")
         base_dir = os.path.dirname(os.path.dirname(__file__))
         cmd = [sys.executable, "ingestion/compute_scholar_metrics_ch.py", "--academic", author_name]
         subprocess.run(cmd, cwd=base_dir, capture_output=True, text=True)
         
-        print(f"✅ [Background Sync] Ingesta y actualización de Parquets completada con éxito para {author_name} ({orcid_url}).")
+        # 2. Buscar instituciones ancestro en Neo4j y recalcular sus métricas
+        try:
+            from database.knowledge_graph import Neo4jGraphStore
+            gs = Neo4jGraphStore()
+            q_anc = """
+            MATCH (a:Person)-[:AFFILIATED_TO]->(ent)
+            OPTIONAL MATCH (ent)-[:PART_OF*0..2]->(i:Institution)
+            WHERE a.fullname = $name OR a.id = $name OR a.orcid = $orcid
+            RETURN DISTINCT coalesce(i.name, ent.name) AS inst_name
+            """
+            with gs.driver.session() as session:
+                res_anc = session.run(q_anc, name=author_name, orcid=orcid_url).data()
+            gs.close()
+
+            for row in res_anc:
+                inst_name = row.get('inst_name')
+                if inst_name and inst_name.upper() not in ["MÉXICO", "MEXICO", "SIN INFORMACIÓN", "SIN INFORMACION"]:
+                    print(f"🏛️ [Background Sync] Recalculando métricas para institución ancestro: {inst_name}...")
+                    cmd_inst = [sys.executable, "ingestion/compute_scholar_metrics_ch.py", "--institution", inst_name]
+                    subprocess.run(cmd_inst, cwd=base_dir, capture_output=True, text=True)
+        except Exception as e_anc:
+            print(f"⚠️ [Background Sync] Error al recalcular ancestros institucionales: {e_anc}")
+
+        print(f"✅ [Background Sync] Ingesta y actualización de Parquets (investigador y ancestros) completada con éxito para {author_name} ({orcid_url}).")
     except Exception as e:
         print(f"❌ [Background Sync] Error en ingesta para ORCID {orcid_input}: {e}")
 
