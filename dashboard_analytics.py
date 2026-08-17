@@ -173,6 +173,18 @@ def load_cached_data(filename, entity_name=None, academic_name=None, institution
             pass # Fallback to parquet
 
     path = None
+
+    # Si se busca un académico, encontrar su archivo más reciente globalmente en el caché
+    if academic_name:
+        import glob
+        safe_ac = str(academic_name).replace('/', '_').replace('\\', '_')
+        matches = glob.glob(os.path.join(CACHE_DIR, "**", safe_ac, filename), recursive=True)
+        if matches:
+            matches.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+            try:
+                return pd.read_parquet(matches[0])
+            except Exception:
+                pass
     
     # 1. Intentar estructura jerárquica (Nacional)
     if institution_name:
@@ -228,7 +240,15 @@ def get_cached_data(filename, entity_name=None, academic_name=None, institution_
     path = None
     view_dir = "capacidad_instalada" if view_mode == "capacidad_instalada" else "produccion_institucional"
     
-    if institution_name:
+    if academic_name:
+        import glob
+        safe_ac = str(academic_name).replace('/', '_').replace('\\', '_')
+        matches = glob.glob(os.path.join(CACHE_DIR, "**", safe_ac, filename), recursive=True)
+        if matches:
+            matches.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+            path = matches[0]
+
+    if not path and institution_name:
         if str(institution_name).upper() in ["MEXICO", "MÉXICO"]:
             safe_inst = "MEXICO"
         else:
