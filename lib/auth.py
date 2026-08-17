@@ -49,6 +49,61 @@ def exchange_code_for_token(code):
         st.error(f"Error al autenticar con ORCID: {e}")
         return None
 
+import threading
+
+def check_orcid_exists_in_neo4j(orcid_input: str) -> bool:
+    """Verifica si el ORCID ya cuenta con publicaciones o registro en Neo4j."""
+    if not orcid_input:
+        return False
+    orcid_id = str(orcid_input).rstrip('/').split('/')[-1]
+    orcid_url = f"https://orcid.org/{orcid_id}"
+    try:
+        from database.knowledge_graph import Neo4jGraphStore
+        graph_store = Neo4jGraphStore()
+        query = "MATCH (a:Author) WHERE a.orcid = $orcid MATCH (a)-[:AUTHORED]->(w:Work) RETURN count(w) AS cnt"
+        with graph_store.driver.session() as s:
+            res = s.run(query, orcid=orcid_url)
+            rec = res.single()
+            graph_store.close()
+            return (rec["cnt"] > 0) if rec else False
+    except Exception as e:
+        print(f"[WARN] Error verificando existencia de ORCID {orcid_input} en Neo4j: {e}")
+        return False
+
+def _run_sync_worker(orcid_input: str, user_name: str, force: bool):
+    try:
+        import subprocess
+        from SNII.ingest_snii_apis import ingest_researcher_data
+        orcid_id = str(orcid_input).rstrip('/').split('/')[-1]
+        orcid_url = f"https://orcid.org/{orcid_id}"
+        
+        author_name = user_name or f"INVESTIGADOR_ORCID_{orcid_id}"
+        data = {
+            'snii_author': author_name,
+            'matched_orcid': orcid_url,
+            'match': True,
+            'confidence': 'HIGH'
+        }
+        print(f"🚀 [Background Sync] Iniciando ingesta de publicaciones para {author_name} ({orcid_url})...")
+        ingest_researcher_data(data, force=force, save_to_ch=True)
+        
+        # Regenerar parquets de métricas para el dashboard
+        print(f"📊 [Background Sync] Regenerando archivos Parquet de caché para {author_name}...")
+        base_dir = os.path.dirname(os.path.dirname(__file__))
+        cmd = [sys.executable, "ingestion/compute_scholar_metrics_ch.py", "--academic", author_name]
+        subprocess.run(cmd, cwd=base_dir, capture_output=True, text=True)
+        
+        print(f"✅ [Background Sync] Ingesta y actualización de Parquets completada con éxito para {author_name} ({orcid_url}).")
+    except Exception as e:
+        print(f"❌ [Background Sync] Error en ingesta para ORCID {orcid_input}: {e}")
+
+def trigger_background_sync(orcid_input: str, user_name: str = "", force: bool = False):
+    """Encola e inicia la sincronización de publicaciones en segundo plano mediante un hilo."""
+    if not orcid_input:
+        return
+    t = threading.Thread(target=_run_sync_worker, args=(orcid_input, user_name, force), daemon=True)
+    t.start()
+
 def init_auth_session():
     """Inicializa las variables de estado de sesión para autenticación."""
     if "authenticated_user" not in st.session_state:
@@ -66,11 +121,20 @@ def handle_orcid_callback():
         if not st.session_state.authenticated_user:
             token_data = exchange_code_for_token(code)
             if token_data:
+                orcid_val = token_data.get("orcid")
+                name_val = token_data.get("name") or ""
+                
                 st.session_state.authenticated_user = {
-                    "orcid": token_data.get("orcid"),
-                    "name": token_data.get("name"),
+                    "orcid": orcid_val,
+                    "name": name_val,
                     "access_token": token_data.get("access_token")
                 }
+
+                # Autodetección: Si el ORCID es NUEVO en el sistema, disparar sincronización inicial
+                if orcid_val and not check_orcid_exists_in_neo4j(orcid_val):
+                    print(f"✨ [Nuevo Registro ORCID] {orcid_val} no registrado previamente. Disparando ingesta en segundo plano...")
+                    trigger_background_sync(orcid_val, name_val, force=True)
+
                 # Limpiar el código de la URL para evitar re-procesamiento
                 st.query_params.clear()
                 st.rerun()

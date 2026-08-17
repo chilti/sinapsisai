@@ -1008,6 +1008,14 @@ def _save_parquet(df: pd.DataFrame, path: Path, updated_files: set = None):
     if df is None or df.empty:
         return
     try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(path, index=False, engine='pyarrow')
+        if updated_files is not None:
+            updated_files.add(path)
+    except Exception as e:
+        print(f"  ⚠️ Error guardando parquet ({path.name}): {e}")
+
+    try:
         _save_duckdb(df, path)
     except Exception as e:
         print(f"  ⚠️ Error guardando en DuckDB ({path.name}): {e}")
