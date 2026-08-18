@@ -630,24 +630,39 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
             df_umap = da.get_cached_data("umap_investigadores.parquet", institution_name=institution_name)
         if df_umap is not None and not df_umap.empty:
             fig_umap = go.Figure()
+            
+            # Escala por raíz cuadrada del FWCI (estilo MDPI Atlantis)
+            fwci_col = 'fwci_avg' if 'fwci_avg' in df_umap.columns else ('fwci' if 'fwci' in df_umap.columns else 'citations')
+            raw_fwci = df_umap[fwci_col].fillna(0.5).clip(lower=0.01)
+            p98 = raw_fwci.quantile(0.98) if len(raw_fwci) > 10 else raw_fwci.max()
+            p98 = max(p98, 0.1)
+            norm_fwci = (raw_fwci / p98).clip(lower=0.0, upper=1.0)
+            r_min, r_max = 3.5, 18.0
+            df_umap['_marker_size'] = r_min + (r_max - r_min) * np.sqrt(norm_fwci)
+
             otros = df_umap[df_umap['academic_name'] != entity_name]
             sel_row = df_umap[df_umap['academic_name'] == entity_name]
-            max_docs = df_umap['num_documents'].max() if 'num_documents' in df_umap.columns else 1
-            sizeref = 2.0 * max(max_docs, 1) / (50. ** 2)
 
             if not otros.empty:
+                hover_text_otros = otros['academic_name'] + "<br>FWCI: " + otros[fwci_col].round(2).astype(str) + "<br>Docs: " + otros.get('num_documents', 0).astype(str)
                 fig_umap.add_trace(go.Scatter(
                     x=otros['umap_x'], y=otros['umap_y'], mode='markers',
-                    name='Padrón Institucional', text=otros['academic_name'],
-                    marker=dict(size=otros['num_documents'].fillna(0).clip(lower=0.1), sizemode='area', sizeref=sizeref, sizemin=2, color='#8B9DC3', opacity=0.35)
+                    name='Padrón Institucional', text=hover_text_otros, hoverinfo='text',
+                    marker=dict(size=otros['_marker_size'], color='#003D64', opacity=0.40, line=dict(width=0.5, color='rgba(255,255,255,0.7)'))
                 ))
             if not sel_row.empty:
+                hover_text_sel = sel_row['academic_name'] + "<br>FWCI: " + sel_row[fwci_col].round(2).astype(str) + "<br>Docs: " + sel_row.get('num_documents', 0).astype(str)
+                sel_size = max(float(sel_row['_marker_size'].iloc[0]), 15.0)
                 fig_umap.add_trace(go.Scatter(
                     x=sel_row['umap_x'], y=sel_row['umap_y'], mode='markers',
-                    name=entity_name, text=sel_row['academic_name'],
-                    marker=dict(size=sel_row['num_documents'].fillna(0).clip(lower=0.1), sizemode='area', sizeref=sizeref, sizemin=4, color='#D73A49', symbol='circle', line=dict(width=2, color='#900C3F'))
+                    name=entity_name, text=hover_text_sel, hoverinfo='text',
+                    marker=dict(size=sel_size, color='#E8442A', symbol='circle', line=dict(width=2.5, color='#FFFFFF'))
                 ))
-            fig_umap.update_layout(title="Posicionamiento Cuantitativo en el Padrón (Proyección UMAP 2D)", hovermode="closest", template="plotly_white", height=400, margin=dict(t=40, b=10, l=10, r=10))
+            fig_umap.update_layout(
+                title="Posicionamiento Cuantitativo en el Padrón (Tamaño de esfera proporcional a FWCI)",
+                hovermode="closest", template="plotly_white", height=420, margin=dict(t=40, b=10, l=10, r=10),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
             html_inv_extra += fig_to_html(fig_umap)
 
         # 10.2 Top Coautores

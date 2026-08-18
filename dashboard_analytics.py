@@ -876,7 +876,9 @@ def _render_umap_plot(df_umap, selected_inv, title_context, key_suffix=""):
         df_umap["num_documents"] = 1
         
     default_idx = 0
-    if "Documentos" in available_metrics:
+    if "Impacto (FWCI)" in available_metrics:
+        default_idx = list(available_metrics.keys()).index("Impacto (FWCI)")
+    elif "Documentos" in available_metrics:
         default_idx = list(available_metrics.keys()).index("Documentos")
         
     size_metric_label = st.selectbox(
@@ -889,11 +891,15 @@ def _render_umap_plot(df_umap, selected_inv, title_context, key_suffix=""):
 
     fig_umap = go.Figure()
 
-    # Configurar escalado de burbujas basado en la métrica seleccionada
-    max_metric = df_umap[size_metric_col].max() if size_metric_col in df_umap.columns else 1
-    sizeref = 2.0 * max(max_metric, 0.001) / (50. ** 2)
+    # Escalamiento por raíz cuadrada estilo MDPI Atlantis (área proporcional al valor)
+    raw_metric = df_umap[size_metric_col].fillna(0.1).clip(lower=0.01)
+    p98 = raw_metric.quantile(0.98) if len(raw_metric) > 10 else raw_metric.max()
+    p98 = max(p98, 0.1)
+    norm_metric = (raw_metric / p98).clip(lower=0.0, upper=1.0)
+    r_min, r_max = 3.5, 18.0
+    df_umap['_marker_size'] = r_min + (r_max - r_min) * np.sqrt(norm_metric)
 
-    # Otros investigadores (Puntos grises)
+    # Otros investigadores (Puntos con tamaño dinámico según FWCI/métrica)
     otros = df_umap[df_umap['academic_name'] != selected_inv]
     if not otros.empty:
         fig_umap.add_trace(go.Scatter(
@@ -902,27 +908,27 @@ def _render_umap_plot(df_umap, selected_inv, title_context, key_suffix=""):
             name='Resto de investigadores',
             text=otros['academic_name'],
             marker=dict(
-                size=otros[size_metric_col].fillna(0).clip(lower=0.1),
-                sizemode='area',
-                sizeref=sizeref,
-                sizemin=2,
-                color='#003D64', opacity=0.3, line=dict(width=1, color='darkgray')
+                size=otros['_marker_size'],
+                color='#003D64', opacity=0.40,
+                line=dict(width=0.5, color='rgba(255,255,255,0.7)')
             ),
             hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>Citas: %{customdata[1]}<br>FWCI: %{customdata[2]:.2f}<br>% Top 10: %{customdata[3]:.1f}%<br>% Top 1%: %{customdata[4]:.1f}%",
             customdata=otros[['num_documents', 'citations', 'fwci_avg', 'pct_top_10', 'pct_1']]
         ))
 
-    # Investigador seleccionado (Punto destacado como una estrella dorada)
+    # Investigador seleccionado (Punto destacado)
     sel_row = df_umap[df_umap['academic_name'] == selected_inv]
     if not sel_row.empty:
+        sel_size = max(float(sel_row['_marker_size'].iloc[0]), 15.0)
         fig_umap.add_trace(go.Scatter(
             x=sel_row['umap_x'], y=sel_row['umap_y'],
             mode='markers',
             name=selected_inv,
             text=sel_row['academic_name'],
             marker=dict(
-                size=16,
-                color='#E8442A', symbol='circle', line=dict(width=2, color='#FFFFFF')
+                size=sel_size,
+                color='#E8442A', symbol='circle',
+                line=dict(width=2.5, color='#FFFFFF')
             ),
             hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>Citas: %{customdata[1]}<br>FWCI: %{customdata[2]:.2f}<br>% Top 10: %{customdata[3]:.1f}%<br>% Top 1%: %{customdata[4]:.1f}%",
             customdata=sel_row[['num_documents', 'citations', 'fwci_avg', 'pct_top_10', 'pct_1']]

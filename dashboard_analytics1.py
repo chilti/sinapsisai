@@ -1100,7 +1100,16 @@ def render_investigador_view(entity_name, institution_name=None):
     if df_umap is not None and not df_umap.empty:
         fig_umap = go.Figure()
 
-        # Otros investigadores (Puntos grises)
+        # Escalamiento por raíz cuadrada estilo MDPI Atlantis (área proporcional a FWCI)
+        fwci_col = 'fwci_avg' if 'fwci_avg' in df_umap.columns else ('fwci' if 'fwci' in df_umap.columns else 'citations')
+        raw_fwci = df_umap[fwci_col].fillna(0.5).clip(lower=0.01)
+        p98 = raw_fwci.quantile(0.98) if len(raw_fwci) > 10 else raw_fwci.max()
+        p98 = max(p98, 0.1)
+        norm_fwci = (raw_fwci / p98).clip(lower=0.0, upper=1.0)
+        r_min, r_max = 3.5, 18.0
+        df_umap['_marker_size'] = r_min + (r_max - r_min) * np.sqrt(norm_fwci)
+
+        # Otros investigadores (Puntos con tamaño proporcional a FWCI)
         otros = df_umap[df_umap['academic_name'] != selected_inv]
         if not otros.empty:
             fig_umap.add_trace(go.Scatter(
@@ -1108,7 +1117,11 @@ def render_investigador_view(entity_name, institution_name=None):
                 mode='markers',
                 name='Resto del padrón',
                 text=otros['academic_name'],
-                marker=dict(size=8, color='#003D64', opacity=0.3, line=dict(width=1, color='darkgray')),
+                marker=dict(
+                    size=otros['_marker_size'],
+                    color='#003D64', opacity=0.40,
+                    line=dict(width=0.5, color='rgba(255,255,255,0.7)')
+                ),
                 hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>FWCI: %{customdata[1]:.2f}",
                 customdata=otros[['num_documents', 'fwci_avg']]
             ))
@@ -1116,12 +1129,13 @@ def render_investigador_view(entity_name, institution_name=None):
         # Investigador seleccionado (Punto destacado)
         sel_row = df_umap[df_umap['academic_name'] == selected_inv]
         if not sel_row.empty:
+            sel_size = max(float(sel_row['_marker_size'].iloc[0]), 15.0)
             fig_umap.add_trace(go.Scatter(
                 x=sel_row['umap_x'], y=sel_row['umap_y'],
                 mode='markers',
                 name=selected_inv,
                 text=sel_row['academic_name'],
-                marker=dict(size=14, color='#E39918', symbol='star', line=dict(width=2, color='#b6932b')),
+                marker=dict(size=sel_size, color='#E8442A', symbol='circle', line=dict(width=2.5, color='#FFFFFF')),
                 hovertemplate="<b>%{text}</b><br>Doc: %{customdata[0]}<br>FWCI: %{customdata[1]:.2f}",
                 customdata=sel_row[['num_documents', 'fwci_avg']]
             ))

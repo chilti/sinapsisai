@@ -151,6 +151,11 @@ def build_json(csv_path, out_path, name_col, inst_col, extra_cols=None, top_n_le
             'total': data['total'],
             'has_meta': True,  # Flag para indicar al cliente que hay un archivo _meta.json
         }
+        if 'fwci' in data:
+            render_data['fwci'] = data['fwci']
+        elif 'fwci' in df.columns:
+            render_data['fwci'] = df['fwci'].fillna(0.5).round(2).tolist()
+
         # Incluir cluster_label (indices enteros, compacto) y su diccionario
         if 'extras' in data and 'cluster_label' in data['extras']:
             render_data['extras'] = {'cluster_label': data['extras']['cluster_label']}
@@ -159,6 +164,8 @@ def build_json(csv_path, out_path, name_col, inst_col, extra_cols=None, top_n_le
         # Incluir year (enteros compactos)
         if 'extras' in data and 'year' in data['extras']:
             render_data.setdefault('extras', {})['year'] = data['extras']['year']
+        if 'fwci' in df.columns:
+            render_data.setdefault('extras', {})['fwci'] = df['fwci'].fillna(0.5).round(2).tolist()
         
         with open(out_path, 'w') as f:
             json.dump(render_data, f)

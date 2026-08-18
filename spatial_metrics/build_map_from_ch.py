@@ -86,8 +86,12 @@ def build_json(df, out_path):
             "authors":      df["authors"].fillna("").tolist(),
             "journal":      df["journal"].fillna("").tolist(),
             "cluster_label": df["subfield"].fillna("").tolist(),
+            "fwci":         df["fwci"].fillna(0.5).round(2).tolist() if "fwci" in df.columns else [],
+            "citations":    df["citations"].fillna(0).astype(int).tolist() if "citations" in df.columns else [],
         }
     }
+    if "fwci" in df.columns:
+        data["fwci"] = df["fwci"].fillna(0.5).round(2).tolist()
 
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w") as f:
@@ -114,7 +118,8 @@ def main(sample=None, skip_umap=False):
         limit_clause = f"LIMIT {sample}" if sample else ""
         q_emb = f"""
         SELECT id, embedding_nomic AS embedding,
-               title, doi, publication_year, subfield, topic, source_id
+               title, doi, publication_year, subfield, topic, source_id,
+               fwci, cited_by_count AS citations
         FROM works_academic_all
         WHERE length(embedding_nomic) > 0
         {limit_clause}
@@ -130,7 +135,7 @@ def main(sample=None, skip_umap=False):
         # ── Paso 2: Proyección UMAP ───────────────────────────────────────────
         print("\n[Paso 2] Proyectando embeddings con UMAP...")
         df_coords = build_umap(df_emb, sample=None)
-        df_coords = df_coords[["id", "x", "y", "subfield", "publication_year", "title", "doi", "source_id"]]
+        df_coords = df_coords[["id", "x", "y", "subfield", "publication_year", "title", "doi", "source_id", "fwci", "citations"]]
 
         # ── Paso 3: Autores nacionales desde paper_author_map ────────────────
         print("\n[Paso 3] Obteniendo autores nacionales...")
