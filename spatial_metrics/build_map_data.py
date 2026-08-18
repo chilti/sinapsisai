@@ -26,46 +26,41 @@ def build_json(csv_path, out_path, name_col, inst_col, extra_cols=None, top_n_le
     institutions = df[inst_col].fillna('Sin Institución').unique().tolist()
     inst_map = {name: i for i, name in enumerate(institutions)}
     
-    # Enriquecer artículos con autores y revistas si corresponde
+    # Enriquecer artículos con autores, revistas y FWCI si corresponde
     if 'articles' in csv_path and 'id' in df.columns:
-        print("  -> Extrayendo autores nacionales y revistas de ClickHouse...")
+        print("  -> Extrayendo autores nacionales, revistas y FWCI de ClickHouse...")
         
-        # Función auxiliar para normalizar DOIs
         def clean_doi_str(val):
             if not val or pd.isna(val):
                 return ""
             return str(val).replace('https://doi.org/', '').strip().lower()
         
-        # 1. Obtener works: id as openalex_id, doi, source_id para cruzar revista
-        df_works = ch_client.query_df("SELECT id as openalex_id, doi, source_id FROM works_academic_all")
+        df_works = ch_client.query_df("SELECT id as openalex_id, doi, source_id, fwci, cited_by_count as citations FROM works_academic_all")
         df_works = df_works.drop_duplicates(subset=['openalex_id'])
         df_works['clean_doi'] = df_works['doi'].fillna('').apply(clean_doi_str)
         df_works = df_works.drop(columns=['doi'])
         
-        # 2. Obtener nombres de revistas desde tabla sources
         df_sources = ch_client.query_df("SELECT id as source_id, display_name as journal FROM sources")
         df_sources = df_sources.drop_duplicates(subset=['source_id'])
         
-        # 3. Obtener autores nacionales agrupados por OpenAlex Work ID
         q_authors = "SELECT paper_id as openalex_id, groupArray(academic_name) as author_names FROM paper_author_map WHERE paper_id LIKE 'https://openalex.org/%' GROUP BY paper_id"
         df_authors = ch_client.query_df(q_authors)
         df_authors['authors'] = df_authors['author_names'].apply(format_authors)
         
-        # 4. Unir con el dataset principal
-        # Primero cruzamos por ID directo
         df = df.merge(df_works, left_on='id', right_on='openalex_id', how='left')
         
-        # Si quedan registros sin openalex_id y tenemos doi en el CSV, intentamos cruzar por DOI
         if 'doi' in df.columns:
             df['clean_doi'] = df['doi'].fillna('').apply(clean_doi_str)
-            df_works_doi = df_works[df_works['clean_doi'] != ''][['clean_doi', 'openalex_id', 'source_id']].rename(
-                columns={'openalex_id': 'oa_id_by_doi', 'source_id': 'source_id_by_doi'}
+            df_works_doi = df_works[df_works['clean_doi'] != ''][['clean_doi', 'openalex_id', 'source_id', 'fwci', 'citations']].rename(
+                columns={'openalex_id': 'oa_id_by_doi', 'source_id': 'source_id_by_doi', 'fwci': 'fwci_by_doi', 'citations': 'cites_by_doi'}
             )
             df_works_doi = df_works_doi.drop_duplicates(subset=['clean_doi'])
             df = df.merge(df_works_doi, on='clean_doi', how='left')
             df['openalex_id'] = df['openalex_id'].fillna(df['oa_id_by_doi'])
             df['source_id'] = df['source_id'].fillna(df['source_id_by_doi'])
-            df = df.drop(columns=['oa_id_by_doi', 'source_id_by_doi'])
+            df['fwci'] = df['fwci'].fillna(df.get('fwci_by_doi', 0.5))
+            df['citations'] = df['citations'].fillna(df.get('cites_by_doi', 0))
+            df = df.drop(columns=['oa_id_by_doi', 'source_id_by_doi', 'clean_doi'], errors='ignore')
             
         df = df.merge(df_sources, on='source_id', how='left')
         df = df.merge(df_authors[['openalex_id', 'authors']], on='openalex_id', how='left')
@@ -73,15 +68,38 @@ def build_json(csv_path, out_path, name_col, inst_col, extra_cols=None, top_n_le
         df['authors'] = df['authors'].fillna('')
         df['journal'] = df['journal'].fillna('')
         df['openalex_id'] = df['openalex_id'].fillna(df['id'])
+        df['fwci'] = df['fwci'].fillna(0.5)
+        df['citations'] = df['citations'].fillna(0)
         
         if extra_cols is None:
             extra_cols = []
-        extra_cols.extend(['authors', 'journal', 'openalex_id'])
+        extra_cols.extend(['authors', 'journal', 'openalex_id', 'fwci', 'citations'])
         
-        # Si el CSV ya tiene cluster_label (generado por cluster_articles.py), lo añadimos
         if 'cluster_label' in df.columns:
             df['cluster_label'] = df['cluster_label'].fillna('Ruido')
             extra_cols.append('cluster_label')
+
+    # Enriquecer personas con FWCI, Citas y Documentos si corresponde
+    if any(k in csv_path for k in ['people', 'performance']):
+        if 'fwci_avg' not in df.columns:
+            umap_p_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'cache_ch', 'umap_investigadores.parquet')
+            if os.path.exists(umap_p_path):
+                print(f"  -> Enriqueciendo {csv_path} con métricas de umap_investigadores.parquet...")
+                df_cache = pd.read_parquet(umap_p_path)[['academic_name', 'fwci_avg', 'citations', 'num_documents']].drop_duplicates(subset=['academic_name'])
+                df = df.merge(df_cache, left_on=name_col, right_on='academic_name', how='left')
+        
+        if 'fwci_avg' in df.columns:
+            df['fwci_avg'] = df['fwci_avg'].fillna(0.5)
+        if 'citations' in df.columns:
+            df['citations'] = df['citations'].fillna(0)
+        if 'num_documents' in df.columns:
+            df['num_documents'] = df['num_documents'].fillna(1)
+            
+        if extra_cols is None:
+            extra_cols = []
+        for c in ['fwci_avg', 'citations', 'num_documents']:
+            if c in df.columns and c not in extra_cols:
+                extra_cols.append(c)
     
     # ── Optimización 1: Codificación por Diccionario de Instituciones ──
     # Ya no incluimos el array gigante 'institutions' de strings en data.
@@ -132,6 +150,11 @@ def build_json(csv_path, out_path, name_col, inst_col, extra_cols=None, top_n_le
                             return int(val_str)
                         return 0
                     data['extras']['openalex_id'] = df['openalex_id'].fillna('').apply(clean_oa_id).tolist()
+                elif col in ['fwci', 'fwci_avg']:
+                    data['fwci'] = df[col].fillna(0.5).round(2).tolist()
+                    data['extras']['fwci'] = data['fwci']
+                elif col in ['citations', 'num_documents']:
+                    data['extras'][col] = df[col].fillna(0).astype(int).tolist()
                 else:
                     data['extras'][col] = df[col].astype(str).fillna('').tolist()
     
