@@ -661,7 +661,32 @@ with st.sidebar:
         else:
             login_url = auth.get_orcid_login_url()
             if login_url:
-                st.link_button("🆔 Identifícate con ORCID", login_url, type="primary", use_container_width=True)
+                st.markdown(
+                    f"""
+                    <a href="{login_url}" target="_self" style="
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 8px;
+                        width: 100%;
+                        padding: 0.55rem 1rem;
+                        font-weight: 600;
+                        font-size: 0.95rem;
+                        color: #ffffff !important;
+                        background: linear-gradient(135deg, #a6ce39 0%, #7da322 100%);
+                        border: 1px solid #7da322;
+                        border-radius: 8px;
+                        text-decoration: none !important;
+                        text-align: center;
+                        box-sizing: border-box;
+                        transition: all 0.2s ease-in-out;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.12);
+                    " onmouseover="this.style.opacity='0.9'; this.style.transform='translateY(-1px)';" onmouseout="this.style.opacity='1.0'; this.style.transform='translateY(0)';" id="btn_orcid_login">
+                        🆔 Identifícate con ORCID
+                    </a>
+                    """,
+                    unsafe_allow_html=True
+                )
             else:
                 st.error("Error en configuración de ORCID")
     st.markdown("---")
