@@ -1381,6 +1381,93 @@ if tab_admin is not None:
                 st.success(f"🚀 Recálculo de métricas iniciado en segundo plano:\n`{' '.join(cmd)}`")
                 st.rerun()
 
+        # ----------------------------------------------------
+        # 4. Mapas Espaciales y Proyecciones UMAP (spatial_metrics)
+        # ----------------------------------------------------
+        with st.expander("🗺️ **4. Mapas Espaciales y Proyecciones UMAP (`spatial_metrics/`)**", expanded=False):
+            st.markdown("""
+            Herramientas para generar y actualizar los **mapas semánticos interactivos 2D (UMAP)**, clústeres temáticos (HDBSCAN/KMeans) y datos para el renderizador WebGL.
+            """)
+            
+            tab_sm_pipe, tab_sm_ch, tab_sm_emb = st.tabs([
+                "🚀 Pipeline Completo de Mapas",
+                "⚡ Mapa de Artículos (ClickHouse)",
+                "🧬 Generación de Embeddings"
+            ])
+            
+            # --- Sub-tab 1: Pipeline Completo ---
+            with tab_sm_pipe:
+                st.markdown("""
+                **Flujo Automatizado de 5 Pasos (`run_maps_pipeline.sh`):**
+                1. Extracción de vectores Parquet (Neo4j FastRP, ClickHouse SPECTER/Nomic, Qdrant).
+                2. Reducción dimensional UMAP 2D acelerada.
+                3. Clustering semántico de Nivel 1 (HDBSCAN + titulación con LLM).
+                4. Sub-clustering de Nivel 2 (KMeans + sub-etiquetas LLM).
+                5. Empaquetado de JSONs WebGL en `public/tiles/`.
+                """)
+                force_maps_flag = st.checkbox("🔄 Forzar re-extracción de vectores desde cero (`--force`)", value=False, key="force_maps_flag", disabled=is_task_running)
+                
+                if st.button("🚀 Iniciar Pipeline Completo de Mapas (`run_maps_pipeline.sh`)", type="primary", use_container_width=True, disabled=is_task_running):
+                    cmd = ["bash", "spatial_metrics/run_maps_pipeline.sh"]
+                    if force_maps_flag: cmd.append("--force")
+                    _run_admin_bg_task(cmd, "Pipeline Completo Mapas Espaciales")
+                    st.success(f"🚀 Pipeline de mapas espaciales iniciado en segundo plano:\n`{' '.join(cmd)}`")
+                    st.rerun()
+
+            # --- Sub-tab 2: ClickHouse Direct UMAP ---
+            with tab_sm_ch:
+                st.markdown("""
+                **Generación Directa desde ClickHouse (`build_map_from_ch.py`):**
+                Lee directamente los embeddings SPECTER2 desde `embeddings_cache` y los metadatos desde `works_academic_all` para proyectar el plano semántico 2D.
+                """)
+                col_ch1, col_ch2 = st.columns(2)
+                with col_ch1:
+                    sample_opt = st.selectbox(
+                        "🎯 Tamaño de muestra para UMAP:",
+                        ["Todo el corpus (~990K artículos)", "Muestra rápida (50,000)", "Muestra intermedia (100,000)", "Muestra grande (250,000)"],
+                        key="sm_ch_sample",
+                        disabled=is_task_running
+                    )
+                with col_ch2:
+                    skip_umap_flag = st.checkbox("⏩ Saltar UMAP (solo regenerar JSON WebGL desde CSV existente)", value=False, key="sm_skip_umap", disabled=is_task_running)
+
+                if st.button("⚡ Generar Mapa desde ClickHouse (`build_map_from_ch.py`)", use_container_width=True, disabled=is_task_running):
+                    cmd = [sys.executable, "spatial_metrics/build_map_from_ch.py"]
+                    if "50,000" in sample_opt: cmd.extend(["--sample", "50000"])
+                    elif "100,000" in sample_opt: cmd.extend(["--sample", "100000"])
+                    elif "250,000" in sample_opt: cmd.extend(["--sample", "250000"])
+                    if skip_umap_flag: cmd.append("--skip-umap")
+
+                    _run_admin_bg_task(cmd, "Mapa Artículos ClickHouse (build_map_from_ch)")
+                    st.success(f"🚀 Generación de mapa iniciada en segundo plano:\n`{' '.join(cmd)}`")
+                    st.rerun()
+
+            # --- Sub-tab 3: Embeddings ---
+            with tab_sm_emb:
+                st.markdown("""
+                **Generación de Embeddings Faltantes (`embed_works.py`):**
+                Calcula vectores semánticos para artículos pendientes en ClickHouse usando modelos locales de LM Studio o SPECTER2.
+                """)
+                col_emb1, col_emb2, col_emb3 = st.columns(3)
+                with col_emb1:
+                    emb_phase_opt = st.selectbox("🧠 Modelo de Embeddings:", ["all (Nomic + SPECTER2)", "nomic (Nomic v1.5 / LM Studio)", "specter (SPECTER2 / GPU)"], key="emb_phase_opt", disabled=is_task_running)
+                    emb_phase_val = emb_phase_opt.split(" ")[0]
+                with col_emb2:
+                    emb_limit_val = st.number_input("🔢 Límite de artículos (0 = sin límite):", min_value=0, max_value=1000000, value=0, step=1000, key="emb_limit_val", disabled=is_task_running)
+                with col_emb3:
+                    emb_batch_val = st.number_input("📦 Batch Size:", min_value=8, max_value=256, value=32, step=8, key="emb_batch_val", disabled=is_task_running)
+                
+                dry_run_emb_flag = st.checkbox("🧪 Modo de prueba sin persistir (`--dry-run`)", value=False, key="dry_run_emb_flag", disabled=is_task_running)
+
+                if st.button("🧬 Iniciar Cómputo de Embeddings (`embed_works.py`)", use_container_width=True, disabled=is_task_running):
+                    cmd = [sys.executable, "spatial_metrics/embed_works.py", "--phase", emb_phase_val, "--batch", str(emb_batch_val)]
+                    if emb_limit_val > 0: cmd.extend(["--limit", str(emb_limit_val)])
+                    if dry_run_emb_flag: cmd.append("--dry-run")
+
+                    _run_admin_bg_task(cmd, "Cómputo Embeddings (embed_works)")
+                    st.success(f"🚀 Cómputo de embeddings iniciado en segundo plano:\n`{' '.join(cmd)}`")
+                    st.rerun()
+
 
 # =======================================================
 # TAB: Consejo Estratégico Virtual
