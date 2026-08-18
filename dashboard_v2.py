@@ -1091,48 +1091,156 @@ if tab_admin is not None:
         
         import threading
         import subprocess
+        import json
+        from datetime import datetime
+
+        ADMIN_STATUS_FILE = os.path.join(BASE_PATH, "data", "admin_task_status.json")
+
+        def _is_pid_alive(pid):
+            if not pid or pid <= 0: return False
+            try:
+                os.kill(pid, 0)
+                return True
+            except OSError:
+                return False
+
+        def get_admin_task_status():
+            if os.path.exists(ADMIN_STATUS_FILE):
+                try:
+                    with open(ADMIN_STATUS_FILE, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    if data.get("status") == "RUNNING":
+                        pid = data.get("pid")
+                        if not _is_pid_alive(pid):
+                            data["status"] = "TERMINATED"
+                            data["finished_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            with open(ADMIN_STATUS_FILE, "w", encoding="utf-8") as f:
+                                json.dump(data, f, ensure_ascii=False, indent=2)
+                    return data
+                except Exception:
+                    pass
+            return {"status": "IDLE"}
+
+        def set_admin_task_status(status, title="Tarea", command="", pid=None, error=None):
+            data = get_admin_task_status()
+            data["status"] = status
+            data["title"] = title
+            data["command"] = command
+            if pid: data["pid"] = pid
+            if error: data["error"] = str(error)
+            if status == "RUNNING":
+                data["started_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                data["finished_at"] = None
+                data["error"] = None
+            elif status in ["COMPLETED", "ERROR", "STOPPED", "TERMINATED"]:
+                data["finished_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                data["pid"] = None
+            try:
+                with open(ADMIN_STATUS_FILE, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                print(f"Error saving admin task status: {e}")
+
+        def stop_admin_task():
+            data = get_admin_task_status()
+            pid = data.get("pid")
+            if pid and _is_pid_alive(pid):
+                try:
+                    os.kill(pid, 9)
+                except Exception as e:
+                    print(f"Error killing PID {pid}: {e}")
+            set_admin_task_status("STOPPED", title=data.get("title", "Tarea"), command=data.get("command", ""))
 
         def _run_admin_bg_task(cmd_list, task_title="Tarea"):
             def _runner():
                 try:
                     if isinstance(cmd_list[0], list):
                         # Chained commands
+                        chain_str = " && ".join([" ".join(c) for c in cmd_list])
+                        set_admin_task_status("RUNNING", title=task_title, command=chain_str)
                         for subcmd in cmd_list:
                             print(f"🚀 [Admin Task - {task_title}] Ejecutando: {' '.join(subcmd)}")
-                            res = subprocess.run(subcmd, cwd=os.path.dirname(__file__), capture_output=True, text=True)
-                            if res.returncode != 0:
-                                print(f"❌ [Admin Task - {task_title}] Error en paso ({' '.join(subcmd)}):\nSTDOUT:\n{res.stdout[-1000:]}\nSTDERR:\n{res.stderr[-1000:]}")
+                            proc = subprocess.Popen(subcmd, cwd=os.path.dirname(__file__), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                            set_admin_task_status("RUNNING", title=f"{task_title} ({subcmd[1] if len(subcmd)>1 else 'Paso'})", command=' '.join(subcmd), pid=proc.pid)
+                            stdout, stderr = proc.communicate()
+                            if proc.returncode != 0:
+                                err_msg = stderr[-1000:] if stderr else stdout[-1000:]
+                                print(f"❌ [Admin Task - {task_title}] Error:\n{err_msg}")
+                                set_admin_task_status("ERROR", title=task_title, command=' '.join(subcmd), error=err_msg)
                                 return
                         print(f"✅ [Admin Task - {task_title}] Pipeline completado exitosamente.")
+                        set_admin_task_status("COMPLETED", title=task_title, command=chain_str)
                     else:
-                        print(f"🚀 [Admin Task - {task_title}] Ejecutando: {' '.join(cmd_list)}")
-                        res = subprocess.run(cmd_list, cwd=os.path.dirname(__file__), capture_output=True, text=True)
-                        if res.returncode == 0:
+                        cmd_str = " ".join(cmd_list)
+                        print(f"🚀 [Admin Task - {task_title}] Ejecutando: {cmd_str}")
+                        proc = subprocess.Popen(cmd_list, cwd=os.path.dirname(__file__), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                        set_admin_task_status("RUNNING", title=task_title, command=cmd_str, pid=proc.pid)
+                        stdout, stderr = proc.communicate()
+                        if proc.returncode == 0:
                             print(f"✅ [Admin Task - {task_title}] Completado exitosamente.")
+                            set_admin_task_status("COMPLETED", title=task_title, command=cmd_str)
                         else:
-                            print(f"❌ [Admin Task - {task_title}] Error:\nSTDOUT:\n{res.stdout[-1000:]}\nSTDERR:\n{res.stderr[-1000:]}")
+                            err_msg = stderr[-1000:] if stderr else stdout[-1000:]
+                            print(f"❌ [Admin Task - {task_title}] Error:\n{err_msg}")
+                            set_admin_task_status("ERROR", title=task_title, command=cmd_str, error=err_msg)
                 except Exception as e:
                     print(f"❌ [Admin Task - {task_title}] Excepción: {e}")
+                    set_admin_task_status("ERROR", title=task_title, error=str(e))
 
             t = threading.Thread(target=_runner, daemon=True)
             t.start()
 
         # ----------------------------------------------------
+        # ESTADO GLOBAL DE EJECUCIÓN (LOCK & MONITOR)
+        # ----------------------------------------------------
+        task_info = get_admin_task_status()
+        is_task_running = (task_info.get("status") == "RUNNING")
+
+        st.markdown("---")
+        if is_task_running:
+            st.warning(
+                f"⚠️ **PROCESO EN EJECUCIÓN:** `{task_info.get('title')}`\n\n"
+                f"- **Iniciado el:** {task_info.get('started_at')}\n"
+                f"- **PID del Proceso:** `{task_info.get('pid')}`\n"
+                f"- **Comando:** `{task_info.get('command')}`\n\n"
+                f"*Otro administrador (o proceso) tiene una tarea activa. Las nuevas ejecuciones están bloqueadas.*"
+            )
+            col_k1, col_k2 = st.columns([2, 8])
+            with col_k1:
+                if st.button("🛑 Detener / Cancelar Proceso", type="secondary", use_container_width=True):
+                    stop_admin_task()
+                    st.toast("🛑 Proceso detenido.", icon="🛑")
+                    st.rerun()
+            with col_k2:
+                if st.button("🔄 Actualizar Estado", use_container_width=True):
+                    st.rerun()
+        else:
+            last_status = task_info.get("status", "IDLE")
+            if last_status == "COMPLETED":
+                st.success(f"✅ **Última tarea:** `{task_info.get('title')}` — Finalizada con éxito ({task_info.get('finished_at')})")
+            elif last_status == "ERROR":
+                st.error(f"❌ **Última tarea falló:** `{task_info.get('title')}` ({task_info.get('finished_at')})\n\n**Detalle:** {task_info.get('error', 'Error no especificado')}")
+            elif last_status == "STOPPED":
+                st.info(f"🛑 **Última tarea detenida manualmente:** `{task_info.get('title')}` ({task_info.get('finished_at')})")
+            else:
+                st.info("🟢 **Sistema Disponible**: No hay procesos de sincronización ejecutándose en este momento.")
+
+        # ----------------------------------------------------
         # 0. Pipeline Integral (1-Click)
         # ----------------------------------------------------
-        with st.expander("⚡ **Pipeline Integral End-to-End (1-Clic)**", expanded=True):
+        with st.expander("⚡ **Pipeline Integral End-to-End (1-Clic)**", expanded=not is_task_running):
             st.markdown("""
             Ejecuta de forma secuencial los 3 pasos: **1. Cosecha Externa (`sync_works.py`)** $\\rightarrow$ **2. Sincronización ClickHouse (`sync_analytics_pipeline.py`)** $\\rightarrow$ **3. Recálculo de Métricas (`compute_scholar_metrics_ch.py`)**.
             """)
             col_e1, col_e2 = st.columns(2)
             with col_e1:
-                e2e_name = st.text_input("🎯 Filtrar por Académico específico (opcional):", placeholder="Ej: ARENCIBIA JORGE, RICARDO", key="e2e_name")
-                e2e_inst = st.text_input("🏛️ Institución padre (obligatoria si filtras por académico):", placeholder="Ej: UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", key="e2e_inst")
+                e2e_name = st.text_input("🎯 Filtrar por Académico específico (opcional):", placeholder="Ej: ARENCIBIA JORGE, RICARDO", key="e2e_name", disabled=is_task_running)
+                e2e_inst = st.text_input("🏛️ Institución padre (obligatoria si filtras por académico):", placeholder="Ej: UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", key="e2e_inst", disabled=is_task_running)
             with col_e2:
-                e2e_local = st.checkbox("⚡ Usar recursos locales / LM Studio (`--local`)", value=False, key="e2e_local")
-                e2e_limit = st.number_input("🔢 Límite de registros (0 = sin límite):", min_value=0, max_value=100000, value=0, key="e2e_limit")
+                e2e_local = st.checkbox("⚡ Usar recursos locales / LM Studio (`--local`)", value=False, key="e2e_local", disabled=is_task_running)
+                e2e_limit = st.number_input("🔢 Límite de registros (0 = sin límite):", min_value=0, max_value=100000, value=0, key="e2e_limit", disabled=is_task_running)
 
-            if st.button("🚀 Ejecutar Pipeline Completo (Cosecha + Sync + Métricas)", type="primary", use_container_width=True, key="btn_e2e"):
+            if st.button("🚀 Ejecutar Pipeline Completo (Cosecha + Sync + Métricas)", type="primary", use_container_width=True, key="btn_e2e", disabled=is_task_running):
                 chain = []
                 
                 # Paso 1: sync_works.py
@@ -1155,10 +1263,10 @@ if tab_admin is not None:
                 chain.append(cmd3)
 
                 chain_str = " && ".join([" ".join(c) for c in chain])
-                st.session_state["last_admin_cmd"] = chain_str
                 _run_admin_bg_task(chain, "Pipeline Completo")
                 st.success(f"🚀 Pipeline completo iniciado en segundo plano:\n`{chain_str}`")
-                st.toast("🚀 Pipeline completo iniciado en segundo plano.", icon="⚙️")
+                st.toast("🚀 Pipeline completo iniciado.", icon="⚙️")
+                st.rerun()
 
         st.markdown("---")
         st.subheader("🛠️ Herramientas Modulares de Mantenimiento")
@@ -1172,16 +1280,16 @@ if tab_admin is not None:
             """)
             col1, col2 = st.columns(2)
             with col1:
-                sync_academics_flag = st.checkbox("👤 Sincronizar por Académicos (`--sync-academics`)", value=True)
-                sync_entities_flag = st.checkbox("🏛️ Sincronizar por Instituciones (`--sync-entities`)", value=False)
-                save_ch_flag = st.checkbox("📊 Sincronizar simultáneamente con ClickHouse (`--ch`)", value=True)
+                sync_academics_flag = st.checkbox("👤 Sincronizar por Académicos (`--sync-academics`)", value=True, disabled=is_task_running)
+                sync_entities_flag = st.checkbox("🏛️ Sincronizar por Instituciones (`--sync-entities`)", value=False, disabled=is_task_running)
+                save_ch_flag = st.checkbox("📊 Sincronizar simultáneamente con ClickHouse (`--ch`)", value=True, disabled=is_task_running)
             with col2:
-                force_local_flag = st.checkbox("⚡ Modo Local sin Cuotas API (`--local`)", value=False)
-                resolve_oa_flag = st.checkbox("🔍 Resolver Author IDs de OpenAlex", value=True)
-                limit_val = st.number_input("🔢 Límite de procesamientos:", min_value=0, max_value=100000, value=0)
-                name_filter = st.text_input("🎯 Filtrar por Nombre (opcional):", placeholder="Ej: ARENCIBIA JORGE, RICARDO")
+                force_local_flag = st.checkbox("⚡ Modo Local sin Cuotas API (`--local`)", value=False, disabled=is_task_running)
+                resolve_oa_flag = st.checkbox("🔍 Resolver Author IDs de OpenAlex", value=True, disabled=is_task_running)
+                limit_val = st.number_input("🔢 Límite de procesamientos:", min_value=0, max_value=100000, value=0, disabled=is_task_running)
+                name_filter = st.text_input("🎯 Filtrar por Nombre (opcional):", placeholder="Ej: ARENCIBIA JORGE, RICARDO", disabled=is_task_running)
 
-            if st.button("🌐 Iniciar Cosecha de Publicaciones (`sync_works.py`)", use_container_width=True):
+            if st.button("🌐 Iniciar Cosecha de Publicaciones (`sync_works.py`)", use_container_width=True, disabled=is_task_running):
                 cmd = [sys.executable, "ingestion/sync_works.py"]
                 if sync_academics_flag and not sync_entities_flag: cmd.append("--sync-academics")
                 elif sync_entities_flag and not sync_academics_flag: cmd.append("--sync-entities")
@@ -1193,10 +1301,9 @@ if tab_admin is not None:
                 if limit_val > 0: cmd.extend(["--limit", str(limit_val)])
                 if name_filter.strip(): cmd.extend(["--name", name_filter.strip()])
 
-                cmd_str = " ".join(cmd)
-                st.session_state["last_admin_cmd"] = cmd_str
-                _run_admin_bg_task(cmd, "sync_works")
-                st.success(f"🚀 Tarea en segundo plano iniciada:\n`{cmd_str}`")
+                _run_admin_bg_task(cmd, "Cosecha de Obras (sync_works)")
+                st.success(f"🚀 Tarea en segundo plano iniciada:\n`{' '.join(cmd)}`")
+                st.rerun()
 
         # ----------------------------------------------------
         # 2. Sincronización ClickHouse (sync_analytics_pipeline.py)
@@ -1207,24 +1314,23 @@ if tab_admin is not None:
             """)
             col_s1, col_s2 = st.columns(2)
             with col_s1:
-                phase_opt = st.selectbox("📌 Fase a ejecutar:", ["all (Mapas + Materializar Corpus)", "maps (Solo paper_author_map / paper_entity_map)", "works (Solo materializar works_academic_all)"])
+                phase_opt = st.selectbox("📌 Fase a ejecutar:", ["all (Mapas + Materializar Corpus)", "maps (Solo paper_author_map / paper_entity_map)", "works (Solo materializar works_academic_all)"], disabled=is_task_running)
                 phase_val = phase_opt.split(" ")[0]
-                s_acad = st.text_input("👤 Filtrar por Académico (opcional):", placeholder="Ej: ARENCIBIA JORGE, RICARDO", key="s_acad")
+                s_acad = st.text_input("👤 Filtrar por Académico (opcional):", placeholder="Ej: ARENCIBIA JORGE, RICARDO", key="s_acad", disabled=is_task_running)
             with col_s2:
-                s_ent = st.text_input("🏛️ Filtrar por Entidad/Dependencia (opcional):", placeholder="Ej: COORDINACION DE LA INVESTIGACION CIENTIFICA", key="s_ent")
-                s_inst = st.text_input("🏢 Institución padre (obligatoria si filtras):", placeholder="Ej: UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", key="s_inst")
+                s_ent = st.text_input("🏛️ Filtrar por Entidad/Dependencia (opcional):", placeholder="Ej: COORDINACION DE LA INVESTIGACION CIENTIFICA", key="s_ent", disabled=is_task_running)
+                s_inst = st.text_input("🏢 Institución padre (obligatoria si filtras):", placeholder="Ej: UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", key="s_inst", disabled=is_task_running)
 
-            if st.button("🗄️ Iniciar Sincronización ClickHouse (`sync_analytics_pipeline.py`)", use_container_width=True):
+            if st.button("🗄️ Iniciar Sincronización ClickHouse (`sync_analytics_pipeline.py`)", use_container_width=True, disabled=is_task_running):
                 cmd = [sys.executable, "ingestion/sync_analytics_pipeline.py", "--phase", phase_val]
                 if s_acad.strip() and s_inst.strip():
                     cmd.extend(["--academic", s_acad.strip(), "--institution", s_inst.strip()])
                 elif s_ent.strip() and s_inst.strip():
                     cmd.extend(["--entity", s_ent.strip(), "--institution", s_inst.strip()])
                 
-                cmd_str = " ".join(cmd)
-                st.session_state["last_admin_cmd"] = cmd_str
-                _run_admin_bg_task(cmd, "sync_analytics_pipeline")
-                st.success(f"🚀 Tarea en segundo plano iniciada:\n`{cmd_str}`")
+                _run_admin_bg_task(cmd, "Sync ClickHouse (sync_analytics_pipeline)")
+                st.success(f"🚀 Tarea en segundo plano iniciada:\n`{' '.join(cmd)}`")
+                st.rerun()
 
         # ----------------------------------------------------
         # 3. Recálculo de Métricas (compute_scholar_metrics_ch.py)
@@ -1235,24 +1341,20 @@ if tab_admin is not None:
             """)
             col_m1, col_m2 = st.columns(2)
             with col_m1:
-                m_acad = st.text_input("👤 Recalcular solo para un Académico (opcional):", placeholder="Ej: ARENCIBIA JORGE, RICARDO", key="m_acad")
-                m_ent = st.text_input("🏛️ Recalcular solo para una Entidad (opcional):", placeholder="Ej: COORDINACION DE LA INVESTIGACION CIENTIFICA", key="m_ent")
+                m_acad = st.text_input("👤 Recalcular solo para un Académico (opcional):", placeholder="Ej: ARENCIBIA JORGE, RICARDO", key="m_acad", disabled=is_task_running)
+                m_ent = st.text_input("🏛️ Recalcular solo para una Entidad (opcional):", placeholder="Ej: COORDINACION DE LA INVESTIGACION CIENTIFICA", key="m_ent", disabled=is_task_running)
             with col_m2:
-                m_inst = st.text_input("🏢 Filtrar por Institución (opcional, vacío = Todo México):", placeholder="Ej: UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", key="m_inst")
+                m_inst = st.text_input("🏢 Filtrar por Institución (opcional, vacío = Todo México):", placeholder="Ej: UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", key="m_inst", disabled=is_task_running)
 
-            if st.button("📊 Iniciar Cómputo de Métricas y Caché (`compute_scholar_metrics_ch.py`)", use_container_width=True):
+            if st.button("📊 Iniciar Cómputo de Métricas y Caché (`compute_scholar_metrics_ch.py`)", use_container_width=True, disabled=is_task_running):
                 cmd = [sys.executable, "ingestion/compute_scholar_metrics_ch.py"]
                 if m_acad.strip(): cmd.extend(["--academic", m_acad.strip()])
                 if m_ent.strip(): cmd.extend(["--entity", m_ent.strip()])
                 if m_inst.strip(): cmd.extend(["--institution", m_inst.strip()])
 
-                cmd_str = " ".join(cmd)
-                st.session_state["last_admin_cmd"] = cmd_str
-                _run_admin_bg_task(cmd, "compute_scholar_metrics")
-                st.success(f"🚀 Recálculo de métricas iniciado en segundo plano:\n`{cmd_str}`")
-
-        if "last_admin_cmd" in st.session_state:
-            st.info(f"Última tarea encolada: `{st.session_state['last_admin_cmd']}`")
+                _run_admin_bg_task(cmd, "Cómputo Métricas (compute_scholar_metrics)")
+                st.success(f"🚀 Recálculo de métricas iniciado en segundo plano:\n`{' '.join(cmd)}`")
+                st.rerun()
 
 
 # =======================================================
