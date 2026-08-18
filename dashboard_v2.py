@@ -1086,69 +1086,170 @@ if user_auth:
 # =======================================================
 if tab_admin is not None:
     with tab_admin:
-        st.header("⚙️ Panel de Administración del Sistema")
-        st.caption("Herramientas avanzadas de gestión, mantenimiento e ingesta masiva de datos.")
+        st.header("⚙️ Panel de Administración y Mantenimiento del Sistema")
+        st.caption("Herramientas avanzadas de recolección de APIs, sincronización analítica y cómputo de métricas.")
         
-        st.markdown("---")
-        st.subheader("📚 1. Sincronización Global de Trabajos (`sync_works.py`)")
-        st.markdown("""
-        Esta herramienta ejecuta el pipeline de sincronización masiva de publicaciones desde las APIs de **OpenAlex, Scopus y ORCID**
-        para los investigadores e instituciones alojados en **Neo4j** y **ClickHouse**.
-        """)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            sync_academics_flag = st.checkbox("👤 Sincronizar por Académicos (`--sync-academics`)", value=True, help="Sincroniza artículos para los nodos Person registrados en Neo4j.")
-            sync_entities_flag = st.checkbox("🏛️ Sincronizar por Instituciones (`--sync-entities`)", value=False, help="Sincroniza artículos para las entidades institucionales con ROR validado.")
-            save_ch_flag = st.checkbox("📊 Sincronizar simultáneamente con ClickHouse (`--ch`)", value=True, help="Escribe los registros mapeados en la tabla paper_author_map de ClickHouse.")
-            
-        with col2:
-            force_local_flag = st.checkbox("⚡ Modo Local sin Cuotas API (`--local`)", value=False, help="Usa API local de OpenAlex y SDK nativa de LM Studio.")
-            resolve_oa_flag = st.checkbox("🔍 Resolver Author IDs de OpenAlex", value=True, help="Intenta resolver activamente los IDs de autor en OpenAlex.")
-            limit_val = st.number_input("🔢 Límite de procesamientos (0 = sin límite):", min_value=0, max_value=100000, value=0, help="Limita el número de elementos a procesar.")
-            name_filter = st.text_input("🎯 Filtrar por Nombre específico (opcional):", placeholder="Ej: ARENCIBIA JORGE, RICARDO", help="Si se especifica, solo sincroniza ese académico o entidad.")
+        import threading
+        import subprocess
 
-        if st.button("🚀 Iniciar Sincronización Global de Trabajos (`sync_works.py`)", type="primary", use_container_width=True):
-            import threading
-            import subprocess
-            
-            cmd = [sys.executable, "ingestion/sync_works.py"]
-            if sync_academics_flag and not sync_entities_flag:
-                cmd.append("--sync-academics")
-            elif sync_entities_flag and not sync_academics_flag:
-                cmd.append("--sync-entities")
-            else:
-                cmd.append("--all")
-
-            if save_ch_flag:
-                cmd.append("--ch")
-            if force_local_flag:
-                cmd.append("--local")
-            if not resolve_oa_flag:
-                cmd.append("--no-resolve-oa")
-            if limit_val > 0:
-                cmd.extend(["--limit", str(limit_val)])
-            if name_filter.strip():
-                cmd.extend(["--name", name_filter.strip()])
-                
-            cmd_str = " ".join(cmd)
-            st.session_state["last_admin_cmd"] = cmd_str
-            
-            def _run_admin_sync_works(command):
+        def _run_admin_bg_task(cmd_list, task_title="Tarea"):
+            def _runner():
                 try:
-                    print(f"🚀 [Admin Task] Ejecutando: {' '.join(command)}")
-                    res = subprocess.run(command, cwd=os.path.dirname(__file__), capture_output=True, text=True)
-                    if res.returncode == 0:
-                        print("✅ [Admin Task] sync_works.py completado exitosamente.")
+                    if isinstance(cmd_list[0], list):
+                        # Chained commands
+                        for subcmd in cmd_list:
+                            print(f"🚀 [Admin Task - {task_title}] Ejecutando: {' '.join(subcmd)}")
+                            res = subprocess.run(subcmd, cwd=os.path.dirname(__file__), capture_output=True, text=True)
+                            if res.returncode != 0:
+                                print(f"❌ [Admin Task - {task_title}] Error en paso ({' '.join(subcmd)}):\nSTDOUT:\n{res.stdout[-1000:]}\nSTDERR:\n{res.stderr[-1000:]}")
+                                return
+                        print(f"✅ [Admin Task - {task_title}] Pipeline completado exitosamente.")
                     else:
-                        print(f"❌ [Admin Task] Error en sync_works.py:\nSTDOUT:\n{res.stdout[-1000:]}\nSTDERR:\n{res.stderr[-1000:]}")
+                        print(f"🚀 [Admin Task - {task_title}] Ejecutando: {' '.join(cmd_list)}")
+                        res = subprocess.run(cmd_list, cwd=os.path.dirname(__file__), capture_output=True, text=True)
+                        if res.returncode == 0:
+                            print(f"✅ [Admin Task - {task_title}] Completado exitosamente.")
+                        else:
+                            print(f"❌ [Admin Task - {task_title}] Error:\nSTDOUT:\n{res.stdout[-1000:]}\nSTDERR:\n{res.stderr[-1000:]}")
                 except Exception as e:
-                    print(f"❌ [Admin Task] Excepción: {e}")
+                    print(f"❌ [Admin Task - {task_title}] Excepción: {e}")
 
-            t = threading.Thread(target=_run_admin_sync_works, args=(cmd,), daemon=True)
+            t = threading.Thread(target=_runner, daemon=True)
             t.start()
-            st.success(f"🚀 Tarea en segundo plano iniciada:\n`{cmd_str}`")
-            st.toast("🚀 Sincronización global iniciada en segundo plano.", icon="⚙️")
+
+        # ----------------------------------------------------
+        # 0. Pipeline Integral (1-Click)
+        # ----------------------------------------------------
+        with st.expander("⚡ **Pipeline Integral End-to-End (1-Clic)**", expanded=True):
+            st.markdown("""
+            Ejecuta de forma secuencial los 3 pasos: **1. Cosecha Externa (`sync_works.py`)** $\\rightarrow$ **2. Sincronización ClickHouse (`sync_analytics_pipeline.py`)** $\\rightarrow$ **3. Recálculo de Métricas (`compute_scholar_metrics_ch.py`)**.
+            """)
+            col_e1, col_e2 = st.columns(2)
+            with col_e1:
+                e2e_name = st.text_input("🎯 Filtrar por Académico específico (opcional):", placeholder="Ej: ARENCIBIA JORGE, RICARDO", key="e2e_name")
+                e2e_inst = st.text_input("🏛️ Institución padre (obligatoria si filtras por académico):", placeholder="Ej: UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", key="e2e_inst")
+            with col_e2:
+                e2e_local = st.checkbox("⚡ Usar recursos locales / LM Studio (`--local`)", value=False, key="e2e_local")
+                e2e_limit = st.number_input("🔢 Límite de registros (0 = sin límite):", min_value=0, max_value=100000, value=0, key="e2e_limit")
+
+            if st.button("🚀 Ejecutar Pipeline Completo (Cosecha + Sync + Métricas)", type="primary", use_container_width=True, key="btn_e2e"):
+                chain = []
+                
+                # Paso 1: sync_works.py
+                cmd1 = [sys.executable, "ingestion/sync_works.py", "--sync-academics", "--ch"]
+                if e2e_local: cmd1.append("--local")
+                if e2e_name.strip(): cmd1.extend(["--name", e2e_name.strip()])
+                if e2e_limit > 0: cmd1.extend(["--limit", str(e2e_limit)])
+                chain.append(cmd1)
+
+                # Paso 2: sync_analytics_pipeline.py
+                cmd2 = [sys.executable, "ingestion/sync_analytics_pipeline.py", "--phase", "all"]
+                if e2e_name.strip() and e2e_inst.strip():
+                    cmd2.extend(["--academic", e2e_name.strip(), "--institution", e2e_inst.strip()])
+                chain.append(cmd2)
+
+                # Paso 3: compute_scholar_metrics_ch.py
+                cmd3 = [sys.executable, "ingestion/compute_scholar_metrics_ch.py"]
+                if e2e_name.strip(): cmd3.extend(["--academic", e2e_name.strip()])
+                if e2e_inst.strip(): cmd3.extend(["--institution", e2e_inst.strip()])
+                chain.append(cmd3)
+
+                chain_str = " && ".join([" ".join(c) for c in chain])
+                st.session_state["last_admin_cmd"] = chain_str
+                _run_admin_bg_task(chain, "Pipeline Completo")
+                st.success(f"🚀 Pipeline completo iniciado en segundo plano:\n`{chain_str}`")
+                st.toast("🚀 Pipeline completo iniciado en segundo plano.", icon="⚙️")
+
+        st.markdown("---")
+        st.subheader("🛠️ Herramientas Modulares de Mantenimiento")
+
+        # ----------------------------------------------------
+        # 1. Cosecha de Obras (sync_works.py)
+        # ----------------------------------------------------
+        with st.expander("🌐 **1. Cosecha Externa de Publicaciones (`sync_works.py`)**", expanded=False):
+            st.markdown("""
+            Descarga y actualiza publicaciones desde las APIs de **ORCID (Pública Oficial)**, **Scopus** y **OpenAlex** hacia **Neo4j** y **Qdrant**.
+            """)
+            col1, col2 = st.columns(2)
+            with col1:
+                sync_academics_flag = st.checkbox("👤 Sincronizar por Académicos (`--sync-academics`)", value=True)
+                sync_entities_flag = st.checkbox("🏛️ Sincronizar por Instituciones (`--sync-entities`)", value=False)
+                save_ch_flag = st.checkbox("📊 Sincronizar simultáneamente con ClickHouse (`--ch`)", value=True)
+            with col2:
+                force_local_flag = st.checkbox("⚡ Modo Local sin Cuotas API (`--local`)", value=False)
+                resolve_oa_flag = st.checkbox("🔍 Resolver Author IDs de OpenAlex", value=True)
+                limit_val = st.number_input("🔢 Límite de procesamientos:", min_value=0, max_value=100000, value=0)
+                name_filter = st.text_input("🎯 Filtrar por Nombre (opcional):", placeholder="Ej: ARENCIBIA JORGE, RICARDO")
+
+            if st.button("🌐 Iniciar Cosecha de Publicaciones (`sync_works.py`)", use_container_width=True):
+                cmd = [sys.executable, "ingestion/sync_works.py"]
+                if sync_academics_flag and not sync_entities_flag: cmd.append("--sync-academics")
+                elif sync_entities_flag and not sync_academics_flag: cmd.append("--sync-entities")
+                else: cmd.append("--all")
+
+                if save_ch_flag: cmd.append("--ch")
+                if force_local_flag: cmd.append("--local")
+                if not resolve_oa_flag: cmd.append("--no-resolve-oa")
+                if limit_val > 0: cmd.extend(["--limit", str(limit_val)])
+                if name_filter.strip(): cmd.extend(["--name", name_filter.strip()])
+
+                cmd_str = " ".join(cmd)
+                st.session_state["last_admin_cmd"] = cmd_str
+                _run_admin_bg_task(cmd, "sync_works")
+                st.success(f"🚀 Tarea en segundo plano iniciada:\n`{cmd_str}`")
+
+        # ----------------------------------------------------
+        # 2. Sincronización ClickHouse (sync_analytics_pipeline.py)
+        # ----------------------------------------------------
+        with st.expander("🗄️ **2. Sincronización Grafo $\\rightarrow$ ClickHouse (`sync_analytics_pipeline.py`)**", expanded=False):
+            st.markdown("""
+            Alinea las tablas de ClickHouse (`paper_author_map` y `paper_entity_map`) con las relaciones de Neo4j y materializa el corpus en `works_academic_all`.
+            """)
+            col_s1, col_s2 = st.columns(2)
+            with col_s1:
+                phase_opt = st.selectbox("📌 Fase a ejecutar:", ["all (Mapas + Materializar Corpus)", "maps (Solo paper_author_map / paper_entity_map)", "works (Solo materializar works_academic_all)"])
+                phase_val = phase_opt.split(" ")[0]
+                s_acad = st.text_input("👤 Filtrar por Académico (opcional):", placeholder="Ej: ARENCIBIA JORGE, RICARDO", key="s_acad")
+            with col_s2:
+                s_ent = st.text_input("🏛️ Filtrar por Entidad/Dependencia (opcional):", placeholder="Ej: COORDINACION DE LA INVESTIGACION CIENTIFICA", key="s_ent")
+                s_inst = st.text_input("🏢 Institución padre (obligatoria si filtras):", placeholder="Ej: UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", key="s_inst")
+
+            if st.button("🗄️ Iniciar Sincronización ClickHouse (`sync_analytics_pipeline.py`)", use_container_width=True):
+                cmd = [sys.executable, "ingestion/sync_analytics_pipeline.py", "--phase", phase_val]
+                if s_acad.strip() and s_inst.strip():
+                    cmd.extend(["--academic", s_acad.strip(), "--institution", s_inst.strip()])
+                elif s_ent.strip() and s_inst.strip():
+                    cmd.extend(["--entity", s_ent.strip(), "--institution", s_inst.strip()])
+                
+                cmd_str = " ".join(cmd)
+                st.session_state["last_admin_cmd"] = cmd_str
+                _run_admin_bg_task(cmd, "sync_analytics_pipeline")
+                st.success(f"🚀 Tarea en segundo plano iniciada:\n`{cmd_str}`")
+
+        # ----------------------------------------------------
+        # 3. Recálculo de Métricas (compute_scholar_metrics_ch.py)
+        # ----------------------------------------------------
+        with st.expander("📊 **3. Recálculo de Métricas y Caché (`compute_scholar_metrics_ch.py`)**", expanded=False):
+            st.markdown("""
+            Calcula H-Index, FWCI, velocidad de citación, ODS, evolución temática y regenera la base de datos **DuckDB (`analytics_cache.duckdb`)** y los archivos Parquet para el dashboard.
+            """)
+            col_m1, col_m2 = st.columns(2)
+            with col_m1:
+                m_acad = st.text_input("👤 Recalcular solo para un Académico (opcional):", placeholder="Ej: ARENCIBIA JORGE, RICARDO", key="m_acad")
+                m_ent = st.text_input("🏛️ Recalcular solo para una Entidad (opcional):", placeholder="Ej: COORDINACION DE LA INVESTIGACION CIENTIFICA", key="m_ent")
+            with col_m2:
+                m_inst = st.text_input("🏢 Filtrar por Institución (opcional, vacío = Todo México):", placeholder="Ej: UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", key="m_inst")
+
+            if st.button("📊 Iniciar Cómputo de Métricas y Caché (`compute_scholar_metrics_ch.py`)", use_container_width=True):
+                cmd = [sys.executable, "ingestion/compute_scholar_metrics_ch.py"]
+                if m_acad.strip(): cmd.extend(["--academic", m_acad.strip()])
+                if m_ent.strip(): cmd.extend(["--entity", m_ent.strip()])
+                if m_inst.strip(): cmd.extend(["--institution", m_inst.strip()])
+
+                cmd_str = " ".join(cmd)
+                st.session_state["last_admin_cmd"] = cmd_str
+                _run_admin_bg_task(cmd, "compute_scholar_metrics")
+                st.success(f"🚀 Recálculo de métricas iniciado en segundo plano:\n`{cmd_str}`")
 
         if "last_admin_cmd" in st.session_state:
             st.info(f"Última tarea encolada: `{st.session_state['last_admin_cmd']}`")
