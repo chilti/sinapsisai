@@ -1106,7 +1106,7 @@ def render_investigador_view(entity_name, institution_name=None):
         p98 = raw_fwci.quantile(0.98) if len(raw_fwci) > 10 else raw_fwci.max()
         p98 = max(p98, 0.1)
         norm_fwci = (raw_fwci / p98).clip(lower=0.0, upper=1.0)
-        r_min, r_max = 2.5, 7.5
+        r_min, r_max = 1.25, 3.75
         df_umap['_marker_size'] = r_min + (r_max - r_min) * np.sqrt(norm_fwci)
 
         # Otros investigadores (Puntos con tamaño proporcional a FWCI)

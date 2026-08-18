@@ -637,7 +637,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
             p98 = raw_fwci.quantile(0.98) if len(raw_fwci) > 10 else raw_fwci.max()
             p98 = max(p98, 0.1)
             norm_fwci = (raw_fwci / p98).clip(lower=0.0, upper=1.0)
-            r_min, r_max = 2.5, 7.5
+            r_min, r_max = 1.25, 3.75
             df_umap['_marker_size'] = r_min + (r_max - r_min) * np.sqrt(norm_fwci)
 
             otros = df_umap[df_umap['academic_name'] != entity_name]

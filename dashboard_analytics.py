@@ -896,7 +896,7 @@ def _render_umap_plot(df_umap, selected_inv, title_context, key_suffix=""):
     p98 = raw_metric.quantile(0.98) if len(raw_metric) > 10 else raw_metric.max()
     p98 = max(p98, 0.1)
     norm_metric = (raw_metric / p98).clip(lower=0.0, upper=1.0)
-    r_min, r_max = 2.5, 7.5
+    r_min, r_max = 1.25, 3.75
     df_umap['_marker_size'] = r_min + (r_max - r_min) * np.sqrt(norm_metric)
 
     # Otros investigadores (Puntos con tamaño dinámico según FWCI/métrica)
