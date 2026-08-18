@@ -637,7 +637,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
             p98 = raw_fwci.quantile(0.98) if len(raw_fwci) > 10 else raw_fwci.max()
             p98 = max(p98, 0.1)
             norm_fwci = (raw_fwci / p98).clip(lower=0.0, upper=1.0)
-            r_min, r_max = 3.5, 18.0
+            r_min, r_max = 2.5, 7.5
             df_umap['_marker_size'] = r_min + (r_max - r_min) * np.sqrt(norm_fwci)
 
             otros = df_umap[df_umap['academic_name'] != entity_name]
@@ -652,7 +652,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
                 ))
             if not sel_row.empty:
                 hover_text_sel = sel_row['academic_name'] + "<br>FWCI: " + sel_row[fwci_col].round(2).astype(str) + "<br>Docs: " + sel_row.get('num_documents', 0).astype(str)
-                sel_size = max(float(sel_row['_marker_size'].iloc[0]), 15.0)
+                sel_size = max(float(sel_row['_marker_size'].iloc[0]) + 4.0, 11.0)
                 fig_umap.add_trace(go.Scatter(
                     x=sel_row['umap_x'], y=sel_row['umap_y'], mode='markers',
                     name=entity_name, text=hover_text_sel, hoverinfo='text',

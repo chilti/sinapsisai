@@ -1106,7 +1106,7 @@ def render_investigador_view(entity_name, institution_name=None):
         p98 = raw_fwci.quantile(0.98) if len(raw_fwci) > 10 else raw_fwci.max()
         p98 = max(p98, 0.1)
         norm_fwci = (raw_fwci / p98).clip(lower=0.0, upper=1.0)
-        r_min, r_max = 3.5, 18.0
+        r_min, r_max = 2.5, 7.5
         df_umap['_marker_size'] = r_min + (r_max - r_min) * np.sqrt(norm_fwci)
 
         # Otros investigadores (Puntos con tamaño proporcional a FWCI)
@@ -1129,7 +1129,7 @@ def render_investigador_view(entity_name, institution_name=None):
         # Investigador seleccionado (Punto destacado)
         sel_row = df_umap[df_umap['academic_name'] == selected_inv]
         if not sel_row.empty:
-            sel_size = max(float(sel_row['_marker_size'].iloc[0]), 15.0)
+            sel_size = max(float(sel_row['_marker_size'].iloc[0]) + 4.0, 11.0)
             fig_umap.add_trace(go.Scatter(
                 x=sel_row['umap_x'], y=sel_row['umap_y'],
                 mode='markers',

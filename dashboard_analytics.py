@@ -896,7 +896,7 @@ def _render_umap_plot(df_umap, selected_inv, title_context, key_suffix=""):
     p98 = raw_metric.quantile(0.98) if len(raw_metric) > 10 else raw_metric.max()
     p98 = max(p98, 0.1)
     norm_metric = (raw_metric / p98).clip(lower=0.0, upper=1.0)
-    r_min, r_max = 3.5, 18.0
+    r_min, r_max = 2.5, 7.5
     df_umap['_marker_size'] = r_min + (r_max - r_min) * np.sqrt(norm_metric)
 
     # Otros investigadores (Puntos con tamaño dinámico según FWCI/métrica)
@@ -919,7 +919,7 @@ def _render_umap_plot(df_umap, selected_inv, title_context, key_suffix=""):
     # Investigador seleccionado (Punto destacado)
     sel_row = df_umap[df_umap['academic_name'] == selected_inv]
     if not sel_row.empty:
-        sel_size = max(float(sel_row['_marker_size'].iloc[0]), 15.0)
+        sel_size = max(float(sel_row['_marker_size'].iloc[0]) + 4.0, 11.0)
         fig_umap.add_trace(go.Scatter(
             x=sel_row['umap_x'], y=sel_row['umap_y'],
             mode='markers',
