@@ -1093,8 +1093,8 @@ if tab_admin is not None:
         import subprocess
         import json
         from datetime import datetime
-
-        ADMIN_STATUS_FILE = os.path.join(BASE_PATH, "data", "admin_task_status.json")
+        _BASE_PATH = os.path.abspath(os.path.dirname(__file__))
+        ADMIN_STATUS_FILE = os.path.join(_BASE_PATH, "data", "admin_task_status.json")
 
         def _is_pid_alive(pid):
             if not pid or pid <= 0: return False
