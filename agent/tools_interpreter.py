@@ -11,7 +11,12 @@ from typing import Optional, Dict, Any, List
 from langchain_core.tools import Tool, tool
 
 BASE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-CACHE_DIR = os.path.join(BASE_PATH, 'data', 'cache')
+CANDIDATE_CACHE_DIRS = [
+    os.path.join(BASE_PATH, 'data', 'cache_ch'),
+    os.path.join(BASE_PATH, 'data', 'cache'),
+    '/mnt/expansion/desplegados/Topics/data/cache_temas',
+    '/mnt/expansion/desplegados/revistaslatam/data_r'
+]
 
 # Clickhouse connection
 try:
@@ -21,17 +26,66 @@ except Exception:
     HAS_CH = False
 
 def find_parquet_table(filename: str, institution: Optional[str] = None, academic: Optional[str] = None) -> Optional[str]:
-    """Resolves hierarchical cache path."""
-    if institution:
-        safe_inst = str(institution).replace('/', '_').replace('\\', '_')
-        if academic:
-            safe_ac = str(academic).replace('/', '_').replace('\\', '_')
-            p = os.path.join(CACHE_DIR, safe_inst, safe_ac, filename)
-            if os.path.exists(p): return p
-        p = os.path.join(CACHE_DIR, safe_inst, filename)
-        if os.path.exists(p): return p
-    p = os.path.join(CACHE_DIR, filename)
-    if os.path.exists(p): return p
+    """Resolves hierarchical cache path across cache_ch and topic caches."""
+    target_clean = filename if filename.endswith('.parquet') else f"{filename}.parquet"
+    
+    # 1. Search across candidate directories
+    for base in CANDIDATE_CACHE_DIRS:
+        if not os.path.exists(base):
+            continue
+            
+        # Direct check
+        direct = os.path.join(base, target_clean)
+        if os.path.exists(direct):
+            return direct
+            
+        q_inst = str(institution).upper().strip() if institution else ""
+        q_ac = str(academic).upper().strip() if academic else ""
+        
+        try:
+            # Sort directories to prioritize exact match on institution
+            inst_list = sorted(os.listdir(base), key=lambda x: (q_inst not in x.upper() if q_inst else False, len(x)))
+            for inst_name in inst_list:
+                inst_dir = os.path.join(base, inst_name)
+                if not os.path.isdir(inst_dir):
+                    continue
+                
+                inst_match = (not q_inst) or (q_inst in inst_name.upper())
+                
+                if inst_match and not q_ac:
+                    p = os.path.join(inst_dir, target_clean)
+                    if os.path.exists(p):
+                        return p
+                        
+                # Search inside subdependencies or researchers
+                if inst_match or q_ac:
+                    sub_list = sorted(os.listdir(inst_dir), key=lambda x: (q_inst not in x.upper() if q_inst else False, len(x)))
+                    for sub_name in sub_list:
+                        sub_dir = os.path.join(inst_dir, sub_name)
+                        if not os.path.isdir(sub_dir):
+                            continue
+                            
+                        # If matching subdependency
+                        if q_inst and (q_inst in sub_name.upper()) and not q_ac:
+                            p_sub = os.path.join(sub_dir, target_clean)
+                            if os.path.exists(p_sub):
+                                return p_sub
+                                
+                        # Match academic
+                        if q_ac and (q_ac in sub_name.upper()):
+                            p_ac = os.path.join(sub_dir, target_clean)
+                            if os.path.exists(p_ac):
+                                return p_ac
+                                
+                        # Level 3 check: inst -> subdep -> academic
+                        for ac_name in os.listdir(sub_dir):
+                            if q_ac and (q_ac in ac_name.upper()):
+                                p_deep = os.path.join(sub_dir, ac_name, target_clean)
+                                if os.path.exists(p_deep):
+                                    return p_deep
+        except Exception:
+            continue
+            
     return None
 
 @tool
