@@ -31,6 +31,7 @@ from agent.orchestrator import RAGOrchestrator
 from agent.interpreter_agent import InterpreterOrchestrator
 from agent.scientific_agent import AutonomousScientificAgent
 from agent.skill_manager import skill_manager
+from agent.artifact_manager import artifact_manager
 from dashboard_analytics import render_institucion_view, render_investigador_view, load_cached_data, get_institution_hierarchy
 from lib.coauthra_integration import render_coauthra
 from agent.tools_mcp import get_mcp_tools_sync
@@ -1631,29 +1632,37 @@ if tab_maps is not None:
 with tab_chat:
     if is_admin:
         st.markdown("### Asistente Científico & Agente de Investigación (Arquitectura Dual)")
-        col_mode1, col_mode2 = st.columns([1.5, 1.5])
+        col_mode1, col_mode2 = st.columns([1.6, 1.4])
         with col_mode1:
             assistant_mode = st.radio(
                 "Modalidad de Inteligencia:",
                 [
                     "⚡ Asistente General (Rápido y Seguro)",
-                    "🔬 Agente Científico Autónomo (Smolagents + Skills)"
+                    "🔬 Enjambre Científico Autónomo (Multi-Agent Swarm + ScientistOne CoE)"
                 ],
                 index=0,
                 horizontal=True,
-                help="El Asistente General usa consultas deterministas directas (cero riesgo). El Agente Científico ejecuta razonamiento multi-paso con skills metodológicos avanzados."
+                help="El Asistente General usa consultas deterministas directas. El Enjambre Científico orquesta agentes especialistas (Supervisor, Data Scientist, Topological SOM, Critic & Visualizer) con ciclo iterativo GCR, auto-síntesis de artefactos y trazabilidad CoE."
             )
         with col_mode2:
-            if "Científico" in assistant_mode:
+            if "Científico" in assistant_mode or "Swarm" in assistant_mode:
                 all_skills_list = ["Auto-detectar"] + [s['name'] for s in skill_manager.list_skills()]
                 selected_skills = st.multiselect(
                     "🧠 Skills Metodológicos Activos:",
                     options=all_skills_list,
                     default=["Auto-detectar"],
-                    help="Skills especializados de sos-mcp-services inyectados al razonamiento del agente."
+                    help="Skills especializados de sos-mcp-services inyectados al razonamiento del enjambre."
                 )
             else:
                 st.caption("🛡️ **Modo Seguro**: Consultas directas a ClickHouse, Neo4j, Qdrant y Parquets sin ejecución de código arbitrario.")
+        
+        with st.expander("🎨 Ver Catálogo de Artefactos Visuales e Interactivos Disponibles", expanded=False):
+            arts_list = artifact_manager.list_artifacts()
+            st.markdown(f"**Total de Artefactos Registrados:** `{len(arts_list)}` (Estándar + Auto-Sintetizados en caliente)")
+            cols_art = st.columns(2)
+            for idx, a in enumerate(arts_list):
+                with cols_art[idx % 2]:
+                    st.markdown(f"**• [`{a['id']}`]** {a['title']}\n\n*{a.get('description', '')[:120]}...*")
     else:
         st.markdown("### ⚡ Asistente Científico de Consulta")
         st.caption("🛡️ **Modo Seguro**: Consultas deterministas y directas sobre ClickHouse, Neo4j, Qdrant y Parquets.")
@@ -1674,30 +1683,61 @@ with tab_chat:
         for message in st.session_state.chat_history:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
+                
+                # Badges de metadatos científicos
+                meta_cols = st.columns(3)
                 if message.get("skills"):
-                    st.caption(f"🧠 *Skills utilizados:* `{', '.join(message['skills'])}`")
+                    meta_cols[0].caption(f"🧠 *Skills:* `{', '.join(message['skills'])}`")
                 if message.get("duration"):
-                    st.caption(f"⏱️ *Tiempo de respuesta:* {message['duration']}s")
+                    meta_cols[1].caption(f"⏱️ *Tiempo:* {message['duration']}s")
+                if message.get("critic_verdict"):
+                    cv = message["critic_verdict"]
+                    appr = "✅ Aprobado" if cv.get("approved", True) else "⚠️ Con Observaciones"
+                    conf = int(cv.get("confidence", 0.9) * 100)
+                    meta_cols[2].caption(f"🛡️ *Auditoría CoE:* `{appr}` ({conf}%)")
+
+                # Razonamiento y Pasos del Enjambre
                 if message.get("reasoning"):
-                    with st.expander("🧠 Ver Razonamiento y Herramientas", expanded=False):
+                    with st.expander("🧠 Ver Razonamiento y Pasos del Enjambre (DAG)", expanded=False):
                         for step in message["reasoning"]:
                             if step.get("type") == "thought":
-                                st.markdown(f"💡 **{step.get('name', 'Pensamiento')}:** {step.get('content', '')}")
+                                st.markdown(f"💡 **{step.get('name', 'Paso')}:** {step.get('content', '')}")
                             elif step.get("type") == "tool_call":
                                 st.code(f"🛠️ {step.get('name', 'tool')}({json.dumps(step.get('args', {}), ensure_ascii=False)})")
                             elif step.get("type") == "tool_result":
                                 st.caption(f"📥 {step.get('name', 'Resultado')}:")
                                 st.code(step.get("content", ""), language="json" if any(x in str(step.get('name', '')) for x in ["Alex", "search", "query"]) else None)
+                
                 if message.get("image"):
                     st.image(message["image"])
+                
+                # Cadena de Evidencia CoE
                 if message.get("provenance"):
-                    with st.expander("🔗 Ver Cadena de Evidencia CoE (ScientistOne Standard)", expanded=False):
+                    with st.expander(f"🔗 Ver Cadena de Evidencia CoE ({len(message['provenance'])} Registros)", expanded=False):
                         for p in message["provenance"]:
                             st.markdown(f"• **[{p.get('evidence_source', '').upper()}]** `{p.get('claim_text', '')}`")
+                
+                # Artefactos Visuales Interactivos
                 if message.get("artifacts"):
-                    for art in message["artifacts"]:
-                        st.markdown(f"**🎨 Artefacto Interactivo:** `{art.get('title', art.get('artifact_id', 'Visualización'))}`")
-                        components.html(art["html"], height=520, scrolling=True)
+                    for art_idx, art in enumerate(message["artifacts"]):
+                        st.markdown(f"### 🎨 Artefacto Interactivo: `{art.get('title', art.get('artifact_id', 'Visualización'))}`")
+                        components.html(art["html"], height=540, scrolling=True)
+                        col_d1, col_d2, _ = st.columns([1.5, 1.5, 3])
+                        if art.get("data"):
+                            col_d1.download_button(
+                                label="💾 Descargar Datos JSON",
+                                data=json.dumps(art["data"], indent=2, ensure_ascii=False),
+                                file_name=f"{art.get('artifact_id', 'artefacto')}_data.json",
+                                mime="application/json",
+                                key=f"dl_json_{message.get('duration', 0)}_{art_idx}"
+                            )
+                        col_d2.download_button(
+                            label="📄 Descargar HTML Standalone",
+                            data=art["html"],
+                            file_name=f"{art.get('artifact_id', 'artefacto')}.html",
+                            mime="text/html",
+                            key=f"dl_html_{message.get('duration', 0)}_{art_idx}"
+                        )
 
     # ---- Input del usuario ----
     if prompt := st.chat_input("Escribe tu consulta científica aquí..."):
@@ -1719,8 +1759,8 @@ with tab_chat:
                 try:
                     session_id = st.session_state.session_id
                     
-                    if is_admin and "Científico" in assistant_mode:
-                        # TIER 2: Autonomous Scientific Agent
+                    if is_admin and ("Científico" in assistant_mode or "Swarm" in assistant_mode):
+                        # TIER 2: Autonomous Scientific Swarm
                         if "scientific_agent" not in st.session_state or getattr(st.session_state.scientific_agent, 'model', None) is None:
                             st.session_state.scientific_agent = AutonomousScientificAgent()
                         scientific_agent = st.session_state.scientific_agent
@@ -1738,6 +1778,8 @@ with tab_chat:
                         duration = res_dict.get("duration_seconds", 0)
                         intermediate_steps = res_dict.get("steps", [])
                         artifacts_generated = res_dict.get("artifacts", [])
+                        critic_verdict_data = res_dict.get("critic_verdict", {})
+                        provenance_data = res_dict.get("provenance", [])
                     else:
                         # TIER 1: Deterministic Fast & Safe Assistant
                         orchestrator = st.session_state.orchestrator
@@ -1769,7 +1811,8 @@ with tab_chat:
                     "duration": duration,
                     "reasoning": intermediate_steps,
                     "artifacts": artifacts_generated if 'artifacts_generated' in locals() else [],
-                    "provenance": res_dict.get("provenance", []) if 'res_dict' in locals() and isinstance(res_dict, dict) else []
+                    "provenance": provenance_data if 'provenance_data' in locals() else [],
+                    "critic_verdict": critic_verdict_data if 'critic_verdict_data' in locals() else {}
                 })
                 st.rerun()
 
