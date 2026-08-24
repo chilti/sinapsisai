@@ -1690,6 +1690,10 @@ with tab_chat:
                                 st.code(step.get("content", ""), language="json" if any(x in str(step.get('name', '')) for x in ["Alex", "search", "query"]) else None)
                 if message.get("image"):
                     st.image(message["image"])
+                if message.get("artifacts"):
+                    for art in message["artifacts"]:
+                        st.markdown(f"**🎨 Artefacto Interactivo:** `{art.get('title', art.get('artifact_id', 'Visualización'))}`")
+                        components.html(art["html"], height=520, scrolling=True)
 
     # ---- Input del usuario ----
     if prompt := st.chat_input("Escribe tu consulta científica aquí..."):
@@ -1729,6 +1733,7 @@ with tab_chat:
                         skills_used = res_dict.get("skills_used", [])
                         duration = res_dict.get("duration_seconds", 0)
                         intermediate_steps = res_dict.get("steps", [])
+                        artifacts_generated = res_dict.get("artifacts", [])
                     else:
                         # TIER 1: Deterministic Fast & Safe Assistant
                         orchestrator = st.session_state.orchestrator
@@ -1758,7 +1763,8 @@ with tab_chat:
                     "content": response,
                     "skills": skills_used,
                     "duration": duration,
-                    "reasoning": intermediate_steps
+                    "reasoning": intermediate_steps,
+                    "artifacts": artifacts_generated if 'artifacts_generated' in locals() else []
                 })
                 st.rerun()
 

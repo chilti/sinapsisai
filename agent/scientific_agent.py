@@ -13,13 +13,18 @@ from typing import Dict, Any, List, Optional
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, BASE_DIR)
 
-# Add sos-mcp-services extra site-packages if available
+# Add sos-mcp-services extra site-packages and agent path if available
 VENV_SITE_PACKAGES = "/home/jlja/venv_sos_mcp/lib/python3.12/site-packages"
 if os.path.exists(VENV_SITE_PACKAGES) and VENV_SITE_PACKAGES not in sys.path:
     sys.path.insert(0, VENV_SITE_PACKAGES)
 
+SOS_MCP_PATH = "/mnt/expansion/desplegados/sos-mcp-services"
+if os.path.exists(SOS_MCP_PATH) and SOS_MCP_PATH not in sys.path:
+    sys.path.insert(0, SOS_MCP_PATH)
+
 from lib.llm_utils import LLMConfig
 from agent.skill_manager import skill_manager
+from agent.artifact_manager import artifact_manager
 from agent.tools_interpreter import structured_analytics_tools
 from agent.tools_hybrid import hybrid_tools
 
@@ -34,8 +39,8 @@ except ImportError:
 # ============================================================================
 # Wrapped Tools for Smolagents
 # ============================================================================
-def create_smol_tools() -> List[Any]:
-    """Converts local tools into smolagents-compatible tools."""
+def create_smol_tools(emitted_artifacts_list: Optional[List[Dict[str, Any]]] = None) -> List[Any]:
+    """Converts local tools into smolagents-compatible tools with artifact emission support."""
     tools = []
     
     # 1. Query Academic Cache
@@ -88,6 +93,29 @@ def create_smol_tools() -> List[Any]:
         inst = institution_name if institution_name else None
         return get_scientometric_summary.invoke({'academic_name': academic_name, 'institution_name': inst})
     tools.append(get_researcher_profile)
+
+    # 4. Emit Scientific Visual Artifact
+    @smol_tool
+    def emit_scientific_artifact(artifact_id: str, title: str, data: dict) -> str:
+        """
+        Renderiza un artefacto visual interactivo para el usuario (mallas SOM, redes Louvain, mapas UMAP, frentes de investigación, diplomacia científica, leyes bibliométricas, reportes ejecutivos).
+        Args:
+            artifact_id: Identificador del artefacto ('som-hexagonal-mesh', 'bibliometric-force-network', 'umap-density-contours', 'research-fronts-evolution', 'geopolitical-science-map', 'bibliometric-laws-curves', 'journal-benchmark-matrix', 'institutional-benchmarking-profile', 'graphrag-entity-subgraph', 'scientific-executive-report').
+            title: Título descriptivo de la visualización.
+            data: Diccionario con la estructura de datos requerida por el artefacto.
+        """
+        rendered_html = artifact_manager.render_artifact(artifact_id, data, title=title)
+        if rendered_html:
+            if emitted_artifacts_list is not None:
+                emitted_artifacts_list.append({
+                    "artifact_id": artifact_id,
+                    "title": title,
+                    "data": data,
+                    "html": rendered_html
+                })
+            return f"✅ Artefacto visual interactivo '{title}' ({artifact_id}) generado y renderizado exitosamente para el usuario."
+        return f"❌ Error: Artefacto '{artifact_id}' no encontrado en el catálogo de artefactos."
+    tools.append(emit_scientific_artifact)
 
     return tools
 
@@ -142,18 +170,22 @@ class AutonomousScientificAgent:
             
         skills_used = [s.name for s in matched_skills]
         
-        # 2. Build system instructions
+        # 2. Build system instructions with skills and artifacts catalog
+        artifacts_prompt = artifact_manager.get_artifacts_prompt()
         base_system_prompt = f"""Eres el Agente Científico Autónomo de Info TlachIA y del Ecosistema de Inteligencia Científica (SECIHTI/SNII).
 Tu objetivo es resolver investigaciones cienciométricas complejas mediante un enfoque riguroso, multi-paso y fundamentado en evidencia.
 
 {skill_prompt}
+
+{artifacts_prompt}
 
 DIRECTRICES:
 1. Formula un plan de análisis claro antes de consultar datos.
 2. Utiliza las herramientas analíticas para obtener datos empíricos de ClickHouse, Parquet y Grafos.
 3. Procesa y resume los resultados con métricas bibliométricas normalizadas (FWCI, H-index, Leyes de Bradford/Lotka, etc.).
 4. Si se te proporciona un contexto de entidad o investigador, úsalo prioritariamente: {entity_context if entity_context else 'Nacional / Global'}.
-5. Genera un reporte final estructurado con síntesis ejecutiva, tablas y conclusiones cienciométricas.
+5. Si la consulta involucra topología SOM, redes de coautoría, densidades UMAP, frentes de investigación, geopolítica o leyes bibliométricas, GENERA EL ARTEFACTO VISUAL correspondiente usando `emit_scientific_artifact`.
+6. Genera un reporte final estructurado con síntesis ejecutiva, tablas y conclusiones cienciométricas.
 """
         
         if not HAS_SMOLAGENTS or self.model is None:
@@ -161,13 +193,18 @@ DIRECTRICES:
                 "answer": "Error: smolagents no está disponible. Usa el Asistente Público (Tier 1).",
                 "steps": [],
                 "skills_used": skills_used,
+                "artifacts": [],
                 "duration_seconds": round(time.time() - start_time, 2)
             }
             
         try:
+            # Emitted artifacts collector for this run
+            emitted_artifacts = []
+            run_tools = create_smol_tools(emitted_artifacts)
+
             # Build CodeAgent with authorized scientific imports
             agent = CodeAgent(
-                tools=self.tools,
+                tools=run_tools,
                 model=self.model,
                 additional_authorized_imports=['pandas', 'numpy', 'scipy', 'networkx', 'math', 'json', 're', 'datetime'],
                 max_steps=max_steps
@@ -218,10 +255,17 @@ DIRECTRICES:
                                 'content': str(obs)
                             })
 
+            # Si no se emitieron artefactos vía herramienta, auto-detectar desde el texto de respuesta
+            if not emitted_artifacts and result:
+                detected_artifacts = artifact_manager.detect_and_render_artifacts_from_text(str(result))
+                if detected_artifacts:
+                    emitted_artifacts.extend(detected_artifacts)
+
             return {
                 "answer": str(result),
                 "steps": reasoning_steps,
                 "skills_used": skills_used,
+                "artifacts": emitted_artifacts,
                 "status": "success",
                 "duration_seconds": round(time.time() - start_time, 2)
             }
@@ -230,6 +274,7 @@ DIRECTRICES:
                 "answer": f"Ocurrió un error durante la investigación autónoma: {str(e)}",
                 "steps": [],
                 "skills_used": skills_used,
+                "artifacts": [],
                 "status": "error",
                 "duration_seconds": round(time.time() - start_time, 2)
             }
