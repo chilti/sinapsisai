@@ -13,6 +13,11 @@ from typing import Dict, Any, List, Optional
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, BASE_DIR)
 
+# Add sos-mcp-services extra site-packages if available
+VENV_SITE_PACKAGES = "/home/jlja/venv_sos_mcp/lib/python3.12/site-packages"
+if os.path.exists(VENV_SITE_PACKAGES) and VENV_SITE_PACKAGES not in sys.path:
+    sys.path.insert(0, VENV_SITE_PACKAGES)
+
 from lib.llm_utils import LLMConfig
 from agent.skill_manager import skill_manager
 from agent.tools_interpreter import structured_analytics_tools
@@ -171,8 +176,51 @@ DIRECTRICES:
             full_prompt = f"{base_system_prompt}\n\nPREGUNTA DE INVESTIGACIÓN:\n{research_question}"
             result = agent.run(full_prompt)
             
+            # Extraer pasos estructurados de razonamiento y herramientas ejecutadas
+            reasoning_steps = []
+            if hasattr(agent, 'memory') and hasattr(agent.memory, 'steps'):
+                for step in agent.memory.steps:
+                    if step.__class__.__name__ == 'ActionStep':
+                        step_num = getattr(step, 'step_number', 1)
+                        
+                        # 1. Pensamiento del modelo
+                        thought = getattr(step, 'model_output', None)
+                        if thought:
+                            reasoning_steps.append({
+                                'type': 'thought',
+                                'name': f'Paso {step_num}',
+                                'content': str(thought)
+                            })
+                        
+                        # 2. Llamadas a herramientas o ejecución de código Python
+                        code = getattr(step, 'code_action', None)
+                        tool_calls = getattr(step, 'tool_calls', None)
+                        if tool_calls:
+                            for tc in tool_calls:
+                                reasoning_steps.append({
+                                    'type': 'tool_call',
+                                    'name': getattr(tc, 'name', 'tool'),
+                                    'args': getattr(tc, 'arguments', {})
+                                })
+                        elif code:
+                            reasoning_steps.append({
+                                'type': 'tool_call',
+                                'name': f'Python Sandbox [Paso {step_num}]',
+                                'args': {'code': str(code)}
+                            })
+                            
+                        # 3. Observaciones y resultados
+                        obs = getattr(step, 'observations', None)
+                        if obs:
+                            reasoning_steps.append({
+                                'type': 'tool_result',
+                                'name': f'Salida [Paso {step_num}]',
+                                'content': str(obs)
+                            })
+
             return {
                 "answer": str(result),
+                "steps": reasoning_steps,
                 "skills_used": skills_used,
                 "status": "success",
                 "duration_seconds": round(time.time() - start_time, 2)
@@ -180,6 +228,7 @@ DIRECTRICES:
         except Exception as e:
             return {
                 "answer": f"Ocurrió un error durante la investigación autónoma: {str(e)}",
+                "steps": [],
                 "skills_used": skills_used,
                 "status": "error",
                 "duration_seconds": round(time.time() - start_time, 2)

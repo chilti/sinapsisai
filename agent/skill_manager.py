@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Any
 
 # Primary skill repositories
 SKILL_DIRECTORIES = [
+    Path("/mnt/expansion/desplegados/sos-mcp-services/.agents/skills"),
     Path(r"C:\Users\jlja\Documents\Proyectos\sos-mcp-services\.agents\skills"),
     Path(__file__).parent.parent / ".agents" / "skills"
 ]

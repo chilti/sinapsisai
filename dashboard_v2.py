@@ -4,6 +4,7 @@ import asyncio
 import concurrent.futures
 import os
 import sys
+import time
 import random
 import threading
 from pathlib import Path
@@ -535,7 +536,7 @@ if "test_orchestrator" not in st.session_state:
     with st.spinner("Inicializando Asistente de Prueba (MCP)..."):
         try:
             # Cargamos herramientas desde el servidor MCP
-            mcp_tools = get_mcp_tools_sync("http://localhost:8005/sse")
+            mcp_tools = get_mcp_tools_sync("http://localhost:8011/sse")
             
             test_sys_prompt = """
 Eres SINAPSIS-PRUEBA, un asistente especializado exclusivamente en consultar el Grafo de Conocimiento de México a través de un servidor MCP.
@@ -1628,31 +1629,35 @@ if tab_maps is not None:
 # TAB 1: Chat RAG Orquestador & Interpreter
 # =======================================================
 with tab_chat:
-    st.markdown("### Asistente Científico & Agente de Investigación (Arquitectura Dual)")
-    
-    col_mode1, col_mode2 = st.columns([1.5, 1.5])
-    with col_mode1:
-        assistant_mode = st.radio(
-            "Modalidad de Inteligencia:",
-            [
-                "⚡ Asistente General (Rápido y Seguro)",
-                "🔬 Agente Científico Autónomo (Smolagents + Skills)"
-            ],
-            index=0,
-            horizontal=True,
-            help="El Asistente General usa consultas deterministas directas (cero riesgo). El Agente Científico ejecuta razonamiento multi-paso con skills metodológicos avanzados."
-        )
-    with col_mode2:
-        if "Científico" in assistant_mode:
-            all_skills_list = ["Auto-detectar"] + [s['name'] for s in skill_manager.list_skills()]
-            selected_skills = st.multiselect(
-                "🧠 Skills Metodológicos Activos:",
-                options=all_skills_list,
-                default=["Auto-detectar"],
-                help="Skills especializados de sos-mcp-services inyectados al razonamiento del agente."
+    if is_admin:
+        st.markdown("### Asistente Científico & Agente de Investigación (Arquitectura Dual)")
+        col_mode1, col_mode2 = st.columns([1.5, 1.5])
+        with col_mode1:
+            assistant_mode = st.radio(
+                "Modalidad de Inteligencia:",
+                [
+                    "⚡ Asistente General (Rápido y Seguro)",
+                    "🔬 Agente Científico Autónomo (Smolagents + Skills)"
+                ],
+                index=0,
+                horizontal=True,
+                help="El Asistente General usa consultas deterministas directas (cero riesgo). El Agente Científico ejecuta razonamiento multi-paso con skills metodológicos avanzados."
             )
-        else:
-            st.caption("🛡️ **Modo Seguro**: Consultas directas a ClickHouse, Neo4j, Qdrant y Parquets sin ejecución de código arbitrario.")
+        with col_mode2:
+            if "Científico" in assistant_mode:
+                all_skills_list = ["Auto-detectar"] + [s['name'] for s in skill_manager.list_skills()]
+                selected_skills = st.multiselect(
+                    "🧠 Skills Metodológicos Activos:",
+                    options=all_skills_list,
+                    default=["Auto-detectar"],
+                    help="Skills especializados de sos-mcp-services inyectados al razonamiento del agente."
+                )
+            else:
+                st.caption("🛡️ **Modo Seguro**: Consultas directas a ClickHouse, Neo4j, Qdrant y Parquets sin ejecución de código arbitrario.")
+    else:
+        st.markdown("### ⚡ Asistente Científico de Consulta")
+        st.caption("🛡️ **Modo Seguro**: Consultas deterministas y directas sobre ClickHouse, Neo4j, Qdrant y Parquets.")
+        assistant_mode = "⚡ Asistente General (Rápido y Seguro)"
 
     st.markdown("---")
 
@@ -1674,13 +1679,15 @@ with tab_chat:
                 if message.get("duration"):
                     st.caption(f"⏱️ *Tiempo de respuesta:* {message['duration']}s")
                 if message.get("reasoning"):
-                    with st.expander("🧠 Ver Razonamiento", expanded=False):
+                    with st.expander("🧠 Ver Razonamiento y Herramientas", expanded=False):
                         for step in message["reasoning"]:
-                            if step["type"] == "tool_call":
-                                st.code(f"🛠️ {step['name']}({json.dumps(step['args'], ensure_ascii=False)})")
-                            elif step["type"] == "tool_result":
-                                st.caption(f"📥 Resultado de {step['name']}:")
-                                st.code(step["content"], language="json" if any(x in step['name'] for x in ["Alex", "search", "query"]) else None)
+                            if step.get("type") == "thought":
+                                st.markdown(f"💡 **{step.get('name', 'Pensamiento')}:** {step.get('content', '')}")
+                            elif step.get("type") == "tool_call":
+                                st.code(f"🛠️ {step.get('name', 'tool')}({json.dumps(step.get('args', {}), ensure_ascii=False)})")
+                            elif step.get("type") == "tool_result":
+                                st.caption(f"📥 {step.get('name', 'Resultado')}:")
+                                st.code(step.get("content", ""), language="json" if any(x in str(step.get('name', '')) for x in ["Alex", "search", "query"]) else None)
                 if message.get("image"):
                     st.image(message["image"])
 
@@ -1704,8 +1711,10 @@ with tab_chat:
                 try:
                     session_id = st.session_state.session_id
                     
-                    if "Científico" in assistant_mode:
+                    if is_admin and "Científico" in assistant_mode:
                         # TIER 2: Autonomous Scientific Agent
+                        if "scientific_agent" not in st.session_state or getattr(st.session_state.scientific_agent, 'model', None) is None:
+                            st.session_state.scientific_agent = AutonomousScientificAgent()
                         scientific_agent = st.session_state.scientific_agent
                         active_skills_param = None
                         if "selected_skills" in locals() and "Auto-detectar" not in selected_skills:
@@ -1719,6 +1728,7 @@ with tab_chat:
                         response = res_dict.get("answer", "")
                         skills_used = res_dict.get("skills_used", [])
                         duration = res_dict.get("duration_seconds", 0)
+                        intermediate_steps = res_dict.get("steps", [])
                     else:
                         # TIER 1: Deterministic Fast & Safe Assistant
                         orchestrator = st.session_state.orchestrator
