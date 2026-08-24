@@ -66,6 +66,13 @@ CONTEXTO DISPONIBLE:
 
 INSTRUCCIÓN ESPECÍFICA:
 {task_instruction}
+
+REGLA DE FORMATO OBLIGATORIA:
+Para ejecutar herramientas o dar tu respuesta final, escribe código Python dentro de bloques <code>...</code>.
+Cuando tengas tu respuesta lista, utiliza:
+<code>
+final_answer("Tu informe y síntesis técnica aquí...")
+</code>
 """
         try:
             agent = CodeAgent(
