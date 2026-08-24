@@ -1,5 +1,9 @@
 """
-visualizer_agent.py - Agente Especialista en Composición y Auto-Síntesis de Artefactos Interactivos
+visualizer_agent.py — Stage 4 Compose del enjambre ScientistOne.
+El InteractiveVisualizerAgent recibe el artifact_plan emitido por el Problem Investigator
+(dinámico según intent_type) y compone los artefactos correspondientes.
+No define artefactos fijos — su catálogo es el de artifact_manager y puede auto-sintetizar
+nuevos artefactos con synthesize_new_artifact cuando el plan lo requiere.
 """
 import sys
 import os
