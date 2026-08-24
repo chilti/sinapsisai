@@ -118,17 +118,37 @@ def get_entity_bibliometric_profile(entity_name: str) -> str:
         return json.dumps({"entity": entity_name, "error": str(e)}, ensure_ascii=False)
 
 
+# 5. Fast In-Process DuckDB Analytics
+@tool
+def query_duckdb_analytics(sql_query: str, purpose: str = "") -> str:
+    """
+    Ejecuta consultas analíticas SQL ultrarrápidas (< 5ms) sobre DuckDB (analytics_cache.duckdb).
+    Contiene 14 tablas consolidadas de instituciones, facultades y 90,211 investigadores:
+    ('institucion_annual', 'institucion_total', 'investigador_annual', 'investigador_total',
+     'papers_profesor', 'papers_institucion', 'topics_institucion', 'topics_investigador',
+     'keywords_institucion', 'keywords_investigador', 'thematic_evolution_institucion',
+     'thematic_evolution_investigador', 'umap_investigadores', 'investigador_recent').
+    Args:
+        sql_query: Consulta SQL que inicie con SELECT.
+        purpose: Justificación o propósito del dato solicitado.
+    """
+    from agent.tools_interpreter import query_duckdb_safe_sql
+    return query_duckdb_safe_sql.invoke({'sql_query': sql_query})
+
+
 class DataScientistAgent(BaseSpecialistAgent):
-    """Agente especialista en ingesta, consultas masivas ClickHouse, GraphRAG y evidencia empírica."""
+    """Agente especialista en ingesta, consultas masivas ClickHouse, DuckDB, GraphRAG y evidencia empírica."""
     def __init__(self, session_id: Optional[str] = None, **kwargs):
         self.session_id = session_id
         tools = [
+            query_duckdb_analytics,
             query_clickhouse_analytics,
             query_parquet_academic_cache,
             get_consolidated_scholar_summary,
             get_entity_bibliometric_profile
         ]
-        role = ("Experto en extracción masiva de datos bibliométricos desde ClickHouse (569M trabajos de OpenAlex), "
-                "Grafos de Conocimiento Neo4j (investigadores SNII), búsqueda vectorial en Qdrant y tablas Parquet. "
+        role = ("Experto en extracción analítica de datos bibliométricos desde DuckDB (analytics_cache.duckdb), "
+                "ClickHouse (569M trabajos de OpenAlex), Grafos de Conocimiento Neo4j (investigadores SNII), "
+                "búsqueda vectorial en Qdrant y tablas Parquet. "
                 "Garantiza que ningún dato sea inventado y registra cada fuente en la cadena de evidencia CoE.")
         super().__init__(name="DataScientistAgent", role_description=role, tools=tools, **kwargs)
