@@ -78,16 +78,15 @@ class ScientificSwarm:
         emitted_artifacts: List[Dict[str, Any]] = []
         data_agent = DataScientistAgent(session_id=sid, model_id=self.model_id, api_base=self.api_base, api_key=self.api_key)
         topo_agent = TopologicalAgent(session_id=sid, model_id=self.model_id, api_base=self.api_base, api_key=self.api_key)
-        critic_agent = ScientometricCriticAgent(session_id=sid, model_id=self.model_id, api_base=self.api_base, api_key=self.api_key)
 DUCKDB_PATH = '/home/sinapsisai/data/analytics_cache.duckdb'
 
 def resolve_investigation_subject(research_question: str, entity_context: Optional[str] = None) -> Dict[str, Any]:
     """
     Resuelve dinámicamente si la consulta es sobre un Investigador, Dependencia o Institución
-    consultando directamente DuckDB (analytics_cache.duckdb) y ClickHouse.
+    priorizando SIEMPRE la pregunta del usuario sobre el contexto del dashboard.
     """
-    raw_query = entity_context or research_question
-    words = re.findall(r'[a-zA-ZáéíóúÁÉÍÓÚñÑ]+', raw_query.lower())
+    prompt_clean = (research_question or "").strip()
+    words = re.findall(r'[a-zA-ZáéíóúÁÉÍÓÚñÑ]+', prompt_clean.lower())
     
     # 1. Tokens para personas (conserva apellidos y nombres)
     person_tokens = [w for w in words if w not in {'has', 'haz', 'reporte', 'informe', 'analisis', 'analiza', 'evalua', 'diagnostico', 'perfil', 'construye', 'sobre', 'de', 'del', 'el', 'la', 'un', 'una', 'en', 'para', 'por', 'con', 'quien', 'es', 'unam'}]
@@ -96,7 +95,7 @@ def resolve_investigation_subject(research_question: str, entity_context: Option
         try:
             con = duckdb.connect(DUCKDB_PATH, read_only=True)
             
-            # A. Búsqueda en investigador_total (match de todos los tokens)
+            # A. Búsqueda en investigador_total (match de todos los tokens del nombre)
             where_ac = ['db_academic_name ILIKE ?' for _ in person_tokens]
             params_ac = [f'%{t}%' for t in person_tokens]
             q_inv = f"""
@@ -139,56 +138,68 @@ def resolve_investigation_subject(research_question: str, entity_context: Option
                     'annual_evolution': ann_df.to_dict(orient='records'),
                     'top_subfields': [{'subfield': str(r.get('top_topic') or 'Investigación Científica'), 'papers': int(r.get('num_documents', 10)), 'fwci_subfield': float(r.get('fwci_avg', 1.0))}]
                 }
-                
-            # B. Búsqueda en institucion_total (para entidades/facultades/institutos)
-            ent_tokens = [w for w in words if w not in {'has', 'haz', 'reporte', 'informe', 'analisis', 'analiza', 'evalua', 'diagnostico', 'perfil', 'construye', 'sobre', 'de', 'del', 'el', 'la', 'un', 'una', 'en', 'para', 'por', 'con'}]
-            if ent_tokens:
-                where_inst = ['(entity_name ILIKE ? OR db_entity_name ILIKE ? OR db_institution_name ILIKE ?)' for _ in ent_tokens]
-                params_inst = []
-                for t in ent_tokens:
-                    params_inst.extend([f'%{t}%', f'%{t}%', f'%{t}%'])
-                    
-                q_inst = f"""
-                SELECT entity_name, db_institution_name, db_entity_name, num_documents, citations, fwci_avg, 
-                       h_index, apc_paid_usd, top_topic, pct_top_10, pct_open_access, pct_oa_gold, official_snii_count 
-                FROM institucion_total 
-                WHERE {' AND '.join(where_inst)}
-                ORDER BY citations DESC 
-                LIMIT 1
-                """
-                df_inst = con.execute(q_inst, params_inst).df()
-                if not df_inst.empty:
-                    r_inst = df_inst.iloc[0].to_dict()
-                    ent_name = r_inst.get('entity_name') or r_inst.get('db_entity_name') or r_inst.get('db_institution_name')
-                    
-                    topics_df = con.execute("""
-                    SELECT subfield, sum(value) as papers, 1.2 as fwci_subfield 
-                    FROM topics_institucion 
-                    WHERE entity_name = ? OR db_entity_name = ? OR db_institution_name = ?
-                    GROUP BY subfield 
-                    ORDER BY papers DESC 
-                    LIMIT 5
-                    """, [ent_name, ent_name, ent_name]).df()
-                    
-                    con.close()
-                    return {
-                        'type': 'ENTITY',
-                        'subject_name': ent_name,
-                        'institution': r_inst.get('db_institution_name'),
-                        'entity': r_inst.get('db_entity_name'),
-                        'metrics': r_inst,
-                        'top_papers': [],
-                        'top_subfields': topics_df.to_dict(orient='records') if not topics_df.empty else []
-                    }
             con.close()
         except Exception:
             pass
-            
+
+    # 2. Si no es investigador, buscar si en la pregunta se menciona una entidad o usar entity_context
+    search_target = prompt_clean
+    ent_tokens = [w for w in re.findall(r'[a-zA-ZáéíóúÁÉÍÓÚñÑ]+', search_target.lower()) if w not in {'has', 'haz', 'reporte', 'informe', 'analisis', 'analiza', 'evalua', 'diagnostico', 'perfil', 'construye', 'sobre', 'de', 'del', 'el', 'la', 'un', 'una', 'en', 'para', 'por', 'con'}]
+    
+    # Si la pregunta no menciona ninguna entidad específica pero hay un contexto de selección de Streamlit, usarlo
+    if not ent_tokens and entity_context:
+        search_target = entity_context
+        ent_tokens = [w for w in re.findall(r'[a-zA-ZáéíóúÁÉÍÓÚñÑ]+', search_target.lower()) if w not in {'has', 'haz', 'reporte', 'informe', 'analisis', 'analiza', 'evalua', 'diagnostico', 'perfil', 'construye', 'sobre', 'de', 'del', 'el', 'la', 'un', 'una', 'en', 'para', 'por', 'con'}]
+        
+    if os.path.exists(DUCKDB_PATH) and ent_tokens:
+        try:
+            con = duckdb.connect(DUCKDB_PATH, read_only=True)
+            where_inst = ['(entity_name ILIKE ? OR db_entity_name ILIKE ? OR db_institution_name ILIKE ?)' for _ in ent_tokens]
+            params_inst = []
+            for t in ent_tokens:
+                params_inst.extend([f'%{t}%', f'%{t}%', f'%{t}%'])
+                
+            q_inst = f"""
+            SELECT entity_name, db_institution_name, db_entity_name, num_documents, citations, fwci_avg, 
+                   h_index, apc_paid_usd, top_topic, pct_top_10, pct_open_access, pct_oa_gold, official_snii_count 
+            FROM institucion_total 
+            WHERE {' AND '.join(where_inst)}
+            ORDER BY citations DESC 
+            LIMIT 1
+            """
+            df_inst = con.execute(q_inst, params_inst).df()
+            if not df_inst.empty:
+                r_inst = df_inst.iloc[0].to_dict()
+                ent_name = r_inst.get('entity_name') or r_inst.get('db_entity_name') or r_inst.get('db_institution_name')
+                
+                topics_df = con.execute("""
+                SELECT subfield, sum(value) as papers, 1.2 as fwci_subfield 
+                FROM topics_institucion 
+                WHERE entity_name = ? OR db_entity_name = ? OR db_institution_name = ?
+                GROUP BY subfield 
+                ORDER BY papers DESC 
+                LIMIT 5
+                """, [ent_name, ent_name, ent_name]).df()
+                
+                con.close()
+                return {
+                    'type': 'ENTITY',
+                    'subject_name': ent_name,
+                    'institution': r_inst.get('db_institution_name'),
+                    'entity': r_inst.get('db_entity_name'),
+                    'metrics': r_inst,
+                    'top_papers': [],
+                    'top_subfields': topics_df.to_dict(orient='records') if not topics_df.empty else []
+                }
+            con.close()
+        except Exception:
+            pass
+
     # Fallback dinámico a ClickHouse si no se encuentra en DuckDB
     try:
         from database.clickhouse_db import ch_client
         client = ch_client.get_client()
-        query_safe = raw_query.upper().replace("'", "\\'")
+        query_safe = (prompt_clean or entity_context or '').upper().replace("'", "\\'")
         df_ch = client.query_df(f"""
         SELECT count() as num_documents, round(avg(fwci), 2) as fwci_avg, sum(cited_by_count) as citations,
                round(countIf(is_top_10 = 1) * 100.0 / count(), 1) as pct_top_10,
@@ -201,7 +212,7 @@ def resolve_investigation_subject(research_question: str, entity_context: Option
         if not df_ch.empty and int(df_ch.iloc[0]['num_documents']) > 0:
             return {
                 'type': 'GENERAL',
-                'subject_name': raw_query,
+                'subject_name': prompt_clean or entity_context or 'Consulta General',
                 'institution': 'México / Internacional',
                 'entity': 'General',
                 'metrics': df_ch.iloc[0].to_dict(),
@@ -213,7 +224,7 @@ def resolve_investigation_subject(research_question: str, entity_context: Option
         
     return {
         'type': 'GENERAL',
-        'subject_name': raw_query,
+        'subject_name': prompt_clean or entity_context or 'Consulta General',
         'institution': 'General',
         'entity': 'General',
         'metrics': {'num_documents': 0, 'citations': 0, 'fwci_avg': 1.0},

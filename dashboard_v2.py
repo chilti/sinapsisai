@@ -1638,11 +1638,11 @@ with tab_chat:
                 "Modalidad de Inteligencia:",
                 [
                     "⚡ Asistente General (Rápido y Seguro)",
-                    "🔬 Enjambre Científico Autónomo (Multi-Agent Swarm + ScientistOne CoE)"
+                    "🔬 Sistema Multi-Agent Swarm + ScientistOne CoE"
                 ],
                 index=0,
                 horizontal=True,
-                help="El Asistente General usa consultas deterministas directas. El Enjambre Científico orquesta agentes especialistas (Supervisor, Data Scientist, Topological SOM, Critic & Visualizer) con ciclo iterativo GCR, auto-síntesis de artefactos y trazabilidad CoE."
+                help="El Asistente General usa consultas deterministas directas. El Sistema Multi-Agent Swarm orquesta agentes especialistas (Supervisor, Data Scientist, Topological SOM, Critic & Visualizer) con ciclo iterativo GCR, auto-síntesis de artefactos y trazabilidad CoE."
             )
         with col_mode2:
             if "Científico" in assistant_mode or "Swarm" in assistant_mode:
