@@ -28,12 +28,18 @@ from agent.artifact_manager import artifact_manager
 from agent.tools_interpreter import structured_analytics_tools
 from agent.tools_hybrid import hybrid_tools
 
-# Smolagents import
+# Smolagents & Swarm import
 try:
     from smolagents import CodeAgent, ToolCallingAgent, OpenAIServerModel, tool as smol_tool, Tool as SmolTool
     HAS_SMOLAGENTS = True
 except ImportError:
     HAS_SMOLAGENTS = False
+
+try:
+    from agent.swarm import ScientificSwarm
+    HAS_SWARM = True
+except ImportError:
+    HAS_SWARM = False
 
 
 # ============================================================================
@@ -159,7 +165,41 @@ class AutonomousScientificAgent:
         Executes an autonomous multi-step scientific investigation.
         """
         start_time = time.time()
+
+        # Enjambre Multi-Agente Científico (Scientific Swarm) si está disponible
+        if HAS_SWARM:
+            swarm = ScientificSwarm(
+                system_namespace="infotlachia",
+                model_id=self.model_id,
+                api_base=self.auth_url,
+                api_key=self.api_key
+            )
+            swarm_res = swarm.run_investigation(
+                research_question=research_question,
+                active_skills=active_skills,
+                entity_context=entity_context
+            )
+            reasoning_steps = []
+            for d in swarm_res.get("dag_steps", []):
+                reasoning_steps.append({
+                    "type": "thought",
+                    "name": f"🏛️ {d.get('agent', 'Swarm')}: {d.get('phase', 'Fase')}",
+                    "content": f"Estado: {d.get('status', 'OK')} | {d.get('details', d.get('verdict', ''))}"
+                })
+            
+            return {
+                "answer": swarm_res.get("answer", ""),
+                "steps": reasoning_steps,
+                "skills_used": swarm_res.get("skills_used", []),
+                "artifacts": swarm_res.get("artifacts", []),
+                "critic_verdict": swarm_res.get("critic_verdict", {}),
+                "iterations": swarm_res.get("iterations", 1),
+                "provenance": swarm_res.get("provenance", []),
+                "status": swarm_res.get("status", "success"),
+                "duration_seconds": swarm_res.get("duration_seconds", round(time.time() - start_time, 2))
+            }
         
+        # Modo fallback CodeAgent standalone
         # 1. Match and inject relevant skills
         if active_skills:
             skill_prompt = self.skill_mgr.get_skill_instructions(active_skills)

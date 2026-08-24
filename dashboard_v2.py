@@ -1690,6 +1690,10 @@ with tab_chat:
                                 st.code(step.get("content", ""), language="json" if any(x in str(step.get('name', '')) for x in ["Alex", "search", "query"]) else None)
                 if message.get("image"):
                     st.image(message["image"])
+                if message.get("provenance"):
+                    with st.expander("🔗 Ver Cadena de Evidencia CoE (ScientistOne Standard)", expanded=False):
+                        for p in message["provenance"]:
+                            st.markdown(f"• **[{p.get('evidence_source', '').upper()}]** `{p.get('claim_text', '')}`")
                 if message.get("artifacts"):
                     for art in message["artifacts"]:
                         st.markdown(f"**🎨 Artefacto Interactivo:** `{art.get('title', art.get('artifact_id', 'Visualización'))}`")
@@ -1764,7 +1768,8 @@ with tab_chat:
                     "skills": skills_used,
                     "duration": duration,
                     "reasoning": intermediate_steps,
-                    "artifacts": artifacts_generated if 'artifacts_generated' in locals() else []
+                    "artifacts": artifacts_generated if 'artifacts_generated' in locals() else [],
+                    "provenance": res_dict.get("provenance", []) if 'res_dict' in locals() and isinstance(res_dict, dict) else []
                 })
                 st.rerun()
 
