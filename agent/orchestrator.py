@@ -19,13 +19,13 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 load_dotenv()
 from .memory_manager import SessionMemoryManager
-from .tools_interpreter import open_interpreter_tool
+from .tools_interpreter import structured_analytics_tools
 from .tools_hybrid import hybrid_tools
 
 class RAGOrchestrator:
     def __init__(self, tools_list=None, model_name=None, base_url=None, api_key="lm-studio", use_defaults=True, system_prompt=None):
         """
-        Inicializa el orquestador que conecta LLMs, Herramientas, Memoria y Open Interpreter.
+        Inicializa el orquestador que conecta LLMs, Herramientas y Memoria (Tier 1 Seguro).
         """
         # Delegamos la creación del LLM y el cliente HTTP a la fábrica centralizada
         self.llm = get_chat_model(temperature=0)
@@ -34,8 +34,7 @@ class RAGOrchestrator:
         # Guardamos referencia del cliente http (opcional, para limpieza posterior si se requiere)
         self.http_client = self.llm.http_async_client
         
-        # Agregamos hybrid_tools y open_interpreter a las herramientas regulares
-        # Verificación defensiva: aseguramos que tools_list sea una lista
+        # Agregamos hybrid_tools y structured_analytics_tools a las herramientas regulares
         final_tools_list = []
         if isinstance(tools_list, list):
             final_tools_list = tools_list
@@ -43,7 +42,7 @@ class RAGOrchestrator:
             print(f"Advertencia: tools_list no es una lista ({type(tools_list)}). Ignorando.")
             
         if use_defaults:
-            self.tools = final_tools_list + hybrid_tools + [open_interpreter_tool]
+            self.tools = final_tools_list + hybrid_tools + structured_analytics_tools
         else:
             self.tools = final_tools_list
         
@@ -61,19 +60,22 @@ class RAGOrchestrator:
                     _local_section += "- `query_knowledge_graph_cypher`: Grafo de Conocimiento (Neo4j) para relaciones, coautoría y afiliaciones.\n"
                 if QDRANT_AVAILABLE:
                     _local_section += "- `search_scientific_papers_semantic`: Búsqueda semántica vectorial (Qdrant) por significado.\n"
-                _local_section += "- `Python_CodeExecutor`: Archivos Parquet en `data/cache/` para métricas precisas.\n\n"
+                _local_section += "- `query_academic_cache`: Consulta segura de datos estructurados Parquet (institucion_annual, investigador_annual, papers_profesor).\n"
+                _local_section += "- `query_clickhouse_safe_sql`: Consultas analíticas SQL masivas sobre producción y citas.\n"
+                _local_section += "- `get_scientometric_summary`: Resumen cienciométrico integral de un académico.\n\n"
                 _ext_section = "**Paso 2 — Enriquecimiento Externo (Fallback)**\nUsa OpenAlex o búsqueda web SOLO si los datos no existen localmente."
             else:
                 _local_section = (
                     "**IMPORTANTE**: En este entorno las bases locales (Neo4j, Qdrant) no están disponibles.\n"
-                    "NO uses `query_knowledge_graph_cypher` ni `search_scientific_papers_semantic`.\n\n"
+                    "NO uses `query_knowledge_graph_cypher` ni `search_scientific_papers_semantic`.\n"
+                    "Usa `query_academic_cache` y `get_scientometric_summary` para datos locales.\n\n"
                 )
                 _ext_section = (
                     "**Estrategia Principal**: Usa herramientas de OpenAlex (`searchAuthorInOpenAlex`, "
                     "`recoverFromOpenAlex`, `recoverAuthorWorksFromOpenAlex`) y búsqueda web como fuentes primarias."
                 )
 
-            self.system_prompt = f"""Eres SNII Info TlachIA, un analista experto en bibliometría. Tu misión es proporcionar respuestas precisas sobre investigadores, publicaciones y métricas científicas de México.
+            self.system_prompt = f"""Eres SNII Info TlachIA, un analista experto en bibliometría y cienciometría. Tu misión es proporcionar respuestas precisas sobre investigadores, publicaciones y métricas científicas de México.
 
 ## ECOSISTEMA DE DATOS
 - Datos del Padrón SNII (Sistema Nacional de Investigadoras e Investigadores de SECIHTI).
@@ -86,7 +88,7 @@ class RAGOrchestrator:
 
 ## FORMATO DE RESPUESTA
 1. Síntesis narrativa con los resultados principales.
-2. Evidencia con tablas o gráficas (vía Python) cuando sea útil.
+2. Evidencia clara con tablas de datos estructurados.
 3. Nota de origen: Indica la fuente de información utilizada.
 """
         

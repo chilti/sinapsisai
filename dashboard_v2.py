@@ -28,6 +28,8 @@ if QDRANT_AVAILABLE:
 
 from agent.orchestrator import RAGOrchestrator
 from agent.interpreter_agent import InterpreterOrchestrator
+from agent.scientific_agent import AutonomousScientificAgent
+from agent.skill_manager import skill_manager
 from dashboard_analytics import render_institucion_view, render_investigador_view, load_cached_data, get_institution_hierarchy
 from lib.coauthra_integration import render_coauthra
 from agent.tools_mcp import get_mcp_tools_sync
@@ -520,6 +522,7 @@ if "orchestrator" not in st.session_state:
             # Solo el método .ask() es async y se ejecuta en el hilo dedicado
             st.session_state.orchestrator = RAGOrchestrator(tools_list=[])
             st.session_state.interpreter_orchestrator = InterpreterOrchestrator(st.session_state.orchestrator.memory_manager)
+            st.session_state.scientific_agent = AutonomousScientificAgent()
             st.session_state.session_id = f"st-{random.randint(1000, 9999)}"
         except Exception as e:
             st.error(f"Error inicializando el orquestador: {e}")
@@ -1625,16 +1628,32 @@ if tab_maps is not None:
 # TAB 1: Chat RAG Orquestador & Interpreter
 # =======================================================
 with tab_chat:
+    st.markdown("### Asistente Científico & Agente de Investigación (Arquitectura Dual)")
     
-    st.markdown("### Asistente Científico")
-    # Oculto temporalmente: st.radio para elegir entre Reactivo y Analítico
-    assistant_type = "⚡ Reactivo (Respuestas Rápidas)"
-    
-    plan_mode_internal = "plan_and_execute"
-    if "Analítico" in assistant_type:
-        st.info("💡 **Aviso**: El asistente generará primero un plan y solicitará tu aprobación antes de ejecutar cualquier código.")
-        plan_mode_internal = "plan_only"
-        
+    col_mode1, col_mode2 = st.columns([1.5, 1.5])
+    with col_mode1:
+        assistant_mode = st.radio(
+            "Modalidad de Inteligencia:",
+            [
+                "⚡ Asistente General (Rápido y Seguro)",
+                "🔬 Agente Científico Autónomo (Smolagents + Skills)"
+            ],
+            index=0,
+            horizontal=True,
+            help="El Asistente General usa consultas deterministas directas (cero riesgo). El Agente Científico ejecuta razonamiento multi-paso con skills metodológicos avanzados."
+        )
+    with col_mode2:
+        if "Científico" in assistant_mode:
+            all_skills_list = ["Auto-detectar"] + [s['name'] for s in skill_manager.list_skills()]
+            selected_skills = st.multiselect(
+                "🧠 Skills Metodológicos Activos:",
+                options=all_skills_list,
+                default=["Auto-detectar"],
+                help="Skills especializados de sos-mcp-services inyectados al razonamiento del agente."
+            )
+        else:
+            st.caption("🛡️ **Modo Seguro**: Consultas directas a ClickHouse, Neo4j, Qdrant y Parquets sin ejecución de código arbitrario.")
+
     st.markdown("---")
 
     col_clear, _ = st.columns([1, 4])
@@ -1650,6 +1669,10 @@ with tab_chat:
         for message in st.session_state.chat_history:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
+                if message.get("skills"):
+                    st.caption(f"🧠 *Skills utilizados:* `{', '.join(message['skills'])}`")
+                if message.get("duration"):
+                    st.caption(f"⏱️ *Tiempo de respuesta:* {message['duration']}s")
                 if message.get("reasoning"):
                     with st.expander("🧠 Ver Razonamiento", expanded=False):
                         for step in message["reasoning"]:
@@ -1661,126 +1684,73 @@ with tab_chat:
                 if message.get("image"):
                     st.image(message["image"])
 
-    # ---- Botón de Confirmación de Plan ----
-    if st.session_state.pending_plan:
-        with st.chat_message("assistant"):
-            st.warning("⚠️ **Plan detectado**. ¿Deseas proceder con la ejecución del código Python?")
-            col_conf1, col_conf2 = st.columns([1,1])
-            with col_conf1:
-                if st.button("🚀 Aprobar y Ejecutar Código", use_container_width=True, type="primary"):
-                    # Ejecutar el plan
-                    current_plan = st.session_state.pending_plan
-                    st.session_state.pending_plan = None # Limpiar para evitar recursión
-                    
-                    with st.chat_message("assistant"):
-                        placeholder = st.empty()
-                        placeholder.markdown("⚙️ *Ejecutando el plan aprobado...*")
-                        try:
-                            # Capturar de nuevo los objetos
-                            interpreter_orch = st.session_state.interpreter_orchestrator
-                            session_id = st.session_state.session_id
-                            
-                            async def run_plan():
-                                return await interpreter_orch.ask(
-                                    session_id, current_plan, mode="execute_plan", entity_context=selected_entity
-                                )
-                            
-                            response_data = _run_async_in_thread(run_plan())
-                            
-                            # Mostrar respuesta
-                            response = response_data.get("answer", "") if isinstance(response_data, dict) else response_data
-                            placeholder.markdown(response)
-                            
-                            # Manejar imagen
-                            img_data = None
-                            if os.path.exists("interpreter_output.png"):
-                                with open("interpreter_output.png", "rb") as f:
-                                    img_data = f.read()
-                                st.image(img_data)
-                                os.remove("interpreter_output.png")
-                                
-                            # Guardar en historial
-                            st.session_state.chat_history.append({
-                                "role": "assistant",
-                                "content": response,
-                                "image": img_data,
-                                "reasoning": response_data.get("intermediate_steps", []) if isinstance(response_data, dict) else []
-                            })
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error en ejecución: {e}")
-            with col_conf2:
-                if st.button("❌ Cancelar", use_container_width=True):
-                    st.session_state.pending_plan = None
-                    st.session_state.pending_prompt = None
-                    st.rerun()
-
     # ---- Input del usuario ----
     if prompt := st.chat_input("Escribe tu consulta científica aquí..."):
-        # Si hay un plan pendiente, avisar o ignorar
-        if st.session_state.pending_plan:
-            st.info("Por favor, aprueba o cancela el plan actual antes de enviar una nueva consulta.")
-        else:
-            st.session_state.chat_history.append({"role": "user", "content": prompt})
-            with chat_container:
-                with st.chat_message("user"):
-                    st.markdown(prompt)
+        st.session_state.chat_history.append({"role": "user", "content": prompt})
+        with chat_container:
+            with st.chat_message("user"):
+                st.markdown(prompt)
 
-            with chat_container:
-                with st.chat_message("assistant"):
-                    placeholder = st.empty()
-                    placeholder.markdown("🔍 *Consultando fuentes y analizando datos...*")
+        with chat_container:
+            with st.chat_message("assistant"):
+                placeholder = st.empty()
+                placeholder.markdown("🔍 *Consultando fuentes y analizando evidencia científica...*")
 
-                    response = ""
-                    try:
-                        session_id = st.session_state.session_id
+                response = ""
+                skills_used = []
+                duration = 0
+                intermediate_steps = []
+
+                try:
+                    session_id = st.session_state.session_id
+                    
+                    if "Científico" in assistant_mode:
+                        # TIER 2: Autonomous Scientific Agent
+                        scientific_agent = st.session_state.scientific_agent
+                        active_skills_param = None
+                        if "selected_skills" in locals() and "Auto-detectar" not in selected_skills:
+                            active_skills_param = selected_skills
+                            
+                        res_dict = scientific_agent.run_investigation(
+                            research_question=prompt,
+                            active_skills=active_skills_param,
+                            entity_context=selected_entity
+                        )
+                        response = res_dict.get("answer", "")
+                        skills_used = res_dict.get("skills_used", [])
+                        duration = res_dict.get("duration_seconds", 0)
+                    else:
+                        # TIER 1: Deterministic Fast & Safe Assistant
                         orchestrator = st.session_state.orchestrator
-                        interpreter_orch = st.session_state.interpreter_orchestrator
-
-                        async def ask_agent():
-                            if "Analítico" in assistant_type:
-                                # Forzamos PLAN_ONLY para el nuevo flujo
-                                return await interpreter_orch.ask(
-                                    session_id, prompt, mode="plan_only", entity_context=selected_entity
-                                )
-                            else:
-                                return await orchestrator.ask(session_id, prompt, entity_context=selected_entity)
-
-                        response_data = _run_async_in_thread(ask_agent())
+                        t0 = time.time()
+                        
+                        async def ask_tier1():
+                            return await orchestrator.ask(session_id, prompt, entity_context=selected_entity)
+                            
+                        response_data = _run_async_in_thread(ask_tier1())
+                        duration = round(time.time() - t0, 2)
                         
                         if isinstance(response_data, dict):
                             response = response_data.get("answer", "")
                             intermediate_steps = response_data.get("intermediate_steps", [])
-                            
-                            if intermediate_steps:
-                                with st.expander("🧠 Razonamiento del Asistente", expanded=False):
-                                    for step in intermediate_steps:
-                                        if step["type"] == "tool_call":
-                                            st.code(f"🛠️ Llamando a: {step['name']}")
-                                        elif step["type"] == "tool_result":
-                                            st.caption(f"📥 Resultado de {step['name']}:")
-                                            st.code(step["content"][:200] + "...", language="json")
                         else:
                             response = response_data
-                        
-                        placeholder.markdown(response)
 
-                        # Si era modo analítico, guardamos el plan para ejecución posterior
-                        if "Analítico" in assistant_type:
-                            st.session_state.pending_plan = response
-                            st.session_state.pending_prompt = prompt
+                    placeholder.markdown(response)
 
-                    except Exception as e:
-                        import traceback
-                        placeholder.error(f"Error en orquestación: {e}")
-                        response = f"Error: {e}"
+                except Exception as e:
+                    import traceback
+                    placeholder.error(f"Error en orquestación: {e}")
+                    response = f"Error: {e}"
 
-                    st.session_state.chat_history.append({
-                        "role": "assistant",
-                        "content": response,
-                        "reasoning": intermediate_steps if 'intermediate_steps' in locals() else []
-                    })
-                    st.rerun()
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": response,
+                    "skills": skills_used,
+                    "duration": duration,
+                    "reasoning": intermediate_steps
+                })
+                st.rerun()
 
 # =======================================================
 # TAB: Asistente-Prueba (MCP Neo4j Solo)
