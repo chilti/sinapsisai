@@ -35,6 +35,7 @@ from agent.artifact_manager import artifact_manager
 from dashboard_analytics import render_institucion_view, render_investigador_view, load_cached_data, get_institution_hierarchy
 from lib.coauthra_integration import render_coauthra
 from agent.tools_mcp import get_mcp_tools_sync
+from lib.llm_utils import LLMConfig
 from lib import auth
 
 
@@ -45,6 +46,11 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+# ---- PROCESAMIENTO INMEDIATO DE CALLBACKS ORCID ----
+auth.init_auth_session()
+auth.handle_orcid_callback()
+
 
 # ---- CSS ----
 st.markdown("""
@@ -790,7 +796,9 @@ with st.sidebar:
         selected_entity = selected_dep
         selected_sub = None
     
-    st.selectbox("Modelo", ["openai/gpt-oss-20b"], index=0)
+    active_model = LLMConfig.get_model_name()
+    available_models = list(dict.fromkeys([active_model, "default", "prism-ml/bonsai-27b", "openai/gpt-oss-20b"]))
+    st.selectbox("Modelo LLM", available_models, index=0, key="llm_model_sidebar")
 
 
 

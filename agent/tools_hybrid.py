@@ -41,7 +41,7 @@ async_client = httpx.AsyncClient(verify=False)
 
 # URL del servicio LLM para traducciones (mismo que el principal)
 LLM_URL = auth_url.rstrip('/') + '/chat/completions'
-LLM_MODEL = os.getenv('LLM_MODEL', 'openai/gpt-oss-20b')
+LLM_MODEL = os.getenv('LLM_MODEL', 'default')
 
 # Inicialización condicional de conexiones externas
 qdrant_docs = QdrantStore(collection_name="scientific_papers") if QDRANT_AVAILABLE else None

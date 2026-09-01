@@ -140,6 +140,23 @@ def handle_orcid_callback():
     query_params = st.query_params
     if "code" in query_params:
         code = query_params["code"]
+        state = query_params.get("state", "")
+
+        # Puente OAuth para otros módulos del ecosistema (ej. Revistas LATAM)
+        if state == "revistaslatam" or "revistaslatam" in str(state):
+            target_url = f"https://dinamica1.fciencias.unam.mx/revistaslatam/?code={urllib.parse.quote(code)}"
+            st.markdown(
+                f'<meta http-equiv="refresh" content="0; url={target_url}">'
+                f'<script>window.location.replace("{target_url}");</script>'
+                f'<div style="padding: 24px; font-family: sans-serif; text-align: center;">'
+                f'  <h3>Redirigiendo a Revistas LATAM...</h3>'
+                f'  <p>Si no eres redirigido automáticamente, <a href="{target_url}">haz clic aquí</a>.</p>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+            st.stop()
+            return
+
         # Evitar procesar el mismo código varias veces si se refresca la página
         if not st.session_state.authenticated_user:
             token_data = exchange_code_for_token(code)
