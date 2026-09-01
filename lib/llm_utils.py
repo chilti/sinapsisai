@@ -17,7 +17,7 @@ class LLMConfig:
         return base_url
 
     @staticmethod
-    def get_model_name(default="openai/gpt-oss-20b"):
+    def get_model_name(default="default"):
         return os.getenv("LLM_MODEL", default)
 
     @staticmethod

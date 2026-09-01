@@ -23,6 +23,7 @@ from agent.interpreter_agent import InterpreterOrchestrator
 from dashboard_analytics1 import render_institucion_view, render_investigador_view, load_cached_data, get_institution_hierarchy
 from lib.coauthra_integration import render_coauthra
 from agent.tools_mcp import get_mcp_tools_sync
+from lib.llm_utils import LLMConfig
 
 load_dotenv()
 
@@ -326,7 +327,9 @@ with st.sidebar:
         # Si no hay subdependencias, la entidad es la dependencia
         selected_entity = selected_dep
     
-    st.selectbox("Modelo", ["openai/gpt-oss-20b"], index=0)
+    active_model = LLMConfig.get_model_name()
+    available_models = list(dict.fromkeys([active_model, "default", "prism-ml/bonsai-27b", "openai/gpt-oss-20b"]))
+    st.selectbox("Modelo LLM", available_models, index=0, key="llm_model_sidebar")
 
 
     st.markdown("---")
