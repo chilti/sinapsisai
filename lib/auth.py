@@ -137,25 +137,60 @@ def handle_orcid_callback():
     Procesa el callback de ORCID si detecta el parámetro 'code' en la URL.
     Debe llamarse al inicio del script de Streamlit.
     """
+    import streamlit.components.v1 as components
     query_params = st.query_params
     if "code" in query_params:
-        code = query_params["code"]
-        state = query_params.get("state", "")
+        # Extraer code y state limpiamente (soportando tanto str como list)
+        raw_code = query_params.get("code", "")
+        code_str = str(raw_code[0]) if isinstance(raw_code, list) and raw_code else str(raw_code or "")
 
-        # Puente OAuth para otros módulos del ecosistema (ej. Revistas LATAM)
-        if state == "revistaslatam" or "revistaslatam" in str(state):
-            target_url = f"https://dinamica1.fciencias.unam.mx/revistaslatam/?code={urllib.parse.quote(code)}"
+        raw_state = query_params.get("state", "")
+        state_str = str(raw_state[0]) if isinstance(raw_state, list) and raw_state else str(raw_state or "")
+        state_clean = state_str.lower().strip()
+
+        print(f"🔑 [OAuth Callback] code={code_str[:8]}... raw_state='{raw_state}' state_clean='{state_clean}'")
+
+        # Puente OAuth para otros módulos del ecosistema (ej. Revistas LATAM, TlachIA Metrics)
+        if "revistas" in state_clean or "latam" in state_clean:
+            target_url = f"https://dinamica1.fciencias.unam.mx/revistaslatam/?code={urllib.parse.quote(code_str)}"
+            print(f"➡️ [Puente OAuth] Redirigiendo a Revistas LATAM: {target_url}")
+            components.html(f"""
+                <script>
+                    window.top.location.href = "{target_url}";
+                    window.location.href = "{target_url}";
+                </script>
+            """, height=0)
             st.markdown(
                 f'<meta http-equiv="refresh" content="0; url={target_url}">'
-                f'<script>window.location.replace("{target_url}");</script>'
-                f'<div style="padding: 24px; font-family: sans-serif; text-align: center;">'
+                f'<div style="padding: 32px; font-family: sans-serif; text-align: center; background: white; border-radius: 8px; margin: 20px;">'
                 f'  <h3>Redirigiendo a Revistas LATAM...</h3>'
-                f'  <p>Si no eres redirigido automáticamente, <a href="{target_url}">haz clic aquí</a>.</p>'
+                f'  <p>Si no eres redirigido automáticamente, <a href="{target_url}" target="_top">haz clic aquí</a>.</p>'
                 f'</div>',
                 unsafe_allow_html=True
             )
             st.stop()
             return
+        elif "tlachia" in state_clean or "metric" in state_clean:
+            target_url = f"https://dinamica1.fciencias.unam.mx/tlachiametrics/?code={urllib.parse.quote(code_str)}"
+            print(f"➡️ [Puente OAuth] Redirigiendo a TlachIA Metrics: {target_url}")
+            components.html(f"""
+                <script>
+                    window.top.location.href = "{target_url}";
+                    window.location.href = "{target_url}";
+                </script>
+            """, height=0)
+            st.markdown(
+                f'<meta http-equiv="refresh" content="0; url={target_url}">'
+                f'<div style="padding: 32px; font-family: sans-serif; text-align: center; background: white; border-radius: 8px; margin: 20px;">'
+                f'  <h3>Redirigiendo a TlachIA Metrics...</h3>'
+                f'  <p>Si no eres redirigido automáticamente, <a href="{target_url}" target="_top">haz clic aquí</a>.</p>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+            st.stop()
+            return
+
+        code = code_str
 
         # Evitar procesar el mismo código varias veces si se refresca la página
         if not st.session_state.authenticated_user:
