@@ -1,4 +1,4 @@
-﻿{
+{
   "title": "SinapsisAI: Hub de Inteligencia Científica, Orquestador RAG y Análisis Bibliométrico Híbrido",
   "description": "SinapsisAI es una plataforma de inteligencia científica, cartografía del conocimiento y orquestación RAG basada en una arquitectura híbrida (ClickHouse + Neo4j + Qdrant) para la identificación y evaluación de investigadores, instituciones y redes de colaboración científica.",
   "creators": [
@@ -19,6 +19,31 @@
     }
   ],
   "contributors": [
+    {
+      "name": "Delago Quiroz, Lorena",
+      "affiliation": "Centro de Ciencias de la Complejidad (C3), Universidad Nacional Autónoma de México (UNAM)",
+      "type": "Researcher"
+    },
+    {
+      "name": "Guzmán Sánchez, María Victoria",
+      "affiliation": "Facultad de Ciencias, Universidad Nacional Autónoma de México (UNAM)",
+      "type": "Researcher"
+    },
+    {
+      "name": "Deloya Andrade, Ana Valeria",
+      "affiliation": "Facultad de Ciencias, Universidad Nacional Autónoma de México (UNAM)",
+      "type": "ProjectMember"
+    },
+    {
+      "name": "Ortega Venegas, Rodrigo Aldair",
+      "affiliation": "Facultad de Ciencias, Universidad Nacional Autónoma de México (UNAM)",
+      "type": "ProjectMember"
+    },
+    {
+      "name": "Vázquez Rodríguez, Leonardo",
+      "affiliation": "Facultad de Ciencias, Universidad Nacional Autónoma de México (UNAM)",
+      "type": "ProjectMember"
+    },
     {
       "name": "Calero Ramos, Romel",
       "affiliation": "Centro de Ciencias de la Complejidad (C3), Universidad Nacional Autónoma de México (UNAM)",

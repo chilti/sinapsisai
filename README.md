@@ -160,6 +160,17 @@ El proceso legacy (basado en scrapers SIIA manuales y Neo4j puro) ha sido movido
 
 ---
 
-## 🙏 Agradecimientos
+## 🙏 Agradecimientos y Colaboradores
 
-Nuestro especial reconocimiento y agradecimiento a **Romel Calero Ramos**, por el diseño, despliegue y administración de la infraestructura de servidores y base de datos analítica masiva en **ClickHouse** en el **Centro de Ciencias de la Complejidad (C3, UNAM)**, pilar fundamental para el procesamiento y consulta a gran escala de los datos de este proyecto.
+### 🔬 Investigadoras que colaboran en el proyecto
+- **Dra. Lorena Delago Quiroz** (Centro de Ciencias de la Complejidad, C3, UNAM)
+- **Dra. María Victoria Guzmán Sánchez** (Facultad de Ciencias, UNAM)
+
+### 🎓 Estudiantes de la Facultad de Ciencias (UNAM)
+- **Ana Valeria Deloya Andrade**: Ingeniería de Prompts para describir y analizar gráficas.
+- **Rodrigo Aldair Ortega Venegas**: Visualización de los Objetivos de Desarrollo Sostenible.
+- **Leonardo Vázquez Rodríguez**: Visualización de Trayectorias.
+
+### 🏛️ Infraestructura y Cómputo
+- **Romel Calero Ramos** (Centro de Ciencias de la Complejidad, C3, UNAM): Diseño, despliegue y administración de la infraestructura de servidores y base de datos analítica masiva en **ClickHouse**, pilar fundamental para el procesamiento y consulta a gran escala de los datos de este proyecto.
+
