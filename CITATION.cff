@@ -1,0 +1,30 @@
+﻿cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "SinapsisAI: Hub de Inteligencia Científica, Orquestador RAG y Análisis Bibliométrico Híbrido"
+abstract: "Plataforma de inteligencia científica, cartografía del conocimiento y orquestación RAG basada en una arquitectura híbrida (ClickHouse + Neo4j + Qdrant) para la identificación y evaluación de investigadores, instituciones y redes de colaboración científica."
+authors:
+  - family-names: "Jiménez Andrade"
+    given-names: "José Luis"
+    orcid: "https://orcid.org/0000-0003-3453-7159"
+    affiliation: "Facultad de Ciencias y Centro de Ciencias de la Complejidad (C3), Universidad Nacional Autónoma de México (UNAM)"
+  - family-names: "Carrillo Calvet"
+    given-names: "Humberto Andrés"
+    orcid: "https://orcid.org/0000-0003-3659-6769"
+    affiliation: "Facultad de Ciencias y Centro de Ciencias de la Complejidad (C3), Universidad Nacional Autónoma de México (UNAM)"
+  - family-names: "Arencibia Jorge"
+    given-names: "Ricardo"
+    orcid: "https://orcid.org/0000-0001-8907-2454"
+    affiliation: "Centro de Ciencias de la Complejidad (C3), Universidad Nacional Autónoma de México (UNAM)"
+repository-code: "https://github.com/chilti/sinapsisai"
+url: "https://dinamica1.fciencias.unam.mx/sinapsisai/"
+keywords:
+  - SinapsisAI
+  - cienciometría
+  - bibliometría
+  - RAG
+  - GraphRAG
+  - OpenAlex
+  - SNII
+license: MIT
+version: "1.0.0"
+date-released: "2026-09-09"
