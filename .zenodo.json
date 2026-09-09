@@ -1,6 +1,6 @@
 {
-  "title": "SinapsisAI: Hub de Inteligencia Científica, Orquestador RAG y Análisis Bibliométrico Híbrido",
-  "description": "SinapsisAI es una plataforma de inteligencia científica, cartografía del conocimiento y orquestación RAG basada en una arquitectura híbrida (ClickHouse + Neo4j + Qdrant) para la identificación y evaluación de investigadores, instituciones y redes de colaboración científica.",
+  "title": "SinapsisAI: Scientific Intelligence Hub, RAG Orchestrator, and Hybrid Bibliometric Analytics",
+  "description": "SinapsisAI is a scientific intelligence, knowledge mapping, and RAG orchestration platform powered by a hybrid architecture (ClickHouse + Neo4j + Qdrant) designed for scholar identification, institutional evaluation, and scientific collaboration network analysis.",
   "creators": [
     {
       "name": "Jiménez Andrade, José Luis",
@@ -52,8 +52,8 @@
   ],
   "keywords": [
     "SinapsisAI",
-    "cienciometría",
-    "bibliometría",
+    "scientometrics",
+    "bibliometrics",
     "RAG",
     "GraphRAG",
     "OpenAlex",
@@ -61,6 +61,8 @@
     "Neo4j",
     "Qdrant",
     "SNII",
+    "scientific intelligence",
+    "knowledge mapping",
     "UNAM",
     "C3"
   ],
