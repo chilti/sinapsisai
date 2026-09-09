@@ -1,6 +1,6 @@
 {
-  "title": "SinapsisAI: Scientific Intelligence Hub, RAG Orchestrator, and Hybrid Bibliometric Analytics",
-  "description": "SinapsisAI is a scientific intelligence, knowledge mapping, and RAG orchestration platform powered by a hybrid architecture (ClickHouse + Neo4j + Qdrant) designed for scholar identification, institutional evaluation, and scientific collaboration network analysis.",
+  "title": "SNII Info TlachIA: Scientific Intelligence Hub, RAG Orchestrator, and Hybrid Bibliometric Analytics",
+  "description": "SNII Info TlachIA is a scientific intelligence, knowledge mapping, and RAG orchestration platform powered by a hybrid architecture (ClickHouse + Neo4j + Qdrant) designed for scholar identification, institutional evaluation, and scientific collaboration network analysis.",
   "creators": [
     {
       "name": "Jiménez Andrade, José Luis",

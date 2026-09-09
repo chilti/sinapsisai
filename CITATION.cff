@@ -1,6 +1,6 @@
-﻿cff-version: 1.2.0
+cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
-title: "SinapsisAI: Hub de Inteligencia Científica, Orquestador RAG y Análisis Bibliométrico Híbrido"
+title: "SNII Info TlachIA: Scientific Intelligence Hub, RAG Orchestrator, and Hybrid Bibliometric Analytics"
 abstract: "Plataforma de inteligencia científica, cartografía del conocimiento y orquestación RAG basada en una arquitectura híbrida (ClickHouse + Neo4j + Qdrant) para la identificación y evaluación de investigadores, instituciones y redes de colaboración científica."
 authors:
   - family-names: "Jiménez Andrade"
