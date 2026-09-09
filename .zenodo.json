@@ -18,6 +18,13 @@
       "orcid": "0000-0001-8907-2454"
     }
   ],
+  "contributors": [
+    {
+      "name": "Calero Ramos, Romel",
+      "affiliation": "Centro de Ciencias de la Complejidad (C3), Universidad Nacional Autónoma de México (UNAM)",
+      "type": "Other"
+    }
+  ],
   "keywords": [
     "SinapsisAI",
     "cienciometría",

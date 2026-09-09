@@ -157,3 +157,9 @@ python ingestion/compute_scholar_metrics_ch.py --all
 ## 📂 Documentación Histórica
 El proceso legacy (basado en scrapers SIIA manuales y Neo4j puro) ha sido movido a:
 👉 [**LEGACY_README.md**](docs/LEGACY_README.md)
+
+---
+
+## 🙏 Agradecimientos
+
+Nuestro especial reconocimiento y agradecimiento a **Romel Calero Ramos**, por el diseño, despliegue y administración de la infraestructura de servidores y base de datos analítica masiva en **ClickHouse** en el **Centro de Ciencias de la Complejidad (C3, UNAM)**, pilar fundamental para el procesamiento y consulta a gran escala de los datos de este proyecto.
