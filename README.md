@@ -1,5 +1,8 @@
 # SNII Info TlachIA - Hub de Inteligencia Bibliométrica (SNII-First)
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22680623.svg)](https://doi.org/10.5281/zenodo.22680623)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Sistema de Inteligencia Bibliométrica Híbrida y Orquestador RAG para entidades académicas mexicanas. Esta versión del sistema prioriza la identificación de investigadores nacionales mediante el padrón oficial del SNII (Sistema Nacional de Investigadoras e Investigadores) y una arquitectura de datos distribuida (Neo4j + ClickHouse + Qdrant).
 
 ### 📍 Acceso al Sistema
@@ -157,6 +160,42 @@ python ingestion/compute_scholar_metrics_ch.py --all
 ## 📂 Documentación Histórica
 El proceso legacy (basado en scrapers SIIA manuales y Neo4j puro) ha sido movido a:
 👉 [**LEGACY_README.md**](docs/LEGACY_README.md)
+
+---
+
+## 👥 Autores
+
+- **José Luis Jiménez Andrade** (ORCID: [0000-0003-3453-7159](https://orcid.org/0000-0003-3453-7159))  
+  *Facultad de Ciencias y Centro de Ciencias de la Complejidad (C3), Universidad Nacional Autónoma de México (UNAM)*
+- **Humberto Andrés Carrillo Calvet** (ORCID: [0000-0003-3659-6769](https://orcid.org/0000-0003-3659-6769))  
+  *Facultad de Ciencias y Centro de Ciencias de la Complejidad (C3), Universidad Nacional Autónoma de México (UNAM)*
+- **Ricardo Arencibia Jorge** (ORCID: [0000-0001-8907-2454](https://orcid.org/0000-0001-8907-2454))  
+  *Centro de Ciencias de la Complejidad (C3), Universidad Nacional Autónoma de México (UNAM)*
+
+---
+
+## 📖 Cómo Citar / Citation
+
+Si utilizas **SNII Info TlachIA** en tus investigaciones, análisis cienciométricos o desarrollos de software, por favor cita este repositorio utilizando la siguiente referencia oficial:
+
+### Formato APA:
+> Jiménez Andrade, J. L., Carrillo Calvet, H. A., & Arencibia Jorge, R. (2026). *SNII Info TlachIA: Scientific Intelligence Hub, RAG Orchestrator, and Hybrid Bibliometric Analytics* (Version v1.0.0) [Computer software]. Zenodo. [https://doi.org/10.5281/zenodo.22680623](https://doi.org/10.5281/zenodo.22680623)
+
+### Formato BibTeX:
+```bibtex
+@software{jimenez_andrade_2026_22680623,
+  author       = {Jiménez Andrade, José Luis and
+                  Carrillo Calvet, Humberto Andrés and
+                  Arencibia Jorge, Ricardo},
+  title        = {SNII Info TlachIA: Scientific Intelligence Hub, RAG Orchestrator, and Hybrid Bibliometric Analytics},
+  month        = sep,
+  year         = 2026,
+  publisher    = {Zenodo},
+  version      = {v1.0.0},
+  doi          = {10.5281/zenodo.22680623},
+  url          = {https://doi.org/10.5281/zenodo.22680623}
+}
+```
 
 ---
 
