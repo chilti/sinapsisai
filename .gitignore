@@ -43,3 +43,7 @@ agent/council/scripts/
 query_test.py
 pdf/
 
+
+# Local environment packages and templates
+python_packages/
+{path}/
