@@ -1575,6 +1575,51 @@ class Neo4jGraphStore:
             except Exception as e:
                 print(f"Error resolviendo conflicto de ORCID e identificando academic {academic_id}: {e}")
 
+    def create_independent_academic_and_link(self, orcid: str, full_name: str, area_name: str = None) -> dict:
+        """
+        Crea un perfil de académico independiente (no-SNII) y lo vincula al nodo User.
+        NO se vincula a ninguna institución en el grafo para no alterar censos ni producción institucional.
+        """
+        self.upsert_user(orcid, full_name)
+        
+        # Normalizar ID y URL de ORCID
+        orcid_id = str(orcid).rstrip('/').split('/')[-1]
+        orcid_url = f"https://orcid.org/{orcid_id}"
+        norm_name = str(full_name).upper().strip()
+        
+        query = """
+        MATCH (u:User {orcid: $orcid})
+        MERGE (a:Person {id: $orcid})
+        SET a:Author,
+            a.fullname = $name,
+            a.is_snii = false,
+            a.verified = true,
+            a.verified_orcid = $orcid,
+            a.orcid = $orcid,
+            a.orcids = apoc.coll.toSet(coalesce(a.orcids, []) + [$orcid, $orcid_url]),
+            a.institution = 'INDEPENDIENTE',
+            a.entity = 'INDEPENDIENTE',
+            a.source = 'ORCID_REGISTRATION_NON_SNII'
+            
+        MERGE (u)-[:REPRESENTS]->(a)
+        SET r.verification_date = datetime()
+        
+        WITH a
+        FOREACH (_ IN CASE WHEN $area_name IS NOT NULL AND $area_name <> "" AND $area_name <> "SIN INFORMACIÓN" THEN [1] ELSE [] END |
+            MERGE (ka:KnowledgeArea {name: $area_name})
+            MERGE (a)-[:SPECIALIZED_IN]->(ka)
+        )
+        RETURN a.id as academic_id, a.fullname as academic_name
+        """
+        with self.driver.session() as session:
+            try:
+                result = session.run(query, orcid=orcid, orcid_url=orcid_url, name=norm_name, area_name=area_name).single()
+                if result:
+                    return dict(result)
+            except Exception as e:
+                print(f"Error creando académico independiente {orcid}: {e}")
+        return {"academic_id": orcid, "academic_name": norm_name}
+
 
     def global_search(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         """

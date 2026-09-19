@@ -19,18 +19,21 @@ from database.knowledge_graph import Neo4jGraphStore
 from database.clickhouse_db import ch_client
 from scripts.tools.match_snii_orcid import normalize_text
 
-# Ruta manual al SNII para evitar errores de import
-SNII_PATH = os.path.join(str(_THIS.parent), "data", "Investigadores_vigentes_2025.xlsx")
-
 # Cargar .env
 load_dotenv(_THIS.parent / '.env')
 
-# --- Config LLM ---
+# Ruta al padrón SNII 2026 (prioriza Padron-2026-2T.xlsx sobre 2025)
+p2026 = _THIS.parent / "data" / "Padron-2026-2T.xlsx"
+p2025 = _THIS.parent / "data" / "Investigadores_vigentes_2025.xlsx"
+SNII_PATH = str(p2026 if p2026.exists() else p2025)
+
+# --- Config LLM con Razonamiento al Máximo ---
 user = os.getenv("LLM_USER")
 password = os.getenv("LLM_PASSWORD")
 base_url = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1/")
 if not base_url.endswith("/"): base_url += "/"
-model_name = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
+model_name = os.getenv("LLM_MODEL", "default")
+api_key = os.getenv("LLM_API_KEY", "lm-studio")
 
 auth_url = base_url
 if user and password:
@@ -38,15 +41,51 @@ if user and password:
         proto, rest = base_url.split("://", 1)
         auth_url = f"{proto}://{user}:{password}@{rest}"
 
-http_client = httpx.Client(verify=False, timeout=120)
+http_client = httpx.Client(verify=False, timeout=90)
 
 llm = ChatOpenAI(
     model=model_name,
     base_url=auth_url,
-    api_key="lm-studio",
+    api_key=api_key,
     http_client=http_client,
-    temperature=0
+    temperature=0,
+    max_tokens=1500,
+    reasoning_effort="high"
 )
+
+def parse_json_from_response(content: str) -> dict:
+    """Extrae el JSON válido de la respuesta del LLM, ignorando canales de razonamiento."""
+    if not content:
+        return {}
+    import re
+    clean = content.strip().replace('```json', '').replace('```', '').strip()
+    try:
+        return json.loads(clean)
+    except Exception:
+        pass
+
+    # Buscar bloque que contenga las claves esperadas
+    for pattern in [
+        r'\{[^{}]*"(?:root_ror|matched_ror)"[^{}]*\}',
+        r'\{[\s\S]*?"(?:root_ror|matched_ror)"[\s\S]*?\}'
+    ]:
+        m = re.search(pattern, content)
+        if m:
+            try:
+                return json.loads(m.group(0))
+            except Exception:
+                pass
+
+    # Fallback general para cualquier objeto JSON
+    matches = re.findall(r'\{[^{}]+\}', content)
+    for match in reversed(matches):
+        try:
+            return json.loads(match)
+        except Exception:
+            pass
+
+    return {}
+
 
 def get_accent_insensitive_regex(text: str) -> str:
     vowel_map = {'a': '[aáàâä]', 'e': '[eéèêë]', 'i': '[iíìîï]', 'o': '[oóòôö]', 'u': '[uúùûü]'}
@@ -85,7 +124,7 @@ def search_institutions(query_name: str, limit: int = 10):
     query = f"""
     SELECT id, display_name, ror, type, country_code, city, state, parent_id, parent_name, acronyms, raw_data
     FROM rag.institutions_seed_mexico
-    WHERE {where_clause}
+    WHERE ({where_clause}) AND display_name != 'Deleted Institution' AND display_name != ''
     ORDER BY (country_code = 'MX') DESC
     LIMIT {limit * 3}
     """
@@ -119,7 +158,10 @@ def search_institutions(query_name: str, limit: int = 10):
 def resolve_rors_v2(limit_test=None, force=False):
     print("\n🚀 Iniciando Resolución ROR v2 (Jerárquica)...")
     
-    df = pd.read_excel(SNII_PATH, sheet_name='4T_2025 (44,794)')
+    xl = pd.ExcelFile(SNII_PATH)
+    sheet_name = xl.sheet_names[0]
+    print(f"📖 Leyendo padrón desde {SNII_PATH} (Hoja: '{sheet_name}')...")
+    df = pd.read_excel(SNII_PATH, sheet_name=sheet_name)
     df.columns = [str(c).strip() for c in df.columns]
     cols = df.columns.tolist()
 
@@ -140,13 +182,16 @@ def resolve_rors_v2(limit_test=None, force=False):
         with open(output_path, "r", encoding="utf-8") as f: results = json.load(f)
 
     # --- FASE 1: Resolver Raíces (Instituciones) ---
-    root_names = sorted(df[inst_col].unique())
+    root_names = sorted([str(x).strip() for x in df[inst_col].dropna().unique() if str(x).strip()])
     if limit_test: root_names = root_names[:limit_test]
 
-    print(f"📦 Fase 1: Resolviendo {len(root_names)} instituciones raíz...")
+    print(f"📦 Fase 1: Evaluando {len(root_names)} instituciones raíz...")
     
     for inst_name in root_names:
-        if inst_name in results and not force: continue
+        if inst_name in results and not force:
+            root_info = results[inst_name].get("root_info", {})
+            if root_info.get("root_ror") or root_info.get("root_openalex_id"):
+                continue
         
         print(f"  🔍 Buscando Raíz: {inst_name}...")
         cands = search_institutions(inst_name)
@@ -166,18 +211,29 @@ Responde en JSON. IMPORTANTE: Los campos 'root_ror' y 'root_openalex_id' deben s
 }}"""
         try:
             resp = llm.invoke([HumanMessage(content=prompt)])
-            res_json = json.loads(resp.content.strip().replace('```json', '').replace('```', ''))
+            res_json = parse_json_from_response(resp.content)
+            if not res_json:
+                res_json = {
+                    "root_ror": None,
+                    "root_openalex_id": None,
+                    "root_name": inst_name,
+                    "confidence": 0,
+                    "reason": "No se pudo interpretar JSON de respuesta LLM"
+                }
             results[inst_name] = {
                 "root_info": res_json,
-                "units": {}
+                "units": results.get(inst_name, {}).get("units", {})
             }
             # Guardar raw_data de la raíz elegida para Fase 2
             match_id = res_json.get('root_openalex_id')
             root_raw = next((c['raw_data'] for c in cands if c['id'] == match_id), None)
             results[inst_name]["root_info"]["raw_data"] = root_raw
-            print(f"    ✅ Resuelto: {res_json['root_name']} ({res_json['confidence']}%)")
+            print(f"    ✅ Resuelto: {res_json.get('root_name') or inst_name} ({res_json.get('confidence', 0)}%)")
         except Exception as e:
             print(f"    ❌ Error: {e}")
+        
+        with open(output_path, "w", encoding="utf-8") as f: json.dump(results, f, indent=2, ensure_ascii=False)
+
         
         with open(output_path, "w", encoding="utf-8") as f: json.dump(results, f, indent=2, ensure_ascii=False)
 
@@ -303,9 +359,18 @@ Responde en JSON:
 }}"""
             try:
                 resp = llm.invoke([HumanMessage(content=prompt)])
-                res_json = json.loads(resp.content.strip().replace('```json', '').replace('```', ''))
+                res_json = parse_json_from_response(resp.content)
+                if not res_json:
+                    res_json = {
+                        "matched_ror": None,
+                        "matched_openalex_id": None,
+                        "matched_name": None,
+                        "confidence": 0,
+                        "method": "llm_hierarchical_validation",
+                        "reason": "No se pudo interpretar JSON de respuesta LLM"
+                    }
                 results[inst]["units"][unit_key] = res_json
-                print(f"    ✅ LLM: {res_json.get('matched_name') or 'No encontrado'} ({res_json['confidence']}%)")
+                print(f"    ✅ LLM: {res_json.get('matched_name') or 'No encontrado'} ({res_json.get('confidence', 0)}%)")
             except Exception as e:
                 print(f"    ❌ Error: {e}")
 

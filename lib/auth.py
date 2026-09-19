@@ -1,4 +1,5 @@
 import os
+import sys
 import requests
 import urllib.parse
 import streamlit as st
@@ -82,7 +83,9 @@ def _run_sync_worker(orcid_input: str, user_name: str, force: bool):
             'snii_author': author_name,
             'matched_orcid': orcid_url,
             'match': True,
-            'confidence': 'HIGH'
+            'confidence': 'HIGH',
+            'is_snii': False,
+            'is_independent': True
         }
         print(f"🚀 [Background Sync] Iniciando ingesta de publicaciones para {author_name} ({orcid_url})...")
         ingest_researcher_data(data, force=force, save_to_ch=True)

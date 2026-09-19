@@ -12,6 +12,8 @@ VENV_SITE_PACKAGES = "/home/jlja/venv_sos_mcp/lib/python3.12/site-packages"
 if os.path.exists(VENV_SITE_PACKAGES) and VENV_SITE_PACKAGES not in sys.path:
     sys.path.insert(0, VENV_SITE_PACKAGES)
 
+from lib.llm_utils import LLMConfig
+
 try:
     from smolagents import CodeAgent, OpenAIServerModel, tool
     HAS_SMOLAGENTS = True
@@ -26,18 +28,20 @@ class BaseSpecialistAgent:
         name: str,
         role_description: str,
         tools: List[Any],
-        model_id: str = "local-model",
-        api_base: str = "http://127.0.0.1:1234/v1/",
-        api_key: str = "lm-studio",
+        model_id: Optional[str] = None,
+        api_base: Optional[str] = None,
+        api_key: Optional[str] = None,
         max_steps: int = 6
     ):
         self.name = name
         self.role_description = role_description
         self.tools = tools
         self.max_steps = max_steps
-        self.model_id = model_id
-        self.api_base = api_base
-        self.api_key = api_key
+        
+        cfg_model = LLMConfig.get_model_name()
+        self.model_id = model_id or (cfg_model if cfg_model and cfg_model != "default" else "openai/gpt-oss-20b")
+        self.api_base = api_base or LLMConfig.get_auth_url()
+        self.api_key = api_key or LLMConfig.get_api_key()
         
         self.model = None
         if HAS_SMOLAGENTS:

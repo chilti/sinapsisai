@@ -251,8 +251,14 @@ def ingest_researcher_data(data: dict, force: bool = False, force_local: bool = 
     
     # 1. Generar ID único consistente con knowledge_graph.py
     cvu = data.get('snii_cvu') or data.get('CVU') or data.get('CVU padrón corregido')
+    matched_orcid = data.get('matched_orcid') or data.get('orcid')
+    is_snii = data.get('is_snii', True if (cvu and str(cvu).strip().isdigit()) else False)
+    is_independent = data.get('is_independent', not is_snii)
+    
     if cvu and str(cvu).strip().isdigit():
         person_id = str(cvu).strip()
+    elif matched_orcid:
+        person_id = str(matched_orcid).rstrip('/').split('/')[-1]
     else:
         person_id = "EXT_" + "".join(filter(str.isalnum, academic_name)).upper()
         
@@ -286,8 +292,23 @@ def ingest_researcher_data(data: dict, force: bool = False, force_local: bool = 
     else:
         print(f"\n🏷️ [{academic_name}] ID: {person_id} - Ingestando esquema...")
     
-    # 2. Ingestar Metadatos Taxonómicos e Institucionales (Nueva lógica atómica)
-    graph_store.ingest_academic_row(row_for_graph)
+    # 2. Ingestar Metadatos Taxonómicos e Institucionales solo si es SNII o tiene institución
+    if is_snii and data.get('snii_institution') and not is_independent:
+        graph_store.ingest_academic_row(row_for_graph)
+    else:
+        # Asegurar nodo Person independiente SIN institución para no alterar censos ni producción universitaria
+        try:
+            with graph_store.driver.session() as s:
+                s.run("""
+                MERGE (a:Person {id: $id})
+                SET a:Author,
+                    a.fullname = coalesce(a.fullname, $name),
+                    a.is_snii = false,
+                    a.institution = 'INDEPENDIENTE',
+                    a.entity = 'INDEPENDIENTE'
+                """, id=person_id, name=academic_name)
+        except Exception as e_node:
+            print(f"⚠️ Error creando nodo independiente {person_id} en Neo4j: {e_node}")
 
     # 3. Enriquecer con identificadores externos y auditoría
     audit = data.get('audit', {})
@@ -308,7 +329,7 @@ def ingest_researcher_data(data: dict, force: bool = False, force_local: bool = 
         audit_reason=reason,
         audit_confidence=confidence,
         audit_timestamp=audit.get('timestamp'),
-        is_snii=True
+        is_snii=is_snii
     )
 
 

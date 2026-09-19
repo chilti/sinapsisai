@@ -227,7 +227,7 @@ def select_academic_in_ui(academic_name):
     query = """
     MATCH (a:Person)
     WHERE a.fullname = $name OR a.id = $name
-    MATCH (a)-[:AFFILIATED_TO]->(node)
+    OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(node)
     OPTIONAL MATCH (node)-[:PART_OF*0..2]->(parent)
     RETURN labels(node) as node_labels, node.name as node_name, labels(parent) as parent_labels, parent.name as parent_name
     """
@@ -1114,9 +1114,61 @@ if user_auth:
                                             st.session_state.queue_message = "⏳ Hemos iniciado la descarga de tu producción y el cálculo de tus métricas en segundo plano. Esto puede tardar un par de minutos en verse reflejado en tu dashboard."
                                             st.rerun()
                         else:
-                            st.info("No te encontramos? Prueba buscando solo tu primer apellido o ID de OpenAlex.")
-                            if st.button("Solicitar nuevo registro"):
-                                st.write("Formulario de registro en desarrollo...")
+                            st.info("💡 Si tu nombre no figura en los registros previos, puedes darte de alta como Investigador Independiente a continuación.")
+
+                    st.markdown("---")
+                    st.subheader("📝 Registro de Investigador Independiente / No-SNII")
+                    st.write(
+                        "Si no perteneces al padrón institucional precargado, puedes dar de alta tu perfil verificado. "
+                        "Tu producción científica y métricas de impacto se calcularán de manera personalizada sin vincularse "
+                        "a la estructura de ninguna institución en los censos nacionales."
+                    )
+                    
+                    with st.form("form_register_independent"):
+                        default_name = user_auth.get('name') or ""
+                        reg_name = st.text_input(
+                            "Nombre Completo:", 
+                            value=default_name, 
+                            placeholder="Ej: Dr. Juan Pérez García",
+                            help="Nombre oficial con el que se registrarán tus publicaciones y métricas"
+                        )
+                        st.text_input("ORCID iD (Verificado):", value=user_auth.get('orcid', ''), disabled=True)
+                        
+                        knowledge_areas = [
+                            "I. FÍSICO-MATEMÁTICAS Y CIENCIAS DE LA TIERRA",
+                            "II. BIOLOGÍA Y QUÍMICA",
+                            "III. MEDICINA Y CIENCIAS DE LA SALUD",
+                            "IV. CIENCIAS DE LA CONDUCTA Y LA EDUCACIÓN",
+                            "V. HUMANIDADES",
+                            "VI. CIENCIAS SOCIALES",
+                            "VII. CIENCIAS DE LA AGRICULTURA, AGROPECUARIAS, FORESTALES Y DE ECOSISTEMAS",
+                            "VIII. INGENIERÍAS Y DESARROLLO TECNOLÓGICO",
+                            "INTERDISCIPLINARIA",
+                            "OTRA / SIN INFORMACIÓN"
+                        ]
+                        reg_area = st.selectbox("Área de Conocimiento Principal (Opcional):", options=knowledge_areas)
+                        
+                        submit_reg = st.form_submit_button("✨ Registrar y Sincronizar mi Perfil", type="primary", use_container_width=True)
+                        if submit_reg:
+                            if not reg_name.strip():
+                                st.error("Por favor introduce un nombre válido.")
+                            else:
+                                neo_ind = Neo4jGraphStore()
+                                prof = neo_ind.create_independent_academic_and_link(
+                                    orcid=user_auth['orcid'],
+                                    full_name=reg_name.strip(),
+                                    area_name=reg_area if reg_area != "OTRA / SIN INFORMACIÓN" else None
+                                )
+                                neo_ind.close()
+                                
+                                # Disparar procesamiento de ingesta y métricas en background
+                                trigger_background_processing(reg_name.strip(), user_auth['orcid'])
+                                
+                                st.session_state.queue_message = (
+                                    f"🎉 ¡Perfil creado con éxito para **{reg_name.strip()}**! "
+                                    f"Hemos iniciado la descarga de tus publicaciones desde ORCID, OpenAlex y Scopus en segundo plano."
+                                )
+                                st.rerun()
 
 
 # =======================================================
@@ -1263,12 +1315,21 @@ if tab_admin is not None:
             else:
                 st.info("🟢 **Sistema Disponible**: No hay procesos de sincronización ejecutándose en este momento.")
 
+        # ====================================================
+        # BLOQUE 1: PROCEDIMIENTOS PERIÓDICOS Y SISTEMÁTICOS (HASTA ARRIBA)
+        # ====================================================
+        st.subheader("🔄 Procedimientos Periódicos de Actualización")
+
         # ----------------------------------------------------
-        # 0. Pipeline Integral (1-Click)
+        # 1. Pipeline Integral (1-Click)
         # ----------------------------------------------------
-        with st.expander("⚡ **Pipeline Integral End-to-End (1-Clic)**", expanded=not is_task_running):
+        with st.expander("⚡ **1. Pipeline Integral End-to-End (1-Clic)**", expanded=not is_task_running):
             st.markdown("""
-            Ejecuta de forma secuencial los 3 pasos: **1. Cosecha Externa (`sync_works.py`)** $\\rightarrow$ **2. Sincronización ClickHouse (`sync_analytics_pipeline.py`)** $\\rightarrow$ **3. Recálculo de Métricas (`compute_scholar_metrics_ch.py`)**.
+            Ejecuta de forma secuencial los 4 pasos:
+            **0. Validación Pre-requisitos (`validate_pipeline_prerequisites.py`)** $\\rightarrow$
+            **1. Cosecha Externa (`sync_works.py`)** $\\rightarrow$
+            **2. Sincronización ClickHouse (`sync_analytics_pipeline.py`)** $\\rightarrow$
+            **3. Recálculo Atómico de Métricas (`compute_scholar_metrics_ch.py`)**.
             """)
             col_e1, col_e2 = st.columns(2)
             with col_e1:
@@ -1278,9 +1339,13 @@ if tab_admin is not None:
                 e2e_local = st.checkbox("⚡ Usar recursos locales / LM Studio (`--local`)", value=False, key="e2e_local", disabled=is_task_running)
                 e2e_limit = st.number_input("🔢 Límite de registros (0 = sin límite):", min_value=0, max_value=100000, value=0, key="e2e_limit", disabled=is_task_running)
 
-            if st.button("🚀 Ejecutar Pipeline Completo (Cosecha + Sync + Métricas)", type="primary", use_container_width=True, key="btn_e2e", disabled=is_task_running):
+            if st.button("🚀 Ejecutar Pipeline Completo (Validación + Cosecha + Sync + Métricas)", type="primary", use_container_width=True, key="btn_e2e", disabled=is_task_running):
                 chain = []
                 
+                # Paso 0: Validación de pre-requisitos y RORs
+                cmd0 = [sys.executable, "scripts/tools/validate_pipeline_prerequisites.py"]
+                chain.append(cmd0)
+
                 # Paso 1: sync_works.py
                 cmd1 = [sys.executable, "ingestion/sync_works.py", "--sync-academics", "--ch"]
                 if e2e_local: cmd1.append("--local")
@@ -1304,6 +1369,75 @@ if tab_admin is not None:
                 _run_admin_bg_task(chain, "Pipeline Completo")
                 st.success(f"🚀 Pipeline completo iniciado en segundo plano:\n`{chain_str}`")
                 st.toast("🚀 Pipeline completo iniciado.", icon="⚙️")
+                st.rerun()
+
+        # ----------------------------------------------------
+        # 2. Catálogo y Sincronización Institucional de RORs (Post-Snapshot)
+        # ----------------------------------------------------
+        with st.expander("🏛️ **2. Catálogo y Sincronización Institucional de RORs (Post-Snapshot)**", expanded=False):
+            st.markdown("""
+            **Procedimiento Operativo tras actualización de Snapshot de OpenAlex:**
+            1. **Extracción del Catálogo:** Consulta ClickHouse y extrae las instituciones mexicanas con ROR activo (`extract_mexican_rors.py`).
+            2. **Resolución Jerárquica:** Mapea el padrón contra el catálogo de RORs omitiendo instituciones ya validadas (`snii_ror_resolver2.py`).
+            3. **Sincronización a Neo4j y Fusión con LLM:** Inyecta RORs en el Grafo y evalúa posibles fusiones de instituciones deprecadas (`sync_and_fuse_institutions_neo4j.py`).
+            """)
+            
+            col_ror1, col_ror2, col_ror3 = st.columns(3)
+            with col_ror1:
+                if st.button("📦 2.1 Extraer Catálogo ROR", use_container_width=True, disabled=is_task_running):
+                    cmd = [sys.executable, "ROR/extract_mexican_rors.py"]
+                    _run_admin_bg_task(cmd, "Extracción Catálogo ROR")
+                    st.success("🚀 Extracción de RORs iniciada en segundo plano.")
+                    st.rerun()
+            with col_ror2:
+                if st.button("🎯 2.2 Resolver SNII a ROR", use_container_width=True, disabled=is_task_running):
+                    cmd = [sys.executable, "ROR/snii_ror_resolver2.py"]
+                    _run_admin_bg_task(cmd, "Resolver SNII a ROR")
+                    st.success("🚀 Resolución jerárquica de ROR iniciada.")
+                    st.rerun()
+            with col_ror3:
+                if st.button("🔄 2.3 Sincronizar y Fusionar Neo4j", use_container_width=True, disabled=is_task_running):
+                    cmd = [sys.executable, "scripts/tools/sync_and_fuse_institutions_neo4j.py"]
+                    _run_admin_bg_task(cmd, "Sync ROR Neo4j")
+                    st.success("🚀 Sincronización de RORs en Neo4j iniciada.")
+                    st.rerun()
+
+            if st.button("🏛️ Ejecutar Procedimiento 2 Completo (Catálogo + Resolver + Neo4j)", type="primary", use_container_width=True, disabled=is_task_running):
+                chain_ror = [
+                    [sys.executable, "ROR/extract_mexican_rors.py"],
+                    [sys.executable, "ROR/snii_ror_resolver2.py"],
+                    [sys.executable, "scripts/tools/sync_and_fuse_institutions_neo4j.py"]
+                ]
+                _run_admin_bg_task(chain_ror, "Sincronización Completa ROR")
+                st.success("🚀 Procedimiento integral de RORs iniciado en segundo plano.")
+                st.rerun()
+
+        # ----------------------------------------------------
+        # 3. Barrido Periódico de Investigadores sin ORCID
+        # ----------------------------------------------------
+        with st.expander("🔍 **3. Barrido Periódico de Investigadores sin ORCID (Detección de Altas)**", expanded=False):
+            st.markdown("""
+            **Procedimiento Trimestral de Rescate:**
+            Re-escanea los investigadores del padrón que carecen de ORCID buscando si tramitaron su identificador recientemente mediante:
+            - Búsqueda en la base local ClickHouse `orcid`.
+            - Consulta a la API pública oficial de ORCID (`pub.orcid.org`).
+            - Web scraper de directorios institucionales de facultades.
+            - Reranking con Structured Outputs del modelo local de LM Studio (`openai/gpt-oss-20b`).
+            """)
+            col_orc1, col_orc2 = st.columns(2)
+            with col_orc1:
+                retry_failed_opt = st.checkbox("🔄 Re-evaluar registros con NoMatch o fallas de parseo previas (`--retry-failed-llm`)", value=True, disabled=is_task_running)
+            with col_orc2:
+                orcid_limit = st.number_input("🔢 Límite de investigadores a evaluar (0 = sin límite):", min_value=0, max_value=100000, value=0, key="orcid_scan_limit", disabled=is_task_running)
+
+            if st.button("🔍 Iniciar Barrido de Investigadores sin ORCID", type="primary", use_container_width=True, disabled=is_task_running):
+                cmd_orcid = [sys.executable, "SNII/resolve_snii_2026_identities.py"]
+                if retry_failed_opt:
+                    cmd_orcid.append("--retry-failed-llm")
+                if orcid_limit > 0:
+                    cmd_orcid.extend(["--limit", str(orcid_limit)])
+                _run_admin_bg_task(cmd_orcid, "Barrido ORCIDs Faltantes")
+                st.success("🚀 Barrido de investigadores sin ORCID iniciado en segundo plano.")
                 st.rerun()
 
         st.markdown("---")
@@ -1480,6 +1614,95 @@ if tab_admin is not None:
                     _run_admin_bg_task(cmd, "Cómputo Embeddings (embed_works)")
                     st.success(f"🚀 Cómputo de embeddings iniciado en segundo plano:\n`{' '.join(cmd)}`")
                     st.rerun()
+
+        # ====================================================
+        # BLOQUE 3: ACTUALIZACIÓN EVENTUAL DEL PADRÓN SNII (HASTA ABAJO)
+        # ====================================================
+        st.markdown("---")
+        st.subheader("📋 Ingesta y Actualización de Nuevo Padrón SNII (Anual / Semestral)")
+        with st.expander("📋 **Ingesta Supervisada de Padrón SNII con Subida de Archivo Excel**", expanded=False):
+            st.markdown("""
+            **Procedimiento para incorporar un nuevo corte o convocatoria oficial del SNII (Conahcyt / Secihti):**
+            Permite subir el nuevo archivo Excel (`.xlsx`), auditar las diferencias cienciométricas (altas, bajas, promociones), actualizar las membresías y distinciones en el Grafo Neo4j y resolver las identidades académicas mediante IA local con Structured Outputs.
+            """)
+
+            # 1. File Uploader para nuevo Excel
+            uploaded_snii_file = st.file_uploader(
+                "📂 Arrastra o selecciona el archivo Excel oficial del SNII (.xlsx):",
+                type=["xlsx"],
+                key="admin_snii_file_uploader",
+                disabled=is_task_running
+            )
+            
+            # Buscar archivos existentes en data/ y data/snii/
+            snii_excels = []
+            for _dir in [os.path.join(_BASE_PATH, "data", "snii"), os.path.join(_BASE_PATH, "data")]:
+                if os.path.exists(_dir):
+                    for _f in os.listdir(_dir):
+                        if _f.endswith(".xlsx") and not _f.startswith("~$") and any(k in _f.lower() for k in ["snii", "padron", "investigadores"]):
+                            _full = os.path.join(_dir, _f)
+                            if _full not in snii_excels:
+                                snii_excels.append(_full)
+            snii_excels = sorted(snii_excels, reverse=True)
+
+            selected_excel_path = None
+            if uploaded_snii_file is not None:
+                save_dest = os.path.join(_BASE_PATH, "data", "snii", uploaded_snii_file.name)
+                with open(save_dest, "wb") as f_dest:
+                    f_dest.write(uploaded_snii_file.getbuffer())
+                st.success(f"✅ Archivo subido y guardado exitosamente: `{save_dest}`")
+                selected_excel_path = save_dest
+            elif snii_excels:
+                selected_excel_path = st.selectbox(
+                    "📁 O selecciona un archivo Excel ya presente en el servidor:",
+                    snii_excels,
+                    format_func=lambda p: os.path.basename(p),
+                    key="select_snii_excel",
+                    disabled=is_task_running
+                )
+
+            st.markdown("---")
+            st.markdown("##### Pasos Operativos Individuales:")
+            col_sn1, col_sn2, col_sn3 = st.columns(3)
+            with col_sn1:
+                st.markdown("**Paso 1: Auditoría Diff**")
+                st.caption("Detecta altas, bajas, promociones y movilidad.")
+                if st.button("🔍 1.1 Auditar Diferencias (Diff)", use_container_width=True, disabled=is_task_running or not selected_excel_path):
+                    cmd_diff = [sys.executable, "scripts/audit_snii_diff_2025_2026.py", "--excel", selected_excel_path]
+                    _run_admin_bg_task(cmd_diff, "Auditoría Diff SNII")
+                    st.success("🚀 Auditoría de diferencias iniciada.")
+                    st.rerun()
+
+            with col_sn2:
+                st.markdown("**Paso 2: Grafo Neo4j**")
+                st.caption("Crea/actualiza distinciones y membresías.")
+                if st.button("🏛️ 1.2 Actualizar Nodos Neo4j", use_container_width=True, disabled=is_task_running or not selected_excel_path):
+                    cmd_neo = [sys.executable, "scripts/update_neo4j_snii_2026.py", "--excel", selected_excel_path]
+                    _run_admin_bg_task(cmd_neo, "Actualizar Neo4j SNII")
+                    st.success("🚀 Actualización de grafo Neo4j iniciada.")
+                    st.rerun()
+
+            with col_sn3:
+                st.markdown("**Paso 3: Resolver de Identidad**")
+                st.caption("Búsqueda híbrida ClickHouse + LM Studio.")
+                if st.button("🧠 1.3 Resolver Identidades (LLM)", use_container_width=True, disabled=is_task_running):
+                    cmd_res = [sys.executable, "SNII/resolve_snii_2026_identities.py"]
+                    _run_admin_bg_task(cmd_res, "Resolver Identidades SNII")
+                    st.success("🚀 Resolución de identidades iniciada.")
+                    st.rerun()
+
+            st.markdown("---")
+            if st.button("🚀 Iniciar Flujo SNII Completo (Diff + Neo4j + Resolver)", type="primary", use_container_width=True, disabled=is_task_running or not selected_excel_path):
+                chain_snii = [
+                    [sys.executable, "scripts/audit_snii_diff_2025_2026.py", "--excel", selected_excel_path],
+                    [sys.executable, "scripts/update_neo4j_snii_2026.py", "--excel", selected_excel_path],
+                    [sys.executable, "SNII/resolve_snii_2026_identities.py"]
+                ]
+                _run_admin_bg_task(chain_snii, "Flujo Completo SNII")
+                st.success("🚀 Flujo integral de actualización de SNII iniciado en segundo plano.")
+                st.rerun()
+
+            st.info("💡 **Auditoría Humana:** Para inspeccionar visualmente casos dudosos de homonimia, puedes abrir en otra terminal `streamlit run SNII/validator_app.py`.")
 
 
 # =======================================================
@@ -1980,6 +2203,29 @@ with tab_inv:
 # =======================================================
 # TAB 6: Acerca de / Estado DB
 # =======================================================
+
+@st.dialog("📑 Informe Ejecutivo: Auditoría Cienciométrica Padrón SNII 2026", width="large")
+def show_snii_report_modal():
+    report_path = Path("/home/sinapsisai/data/reports/reporte_auditoria_snii_2026.html")
+    if report_path.exists():
+        with open(report_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        c_dl, c_info = st.columns([1, 3])
+        with c_dl:
+            st.download_button(
+                label="📥 Descargar Reporte HTML",
+                data=content,
+                file_name="reporte_auditoria_snii_2026.html",
+                mime="text/html",
+                use_container_width=True
+            )
+        with c_info:
+            st.caption("Documento independiente estilizado. Puedes consultarlo interactivamente aquí o descargarlo para análisis offline.")
+        components.html(content, height=800, scrolling=True)
+    else:
+        st.warning("El reporte HTML aún no ha sido generado.")
+
+
 with tab_about:
     st.info("""
         **Aviso de Privacidad y Fuentes de Datos**
@@ -2064,6 +2310,39 @@ with tab_about:
         f"{snii_ror.get('ror_coverage_pct', 0.0):.1f}%",
         help="Porcentaje de entidades institucionales con al menos un ROR asignado."
     )
+
+    # ─── Reporte Ejecutivo de Auditoría SNII 2026 ───
+    snii_report_path = Path("/home/sinapsisai/data/reports/reporte_auditoria_snii_2026.html")
+    if snii_report_path.exists():
+        st.markdown("")
+        with st.container(border=True):
+            col_rep_info, col_rep_btn = st.columns([3, 1])
+            with col_rep_info:
+                st.markdown("#### 📑 Informe Ejecutivo: Auditoría Cienciométrica del Padrón SNII 2026")
+                st.markdown(
+                    "Análisis comparativo de la transición 2025 → 2026: **4,812 nuevos ingresos**, **1,606 bajas**, "
+                    "**2,351 promociones de nivel** (incluyendo 169 nuevos Eméritos), movilidad entre instituciones y desglose por 9 áreas del conocimiento."
+                )
+            with col_rep_btn:
+                st.markdown("")
+                if st.button("🔍 Ver Reporte Detallado", use_container_width=True, type="primary", key="btn_open_snii_report_modal"):
+                    show_snii_report_modal()
+
+        with st.expander("📄 Desplegar Informe Interactivo en esta vista", expanded=False):
+            with open(snii_report_path, "r", encoding="utf-8") as f:
+                html_raw = f.read()
+            c_dl1, c_dl2 = st.columns([1, 4])
+            with c_dl1:
+                st.download_button(
+                    label="📥 Descargar HTML",
+                    data=html_raw,
+                    file_name="reporte_auditoria_snii_2026.html",
+                    mime="text/html",
+                    use_container_width=True,
+                    key="btn_dl_snii_report_inline"
+                )
+            components.html(html_raw, height=750, scrolling=True)
+
     st.markdown("---")
     st.header("🗄️ Estado en Vivo de Bases de Datos")
     st.markdown("Métricas extraídas en tiempo real reflejando la ingesta actual de documentos semánticos y en el Grafo.")

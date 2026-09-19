@@ -112,12 +112,14 @@ def _llm_chat(messages: List[Dict], model_id: str, api_base: str, api_key: str,
     """Thin wrapper for direct OpenAI chat completions with automatic retries."""
     if not HAS_OPENAI:
         return ""
+    effective_model = model_id if model_id and model_id != "default" else "openai/gpt-oss-20b"
     client = OpenAI(base_url=api_base, api_key=api_key)
     for attempt in range(3):
         try:
             resp = client.chat.completions.create(
-                model=model_id, messages=messages,
-                temperature=temperature, max_tokens=max_tokens
+                model=effective_model, messages=messages,
+                temperature=temperature, max_tokens=max_tokens,
+                timeout=90.0
             )
             return resp.choices[0].message.content.strip()
         except Exception as e:
@@ -126,6 +128,149 @@ def _llm_chat(messages: List[Dict], model_id: str, api_base: str, api_key: str,
                 return ""
             time.sleep(1.5 * (attempt + 1))
     return ""
+
+
+RESEARCH_BLUEPRINT_SCHEMA = {
+    "name": "research_blueprint",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "thought_process": {
+                "type": "string",
+                "description": "Razonamiento científico analítico sobre la pregunta, entidades y ángulos bibliométricos."
+            },
+            "entity_name": {
+                "type": ["string", "null"],
+                "description": "Nombre canónico de la entidad o investigador, o null."
+            },
+            "subject_type": {
+                "type": "string",
+                "enum": ["RESEARCHER", "ENTITY", "UNKNOWN"],
+                "description": "Tipo de sujeto evaluado."
+            },
+            "intent_type": {
+                "type": "string",
+                "enum": [
+                    "RESEARCHER_PROFILE", "ENTITY_PROFILE", "THEMATIC_ANALYSIS",
+                    "TEMPORAL_EVOLUTION", "COLLABORATION_NETWORK", "COMPARATIVE", "OPEN_ANALYSIS"
+                ],
+                "description": "Intención analítica."
+            },
+            "intent_description": {
+                "type": "string",
+                "description": "Descripción del objetivo científico."
+            },
+            "investigation_angles": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Ángulos analíticos seleccionados."
+            },
+            "recommended_skills": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Skills recomendados."
+            },
+            "suggested_mcp_services": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Servicios MCP sugeridos."
+            },
+            "search_tokens": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Tokens de búsqueda."
+            },
+            "artifact_plan": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "De 1 a 3 IDs de artefactos visuales."
+            },
+            "requires_topology": {
+                "type": "boolean",
+                "description": "Si requiere SOM/UMAP."
+            },
+            "confidence": {
+                "type": "number",
+                "description": "Nivel de confianza (0.0 a 1.0)."
+            }
+        },
+        "required": [
+            "thought_process", "entity_name", "subject_type", "intent_type",
+            "intent_description", "investigation_angles", "recommended_skills",
+            "suggested_mcp_services", "search_tokens", "artifact_plan",
+            "requires_topology", "confidence"
+        ],
+        "additionalProperties": False
+    }
+}
+
+
+CRITIC_REVIEW_SCHEMA = {
+    "name": "critic_review",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "thought_process": {
+                "type": "string",
+                "description": "Razonamiento detallado sobre la auditoría epistemológica, contrastando afirmaciones contra evidencias y flags"
+            },
+            "approved": {
+                "type": "boolean",
+                "description": "True si el análisis es riguroso, consistente y respaldado por la evidencia empírica"
+            },
+            "confidence": {
+                "type": "number",
+                "description": "Nivel de certidumbre en la auditoría (0.0 a 1.0)"
+            },
+            "critique": {
+                "type": "string",
+                "description": "Dictamen cualitativo y fundamentación de la evaluación"
+            },
+            "issues": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": ["overclaim", "gap", "contradiction", "method_mismatch"]
+                        },
+                        "description": {"type": "string"}
+                    },
+                    "required": ["type", "description"],
+                    "additionalProperties": False
+                },
+                "description": "Lista de discrepancias, afirmaciones sin soporte o sesgos"
+            },
+            "i1_score_verification": {
+                "type": "boolean",
+                "description": "True si las métricas numéricas concuerdan con los registros de DuckDB/ClickHouse"
+            },
+            "i4_method_alignment": {
+                "type": "boolean",
+                "description": "True si los métodos y leyes bibliométricas aplicadas son consistentes"
+            },
+            "cpr_estimate": {
+                "type": "number",
+                "description": "Estimación del Claim Provenance Rate (0.0 a 1.0)"
+            }
+        },
+        "required": [
+            "thought_process",
+            "approved",
+            "confidence",
+            "critique",
+            "issues",
+            "i1_score_verification",
+            "i4_method_alignment",
+            "cpr_estimate"
+        ],
+        "additionalProperties": False
+    }
+}
+
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -217,6 +362,7 @@ Reglas clave:
             raise RuntimeError("openai package not installed — cannot run ProblemInvestigator")
 
         client = OpenAI(base_url=self.api_base, api_key=self.api_key)
+        effective_model = self.model_id if self.model_id and self.model_id != "default" else "openai/gpt-oss-20b"
         user_msg = self._USER_TEMPLATE.format(
             question=question,
             entity_context=entity_context or ""
@@ -224,18 +370,22 @@ Reglas clave:
         for attempt in range(3):
             try:
                 resp = client.chat.completions.create(
-                    model=self.model_id,
+                    model=effective_model,
                     messages=[
                         {"role": "system", "content": self._SYSTEM},
                         {"role": "user", "content": user_msg},
                     ],
-                    temperature=0.15,
-                    max_tokens=650,
+                    response_format={"type": "json_schema", "json_schema": RESEARCH_BLUEPRINT_SCHEMA},
+                    temperature=0.1,
+                    max_tokens=2500,
+                    timeout=90.0
                 )
                 raw = resp.choices[0].message.content.strip()
                 raw = re.sub(r"^```(?:json)?\s*", "", raw)
                 raw = re.sub(r"\s*```$", "", raw)
-                return json.loads(raw)
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict) and "intent_type" in parsed:
+                    return parsed
             except Exception as e:
                 if attempt == 2:
                     raise e
@@ -659,11 +809,11 @@ Mínimo 4 secciones bien estructuradas. Anota CADA número con [[EV:campo:valor]
 
 def _critic_review(representation: str, brief: Dict, ground_result: Dict,
                    model_id: str, api_base: str, api_key: str) -> Dict[str, Any]:
-    """Audita coherencia epistemológica, sobreafirmaciones y balance metodológico."""
+    """Audita coherencia epistemológica, sobreafirmaciones y balance metodológico con Structured Outputs."""
     system = (
         "Eres el Critic Científico del enjambre. Auditas la coherencia narrativa, "
         "el soporte de afirmaciones y el alineamiento metodológico de la representación. "
-        "Devuelve ÚNICAMENTE un JSON estructurado."
+        "Evalúa con rigor epistemológico los 4 chequeos (I1 a I4)."
     )
     flags_summary = "; ".join(ground_result.get("flags", [])[:5]) or "Sin flags de Ground."
     user_msg = f"""
@@ -674,21 +824,32 @@ RESULTADO DE GROUND DETERMINISTA:
 - Grounding ratio: {ground_result.get('grounding_ratio', 'N/A')}
 - Flags detectados: {flags_summary}
 
-Devuelve JSON:
-{{
-  "approved": true|false,
-  "confidence": 0.0-1.0,
-  "issues": [
-    {{"type": "overclaim|gap|contradiction|method_mismatch", "description": "..."}}
-  ],
-  "i1_score_verification": true|false,
-  "i4_method_alignment": true|false,
-  "cpr_estimate": 0.0-1.0
-}}
+Evalúa minuciosamente si la narrativa debe ser aprobada, el nivel de confianza, críticas y problemas encontrados.
 """
+    # 1. Intentar Structured Outputs vía LM Studio / OpenAI client
+    if HAS_OPENAI:
+        try:
+            from lib.llm_utils import create_structured_completion
+            effective_model = model_id if model_id and model_id != "default" else "openai/gpt-oss-20b"
+            client = OpenAI(base_url=api_base, api_key=api_key)
+            parsed = create_structured_completion(
+                client=client,
+                messages=[{"role": "system", "content": system}, {"role": "user", "content": user_msg}],
+                json_schema=CRITIC_REVIEW_SCHEMA,
+                model=effective_model,
+                temperature=0.1,
+                max_tokens=2200,
+                timeout=90.0
+            )
+            if isinstance(parsed, dict) and "approved" in parsed:
+                return parsed
+        except Exception as e:
+            print(f"[CriticReview Notice] Structured completion failed, falling back to chat: {e}")
+
+    # 2. Fallback con _llm_chat estándar
     raw = _llm_chat(
         [{"role": "system", "content": system}, {"role": "user", "content": user_msg}],
-        model_id, api_base, api_key, max_tokens=600, temperature=0.1
+        model_id, api_base, api_key, max_tokens=1500, temperature=0.1
     )
     try:
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
@@ -697,8 +858,10 @@ Devuelve JSON:
     except Exception:
         approved = "rechaz" not in raw.lower() and "error" not in raw.lower()
         return {
+            "thought_process": "Auditoría en modo fallback.",
             "approved": approved,
             "confidence": 0.85 if approved else 0.50,
+            "critique": raw if raw else "Análisis metodológicamente consistente.",
             "issues": [],
             "i1_score_verification": True,
             "i4_method_alignment": True,

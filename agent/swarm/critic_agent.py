@@ -103,6 +103,86 @@ def validate_bibliometric_laws_fit(distribution_type: str, observed_counts_json:
 
 # ── Agent ──────────────────────────────────────────────────────────────────
 
+COE_AUDIT_SCHEMA = {
+    "name": "coe_integrity_audit",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "thought_process": {
+                "type": "string",
+                "description": "Razonamiento detallado sobre I1 (numérico), I2 (especificación), I3 (referencias) e I4 (método/código)"
+            },
+            "approved": {
+                "type": "boolean",
+                "description": "True si el análisis es aprobado metodológica y empíricamente"
+            },
+            "confidence": {
+                "type": "number",
+                "description": "Nivel de confianza en el dictamen (0.0 a 1.0)"
+            },
+            "critique": {
+                "type": "string",
+                "description": "Evaluación crítica y fundamentación del dictamen"
+            },
+            "issues": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Lista de problemas o discrepancias detectadas"
+            },
+            "suggested_refinements": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Sugerencias de mejora para la investigación"
+            },
+            "audit_checks": {
+                "type": "object",
+                "properties": {
+                    "I1_score_verification": {
+                        "type": "boolean",
+                        "description": "Verificación de valores numéricos citados contra la evidencia"
+                    },
+                    "I2_specification_violation": {
+                        "type": "boolean",
+                        "description": "Detección de sobreafirmaciones, alucinaciones o violaciones metodológicas"
+                    },
+                    "I3_reference_verification": {
+                        "type": "boolean",
+                        "description": "Verificación de fuentes y entidades citadas"
+                    },
+                    "I4_method_code_alignment": {
+                        "type": "boolean",
+                        "description": "Alineación método-código y consistencia con leyes bibliométricas"
+                    }
+                },
+                "required": [
+                    "I1_score_verification",
+                    "I2_specification_violation",
+                    "I3_reference_verification",
+                    "I4_method_code_alignment"
+                ],
+                "additionalProperties": False
+            },
+            "cpr": {
+                "type": "number",
+                "description": "Claim Provenance Rate estimado (0.0 a 1.0)"
+            }
+        },
+        "required": [
+            "thought_process",
+            "approved",
+            "confidence",
+            "critique",
+            "issues",
+            "suggested_refinements",
+            "audit_checks",
+            "cpr"
+        ],
+        "additionalProperties": False
+    }
+}
+
+
 class ScientometricCriticAgent(BaseSpecialistAgent):
     """
     Auditor de Integridad CoE con los 4 chequeos de ScientistOne:
@@ -117,7 +197,7 @@ class ScientometricCriticAgent(BaseSpecialistAgent):
             "Eres el Auditor de Integridad CoE del enjambre científico ScientistOne. "
             "Ejecutas los 4 chequeos de integridad: "
             "I1 (Verificación numérica real contra evidence_tags de DuckDB/ClickHouse), "
-            "I2 (Detección de afirmaciones sin soporte o hallucinations), "
+            "I2 (Detección de afirmaciones sin soporte o alucinaciones), "
             "I3 (Verificación de fuentes citadas), "
             "I4 (Alineación método-código, validez de leyes bibliométricas Lotka/Bradford/Price). "
             "Reportas el Claim Provenance Rate (CPR) y emites veredictos rigurosos."
@@ -168,26 +248,36 @@ HALLAZGOS Y CONCLUSIONES:
 EVIDENCIA VERIFICADA (DuckDB, ClickHouse):
 {evidence_summary[:600]}
 
-I1 Resultado (verificación numérica): {json.dumps(i1_result, ensure_ascii=False) if i1_result else 'No ejecutado'}
+I1 Resultado (verificación numérica determinista): {json.dumps(i1_result, ensure_ascii=False) if i1_result else 'No ejecutado'}
 
 INSTRUCCIÓN:
 Evalúa la investigación con los 4 chequeos CoE (I1, I2, I3, I4).
-Retorna JSON con estructura exacta:
-{{
-  "approved": true,
-  "confidence": 0.90,
-  "critique": "Análisis consistente con los registros empíricos.",
-  "issues": [],
-  "suggested_refinements": [],
-  "audit_checks": {{
-    "I1_score_verification": true,
-    "I2_specification_violation": false,
-    "I3_reference_verification": true,
-    "I4_method_code_alignment": true
-  }},
-  "cpr": 0.85
-}}
+Determina si se aprueba la investigación, identifica cualquier inconsistencia o afirmación no respaldada, y estima el CPR.
 """
+        # Intento 1: Structured Outputs vía LM Studio
+        try:
+            from openai import OpenAI
+            from lib.llm_utils import create_structured_completion
+            client = OpenAI(base_url=self.api_base, api_key=self.api_key)
+            result = create_structured_completion(
+                client=client,
+                messages=[
+                    {"role": "system", "content": self.role_description},
+                    {"role": "user", "content": prompt}
+                ],
+                json_schema=COE_AUDIT_SCHEMA,
+                model=self.model_id,
+                temperature=0.1,
+                max_tokens=2500,
+                timeout=90.0
+            )
+            if isinstance(result, dict) and "approved" in result:
+                result["cpr"] = result.get("cpr", cpr)
+                return result
+        except Exception as e:
+            print(f"[ScientometricCriticAgent Notice] Structured completion error, falling back to execute_task: {e}")
+
+        # Intento 2: Fallback vía execute_task
         task_res = self.execute_task(prompt)
         output_str = task_res.get("output", "")
 
@@ -202,6 +292,7 @@ Retorna JSON con estructura exacta:
 
         approved = "error" not in output_str.lower() and "rechaz" not in output_str.lower()
         return {
+            "thought_process": "Dictamen generado en modo fallback por salida no estructurada.",
             "approved": approved,
             "confidence": 0.85 if approved else 0.50,
             "critique": output_str or "Análisis metodológicamente consistente.",
@@ -215,3 +306,4 @@ Retorna JSON con estructura exacta:
             },
             "cpr": cpr,
         }
+

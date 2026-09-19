@@ -1371,16 +1371,23 @@ def normalize_text(text):
     return text.upper().strip()
 
 def _count_official_census():
-    """Calcula y guarda conteos oficiales desde el archivo Excel de SNII 2025."""
+    """Calcula y guarda conteos oficiales desde el archivo Excel de SNII (priorizando 2026)."""
     try:
-        excel_path = BASE_PATH / 'data' / 'Investigadores_vigentes_2025.xlsx'
-        if not excel_path.exists():
-            print(f"  ⚠️ No existe {excel_path}")
+        excel_candidates = [
+            BASE_PATH / 'data' / 'snii' / 'Investigadores_vigentes_2026.xlsx',
+            BASE_PATH / 'data' / 'Investigadores_vigentes_2026.xlsx',
+            BASE_PATH / 'data' / 'Padron-2026-2T.xlsx',
+            BASE_PATH / 'data' / 'Investigadores_vigentes_2025.xlsx',
+        ]
+        excel_path = next((p for p in excel_candidates if p.exists()), None)
+        if not excel_path:
+            print(f"  ⚠️ No existe ningún padrón Excel en las rutas esperadas.")
             return
         
         print(f"  📊 Cargando conteos oficiales desde Excel: {excel_path.name}...")
-        # Usar la hoja 4T_2025 que es la más reciente/completa
-        df = pd.read_excel(excel_path, sheet_name='4T_2025 (44,794)')
+        xl = pd.ExcelFile(excel_path)
+        sheet = xl.sheet_names[0] if len(xl.sheet_names) == 1 else next((s for s in xl.sheet_names if '4T' in s.upper()), xl.sheet_names[-1])
+        df = pd.read_excel(excel_path, sheet_name=sheet)
         
         # Normalizar nombres de columnas para detección robusta
         def _norm_col(c):
@@ -1624,39 +1631,47 @@ def _process_single_academic(academic_filter: str, updated_files: set):
         try:
             from database.knowledge_graph import Neo4jGraphStore
             gs = Neo4jGraphStore()
-            # Buscar cualquier afiliación
+            # Buscar cualquier afiliación o nodo Person
             q = """
-            MATCH (a:Academic {name: $name})-[:AFFILIATED_TO]->(ent)
+            MATCH (a:Person) WHERE a.id = $name OR a.fullname = $name
+            OPTIONAL MATCH (a)-[:AFFILIATED_TO]->(ent)
             OPTIONAL MATCH (ent)-[:PART_OF]->(p1)-[:PART_OF]->(p2)
-            RETURN ent.name as entity, 
-                   COALESCE(p2.name, p1.name, ent.name) as institution
+            RETURN coalesce(ent.name, a.entity, 'INDEPENDIENTE') as entity, 
+                   coalesce(p2.name, p1.name, ent.name, a.institution, 'INDEPENDIENTE') as institution
             LIMIT 1
             """
             with gs.driver.session() as session:
                 res = session.run(q, name=academic_filter).single()
                 if res:
-                    entity = res['entity']
-                    institution = res['institution']
+                    entity = res['entity'] or 'INDEPENDIENTE'
+                    institution = res['institution'] or 'INDEPENDIENTE'
                     print(f"  ✅ Jerarquía encontrada en Neo4j: {institution} -> {entity}")
                     _flush_academic(academic_filter, pd.DataFrame(), entity, institution, updated_files)
                 else:
-                    print("  ❌ Tampoco se encontró en Neo4j.")
+                    print("  ℹ️ No encontrado en Neo4j. Creando bajo INDEPENDIENTE...")
+                    _flush_academic(academic_filter, pd.DataFrame(), "INDEPENDIENTE", "INDEPENDIENTE", updated_files)
             gs.close()
         except Exception as e:
             print(f"  ❌ Error consultando Neo4j: {e}")
         return
 
     print(f"  📊 {len(df):,} papers encontrados.")
-    # ... rest of the logic ...
     df['entity'] = (
         df.get('subdependency', pd.Series(dtype=str))
           .fillna(df.get('dependency', pd.Series(dtype=str)))
           .fillna(df.get('institution', pd.Series(dtype=str)))
     )
 
-    institution = df['institution'].mode().iloc[0] if 'institution' in df.columns else 'SIN INSTITUCIÓN'
-    entity      = df['entity'].mode().iloc[0]
-    entity      = _normalize_entity(entity, institution)
+    inst_raw = df['institution'].dropna() if 'institution' in df.columns else pd.Series(dtype=str)
+    institution = inst_raw.mode().iloc[0] if not inst_raw.empty else 'INDEPENDIENTE'
+    if not institution or institution in ['SIN INFORMACIÓN', 'SIN INFORMACION', 'SIN INSTITUCION', 'SIN INSTITUCIN', 'NONE', 'NAN']:
+        institution = 'INDEPENDIENTE'
+
+    ent_raw = df['entity'].dropna() if 'entity' in df.columns else pd.Series(dtype=str)
+    entity = ent_raw.mode().iloc[0] if not ent_raw.empty else 'INDEPENDIENTE'
+    if not entity or entity in ['SIN INFORMACIÓN', 'SIN INFORMACION', 'SIN INSTITUCION', 'SIN INSTITUCIN', 'NONE', 'NAN']:
+        entity = 'INDEPENDIENTE'
+    entity = _normalize_entity(entity, institution)
 
     df = _ensure_columns(df.copy())
     _flush_academic(academic_filter, df, entity, institution, updated_files)

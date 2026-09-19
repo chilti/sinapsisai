@@ -61,6 +61,32 @@ def get_openai_client(async_mode=False):
         http_client=get_http_client(async_mode=False)
     )
 
+def create_structured_completion(
+    client: OpenAI,
+    messages: list,
+    json_schema: dict,
+    model: str = None,
+    temperature: float = 0.0,
+    max_tokens: int = 2500,
+    timeout: float = 90.0
+) -> dict:
+    """Ejecuta una llamada con Structured Outputs (json_schema) garantizado gramaticalmente por LM Studio."""
+    import json
+    model_name = model or LLMConfig.get_model_name()
+    if not model_name or model_name == "default":
+        model_name = "openai/gpt-oss-20b"
+        
+    resp = client.chat.completions.create(
+        model=model_name,
+        messages=messages,
+        response_format={"type": "json_schema", "json_schema": json_schema},
+        temperature=temperature,
+        max_tokens=max_tokens,
+        timeout=timeout
+    )
+    raw = resp.choices[0].message.content.strip()
+    return json.loads(raw)
+
 def get_chat_model(temperature=0, **kwargs):
     """Retorna una instancia de ChatOpenAI (LangChain) configurada."""
     return ChatOpenAI(

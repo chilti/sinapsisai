@@ -19,9 +19,10 @@ _model    = LLMConfig.get_model_name()
 
 
 def make_model_client() -> OpenAIChatCompletionClient:
-    """Crea un cliente de modelo apuntando a LM Studio (modelo local no-OpenAI)."""
+    """Crea un cliente de modelo apuntando a LM Studio con soporte de Structured Outputs."""
+    model_name = _model if _model and _model != "default" else "openai/gpt-oss-20b"
     return OpenAIChatCompletionClient(
-        model=_model,
+        model=model_name,
         base_url=_auth_url,
         api_key=LLMConfig.get_api_key(),
         model_info={
@@ -29,7 +30,7 @@ def make_model_client() -> OpenAIChatCompletionClient:
             "function_calling": True,
             "json_output": True,
             "family": "unknown",
-            "structured_output": False,
+            "structured_output": True,
         },
     )
 

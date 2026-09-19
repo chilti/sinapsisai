@@ -194,6 +194,7 @@ COLUMN_ALIASES = {
     ],
     # Institución
     "institucion": [
+        "INSTITUCION DE ACREDITACION",
         "INSTITUCIÓN DE ACREDITACIÓN",
         "INSTITUCIÓN DE ADSCRIPCIÓN",
         "INSTITUCIÓN DE ADSCRIPCIÓN (a partir de 1990)",
@@ -203,6 +204,7 @@ COLUMN_ALIASES = {
     ],
     # Dependencia
     "dependencia": [
+        "DEPENDENCIA DE ACREDITACION",
         "DEPENDENCIA DE ACREDITACIÓN",
         "DEPENDENCIA",
         "DEPENDENCIA (a partir de 1991)",
@@ -211,10 +213,12 @@ COLUMN_ALIASES = {
     ],
     # Subdependencia
     "subdependencia": [
+        "SUBDEPENDENCIA DE ACREDITACION",
         "SUBDEPENDENCIA DE ACREDITACIÓN",
     ],
     # Entidad
     "entidad": [
+        "ENTIDAD DE ACREDITACION",
         "ENTIDAD DE ACREDITACIÓN",
         "ENTIDAD FEDERATIVA",
         "ENTIDAD FEDERATIVA ADSCRIPCIÓN\n(a partir de 1990)",
@@ -343,7 +347,7 @@ def build():
 
     print(f"📂 Procesando {len(all_files)} archivos...")
 
-    # Primero construimos el set de CVUs activos en 2025 (T4)
+    # Construimos el set de CVUs activos en 2025 (T4) y 2026
     path_2025 = DATA_DIR / "Investigadores_vigentes_2025.xlsx"
     xl25 = pd.ExcelFile(path_2025)
     sheet_2025 = select_sheet(xl25, 2025)
@@ -353,6 +357,18 @@ def build():
         pd.to_numeric(df25[cvu_col_2025], errors="coerce").dropna().astype(int)
     ) if cvu_col_2025 else set()
     print(f"✅ CVUs activos en 2025 (T4): {len(active_cvus_2025):,}")
+
+    path_2026 = DATA_DIR / "Investigadores_vigentes_2026.xlsx"
+    active_cvus_2026: set[int] = set()
+    if path_2026.exists():
+        xl26 = pd.ExcelFile(path_2026)
+        sheet_2026 = select_sheet(xl26, 2026)
+        df26 = xl26.parse(sheet_2026)
+        cvu_col_2026 = find_col(list(df26.columns), COLUMN_ALIASES["cvu"])
+        active_cvus_2026 = set(
+            pd.to_numeric(df26[cvu_col_2026], errors="coerce").dropna().astype(int)
+        ) if cvu_col_2026 else set()
+        print(f"✅ CVUs activos en 2026: {len(active_cvus_2026):,}")
 
     all_dfs = []
     for path in all_files:
@@ -367,19 +383,24 @@ def build():
     print("\n🔀 Consolidando...")
     full = pd.concat(all_dfs, ignore_index=True)
 
-    # Añadir snii_active_2025
+    # Añadir snii_active_2025 y snii_active_2026
     full["snii_active_2025"] = full["cvu"].apply(
         lambda c: (int(c) in active_cvus_2025) if (c is not None and not pd.isna(c)) else False
+    )
+    full["snii_active_2026"] = full["cvu"].apply(
+        lambda c: (int(c) in active_cvus_2026) if (c is not None and not pd.isna(c)) else False
     )
 
     # Asegurar tipos correctos
     full["year"] = full["year"].astype("int16")
     full["cvu"] = pd.to_numeric(full["cvu"], errors="coerce").astype("Int32")
     full["snii_active_2025"] = full["snii_active_2025"].astype(bool)
+    full["snii_active_2026"] = full["snii_active_2026"].astype(bool)
 
     print(f"\n📊 Total filas: {len(full):,}")
     print(f"   CVUs únicos: {full['cvu'].dropna().nunique():,}")
     print(f"   Activos 2025: {full['snii_active_2025'].sum():,}")
+    print(f"   Activos 2026: {full['snii_active_2026'].sum():,}")
     print(f"   Sin CVU: {full['cvu'].isna().sum():,}")
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
