@@ -239,19 +239,19 @@ sinapsisai/
 * `patch_entity_ids.py`, `patch_all_openalex_fields.py`, `patch_openalex_metadata.py` (parches superados).
 * `map_snii_to_ror.py` (reemplazado por `ROR/snii_ror_resolver2.py`).
 
-#### 2. En `ROR/archive/` (5 archivos):
+#### 2. En `ROR/archive/` (4 archivos):
 * `snii_ror_resolver.py` (v1 superado por `snii_ror_resolver2.py`).
-* `ingest_ror_docs.py` (v1 superado por `ingest_ror_docs2.py`).
 * `inspect_authors_json.py`, `investigate_affiliations.py`, `investigate_mexican_affiliations.py` (scripts de análisis preliminar).
+*(Nota: `ROR/ingest_ror_docs.py` permanece activo como biblioteca base requerida por `ROR/ingest_ror_docs2.py` y `sync_works.py`).*
 
-#### 3. En `ingestion/archive/` (7 archivos):
-* `compute_scholar_metrics.py` (v1 de 86 KB que calculaba métricas directamente en Python/Neo4j, sustituido por `compute_scholar_metrics_ch.py` en ClickHouse).
+#### 3. En `ingestion/archive/` (6 archivos):
 * `load_orcid_sample.py`, `extract_sample.py`, `test_mixed_ingestion.py` (pruebas de muestreo).
 * `siia_scraper.py`, `siia_scraper_snii.py`, `retry_missing_siia.py` (scrapers de la plataforma SIIA obsoletos).
+*(Nota: `ingestion/compute_scholar_metrics.py` permanece activo como biblioteca matemática base requerida dinámicamente por `compute_scholar_metrics_ch.py`).*
 
-#### 4. En `SNII/archive/` (2 archivos):
+#### 4. En `SNII/archive/` (1 archivo):
 * `patch_snii_json.py` (parche de corrección de un archivo corrupto).
-* `ingest_snii_apis.py` (versión preliminar de ingesta).
+*(Nota: `SNII/ingest_snii_apis.py` permanece activo como biblioteca de cosecha de APIs requerida por `ingestion/sync_works.py` y `lib/auth.py`).*
 
 #### 5. En Raíz `archive/` (10 archivos):
 * `scratch_ch.py`, `scratch_neo.py`, `scratch_neo4j.py`, `scratch_neo_academic.py`, `scratch_neo_sdg.py`
