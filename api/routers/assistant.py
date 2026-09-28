@@ -21,29 +21,37 @@ def get_orchestrator():
     return _orchestrator
 
 class ChatMessageRequest(BaseModel):
-    query: str
+    query: Optional[str] = None
+    question: Optional[str] = None
     session_id: Optional[str] = "default_session"
     ui_context: Optional[str] = None
     model: Optional[str] = None
+    model_type: Optional[str] = None
 
 @router.post("/chat")
+@router.post("/ask")
 def stream_assistant_chat(req: ChatMessageRequest):
     """
     Endpoint SSE (Server-Sent Events) que transmite la respuesta del asistente token a token.
     Formato de salida: data: {"token": "..."}\n\n
     """
+    user_query = req.query or req.question or ""
+    if not user_query:
+        raise HTTPException(status_code=400, detail="Debe proporcionar un texto de consulta (query o question)")
+
     orch = get_orchestrator()
-    if req.model:
-        orch.update_model(req.model)
+    model_name = req.model or req.model_type
+    if model_name:
+        orch.update_model(model_name)
 
     def event_generator():
         try:
             for chunk in orch.ask_lightweight_stream_sync(
                 session_id=req.session_id,
-                query=req.query,
+                query=user_query,
                 ui_context=req.ui_context
             ):
-                payload = json.dumps({"token": chunk})
+                payload = json.dumps({"token": chunk, "chunk": chunk})
                 yield f"data: {payload}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:

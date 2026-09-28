@@ -14,5 +14,16 @@ export default defineConfig({
         changeOrigin: true
       }
     }
+  },
+  build: {
+    chunkSizeWarningLimit: 2000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'zustand', 'axios', 'lucide-react'],
+          plotly: ['react-plotly.js']
+        }
+      }
+    }
   }
 });

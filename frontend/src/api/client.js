@@ -36,8 +36,10 @@ export const apiClient = {
     const res = await api.get('/hierarchy/subdependencies', { params: { institution, dependency } });
     return res.data;
   },
-  searchHierarchy: async (q) => {
-    const res = await api.get('/hierarchy/search', { params: { q } });
+  getHierarchyMetrics: async (institution, dependency, subdependency, period = 'all') => {
+    const res = await api.get('/hierarchy/metrics', {
+      params: { institution, dependency, subdependency, period }
+    });
     return res.data;
   },
 
@@ -68,6 +70,13 @@ export const apiClient = {
   },
   getMapClusters: async (space = 'preview') => {
     const res = await api.get('/maps/clusters', { params: { space } });
+    return res.data;
+  },
+  getResearchersUmap: async (limit = 1200, institution = '', domain = '') => {
+    const params = { limit };
+    if (institution) params.institution = institution;
+    if (domain) params.domain = domain;
+    const res = await api.get('/maps/researchers-umap', { params });
     return res.data;
   },
 

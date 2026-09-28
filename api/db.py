@@ -8,11 +8,25 @@ from api.constants import (
     NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD
 )
 
-# ClickHouse Client
+# ClickHouse Client (Thread-Local Pool)
+_ch_local = threading.local()
+
 def get_clickhouse_client():
-    """Retorna el cliente autenticado de ClickHouse configurado en el sistema."""
-    from database.clickhouse_db import ch_client
-    return ch_client.get_client()
+    """Retorna un cliente autenticado de ClickHouse aislado por hilo."""
+    if not hasattr(_ch_local, "client"):
+        from database.clickhouse_db import ch_client
+        import clickhouse_connect
+        _ch_local.client = clickhouse_connect.get_client(
+            host=ch_client.host,
+            port=ch_client.port,
+            username=ch_client.user,
+            password=ch_client.password,
+            database=ch_client.database,
+            connect_timeout=60,
+            send_receive_timeout=ch_client.timeout,
+            settings={'max_execution_time': ch_client.timeout}
+        )
+    return _ch_local.client
 
 # Neo4j Graph Store
 _neo4j_store = None

@@ -20,5 +20,5 @@ echo "=========================================================="
 exec "$PYTHON_BIN" -m uvicorn api.main:app \
     --host "$HOST" \
     --port "$PORT" \
-    --workers 2 \
+    --reload \
     --log-level info
