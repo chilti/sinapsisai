@@ -8,6 +8,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Plot from 'react-plotly.js';
 import {
   Search,
+  Users,
+  Building2,
   BookOpen,
   Quote,
   Download,
@@ -44,14 +46,24 @@ const PAGE_SIZE = 10;
 
 export function ResearcherProfiles() {
   const t = useAppStore((state) => state.t)();
+  const selectedInstitution = useAppStore((state) => state.selectedInstitution);
+  const setSelectedInstitution = useAppStore((state) => state.setSelectedInstitution);
+  const selectedDependency = useAppStore((state) => state.selectedDependency);
+  const setSelectedDependency = useAppStore((state) => state.setSelectedDependency);
+  const selectedSubdependency = useAppStore((state) => state.selectedSubdependency);
+  const setSelectedSubdependency = useAppStore((state) => state.setSelectedSubdependency);
   const researcherName = useAppStore((state) => state.selectedResearcherName);
   const researcherOrcid = useAppStore((state) => state.selectedResearcherOrcid);
   const setSelectedResearcher = useAppStore((state) => state.setSelectedResearcher);
   const theme = useAppStore((state) => state.theme);
 
-  // Estados locales
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
+  // Estados locales para jerarquía y combobox de académicos
+  const [institutions, setInstitutions] = useState([]);
+  const [dependencies, setDependencies] = useState([]);
+  const [subdependencies, setSubdependencies] = useState([]);
+  const [academicsList, setAcademicsList] = useState([]);
+  const [loadingAcademics, setLoadingAcademics] = useState(false);
+
   const [profile, setProfile] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState('production'); // 'production' | 'citations'
@@ -172,20 +184,85 @@ export function ResearcherProfiles() {
     loadCiting();
   }, [activeSubTab, researcherName, researcherOrcid]);
 
-  // Búsqueda Predictiva con Menú Flotante
-  const handleSearch = async (val) => {
-    setSearchQuery(val);
-    if (val.trim().length >= 3) {
+  // 1. Cargar lista de instituciones
+  useEffect(() => {
+    async function loadInstitutions() {
       try {
-        const res = await apiClient.searchAcademics(val.trim());
-        setSearchResults(res.results || []);
+        const data = await apiClient.getInstitutions();
+        setInstitutions(data.institutions || []);
       } catch (err) {
-        console.error('Error en búsqueda predictiva:', err);
+        console.error('Error cargando instituciones:', err);
       }
-    } else {
-      setSearchResults([]);
     }
-  };
+    loadInstitutions();
+  }, []);
+
+  // 2. Cargar dependencias al cambiar institución
+  useEffect(() => {
+    async function loadDeps() {
+      if (!selectedInstitution) return;
+      try {
+        const data = await apiClient.getDependencies(selectedInstitution);
+        setDependencies(data.dependencies || []);
+      } catch (err) {
+        console.error('Error cargando dependencias:', err);
+      }
+    }
+    loadDeps();
+  }, [selectedInstitution]);
+
+  // 3. Cargar subdependencias al cambiar dependencia
+  useEffect(() => {
+    async function loadSubs() {
+      if (!selectedInstitution || !selectedDependency) {
+        setSubdependencies([]);
+        return;
+      }
+      try {
+        const data = await apiClient.getSubdependencies(selectedInstitution, selectedDependency);
+        setSubdependencies(data.subdependencies || []);
+      } catch (err) {
+        console.error('Error cargando subdependencias:', err);
+      }
+    }
+    loadSubs();
+  }, [selectedInstitution, selectedDependency]);
+
+  // 4. Cargar lista de académicos de la entidad para el Combobox
+  useEffect(() => {
+    async function loadAcademics() {
+      setLoadingAcademics(true);
+      try {
+        const data = await apiClient.getAcademicsList(selectedInstitution, selectedDependency, selectedSubdependency);
+        const list = data.academics || [];
+        setAcademicsList(list);
+
+        // Si hay una lista, sincronizar o validar la selección actual
+        if (list.length > 0) {
+          if (researcherName) {
+            const normCurrent = researcherName.replace(/,/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+            const match = list.find((a) => {
+              const normA = a.name.replace(/,/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+              return normA === normCurrent || normA.includes(normCurrent) || normCurrent.includes(normA);
+            });
+            if (match && match.name !== researcherName) {
+              setSelectedResearcher(match.name, match.orcid || researcherOrcid);
+            } else if (!match && !list.some((a) => a.name === researcherName)) {
+              // Si el investigador actual no pertenece a la entidad recién seleccionada, seleccionar el primero
+              setSelectedResearcher(list[0].name, list[0].orcid || '');
+            }
+          } else {
+            setSelectedResearcher(list[0].name, list[0].orcid || '');
+          }
+        }
+      } catch (err) {
+        console.error('Error cargando lista de académicos:', err);
+      } finally {
+        setLoadingAcademics(false);
+      }
+    }
+    loadAcademics();
+  }, [selectedInstitution, selectedDependency, selectedSubdependency]);
 
   // Descargas de Dossier
   const handleDownloadMarkdown = async () => {
@@ -390,66 +467,124 @@ export function ResearcherProfiles() {
 
   return (
     <div className="module-container" id="MODULO-02-PERFILES">
-      {/* 1. Buscador Predictivo (CTL-M02-001) */}
-      <div className="glass-card" style={{ marginBottom: '1.5rem', position: 'relative' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <Search size={20} style={{ color: 'var(--accent-cyan)' }} />
-          <input
-            id="CTL-M02-001"
-            type="text"
-            className="form-input"
-            style={{ border: 'none', background: 'transparent', padding: '0.4rem 0', fontSize: '1.05rem', width: '100%' }}
-            placeholder={t.researchers?.searchPlaceholder || "Buscar por nombre de investigador o identificador ORCID..."}
-            value={searchQuery}
-            onChange={(e) => handleSearch(e.target.value)}
-          />
-          {searchQuery && (
-            <button
-              onClick={() => { setSearchQuery(''); setSearchResults([]); }}
-              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+      {/* 1. Selector Jerárquico y Combobox de Selección de Investigador (CTL-M02-001) */}
+      <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
+        {/* Filtros Jerárquicos de Entidad */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+          <div>
+            <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              {t.panorama?.institutionSelect || 'Institución'}
+            </label>
+            <select
+              className="form-select"
+              value={selectedInstitution}
+              onChange={(e) => setSelectedInstitution(e.target.value)}
+              style={{ fontSize: '0.9rem' }}
             >
-              <X size={18} />
-            </button>
-          )}
+              {institutions.map((inst) => (
+                <option key={inst} value={inst}>{inst}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              {t.panorama?.dependencySelect || 'Dependencia / Facultad'}
+            </label>
+            <select
+              className="form-select"
+              value={selectedDependency}
+              onChange={(e) => setSelectedDependency(e.target.value)}
+              style={{ fontSize: '0.9rem' }}
+            >
+              <option value="">{t.panorama?.allDependencies || 'Todas las dependencias'}</option>
+              {dependencies.map((dep) => (
+                <option key={dep} value={dep}>{dep}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              {t.panorama?.subdependencySelect || 'Subdependencia / Centro'}
+            </label>
+            <select
+              className="form-select"
+              value={selectedSubdependency}
+              onChange={(e) => setSelectedSubdependency(e.target.value)}
+              disabled={subdependencies.length === 0}
+              style={{ fontSize: '0.9rem' }}
+            >
+              <option value="">{t.panorama?.allSubdependencies || 'Todas las subdependencias'}</option>
+              {subdependencies.map((sub) => (
+                <option key={sub} value={sub}>{sub}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        {/* Resultados de Autocompletado */}
-        {searchResults.length > 0 && (
-          <div style={{
-            position: 'absolute', top: '100%', left: 0, right: 0,
-            background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
-            borderRadius: '8px', marginTop: '6px', zIndex: 100, maxHeight: '300px', overflowY: 'auto',
-            boxShadow: 'var(--card-shadow-hover)'
-          }}>
-            {searchResults.map((item, idx) => (
-              <div
-                key={idx}
-                style={{
-                  padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                }}
-                onClick={() => {
-                  setSelectedResearcher(item.name, item.orcid);
-                  setSearchResults([]);
-                  setSearchQuery('');
-                  setPapersPage(0);
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.name}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                    {item.institution || item.parents?.join(' ➔ ') || 'Investigador Registrado'} · {item.snii_level ? `SNII ${item.snii_level}` : 'Sin Nivel'}
-                  </div>
-                </div>
-                {item.orcid && (
-                  <span className="badge badge-cyan" style={{ fontSize: '0.7rem' }}>
-                    {item.orcid}
-                  </span>
-                )}
-              </div>
-            ))}
+        {/* Combobox Principal de Selección de Investigador */}
+        <div style={{ paddingTop: '0.5rem', borderTop: '1px solid var(--border-subtle)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <label
+              htmlFor="CTL-M02-001"
+              className="form-label"
+              style={{ fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)', margin: 0 }}
+            >
+              <Users size={18} style={{ color: 'var(--accent-cyan)' }} />
+              Seleccione un Académico:
+            </label>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              {loadingAcademics ? 'Cargando directorio...' : `${academicsList.length} académicos disponibles`}
+            </span>
           </div>
-        )}
+
+          <select
+            id="CTL-M02-001"
+            className="form-select"
+            style={{
+              fontSize: '1rem',
+              fontWeight: 600,
+              padding: '0.65rem 1rem',
+              width: '100%',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              background: 'var(--bg-card)',
+              color: 'var(--text-primary)',
+              borderColor: 'var(--accent-cyan)'
+            }}
+            value={researcherName}
+            onChange={(e) => {
+              const chosen = e.target.value;
+              const found = academicsList.find((a) => a.name === chosen);
+              setSelectedResearcher(chosen, found?.orcid || '');
+              setPapersPage(0);
+            }}
+            disabled={loadingAcademics || academicsList.length === 0}
+          >
+            {academicsList.length === 0 && (
+              <option value="">(No hay académicos registrados en esta selección)</option>
+            )}
+            {academicsList.map((item, idx) => (
+              <option key={idx} value={item.name}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+
+          {/* Nota Metodológica de Cobertura */}
+          <div style={{
+            marginTop: '0.75rem',
+            fontSize: '0.8rem',
+            color: 'var(--text-secondary)',
+            lineHeight: 1.45,
+            padding: '0.5rem 0.75rem',
+            background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)',
+            borderRadius: '6px'
+          }}>
+            ℹ️ Los indicadores se calcularon a partir de la producción académica que se pudo recoger de Scopus y ORCID, lo cual implica que puede haber trabajos faltantes y trabajos con afiliaciones distintas a la actual.
+          </div>
+        </div>
       </div>
 
       {/* 2. Ficha de Perfil del Investigador (CTL-M02-002 a CTL-M02-007) */}

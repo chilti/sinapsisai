@@ -10,7 +10,7 @@
 
 | # | ID de Control en Streamlit | Tipo de Elemento | Etiqueta / Propósito Original | Clave i18n Propuesta | Comportamiento Esperado en React | Estado QA |
 | :-: | :--- | :--- | :--- | :--- | :--- | :--- | :-: |
-| 1 | `search_academic_input` | Text Input / Autocompletado | 🔍 Búsqueda de Investigador | `researcher.search_placeholder` | Búsqueda predictiva instantánea con menú flotante (debounced 250ms), botón de limpiar y selección de perfil. | [x] |
+| 1 | `select_academic_combobox` | Combobox / Select & Filtro Jerárquico | 👥 Selección de Académico de la Entidad | `researcher.select_academic` | Selector desplegable (combobox) con los investigadores de la entidad seleccionada (ej. 506 académicos de Facultad de Ciencias) y nota metodológica de cobertura. | [x] |
 | 2 | `header_identity_badges` | UI Badges / External Links | Padrón SNII, Adscripción Jerárquica e Identificadores Externos | `researcher.identity_header` | Badge oficial SNII (Candidato, 1, 2, 3, Emérito), Breadcrumb (Institución ➔ Dependencia ➔ Subdependencia), enlaces verificados a ORCID, CVU, SIIA, Scopus y OpenAlex. | [x] |
 | 3 | `dossier_download_buttons` | Button Group | Descargar Reporte (Markdown y Dossier PDF) | `researcher.download_dossier` | Descarga directa de expediente en formato Markdown o PDF en un clic. | [x] |
 | 4 | `subtabs_navigation` | Tabs / Navigation | Subpestañas: Producción Académica vs Citas y Autocitas | `researcher.subtabs` | Conmutador interactivo entre la visión de producción del investigador y el explorador de citas y autocitas de toda la carrera. | [x] |

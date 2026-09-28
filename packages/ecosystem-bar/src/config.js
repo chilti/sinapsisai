@@ -84,7 +84,7 @@ export const ECOSYSTEM_APPS = [
 
 export const SUITE_I18N = {
   es: {
-    suiteTitle: "ECOSISTEMA CIENTÍFICO TLACHIA",
+    suiteTitle: "Info TlachIA: Infraestructura para la Ciencia Abierta",
     suiteSubtitle: "Plataformas Integradas de Inteligencia Científica y Bibliometría",
     currentApp: "Aplicación Activa",
     switchApp: "Cambiar de aplicación",
@@ -92,7 +92,7 @@ export const SUITE_I18N = {
     version: "v2.0"
   },
   pt: {
-    suiteTitle: "ECOSSISTEMA CIENTÍFICO TLACHIA",
+    suiteTitle: "Info TlachIA: Infraestrutura para a Ciência Aberta",
     suiteSubtitle: "Plataformas Integradas de Inteligência Científica e Bibliometria",
     currentApp: "Aplicação Ativa",
     switchApp: "Trocar de aplicação",
@@ -100,7 +100,7 @@ export const SUITE_I18N = {
     version: "v2.0"
   },
   en: {
-    suiteTitle: "TLACHIA SCIENTIFIC ECOSYSTEM",
+    suiteTitle: "Info TlachIA: Infrastructure for Open Science",
     suiteSubtitle: "Integrated Scientific Intelligence & Bibliometrics Platforms",
     currentApp: "Active Application",
     switchApp: "Switch application",

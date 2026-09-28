@@ -56,7 +56,7 @@ export const useAppStore = create((set, get) => ({
   setSelectedPeriod: (period) => set({ selectedPeriod: period }),
 
   // Investigador Seleccionado
-  selectedResearcherName: 'CARRILLO CALVET HUMBERTO',
+  selectedResearcherName: 'CARRILLO CALVET, HUMBERTO ANDRES',
   selectedResearcherOrcid: '0000-0003-3659-6769',
   setSelectedResearcher: (name, orcid = '') => set({
     selectedResearcherName: name,

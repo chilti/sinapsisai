@@ -213,6 +213,80 @@ def search_academics(
     }
 
 
+@router.get("/list")
+def list_academics(
+    institution: Optional[str] = Query("UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", description="Institución"),
+    dependency: Optional[str] = Query(None, description="Dependencia o Facultad"),
+    subdependency: Optional[str] = Query(None, description="Subdependencia o Centro"),
+    view_mode: Optional[str] = Query("capacidad_instalada", description="capacidad_instalada o produccion_institucional")
+) -> Dict[str, Any]:
+    """
+    Retorna la lista ordenada de investigadores de la entidad seleccionada
+    para poblar el combobox del Módulo de Investigadores (paridad Streamlit).
+    """
+    from dashboard_analytics import load_cached_data
+    
+    target_entity = subdependency or dependency or institution or "FACULTAD DE CIENCIAS"
+    inst = institution or "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)"
+    
+    # 1. Fuente primaria: institucion_total.parquet de la entidad
+    df_tot = load_cached_data('institucion_total.parquet', entity_name=target_entity, institution_name=inst, view_mode=view_mode)
+    if (df_tot is None or df_tot.empty) and view_mode == "produccion_institucional":
+        df_tot = load_cached_data('institucion_total.parquet', entity_name=target_entity, institution_name=inst, view_mode="capacidad_instalada")
+        
+    academics = []
+    if df_tot is not None and not df_tot.empty and 'academics_list' in df_tot.columns:
+        val = df_tot.iloc[0].get('academics_list')
+        try:
+            raw_list = json.loads(val) if isinstance(val, str) else val
+            if isinstance(raw_list, list):
+                for item in raw_list:
+                    if isinstance(item, dict):
+                        academics.append(item)
+                    elif isinstance(item, str) and item.strip():
+                        academics.append({"name": item.strip()})
+        except Exception as e:
+            print(f"[list_academics] Error parseando academics_list: {e}")
+
+    # Fallback físico en directorio si la lista vino vacía
+    if not academics:
+        safe_inst = str(inst).replace('/', '_').replace('\\', '_') if inst else ""
+        safe_ent = str(target_entity).replace('/', '_').replace('\\', '_')
+        test_paths = []
+        if safe_inst:
+            test_paths.append(os.path.join(CACHE_DIR, safe_inst, safe_ent))
+        test_paths.append(os.path.join(CACHE_DIR, safe_ent))
+        for p in test_paths:
+            if os.path.exists(p):
+                f_inv = [d for d in os.listdir(p) if os.path.isdir(os.path.join(p, d)) and d not in ['capacidad_instalada', 'produccion_institucional']]
+                for name in sorted(f_inv):
+                    academics.append({"name": name})
+                if academics:
+                    break
+
+    # Deduplicación y ordenamiento alfabético por nombre
+    dedup_map = {}
+    for a in academics:
+        name = a.get("name", "").strip()
+        if not name:
+            continue
+        norm = name.replace(",", "").replace("  ", " ").strip().lower()
+        if norm not in dedup_map:
+            dedup_map[norm] = a
+            
+    final_list = sorted(list(dedup_map.values()), key=lambda x: x.get("name", "").lower())
+    names_only = [x["name"] for x in final_list]
+
+    return {
+        "status": "success",
+        "entity": target_entity,
+        "institution": inst,
+        "total": len(final_list),
+        "academics": final_list,
+        "names": names_only
+    }
+
+
 @router.get("/profile")
 def get_academic_profile(
     name: Optional[str] = Query(None, description="Nombre completo del investigador"),

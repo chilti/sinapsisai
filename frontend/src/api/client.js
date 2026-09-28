@@ -52,6 +52,12 @@ export const apiClient = {
     const res = await api.get('/academics/search', { params: { q } });
     return res.data;
   },
+  getAcademicsList: async (institution, dependency, subdependency, viewMode = 'capacidad_instalada') => {
+    const res = await api.get('/academics/list', {
+      params: { institution, dependency, subdependency, view_mode: viewMode }
+    });
+    return res.data;
+  },
   getAcademicProfile: async (name, orcid) => {
     const res = await api.get('/academics/profile', { params: { name, orcid } });
     return res.data;
