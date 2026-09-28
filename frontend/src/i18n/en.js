@@ -72,7 +72,7 @@ export const en = {
     },
     tabs: {
       production: "Academic Output",
-      citations: "Citation Analysis (Zero-Join)",
+      citations: "Citations and Self-Citations",
       coauthors: "Co-authorship Network",
       topics: "Thematic Evolution"
     },

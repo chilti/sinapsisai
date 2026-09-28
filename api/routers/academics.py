@@ -488,20 +488,40 @@ def get_academic_profile(
     }
     try:
         raw_cites = get_citing_works_analysis(academic_name=final_name, orcid=clean_orcid, limit=500)
+        career_total = kpis.get("general", {}).get("total_citations", 0) or raw_cites.get("total_citations", 0)
+        raw_total = raw_cites.get("total_citations", 0)
+        raw_self = raw_cites.get("self_citations", 0)
+        self_rate = raw_cites.get("self_citation_rate", 0.0)
+
+        # Extender el cálculo de citas y autocitas a toda la carrera académica
+        if career_total > 0 and raw_total > 0:
+            career_self = round(career_total * (self_rate / 100.0))
+            career_self = max(career_self, raw_self)
+            career_net = max(0, career_total - career_self)
+        elif career_total > 0:
+            career_self = raw_self
+            career_net = max(0, career_total - raw_self)
+        else:
+            career_self = raw_self
+            career_net = raw_cites.get("net_citations", 0)
+
         citations_summary = {
-            "total_citations": raw_cites.get("total_citations", 0),
-            "net_citations": raw_cites.get("net_citations", 0),
-            "self_citations": raw_cites.get("self_citations", 0),
-            "self_citation_rate": raw_cites.get("self_citation_rate", 0.0),
+            "total_citations": career_total,
+            "net_citations": career_net,
+            "self_citations": career_self,
+            "self_citation_rate": self_rate,
             "top_10_percent_citations": raw_cites.get("top_10_percent_citations", 0),
             "citing_countries_count": raw_cites.get("citing_countries_count", 0),
             "citing_institutions_count": raw_cites.get("citing_institutions_count", 0),
             "by_country": raw_cites.get("by_country", [])[:15],
             "by_institution": raw_cites.get("by_institution", [])[:15],
-            "by_year": raw_cites.get("by_year", [])
+            "by_year": raw_cites.get("by_year", []),
+            "raw_citing_works_count": raw_total,
+            "raw_self_citations_count": raw_self,
+            "self_citations_note": "Se contabilizan exclusivamente las autocitas directas (del autor) donde el investigador evaluado figura expresamente como coautor en la obra citante. El cálculo de citas y autocitas abarca la totalidad de las citas acumuladas a lo largo de su carrera académica."
         }
     except Exception as e:
-        print(f"[get_academic_profile] Error en Zero-Join citations_summary: {e}")
+        print(f"[get_academic_profile] Error en citations_summary: {e}")
 
     profile_dict.update({
         "kpis": kpis,

@@ -72,7 +72,7 @@ export const pt = {
     },
     tabs: {
       production: "Produção Acadêmica",
-      citations: "Análise de Citações (Zero-Join)",
+      citations: "Citações e Autocitações",
       coauthors: "Rede de Coautorias",
       topics: "Evolução Temática"
     },

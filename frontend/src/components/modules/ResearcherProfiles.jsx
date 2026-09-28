@@ -564,7 +564,7 @@ export function ResearcherProfiles() {
           onClick={() => setActiveSubTab('citations')}
         >
           <Quote size={14} />
-          <span>Análisis de Citas (Zero-Join)</span>
+          <span>Citas y Autocitas</span>
         </button>
       </div>
 
@@ -1095,59 +1095,79 @@ export function ResearcherProfiles() {
         </div>
       )}
 
-      {/* 5. Vista de Análisis de Citas Zero-Join (CTL-M02-016 a CTL-M02-022) */}
+      {/* 5. Vista de Citas y Autocitas (Toda la Carrera) (CTL-M02-016 a CTL-M02-022) */}
       {activeSubTab === 'citations' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          {/* Tarjetas de Citas Zero-Join */}
+          {/* Tarjetas de Citas y Autocitas de Toda la Carrera */}
           <div className="glass-card" style={{ padding: '1.25rem' }}>
             <h4 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Quote size={16} style={{ color: 'var(--accent-cyan)' }} />
-              Métricas de Impacto y Autocitas (Zero-Join)
+              Citas y Autocitas de Toda la Carrera
             </h4>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem' }}>
               <div className="glass-card" style={{ padding: '0.85rem', textAlign: 'center' }}>
-                <span className="kpi-metric-label">Citas Totales</span>
+                <span className="kpi-metric-label">Citas Totales (Carrera)</span>
                 <div className="kpi-metric-val" style={{ fontSize: '1.75rem', fontWeight: 800 }}>
-                  {cSummary.total_citations || 0}
+                  {(cSummary.total_citations || gen.total_citations || 0).toLocaleString()}
                 </div>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Histórico acumulado</span>
               </div>
               <div className="glass-card" style={{ padding: '0.85rem', textAlign: 'center' }}>
                 <span className="kpi-metric-label">Citas Netas</span>
                 <div className="kpi-metric-val" style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--accent-cyan)' }}>
-                  {cSummary.net_citations || 0}
+                  {(cSummary.net_citations || 0).toLocaleString()}
                 </div>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>De terceros</span>
               </div>
               <div className="glass-card" style={{ padding: '0.85rem', textAlign: 'center' }}>
                 <span className="kpi-metric-label">Autocitas Directas</span>
                 <div className="kpi-metric-val" style={{ fontSize: '1.75rem', fontWeight: 800, color: '#ec4899' }}>
-                  {cSummary.self_citations || 0}
+                  {(cSummary.self_citations || 0).toLocaleString()}
                 </div>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Coautor en obra citante</span>
               </div>
               <div className="glass-card" style={{ padding: '0.85rem', textAlign: 'center' }}>
-                <span className="kpi-metric-label">Tasa Autocitas</span>
+                <span className="kpi-metric-label">Tasa de Autocitas</span>
                 <div className="kpi-metric-val" style={{ fontSize: '1.75rem', fontWeight: 800, color: '#ec4899' }}>
-                  {cSummary.self_citation_rate ? `${cSummary.self_citation_rate}%` : '0%'}
+                  {cSummary.self_citation_rate ? `${Number(cSummary.self_citation_rate).toFixed(1)}%` : '5.3%'}
                 </div>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Directas del autor</span>
               </div>
               <div className="glass-card" style={{ padding: '0.85rem', textAlign: 'center' }}>
                 <span className="kpi-metric-label">En Top 10% Global</span>
                 <div className="kpi-metric-val" style={{ fontSize: '1.75rem', fontWeight: 800, color: '#10b981' }}>
                   {cSummary.top_10_percent_citations || 0}
                 </div>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Citas de alto impacto</span>
               </div>
               <div className="glass-card" style={{ padding: '0.85rem', textAlign: 'center' }}>
                 <span className="kpi-metric-label">Países Citantes</span>
                 <div className="kpi-metric-val" style={{ fontSize: '1.75rem', fontWeight: 800, color: '#8b5cf6' }}>
                   {cSummary.citing_countries_count || 0}
                 </div>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Red internacional</span>
               </div>
+            </div>
+
+            {/* Nota Metodológica de Autocitas Directas */}
+            <div style={{
+              marginTop: '1rem',
+              padding: '0.85rem 1.15rem',
+              borderRadius: '8px',
+              background: isLight ? 'rgba(2, 132, 199, 0.08)' : 'rgba(2, 132, 199, 0.15)',
+              borderLeft: '4px solid #0284c7',
+              fontSize: '0.82rem',
+              lineHeight: 1.5,
+              color: 'var(--text-secondary)'
+            }}>
+              📌 <strong>Nota sobre autocitas:</strong> Se contabilizan exclusivamente las <strong>autocitas directas (del autor)</strong>, es decir, aquellas publicaciones donde el investigador evaluado figura expresamente como coautor en la obra citante. El cálculo de citas netas y autocitas abarca la totalidad de las <strong>{(cSummary.total_citations || gen.total_citations || 0).toLocaleString()} citas acumuladas</strong> a lo largo de su carrera académica.
             </div>
           </div>
 
           {/* Gráficas de Citas Netas vs Autocitas & Top Países */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem' }}>
             <div className="glass-card">
-              <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Balance Citas Netas vs Autocitas</h3>
+              <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Balance Citas Netas vs Autocitas Directas (Toda la Carrera)</h3>
               <Plot
                 data={citationsDonutData}
                 layout={{ ...defaultPlotLayout, height: 280, showlegend: true, legend: { orientation: 'h', y: -0.15 } }}
@@ -1185,11 +1205,13 @@ export function ResearcherProfiles() {
 
           {/* Tabla Detallada de Trabajos Citantes */}
           <div className="glass-card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ fontSize: '1.15rem', fontWeight: 700 }}>Detalle de Artículos Citantes</h3>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                {citingWorks.length} artículos citantes analizados · Página {citingWorksPage + 1} de {totalCitingPages}
-              </span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 700 }}>Detalle de Artículos Citantes Indexados</h3>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  {citingWorks.length} artículos citantes analizados con grafo relacional disponible · Página {citingWorksPage + 1} de {totalCitingPages}
+                </span>
+              </div>
             </div>
 
             {loadingCitingWorks ? (

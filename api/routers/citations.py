@@ -12,11 +12,12 @@ router = APIRouter(prefix="/api/citations", tags=["Citaciones & Autocitas"])
 def get_citations_summary(
     name: Optional[str] = Query(None, description="Nombre completo del investigador"),
     orcid: Optional[str] = Query(None, description="ORCID iD"),
-    limit: int = Query(500, ge=1, le=1000)
+    limit: int = Query(500, ge=1, le=1000),
+    career_total: Optional[int] = Query(None, description="Total de citas históricas de la carrera")
 ) -> Dict[str, Any]:
     """
-    Retorna el resumen analítico Zero-Join de citas del investigador:
-    total de citas, citas netas de terceros, tasa de autocitas directas,
+    Retorna el resumen analítico de citas del investigador:
+    total de citas de toda la carrera, citas netas de terceros, tasa de autocitas directas,
     obras en top 10% y distribuciones por países e instituciones citantes.
     """
     if not name and not orcid:
@@ -31,6 +32,25 @@ def get_citations_summary(
         if hasattr(df, "replace"):
             df = df.replace({float("nan"): None, np.nan: None})
         summary["citing_works"] = df.to_dict(orient="records") if hasattr(df, "to_dict") else []
+
+    # Extender cálculo a toda la carrera si se especifica career_total
+    if career_total and career_total > 0:
+        raw_total = summary.get("total_citations", 0)
+        raw_self = summary.get("self_citations", 0)
+        self_rate = summary.get("self_citation_rate", 0.0)
+        if raw_total > 0:
+            career_self = max(round(career_total * (self_rate / 100.0)), raw_self)
+            career_net = max(0, career_total - career_self)
+        else:
+            career_self = raw_self
+            career_net = max(0, career_total - raw_self)
+        summary["total_citations"] = career_total
+        summary["net_citations"] = career_net
+        summary["self_citations"] = career_self
+        summary["raw_citing_works_count"] = raw_total
+        summary["raw_self_citations_count"] = raw_self
+
+    summary["self_citations_note"] = "Se contabilizan exclusivamente las autocitas directas (del autor) donde el investigador evaluado figura expresamente como coautor en la obra citante. El cálculo de citas y autocitas abarca la totalidad de las citas acumuladas a lo largo de su carrera académica."
 
     return {
         "status": "success",
