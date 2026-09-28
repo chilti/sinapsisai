@@ -51,7 +51,7 @@ export function InstitutionalPanorama() {
   const [subdependencies, setSubdependencies] = useState([]);
   const [metricsData, setMetricsData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showGlossary, setShowGlossary] = useState(false);
+  const [showGlossary, setShowGlossary] = useState(true);
 
   const currentYear = new Date().getFullYear();
   const PAGE_SIZE = 10;

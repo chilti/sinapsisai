@@ -67,7 +67,7 @@ export function ResearcherProfiles() {
   const [profile, setProfile] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState('production'); // 'production' | 'citations'
-  const [showGlossary, setShowGlossary] = useState(false);
+  const [showGlossary, setShowGlossary] = useState(true);
 
   // Estados para tabla de publicaciones
   const currentYear = new Date().getFullYear();
