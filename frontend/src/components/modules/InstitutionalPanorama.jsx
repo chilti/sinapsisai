@@ -54,6 +54,7 @@ export function InstitutionalPanorama() {
   const [showGlossary, setShowGlossary] = useState(false);
 
   const currentYear = new Date().getFullYear();
+  const PAGE_SIZE = 10;
   // Estados para tabla de publicaciones y filtros
   const [selectedYear, setSelectedYear] = useState(String(currentYear));
   const [selectedOds, setSelectedOds] = useState('Todos');
@@ -125,7 +126,7 @@ export function InstitutionalPanorama() {
           viewMode
         );
         setMetricsData(res);
-        setPapersData(res.papers_sample || []);
+        setPapersData((res.papers_sample || []).slice(0, PAGE_SIZE));
         setTotalPapers(res.initial_total_papers !== undefined ? res.initial_total_papers : (res.kpi?.general?.indexed_works || res.kpi?.total_works || 0));
         if (res.default_year) {
           setSelectedYear(String(res.default_year));
@@ -143,11 +144,11 @@ export function InstitutionalPanorama() {
   useEffect(() => {
     if (!selectedInstitution || loading) return;
     
-    // Si no hay filtros adicionales y coincide con el año inicial, usamos la muestra precargada
+    // Si no hay filtros adicionales y coincide con el año inicial y página 0, usamos la muestra precargada
     const isInitialDefault = String(selectedYear) === String(metricsData?.default_year || currentYear) && selectedOds === 'Todos' && !searchPaper && papersPage === 0;
     if (isInitialDefault) {
       if (metricsData?.papers_sample) {
-        setPapersData(metricsData.papers_sample);
+        setPapersData(metricsData.papers_sample.slice(0, PAGE_SIZE));
         setTotalPapers(metricsData.initial_total_papers !== undefined ? metricsData.initial_total_papers : (metricsData.kpi?.general?.indexed_works || 0));
       }
       return;
@@ -164,8 +165,8 @@ export function InstitutionalPanorama() {
           year: selectedYear !== 'Todos' ? Number(selectedYear) : undefined,
           ods: selectedOds !== 'Todos' ? selectedOds : undefined,
           search: searchPaper.trim() || undefined,
-          limit: 30,
-          offset: papersPage * 30
+          limit: PAGE_SIZE,
+          offset: papersPage * PAGE_SIZE
         };
         const res = await apiClient.getHierarchyPapers(params);
         setPapersData(res.papers || []);
@@ -1130,12 +1131,12 @@ export function InstitutionalPanorama() {
         </div>
 
         {/* Paginación */}
-        {totalPapers > 30 && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)' }}>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              Mostrando página {papersPage + 1} de {Math.ceil(totalPapers / 30)}
+        {totalPapers > PAGE_SIZE && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+              Mostrando <b>{papersPage * PAGE_SIZE + 1}</b> a <b>{Math.min((papersPage + 1) * PAGE_SIZE, totalPapers)}</b> de <b>{totalPapers.toLocaleString()}</b> artículos
             </span>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <button
                 className="btn btn-secondary btn-sm"
                 disabled={papersPage === 0}
@@ -1143,9 +1144,12 @@ export function InstitutionalPanorama() {
               >
                 Anterior
               </button>
+              <span style={{ fontSize: '0.8rem', padding: '0 0.5rem', color: 'var(--text-muted)' }}>
+                Página {papersPage + 1} de {Math.ceil(totalPapers / PAGE_SIZE)}
+              </span>
               <button
                 className="btn btn-secondary btn-sm"
-                disabled={(papersPage + 1) * 30 >= totalPapers}
+                disabled={(papersPage + 1) * PAGE_SIZE >= totalPapers}
                 onClick={() => setPapersPage((prev) => prev + 1)}
               >
                 Siguiente
