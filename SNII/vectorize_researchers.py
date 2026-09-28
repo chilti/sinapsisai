@@ -102,7 +102,9 @@ def get_embeddings(texts: list, batch_size: int = 10) -> list:
     return all_embeddings
 
 # --- Config LLM ---
-llm_model_name = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
+llm_model_name = os.getenv("LLM_MODEL", "openai/default")
+if llm_model_name == "default":
+    llm_model_name = "openai/default"
 llm = ChatOpenAI(
     model=llm_model_name,
     base_url=auth_url,

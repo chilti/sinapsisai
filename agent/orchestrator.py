@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from lib.llm_utils import get_chat_model, LLMConfig
+from lib.llm_utils import get_chat_model, LLMConfig, is_quota_exceeded_error
 from lib.service_availability import NEO4J_AVAILABLE, QDRANT_AVAILABLE
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
@@ -22,13 +22,43 @@ from .memory_manager import SessionMemoryManager
 from .tools_interpreter import structured_analytics_tools
 from .tools_hybrid import hybrid_tools
 
+def wrap_safe_tool(base_tool, max_chars: int = 12000):
+    """
+    Envuelve una herramienta LangChain para asegurar que su salida nunca exceda `max_chars`.
+    Evita desbordar la ventana de contexto del LLM (ej. Kimi 64k o modelos locales 16k/32k).
+    """
+    orig_func = getattr(base_tool, "func", None)
+    orig_coroutine = getattr(base_tool, "coroutine", None)
+
+    if orig_func and not getattr(base_tool, "_is_context_safe", False):
+        def safe_func(*args, **kwargs):
+            res = orig_func(*args, **kwargs)
+            if isinstance(res, str) and len(res) > max_chars:
+                return res[:max_chars] + f"\n... [Respuesta truncada automáticamente a {max_chars} caracteres para preservar la ventana de contexto del LLM]"
+            return res
+        base_tool.func = safe_func
+        base_tool._is_context_safe = True
+
+    if orig_coroutine and not getattr(base_tool, "_is_async_context_safe", False):
+        async def safe_coro(*args, **kwargs):
+            res = await orig_coroutine(*args, **kwargs)
+            if isinstance(res, str) and len(res) > max_chars:
+                return res[:max_chars] + f"\n... [Respuesta truncada automáticamente a {max_chars} caracteres para preservar la ventana de contexto del LLM]"
+            return res
+        base_tool.coroutine = safe_coro
+        base_tool._is_async_context_safe = True
+
+    return base_tool
+
 class RAGOrchestrator:
     def __init__(self, tools_list=None, model_name=None, base_url=None, api_key="lm-studio", use_defaults=True, system_prompt=None):
         """
         Inicializa el orquestador que conecta LLMs, Herramientas y Memoria (Tier 1 Seguro).
         """
-        # Delegamos la creación del LLM y el cliente HTTP a la fábrica centralizada
-        self.llm = get_chat_model(temperature=0)
+        # Modelo activo inicial y estado de failover
+        self._current_model = LLMConfig.get_clean_model_name(model_name or LLMConfig.get_model_name())
+        self.fallback_info = None
+        self.llm = get_chat_model(temperature=0, model=self._current_model)
         self._response_cache = {}  # Caché inteligente de respuestas para focos/consultas idénticas
         
         # Guardamos referencia del cliente http (opcional, para limpieza posterior si se requiere)
@@ -42,9 +72,11 @@ class RAGOrchestrator:
             print(f"Advertencia: tools_list no es una lista ({type(tools_list)}). Ignorando.")
             
         if use_defaults:
-            self.tools = final_tools_list + hybrid_tools + structured_analytics_tools
+            raw_tools = final_tools_list + hybrid_tools + structured_analytics_tools
         else:
-            self.tools = final_tools_list
+            raw_tools = final_tools_list
+            
+        self.tools = [wrap_safe_tool(t) for t in raw_tools]
         
         # SQLite para historial limpio (solo mensajes humano/asistente, sin ruido de herramientas)
         self.memory_manager = SessionMemoryManager()
@@ -105,6 +137,20 @@ class RAGOrchestrator:
             prompt=self.prompt_template
         )
 
+    def update_model(self, model_name: str):
+        """Actualiza dinámicamente el modelo LLM subyacente (ej. Gemini, OpenRouter o LM Studio)."""
+        if model_name:
+            clean_name = LLMConfig.get_clean_model_name(model_name)
+            if getattr(self, '_current_model', None) != clean_name:
+                self._current_model = clean_name
+                self.llm = get_chat_model(temperature=0, model=clean_name)
+                self.http_client = self.llm.http_async_client
+                self.agent_executor = create_react_agent(
+                    self.llm,
+                    self.tools,
+                    prompt=self.prompt_template
+                )
+
     async def ask(self, session_id: str, query: str, entity_context: str = None) -> str:
         """
         Envía un mensaje al agente.
@@ -124,7 +170,7 @@ class RAGOrchestrator:
         # Añadir la pregunta actual (con contexto de entidad si aplica)
         current_query = query
         if entity_context:
-            current_query = f"[Contexto del Sistema: El usuario actualmente está visualizando y consultando sobre la entidad '{entity_context}'].\\n\\n{query}"
+            current_query = f"[Contexto del Sistema: El usuario actualmente está visualizando y consultando sobre la entidad '{entity_context}'].\n\n{query}"
         messages.append({"role": "human", "content": current_query})
         
         # Guardar la pregunta del usuario en el historial
@@ -164,13 +210,60 @@ class RAGOrchestrator:
             
             return {
                 "answer": response,
-                "intermediate_steps": intermediate_steps
+                "intermediate_steps": intermediate_steps,
+                "fallback_triggered": False
             }
             
         except Exception as e:
-            error_msg = f"Error en orquestación: {e}"
-            print(error_msg)
-            return error_msg
+            if is_quota_exceeded_error(e) and not LLMConfig.is_local(self._current_model):
+                prev_model = self._current_model
+                fallback_model = LLMConfig.get_fallback_model_name()
+                print(f"[FAILOVER] Cuota agotada en '{prev_model}'. Conmutando automáticamente a '{fallback_model}'...")
+                self.fallback_info = {
+                    "from_model": prev_model,
+                    "to_model": fallback_model,
+                    "reason": str(e),
+                    "timestamp": time.time()
+                }
+                self.update_model(fallback_model)
+                try:
+                    results = await self.agent_executor.ainvoke(
+                        {"messages": messages},
+                        config=config
+                    )
+                    all_messages = results['messages']
+                    response = all_messages[-1].content
+                    
+                    intermediate_steps = []
+                    for msg in all_messages:
+                        if msg.type == "ai" and msg.tool_calls:
+                            for tc in msg.tool_calls:
+                                intermediate_steps.append({
+                                    "type": "tool_call",
+                                    "name": tc["name"],
+                                    "args": tc["args"]
+                                })
+                        elif msg.type == "tool":
+                            intermediate_steps.append({
+                                "type": "tool_result",
+                                "name": msg.name,
+                                "content": str(msg.content)[:10000]
+                            })
+                    self.memory_manager.add_message(session_id, "assistant", response)
+                    return {
+                        "answer": response,
+                        "intermediate_steps": intermediate_steps,
+                        "fallback_triggered": True,
+                        "fallback_info": self.fallback_info
+                    }
+                except Exception as e2:
+                    error_msg = f"Error en orquestación tras conmutar al modelo local ({fallback_model}): {e2}"
+                    print(error_msg)
+                    return error_msg
+            else:
+                error_msg = f"Error en orquestación: {e}"
+                print(error_msg)
+                return error_msg
             
     async def ask_lightweight(self, session_id: str, query: str, ui_context: str = None) -> str:
         """
@@ -203,6 +296,24 @@ class RAGOrchestrator:
             self.memory_manager.add_message(session_id, "assistant", response)
             return response
         except Exception as e:
+            if is_quota_exceeded_error(e) and not LLMConfig.is_local(self._current_model):
+                prev_model = self._current_model
+                fallback_model = LLMConfig.get_fallback_model_name()
+                print(f"[FAILOVER LIGHTWEIGHT] Cuota agotada en '{prev_model}'. Conmutando a '{fallback_model}'...")
+                self.fallback_info = {
+                    "from_model": prev_model,
+                    "to_model": fallback_model,
+                    "reason": str(e),
+                    "timestamp": time.time()
+                }
+                self.update_model(fallback_model)
+                try:
+                    result = await self.llm.ainvoke(messages)
+                    response = result.content
+                    self.memory_manager.add_message(session_id, "assistant", response)
+                    return response
+                except Exception as e2:
+                    return f"Error tras conmutar a {fallback_model}: {e2}"
             print(f"Error en ask_lightweight: {e}")
             return f"Error: {e}"
              
@@ -259,5 +370,30 @@ class RAGOrchestrator:
             self._response_cache[cache_key] = (now, full_response)
             self.memory_manager.add_message(session_id, "assistant", full_response)
         except Exception as e:
-            print(f"Error en ask_lightweight_stream_sync: {e}")
-            yield f"\n\nError: {e}"
+            if is_quota_exceeded_error(e) and not LLMConfig.is_local(self._current_model):
+                prev_model = self._current_model
+                err_str = str(e).lower()
+                is_server_down = any(x in err_str for x in ["502", "503", "504", "bad gateway", "service unavailable", "connection error"])
+                reason_txt = "Servidor remoto no disponible o caído (502 Bad Gateway)" if is_server_down else "Límite de cuota alcanzado"
+                print(f"[FAILOVER STREAM] {reason_txt} en '{prev_model}'. Conmutando a '{fallback_model}'...")
+                self.fallback_info = {
+                    "from_model": prev_model,
+                    "to_model": fallback_model,
+                    "reason": str(e),
+                    "timestamp": time.time()
+                }
+                self.update_model(fallback_model)
+                yield f"> 🔄 **Aviso de conmutación:** {reason_txt} en `{prev_model}`. Continuando la respuesta con el modelo local de respaldo `{fallback_model}`...\n\n"
+                try:
+                    full_response = ""
+                    for chunk in self.llm.stream(messages):
+                        if chunk.content:
+                            full_response += chunk.content
+                            yield chunk.content
+                    self._response_cache[cache_key] = (now, full_response)
+                    self.memory_manager.add_message(session_id, "assistant", full_response)
+                except Exception as e2:
+                    yield f"\n\nError tras conmutar a {fallback_model}: {e2}"
+            else:
+                print(f"Error en ask_lightweight_stream_sync: {e}")
+                yield f"\n\nError: {e}"

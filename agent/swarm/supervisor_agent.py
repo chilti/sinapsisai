@@ -112,7 +112,7 @@ def _llm_chat(messages: List[Dict], model_id: str, api_base: str, api_key: str,
     """Thin wrapper for direct OpenAI chat completions with automatic retries."""
     if not HAS_OPENAI:
         return ""
-    effective_model = model_id if model_id and model_id != "default" else "openai/gpt-oss-20b"
+    effective_model = model_id if model_id and model_id != "default" else "openai/default"
     client = OpenAI(base_url=api_base, api_key=api_key)
     for attempt in range(3):
         try:
@@ -362,7 +362,7 @@ Reglas clave:
             raise RuntimeError("openai package not installed — cannot run ProblemInvestigator")
 
         client = OpenAI(base_url=self.api_base, api_key=self.api_key)
-        effective_model = self.model_id if self.model_id and self.model_id != "default" else "openai/gpt-oss-20b"
+        effective_model = self.model_id if self.model_id and self.model_id != "default" else "openai/default"
         user_msg = self._USER_TEMPLATE.format(
             question=question,
             entity_context=entity_context or ""
@@ -830,7 +830,7 @@ Evalúa minuciosamente si la narrativa debe ser aprobada, el nivel de confianza,
     if HAS_OPENAI:
         try:
             from lib.llm_utils import create_structured_completion
-            effective_model = model_id if model_id and model_id != "default" else "openai/gpt-oss-20b"
+            effective_model = model_id if model_id and model_id != "default" else "openai/default"
             client = OpenAI(base_url=api_base, api_key=api_key)
             parsed = create_structured_completion(
                 client=client,

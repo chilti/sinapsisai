@@ -39,7 +39,7 @@ class BaseSpecialistAgent:
         self.max_steps = max_steps
         
         cfg_model = LLMConfig.get_model_name()
-        self.model_id = model_id or (cfg_model if cfg_model and cfg_model != "default" else "openai/gpt-oss-20b")
+        self.model_id = model_id or (cfg_model if cfg_model and cfg_model != "default" else "openai/default")
         self.api_base = api_base or LLMConfig.get_auth_url()
         self.api_key = api_key or LLMConfig.get_api_key()
         

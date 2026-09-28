@@ -421,6 +421,8 @@ def mostrar_banners_destacados(df):
         for _, row in df_sorted_citas.iterrows():
             doi_val = row[doi_col] if doi_col else None
             title_val = row[title_col]
+            if doi_val and str(doi_val).strip().startswith("10."):
+                doi_val = f"https://doi.org/{str(doi_val).strip()}"
             Title = f"[{title_val}]({doi_val})" if doi_val and str(doi_val).strip() not in ("", "nan", "None") else str(title_val)
             st.markdown(f"**{int(row['citations'])} citas** - {Title} ({int(row['year']) if pd.notna(row['year']) else 'N/A'})")
 
@@ -429,6 +431,8 @@ def mostrar_banners_destacados(df):
         for _, row in df_sorted_recientes.iterrows():
             doi_val = row[doi_col] if doi_col else None
             title_val = row[title_col]
+            if doi_val and str(doi_val).strip().startswith("10."):
+                doi_val = f"https://doi.org/{str(doi_val).strip()}"
             Title = f"[{title_val}]({doi_val})" if doi_val and str(doi_val).strip() not in ("", "nan", "None") else str(title_val)
             st.markdown(f"**{int(row['year']) if pd.notna(row['year']) else 'N/A'}** - {Title}")
 

@@ -141,6 +141,43 @@ def obtener_metadatos_de_scopus(scopus_ids):
             print(f"    Advertencia en Scopus para {sid}: {e}")
     return metadatos
 
+_ORCID_TOKEN_CACHE = {"token": None, "expires_at": 0}
+
+def get_orcid_token():
+    """Obtiene o reutiliza token de cliente de ORCID para evitar cuotas anónimas (HTTP 429)."""
+    import time
+    now = time.time()
+    if _ORCID_TOKEN_CACHE["token"] and now < _ORCID_TOKEN_CACHE["expires_at"]:
+        return _ORCID_TOKEN_CACHE["token"]
+
+    client_id = os.getenv("ORCID_CLIENT_ID")
+    client_secret = os.getenv("ORCID_CLIENT_SECRET")
+    if not client_id or not client_secret:
+        return None
+
+    try:
+        resp = requests.post(
+            "https://orcid.org/oauth/token",
+            data={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "grant_type": "client_credentials",
+                "scope": "/read-public"
+            },
+            headers={"Accept": "application/json"},
+            timeout=10
+        )
+        if resp.status_code == 200:
+            t_data = resp.json()
+            tok = t_data.get("access_token")
+            exp = t_data.get("expires_in", 3600)
+            _ORCID_TOKEN_CACHE["token"] = tok
+            _ORCID_TOKEN_CACHE["expires_at"] = now + exp - 60
+            return tok
+    except Exception as e:
+        print(f"    ⚠️ [ORCID Token] Error obteniendo client_credentials: {e}")
+    return None
+
 def obtener_metadatos_de_orcid(orcid_url):
     if not orcid_url: return {}
     orcid_id = str(orcid_url).rstrip('/').split('/')[-1]
@@ -151,6 +188,9 @@ def obtener_metadatos_de_orcid(orcid_url):
     metadatos = {}
     url = f"https://pub.orcid.org/v3.0/{orcid_id}/works"
     headers = {"Accept": "application/json"}
+    tok = get_orcid_token()
+    if tok:
+        headers["Authorization"] = f"Bearer {tok}"
     try:
         response = requests.get(url, headers=headers, timeout=15)
         if response.status_code == 200:
@@ -217,8 +257,12 @@ def obtener_scopus_ids_de_orcid(orcid_url: str) -> list:
         return []
 
     url = f"https://pub.orcid.org/v3.0/{orcid_id}/external-identifiers"
+    headers = {"Accept": "application/json"}
+    tok = get_orcid_token()
+    if tok:
+        headers["Authorization"] = f"Bearer {tok}"
     try:
-        resp = requests.get(url, headers={"Accept": "application/json"}, timeout=10)
+        resp = requests.get(url, headers=headers, timeout=10)
         if resp.status_code != 200:
             return []
         ext_ids = resp.json().get('external-identifier', [])
@@ -507,6 +551,34 @@ def ingest_researcher_data(data: dict, force: bool = False, force_local: bool = 
                 except:
                     work = None
 
+        # Fallback a Crossref si OpenAlex no tiene aún el trabajo recién publicado
+        if not work and _doi_clean:
+            try:
+                cr_url = f"https://api.crossref.org/works/{_doi_clean}"
+                cr_resp = requests.get(
+                    cr_url,
+                    headers={"Accept": "application/json", "User-Agent": "InfoTlachIA/1.0 (mailto:cienciometria@fciencias.unam.mx)"},
+                    timeout=8
+                )
+                if cr_resp.status_code == 200:
+                    cr_msg = cr_resp.json().get('message', {})
+                    if not record.get('Title') or record.get('Title') == 'Sin Título':
+                        cr_titles = cr_msg.get('title', [])
+                        if cr_titles: record['Title'] = cr_titles[0]
+                    cr_issued = cr_msg.get('issued', {}).get('date-parts', [[0]])
+                    if cr_issued and cr_issued[0] and (not record.get('Year') or record.get('Year') == 0):
+                        record['Year'] = cr_issued[0][0]
+                    cr_authors = [f"{a.get('given', '')} {a.get('family', '')}".strip() for a in cr_msg.get('author', []) if a.get('family')]
+                    if cr_authors and not record.get('Authors'):
+                        record['Authors'] = "; ".join(cr_authors)
+                    cr_container = cr_msg.get('container-title', [])
+                    if cr_container:
+                        record['journal_name'] = cr_container[0]
+                    record['Source'] = (record.get('Source') or 'ORCID') + ' + Crossref'
+                    print(f"      ⚡ [Crossref Fallback] Encontrado: '{record.get('Title')}' ({record.get('Year')})")
+            except Exception as _e_cr:
+                pass
+
         if work:
             authorships = work.get('authorships', [])
             record['Authors'] = "; ".join([au['author']['display_name'] for au in authorships])
@@ -616,7 +688,7 @@ def ingest_researcher_data(data: dict, force: bool = False, force_local: bool = 
             rows_ch = []
             for item in neo4j_batch:
                 # Recuperar metadatos crudos para detectar bases
-                raw_data = json.loads(item['raw_metadata'])
+                raw_data = json.loads(item['raw_metadata']) if item.get('raw_metadata') else {}
                 oa_data = raw_data.get('_raw_oa', {})
                 oa_ids_dict = oa_data.get('ids', {})
                 
@@ -625,25 +697,28 @@ def ingest_researcher_data(data: dict, force: bool = False, force_local: bool = 
                     'academic_name': item['academic_name'],
                     'cvu': str(person_id),
                     'orcid': item.get('orcid') or '',
-                    'openalex_id': item.get('author_openalex_id') or '',
-                    'institution': data.get('snii_institution'),
+                    'openalex_id': item.get('openalex_id') or '',
+                    'institution': data.get('snii_institution') or item.get('institucion') or 'INDEPENDIENTE',
                     'institution_ror': '',
-                    'dependency': data.get('snii_dependency'),
-                    'subdependency': data.get('snii_subdependency'),
+                    'dependency': data.get('snii_dependency') or item.get('dependencia') or 'INDEPENDIENTE',
+                    'dependency_id': '',
+                    'subdependency': data.get('snii_subdependency') or item.get('subdependencia') or '',
+                    'subdependency_id': '',
                     'paper_title': item['title'],
-                    'paper_year': int(item['year']),
-                    'citations': int(item['citations']),
-                    'is_wos': 1 if 'wos' in oa_ids_dict else 0,
-                    'is_scopus': 1 if 'scopus' in oa_ids_dict else 0,
+                    'paper_year': int(item['year']) if item.get('year') else 0,
+                    'citations': int(item['citations']) if item.get('citations') else 0,
+                    'is_wos': 1 if ('wos' in oa_ids_dict or item.get('wos_id')) else 0,
+                    'is_scopus': 1 if ('scopus' in oa_ids_dict or item.get('paper_scopus_eid')) else 0,
                     'is_pubmed': 1 if 'pmid' in oa_ids_dict else 0,
-                    'is_openalex': 1,
+                    'is_openalex': 1 if item.get('paper_openalex_id') else 0,
                     'is_doaj': 1 if oa_data.get('is_oa') and 'doaj' in str(oa_data.get('locations', [])).lower() else 0,
-                    'is_semantic_scholar': 1 if 'mag' in oa_ids_dict else 0,
+                    'is_semantic_scholar': 1 if ('mag' in oa_ids_dict or item.get('semantic_id')) else 0,
                     'is_dimensions': 1 if 'mag' in oa_ids_dict else 0,
-                    'is_lens': 1 if 'mag' in oa_ids_dict or 'pmid' in oa_ids_dict else 0,
-                    'is_snii': 1,
+                    'is_lens': 1 if ('mag' in oa_ids_dict or 'pmid' in oa_ids_dict) else 0,
+                    'is_snii': 1 if data.get('is_snii') else 0,
+                    'ODS': item.get('sdgs', []),
                     'source': 'SNII_Dual_Ingest',
-                    'audit_verdict': item.get('audit_verdict') or 'UNVERIFIED'
+                    'audit_verdict': item.get('audit_verdict') or 'CONFIRMED'
                 })
             if rows_ch:
                 ch.insert_df('paper_author_map', pd.DataFrame(rows_ch))

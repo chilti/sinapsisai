@@ -5,7 +5,7 @@ import httpx
 import pyalex
 from pyalex import Works, Authors
 from langchain_community.tools import DuckDuckGoSearchRun, WikipediaQueryRun
-from langchain_community.utilities import WikipediaAPIWrapper
+from langchain_community.utilities import WikipediaAPIWrapper, DuckDuckGoSearchAPIWrapper
 from langchain_core.tools import tool
 from typing import Optional
 from database.vector_store import QdrantStore
@@ -234,19 +234,30 @@ def query_knowledge_graph_cypher(cypher_query: str) -> str:
     
     IMPORTANTE: Esta herramienta solo encuentra trabajos con tópicos etiquetados explícitamente. Usa SIEMPRE en paralelo con `search_scientific_papers_semantic` para encontrar trabajos cuyo tópico no coincide textualmente. SIEMPRE usa `LIMIT 20` por defecto en tus consultas Cypher.
     """
-    print(f"🕸️ Ejecutando Cypher en Neo4j: {cypher_query}")
+    clean_query = cypher_query.strip()
+    # Si la consulta no tiene LIMIT explícito, agregar un LIMIT 25 seguro para no saturar memoria/contexto
+    if "LIMIT" not in clean_query.upper():
+        clean_query = f"{clean_query} LIMIT 25"
+
+    print(f"🕸️ Ejecutando Cypher en Neo4j: {clean_query}")
     try:
         with neo4j.driver.session() as session:
-            result = session.run(cypher_query)
+            result = session.run(clean_query)
             data = [record.data() for record in result]
-            return json.dumps(data, ensure_ascii=False)
+            if len(data) > 50:
+                data = data[:50]
+            res_str = json.dumps(data, ensure_ascii=False)
+            if len(res_str) > 12000:
+                res_str = res_str[:12000] + "\n... [Resultado truncado a 12,000 caracteres por seguridad de contexto]"
+            return res_str
     except Exception as e:
         return f"Error ejecutando Cypher: {str(e)}"
 
 # --- Nuevas Herramientas de Búsqueda Externa ---
 
-# DuckDuckGo Search
-search_ddg = DuckDuckGoSearchRun()
+# DuckDuckGo Search (Con región explícita es-es para evitar fallo de DNS wt.wikipedia.org en ddgs)
+ddg_api_wrapper = DuckDuckGoSearchAPIWrapper(region="es-es", max_results=5)
+search_ddg = DuckDuckGoSearchRun(api_wrapper=ddg_api_wrapper)
 
 def web_search(query: str) -> str:
     """
@@ -254,10 +265,16 @@ def web_search(query: str) -> str:
     Usar cuando necesites encontrar información actualizada o temas generales 
     que no estén en la base de datos local.
     """
-    return search_ddg.run(query)
+    try:
+        res = search_ddg.run(query)
+        if not res or "No good DuckDuckGo Search Result was found" in res:
+            return "Aviso: La búsqueda web no arrojó resultados específicos. Continuando con fuentes locales y OpenAlex."
+        return res
+    except Exception as e:
+        return f"Aviso: La búsqueda web externa no estuvo disponible ({e}). Continuando con fuentes locales (Neo4j, ClickHouse y OpenAlex)."
 
-# Wikipedia
-wikipedia_api_wrapper = WikipediaAPIWrapper(top_k_results=1, doc_content_chars_max=4000)
+# Wikipedia (Configurada en español y blindada ante excepciones)
+wikipedia_api_wrapper = WikipediaAPIWrapper(lang="es", top_k_results=1, doc_content_chars_max=4000)
 wikipedia_tool_instance = WikipediaQueryRun(api_wrapper=wikipedia_api_wrapper)
 
 def wikipedia_search(query: str) -> str:
@@ -265,7 +282,13 @@ def wikipedia_search(query: str) -> str:
     Consulta Wikipedia para obtener resúmenes informativos sobre conceptos, 
     instituciones o personajes científicos.
     """
-    return wikipedia_tool_instance.run(query)
+    try:
+        res = wikipedia_tool_instance.run(query)
+        if not res or "No good Wikipedia Search Result was found" in res:
+            return "Aviso: No se encontraron artículos en Wikipedia para esta búsqueda."
+        return res
+    except Exception as e:
+        return f"Aviso: La consulta a Wikipedia no estuvo disponible ({e})."
 
 # --- Herramientas OpenAlex (Recuperación Directa) ---
 
@@ -681,6 +704,12 @@ def get_topic_evolution(entity_name: str, start_year: int = 2018, end_year: int 
             MATCH (e) WHERE (e:Institution OR e:Dependency OR e:Subdependency) AND toLower(e.name) CONTAINS toLower($entity)
             MATCH (e)<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic)
             WHERE p.year >= $start_year AND p.year <= $end_year
+            WITH t, count(DISTINCT p) AS total_papers
+            ORDER BY total_papers DESC
+            LIMIT 20
+            MATCH (e) WHERE (e:Institution OR e:Dependency OR e:Subdependency) AND toLower(e.name) CONTAINS toLower($entity)
+            MATCH (e)<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t)
+            WHERE p.year >= $start_year AND p.year <= $end_year
             RETURN t.name AS topic, p.year AS year,
                    count(DISTINCT p) AS paper_count,
                    round(avg(coalesce(p.citations, 0)), 2) AS avg_citations
@@ -713,6 +742,7 @@ def get_topic_evolution(entity_name: str, start_year: int = 2018, end_year: int 
         return json.dumps({
             "entity": entity_name,
             "rango": f"{start_year}-{end_year}",
+            "criterio": "Top 20 tópicos con mayor volumen y actividad reciente",
             "total_registros": len(enriched),
             "data": enriched,
         }, ensure_ascii=False)

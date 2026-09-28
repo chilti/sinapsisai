@@ -11,7 +11,7 @@ from pathlib import Path
 from PIL import Image
 import json
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(override=True)
 
 # Asegurar que el directorio raíz está en el path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")))
@@ -216,6 +216,25 @@ def trigger_background_processing(academic_name, orcid=None):
         st.error(f"Error al lanzar procesos de segundo plano: {e}")
         return False
 
+def set_sidebar_hierarchy(inst=None, dep=None, sub=None):
+    """
+    Establece la selección de la barra lateral de forma segura.
+    Si los widgets ya fueron instanciados en el run actual, guarda los valores
+    en pending_* para que se apliquen al inicio del siguiente run antes de instanciar los selectbox.
+    """
+    targets = [
+        ("selected_institution_sidebar", inst, "pending_institution_sidebar"),
+        ("selected_dep_sidebar", dep, "pending_dep_sidebar"),
+        ("selected_sub_sidebar", sub, "pending_sub_sidebar"),
+    ]
+    for key, val, pending_key in targets:
+        if val is not None:
+            try:
+                st.session_state[key] = val
+            except Exception:
+                st.session_state[pending_key] = val
+
+
 def select_academic_in_ui(academic_name):
     from database.knowledge_graph import Neo4jGraphStore
     from dashboard_analytics import get_institution_hierarchy
@@ -265,7 +284,7 @@ def select_academic_in_ui(academic_name):
                     break
     
     if valid_inst:
-        st.session_state.selected_institution_sidebar = valid_inst
+        set_sidebar_hierarchy(inst=valid_inst)
         dep_data = hierarchy.get(valid_inst, {})
         deps = list(dep_data.keys()) if isinstance(dep_data, dict) else list(dep_data)
         
@@ -279,7 +298,7 @@ def select_academic_in_ui(academic_name):
                         break
         
         if valid_dep:
-            st.session_state.selected_dep_sidebar = valid_dep
+            set_sidebar_hierarchy(inst=valid_inst, dep=valid_dep)
             subs = dep_data.get(valid_dep, []) if isinstance(dep_data, dict) else []
             
             valid_sub = None
@@ -291,7 +310,7 @@ def select_academic_in_ui(academic_name):
                             valid_sub = h_sub
                             break
             if valid_sub:
-                st.session_state.selected_sub_sidebar = valid_sub
+                set_sidebar_hierarchy(inst=valid_inst, dep=valid_dep, sub=valid_sub)
         
     st.session_state.selected_academic_search = academic_name
     st.session_state.switch_tab = "Perfiles de Investigadores"
@@ -300,6 +319,7 @@ def select_academic_in_ui(academic_name):
     st.query_params.pop("entity_name", None)
     st.session_state['tab_inv_loaded'] = True  # Auto-cargar la pestaña
     st.session_state.global_search_executed = True
+    st.rerun()
 
 
 def select_entity_in_ui(entity_id, entity_name, entity_type=None):
@@ -333,7 +353,7 @@ def select_entity_in_ui(entity_id, entity_name, entity_type=None):
                     
     # 4. Si encontramos la institución, resolver dependencia y subdependencia en la UI
     if valid_inst:
-        st.session_state.selected_institution_sidebar = valid_inst
+        set_sidebar_hierarchy(inst=valid_inst)
         dep_data = hierarchy.get(valid_inst, {})
         deps = list(dep_data.keys()) if isinstance(dep_data, dict) else list(dep_data)
         
@@ -348,7 +368,7 @@ def select_entity_in_ui(entity_id, entity_name, entity_type=None):
                         break
         
         if valid_dep:
-            st.session_state.selected_dep_sidebar = valid_dep
+            set_sidebar_hierarchy(inst=valid_inst, dep=valid_dep)
             subs = dep_data.get(valid_dep, []) if isinstance(dep_data, dict) else []
             
             valid_sub = None
@@ -361,36 +381,20 @@ def select_entity_in_ui(entity_id, entity_name, entity_type=None):
                             valid_sub = h_sub
                             break
             if valid_sub:
-                st.session_state.selected_sub_sidebar = valid_sub
-            else:
-                if "selected_sub_sidebar" in st.session_state:
-                    del st.session_state["selected_sub_sidebar"]
-        else:
-            if "selected_dep_sidebar" in st.session_state:
-                del st.session_state["selected_dep_sidebar"]
-            if "selected_sub_sidebar" in st.session_state:
-                del st.session_state["selected_sub_sidebar"]
+                set_sidebar_hierarchy(inst=valid_inst, dep=valid_dep, sub=valid_sub)
     else:
         # Fallback de búsqueda global en todo el árbol jerárquico si no se resolvió por ID
         for h_inst, dep_data in hierarchy.items():
             if entity_name == h_inst:
-                st.session_state.selected_institution_sidebar = h_inst
-                if "selected_dep_sidebar" in st.session_state:
-                    del st.session_state["selected_dep_sidebar"]
-                if "selected_sub_sidebar" in st.session_state:
-                    del st.session_state["selected_sub_sidebar"]
+                set_sidebar_hierarchy(inst=h_inst)
                 valid_inst = h_inst
                 break
                 
             deps = list(dep_data.keys()) if isinstance(dep_data, dict) else list(dep_data)
             for h_dep in deps:
                 if entity_name == h_dep:
-                    st.session_state.selected_institution_sidebar = h_inst
-                    st.session_state.selected_dep_sidebar = h_dep
-                    if isinstance(dep_data, dict):
-                        subs = dep_data.get(h_dep, [])
-                        if subs:
-                            st.session_state.selected_sub_sidebar = subs[0]
+                    subs = dep_data.get(h_dep, []) if isinstance(dep_data, dict) else []
+                    set_sidebar_hierarchy(inst=h_inst, dep=h_dep, sub=subs[0] if subs else None)
                     valid_inst = h_inst
                     break
                     
@@ -398,9 +402,7 @@ def select_entity_in_ui(entity_id, entity_name, entity_type=None):
                     subs = dep_data.get(h_dep, [])
                     for h_sub in subs:
                         if entity_name == h_sub:
-                            st.session_state.selected_institution_sidebar = h_inst
-                            st.session_state.selected_dep_sidebar = h_dep
-                            st.session_state.selected_sub_sidebar = h_sub
+                            set_sidebar_hierarchy(inst=h_inst, dep=h_dep, sub=h_sub)
                             valid_inst = h_inst
                             break
                 if valid_inst:
@@ -413,6 +415,7 @@ def select_entity_in_ui(entity_id, entity_name, entity_type=None):
     st.query_params["entity_name"] = entity_name
     st.query_params.pop("academic", None)
     st.session_state['tab_inst_loaded'] = True  # Auto-cargar la pestaña
+    st.rerun()
     st.session_state.global_search_executed = True
 
 
@@ -644,7 +647,8 @@ with st.sidebar:
             if st.button(button_label, type="primary", use_container_width=True, help=help_text):
                 from lib.auth import trigger_background_sync
                 if current_academic:
-                    trigger_background_sync(current_academic, force=True)
+                    user_orcid = user.get('orcid') if user else None
+                    trigger_background_sync(user_orcid or current_academic, user_name=current_academic, force=True)
                     st.toast(f"🚀 Sincronización iniciada para: {current_academic}", icon="🔄")
                 elif current_inst:
                     import threading
@@ -716,7 +720,10 @@ with st.sidebar:
     if unam_name in instituciones:
         default_inst_idx = instituciones.index(unam_name)
         
-    if "selected_institution_sidebar" not in st.session_state:
+    if "pending_institution_sidebar" in st.session_state:
+        st.session_state.selected_institution_sidebar = st.session_state.pop("pending_institution_sidebar")
+
+    if "selected_institution_sidebar" not in st.session_state or st.session_state.selected_institution_sidebar not in instituciones:
         st.session_state.selected_institution_sidebar = instituciones[default_inst_idx]
         
     selected_institution = st.selectbox(
@@ -742,6 +749,9 @@ with st.sidebar:
     if selected_institution == unam_name and "SECRETARIA GENERAL" in dependencias:
         default_dep_idx = dependencias.index("SECRETARIA GENERAL")
         
+    if "pending_dep_sidebar" in st.session_state:
+        st.session_state.selected_dep_sidebar = st.session_state.pop("pending_dep_sidebar")
+
     if "selected_dep_sidebar" not in st.session_state or st.session_state.selected_dep_sidebar not in dependencias:
         st.session_state.selected_dep_sidebar = dependencias[default_dep_idx]
         
@@ -777,6 +787,9 @@ with st.sidebar:
         if "FACULTAD DE CIENCIAS" in opciones_mostrar:
             default_sub_idx = opciones_mostrar.index("FACULTAD DE CIENCIAS")
             
+        if "pending_sub_sidebar" in st.session_state:
+            st.session_state.selected_sub_sidebar = st.session_state.pop("pending_sub_sidebar")
+
         if "selected_sub_sidebar" not in st.session_state or st.session_state.selected_sub_sidebar not in opciones_mostrar:
             st.session_state.selected_sub_sidebar = opciones_mostrar[default_sub_idx]
             
@@ -796,9 +809,54 @@ with st.sidebar:
         selected_entity = selected_dep
         selected_sub = None
     
-    active_model = LLMConfig.get_model_name()
-    available_models = list(dict.fromkeys([active_model, "default", "prism-ml/bonsai-27b", "openai/gpt-oss-20b"]))
-    st.selectbox("Modelo LLM", available_models, index=0, key="llm_model_sidebar")
+    user_auth_sidebar = st.session_state.get("authenticated_user")
+    user_orcid_bare_sb = str(user_auth_sidebar.get('orcid', '')).replace('https://orcid.org/', '').replace('http://orcid.org/', '').strip() if user_auth_sidebar else ""
+    admin_env_sb = os.getenv("admins", "")
+    admin_orcids_sb = [o.strip().replace('https://orcid.org/', '').replace('http://orcid.org/', '') for o in admin_env_sb.split(",") if o.strip()]
+    is_admin_sidebar = bool(user_auth_sidebar and (user_orcid_bare_sb in admin_orcids_sb or user_auth_sidebar.get('orcid') in admin_env_sb))
+    is_dev = any("/sinapsisai_dev" in str(arg) for arg in sys.argv) or "sinapsisai_dev" in os.getenv("ORCID_REDIRECT_URI", "")
+
+    if is_admin_sidebar or is_dev:
+        active_model = LLMConfig.get_model_name()
+        available_models = list(dict.fromkeys([
+            "openai/default (Local LM Studio)",
+            "Kimi-K2.6 (C3 UNAM vLLM)",
+            "gemini-3.5-flash-lite (Google Free Tier)",
+            "gemini-flash-latest",
+            "meta-llama/llama-3.3-70b-instruct:free (OpenRouter)",
+            "google/gemini-2.0-flash-exp:free (OpenRouter)",
+            "prism-ml/bonsai-27b (Local LM Studio)",
+            active_model,
+            "default"
+        ]))
+        def _on_model_change():
+            sel = st.session_state.get("llm_model_sidebar")
+            if sel:
+                cm = LLMConfig.get_clean_model_name(sel)
+                if "orchestrator" in st.session_state and hasattr(st.session_state.orchestrator, "update_model"):
+                    st.session_state.orchestrator.update_model(cm)
+                if "test_orchestrator" in st.session_state and hasattr(st.session_state.test_orchestrator, "update_model"):
+                    st.session_state.test_orchestrator.update_model(cm)
+
+        chosen_model = st.selectbox(
+            "Modelo LLM",
+            available_models,
+            key="llm_model_sidebar",
+            on_change=_on_model_change
+        )
+        clean_model = LLMConfig.get_clean_model_name(chosen_model)
+        if "orchestrator" in st.session_state and hasattr(st.session_state.orchestrator, "update_model"):
+            st.session_state.orchestrator.update_model(clean_model)
+        if "test_orchestrator" in st.session_state and hasattr(st.session_state.test_orchestrator, "update_model"):
+            st.session_state.test_orchestrator.update_model(clean_model)
+    else:
+        # Usuarios regulares: siempre modelo local de LM Studio (RTX 4090)
+        local_default = "openai/default"
+        st.session_state["llm_model_sidebar"] = local_default
+        if "orchestrator" in st.session_state and hasattr(st.session_state.orchestrator, "update_model"):
+            st.session_state.orchestrator.update_model(local_default)
+        if "test_orchestrator" in st.session_state and hasattr(st.session_state.test_orchestrator, "update_model"):
+            st.session_state.test_orchestrator.update_model(local_default)
 
 
 
@@ -865,11 +923,16 @@ tab_labels = [
 
 user_auth = st.session_state.get("authenticated_user")
 is_admin = False
+is_super_admin = False
+is_inst_admin = False
 if user_auth:
     user_orcid_bare = str(user_auth.get('orcid', '')).replace('https://orcid.org/', '').replace('http://orcid.org/', '').strip()
     admin_env = os.getenv("admins", "")
     admin_orcids = [o.strip().replace('https://orcid.org/', '').replace('http://orcid.org/', '') for o in admin_env.split(",") if o.strip()]
-    is_admin = user_orcid_bare in admin_orcids or user_auth.get('orcid') in admin_env
+    is_super_admin = user_orcid_bare in admin_orcids or user_auth.get('orcid') in admin_env
+    from lib.curation_service import get_curation_service
+    is_inst_admin = get_curation_service().is_user_institutional_admin(user_orcid_bare)
+    is_admin = is_super_admin or is_inst_admin
 
 if user_auth:
     tab_labels.insert(0, "👤 Mi Espacio")
@@ -964,26 +1027,24 @@ if "switch_tab" in st.session_state and st.session_state.switch_tab:
 # =======================================================
 if user_auth:
     with tab_me:
-        st.header(f"Bienvenido, {user_auth.get('name', 'Investigador')}")
-        st.markdown(f"**ORCID iD:** [{user_auth.get('orcid')}](https://orcid.org/{user_auth.get('orcid')})")
-        
         neo = Neo4jGraphStore()
         profile = neo.get_user_profile(user_auth.get('orcid'))
         
         if profile and profile.get('academic_id'):
             neo.close()
-            st.success(f"✅ Tu cuenta está vinculada al perfil académico: **{profile.get('academic_name')}**")
-            
             if "queue_message" in st.session_state:
                 st.info(st.session_state.queue_message)
                 del st.session_state.queue_message
-            else:
-                st.info("💡 Ahora puedes ver tus métricas personalizadas y reportes de autoría.")
             
-            # Botón de acceso directo a su vista
-            if st.button("📊 Ver mi Producción y Métricas", on_click=select_academic_in_ui, args=(profile.get('academic_name'),)):
-                st.success(f"✅ Seleccionado. Ve a la pestaña 'Perfil Académico'")
+            from components.researcher_space import render_researcher_space
+            render_researcher_space(
+                user_auth=user_auth,
+                select_academic_callback=select_academic_in_ui,
+                trigger_sync_callback=trigger_background_processing
+            )
         else:
+            st.header(f"Bienvenido, {user_auth.get('name', 'Investigador')}")
+            st.markdown(f"**ORCID iD:** [{user_auth.get('orcid')}](https://orcid.org/{user_auth.get('orcid')})")
             if st.session_state.get('pending_claim_profile'):
                 pending = st.session_state.pending_claim_profile
                 res = pending['res']
@@ -1176,6 +1237,11 @@ if user_auth:
 # =======================================================
 if tab_admin is not None:
     with tab_admin:
+        from components.admin_accreditation import render_admin_accreditation_panel
+        with st.expander("🏛️ Gobernanza Institucional: Acreditación de Administradores y Alias", expanded=True):
+            render_admin_accreditation_panel(admin_orcid=user_orcid_bare or "super_admin")
+        
+        st.markdown("---")
         st.header("⚙️ Panel de Administración y Mantenimiento del Sistema")
         st.caption("Herramientas avanzadas de recolección de APIs, sincronización analítica y cómputo de métricas.")
         
@@ -1185,6 +1251,7 @@ if tab_admin is not None:
         from datetime import datetime
         _BASE_PATH = os.path.abspath(os.path.dirname(__file__))
         ADMIN_STATUS_FILE = os.path.join(_BASE_PATH, "data", "admin_task_status.json")
+        ADMIN_LOG_FILE = os.path.join(_BASE_PATH, "data", "admin_task_last_run.log")
 
         def _is_pid_alive(pid):
             if not pid or pid <= 0: return False
@@ -1225,6 +1292,8 @@ if tab_admin is not None:
             elif status in ["COMPLETED", "ERROR", "STOPPED", "TERMINATED"]:
                 data["finished_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 data["pid"] = None
+            elif status == "IDLE":
+                data = {"status": "IDLE"}
             try:
                 with open(ADMIN_STATUS_FILE, "w", encoding="utf-8") as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
@@ -1234,45 +1303,104 @@ if tab_admin is not None:
         def stop_admin_task():
             data = get_admin_task_status()
             pid = data.get("pid")
+            set_admin_task_status("STOPPED", title=data.get("title", "Tarea"), command=data.get("command", ""))
             if pid and _is_pid_alive(pid):
                 try:
-                    os.kill(pid, 9)
-                except Exception as e:
-                    print(f"Error killing PID {pid}: {e}")
-            set_admin_task_status("STOPPED", title=data.get("title", "Tarea"), command=data.get("command", ""))
+                    import signal
+                    os.killpg(pid, signal.SIGKILL)
+                except Exception:
+                    try:
+                        os.kill(pid, 9)
+                    except Exception as e:
+                        print(f"Error killing PID {pid}: {e}")
+
+        def _read_last_log_lines(filepath, n=35):
+            if not os.path.exists(filepath):
+                return "No se ha generado archivo de bitácora aún."
+            try:
+                with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+                    lines = f.readlines()
+                    return "".join(lines[-n:]) if lines else "Bitácora vacía."
+            except Exception as e:
+                return f"Error leyendo bitácora: {e}"
+
+        def _extract_error_summary(filepath, fallback_lines=15):
+            if not os.path.exists(filepath):
+                return "Error en la ejecución (sin bitácora)."
+            try:
+                with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+                    lines = [l.rstrip() for l in f.readlines() if l.strip()]
+                if not lines:
+                    return "El proceso terminó con código de error pero no emitió texto."
+                
+                # Buscar hacia atrás un Traceback o Exception, omitiendo warnings informativos
+                relevant = []
+                for l in reversed(lines):
+                    if "UserWarning:" in l or "FutureWarning:" in l or "warn(text" in l:
+                        continue
+                    relevant.append(l)
+                    if "Traceback (most recent call last):" in l:
+                        break
+                    if len(relevant) >= fallback_lines:
+                        break
+                if relevant:
+                    return "\n".join(reversed(relevant))
+                return "\n".join(lines[-fallback_lines:])
+            except Exception as e:
+                return f"Error extrayendo bitácora: {e}"
 
         def _run_admin_bg_task(cmd_list, task_title="Tarea"):
             def _runner():
                 try:
-                    if isinstance(cmd_list[0], list):
-                        # Chained commands
-                        chain_str = " && ".join([" ".join(c) for c in cmd_list])
-                        set_admin_task_status("RUNNING", title=task_title, command=chain_str)
-                        for subcmd in cmd_list:
-                            print(f"🚀 [Admin Task - {task_title}] Ejecutando: {' '.join(subcmd)}")
-                            proc = subprocess.Popen(subcmd, cwd=os.path.dirname(__file__), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                            set_admin_task_status("RUNNING", title=f"{task_title} ({subcmd[1] if len(subcmd)>1 else 'Paso'})", command=' '.join(subcmd), pid=proc.pid)
-                            stdout, stderr = proc.communicate()
-                            if proc.returncode != 0:
-                                err_msg = stderr[-1000:] if stderr else stdout[-1000:]
-                                print(f"❌ [Admin Task - {task_title}] Error:\n{err_msg}")
-                                set_admin_task_status("ERROR", title=task_title, command=' '.join(subcmd), error=err_msg)
-                                return
-                        print(f"✅ [Admin Task - {task_title}] Pipeline completado exitosamente.")
-                        set_admin_task_status("COMPLETED", title=task_title, command=chain_str)
-                    else:
-                        cmd_str = " ".join(cmd_list)
-                        print(f"🚀 [Admin Task - {task_title}] Ejecutando: {cmd_str}")
-                        proc = subprocess.Popen(cmd_list, cwd=os.path.dirname(__file__), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                        set_admin_task_status("RUNNING", title=task_title, command=cmd_str, pid=proc.pid)
-                        stdout, stderr = proc.communicate()
-                        if proc.returncode == 0:
-                            print(f"✅ [Admin Task - {task_title}] Completado exitosamente.")
-                            set_admin_task_status("COMPLETED", title=task_title, command=cmd_str)
-                        else:
-                            err_msg = stderr[-1000:] if stderr else stdout[-1000:]
-                            print(f"❌ [Admin Task - {task_title}] Error:\n{err_msg}")
-                            set_admin_task_status("ERROR", title=task_title, command=cmd_str, error=err_msg)
+                    cmds = cmd_list if isinstance(cmd_list[0], list) else [cmd_list]
+                    chain_str = " && ".join([" ".join(c) for c in cmds])
+                    set_admin_task_status("RUNNING", title=task_title, command=chain_str)
+                    
+                    with open(ADMIN_LOG_FILE, "w", encoding="utf-8") as f:
+                        f.write(f"=== [Admin Task - {task_title}] Iniciado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+                        f.write(f"Comando: {chain_str}\n\n")
+
+                    for subcmd in cmds:
+                        if get_admin_task_status().get("status") == "STOPPED":
+                            print(f"🛑 [Admin Task - {task_title}] Detenido por el usuario antes de {' '.join(subcmd)}")
+                            return
+
+                        print(f"🚀 [Admin Task - {task_title}] Ejecutando: {' '.join(subcmd)}")
+                        with open(ADMIN_LOG_FILE, "a", encoding="utf-8") as log_f:
+                            log_f.write(f"\n{'='*60}\n🚀 [Paso] {' '.join(subcmd)}\n{'='*60}\n")
+                            log_f.flush()
+                            env = os.environ.copy()
+                            env["PYTHONUNBUFFERED"] = "1"
+                            proc = subprocess.Popen(
+                                subcmd,
+                                cwd=os.path.dirname(__file__),
+                                stdout=log_f,
+                                stderr=subprocess.STDOUT,
+                                text=True,
+                                env=env,
+                                process_group=0
+                            )
+                        
+                        set_admin_task_status("RUNNING", title=f"{task_title} ({subcmd[1] if len(subcmd)>1 else 'Paso'})", command=' '.join(subcmd), pid=proc.pid)
+                        proc.wait()
+
+                        if get_admin_task_status().get("status") == "STOPPED":
+                            print(f"🛑 [Admin Task - {task_title}] Tarea detenida manualmente.")
+                            return
+
+                        if proc.returncode != 0:
+                            ret = proc.returncode
+                            if ret < 0:
+                                sig = -ret
+                                err_msg = f"El proceso fue terminado por señal del sistema (Signal {sig}: {'SIGKILL' if sig==9 else 'SIGTERM' if sig==15 else 'SIGINT' if sig==2 else 'ABORT'})."
+                            else:
+                                err_msg = _extract_error_summary(ADMIN_LOG_FILE)
+                            print(f"❌ [Admin Task - {task_title}] Error (código {ret}):\n{err_msg}")
+                            set_admin_task_status("ERROR", title=task_title, command=' '.join(subcmd), error=err_msg)
+                            return
+
+                    print(f"✅ [Admin Task - {task_title}] Pipeline completado exitosamente.")
+                    set_admin_task_status("COMPLETED", title=task_title, command=chain_str)
                 except Exception as e:
                     print(f"❌ [Admin Task - {task_title}] Excepción: {e}")
                     set_admin_task_status("ERROR", title=task_title, error=str(e))
@@ -1302,8 +1430,11 @@ if tab_admin is not None:
                     st.toast("🛑 Proceso detenido.", icon="🛑")
                     st.rerun()
             with col_k2:
-                if st.button("🔄 Actualizar Estado", use_container_width=True):
+                if st.button("🔄 Actualizar Estado / Bitácora", use_container_width=True):
                     st.rerun()
+
+            with st.expander("📜 Bitácora en tiempo real (últimas líneas)", expanded=True):
+                st.code(_read_last_log_lines(ADMIN_LOG_FILE, 35), language="text")
         else:
             last_status = task_info.get("status", "IDLE")
             if last_status == "COMPLETED":
@@ -1314,6 +1445,15 @@ if tab_admin is not None:
                 st.info(f"🛑 **Última tarea detenida manualmente:** `{task_info.get('title')}` ({task_info.get('finished_at')})")
             else:
                 st.info("🟢 **Sistema Disponible**: No hay procesos de sincronización ejecutándose en este momento.")
+
+            if last_status in ["COMPLETED", "ERROR", "STOPPED"]:
+                col_c1, col_c2 = st.columns([2.5, 7.5])
+                with col_c1:
+                    if st.button("🗑️ Limpiar Notificación / Historial", use_container_width=True):
+                        set_admin_task_status("IDLE")
+                        st.rerun()
+                with st.expander("📜 Ver bitácora de la última ejecución", expanded=(last_status == "ERROR")):
+                    st.code(_read_last_log_lines(ADMIN_LOG_FILE, 40), language="text")
 
         # ====================================================
         # BLOQUE 1: PROCEDIMIENTOS PERIÓDICOS Y SISTEMÁTICOS (HASTA ARRIBA)
@@ -1337,7 +1477,11 @@ if tab_admin is not None:
                 e2e_inst = st.text_input("🏛️ Institución padre (obligatoria si filtras por académico):", placeholder="Ej: UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", key="e2e_inst", disabled=is_task_running)
             with col_e2:
                 e2e_local = st.checkbox("⚡ Usar recursos locales / LM Studio (`--local`)", value=False, key="e2e_local", disabled=is_task_running)
-                e2e_limit = st.number_input("🔢 Límite de registros (0 = sin límite):", min_value=0, max_value=100000, value=0, key="e2e_limit", disabled=is_task_running)
+                col_sub1, col_sub2 = st.columns(2)
+                with col_sub1:
+                    e2e_limit = st.number_input("🔢 Límite (0 = todos):", min_value=0, max_value=200000, value=0, key="e2e_limit", disabled=is_task_running)
+                with col_sub2:
+                    e2e_skip = st.number_input("⏭️ Saltar primeros N (skip):", min_value=0, max_value=200000, value=0, key="e2e_skip", disabled=is_task_running, help="Permite reanudar la cosecha desde el registro N si se detuvo una ejecución previa.")
 
             if st.button("🚀 Ejecutar Pipeline Completo (Validación + Cosecha + Sync + Métricas)", type="primary", use_container_width=True, key="btn_e2e", disabled=is_task_running):
                 chain = []
@@ -1351,6 +1495,7 @@ if tab_admin is not None:
                 if e2e_local: cmd1.append("--local")
                 if e2e_name.strip(): cmd1.extend(["--name", e2e_name.strip()])
                 if e2e_limit > 0: cmd1.extend(["--limit", str(e2e_limit)])
+                if e2e_skip > 0: cmd1.extend(["--skip", str(e2e_skip)])
                 chain.append(cmd1)
 
                 # Paso 2: sync_analytics_pipeline.py
@@ -1422,7 +1567,7 @@ if tab_admin is not None:
             - Búsqueda en la base local ClickHouse `orcid`.
             - Consulta a la API pública oficial de ORCID (`pub.orcid.org`).
             - Web scraper de directorios institucionales de facultades.
-            - Reranking con Structured Outputs del modelo local de LM Studio (`openai/gpt-oss-20b`).
+            - Reranking con Structured Outputs del modelo local de LM Studio (`openai/default`).
             """)
             col_orc1, col_orc2 = st.columns(2)
             with col_orc1:
@@ -1458,7 +1603,11 @@ if tab_admin is not None:
             with col2:
                 force_local_flag = st.checkbox("⚡ Modo Local sin Cuotas API (`--local`)", value=False, disabled=is_task_running)
                 resolve_oa_flag = st.checkbox("🔍 Resolver Author IDs de OpenAlex", value=True, disabled=is_task_running)
-                limit_val = st.number_input("🔢 Límite de procesamientos:", min_value=0, max_value=100000, value=0, disabled=is_task_running)
+                col_sw1, col_sw2 = st.columns(2)
+                with col_sw1:
+                    limit_val = st.number_input("🔢 Límite (0 = todos):", min_value=0, max_value=200000, value=0, key="sync_works_limit", disabled=is_task_running)
+                with col_sw2:
+                    skip_val = st.number_input("⏭️ Saltar N (skip):", min_value=0, max_value=200000, value=0, key="sync_works_skip", disabled=is_task_running, help="Permite reanudar la cosecha desde el registro N.")
                 name_filter = st.text_input("🎯 Filtrar por Nombre (opcional):", placeholder="Ej: ARENCIBIA JORGE, RICARDO", disabled=is_task_running)
 
             if st.button("🌐 Iniciar Cosecha de Publicaciones (`sync_works.py`)", use_container_width=True, disabled=is_task_running):
@@ -1471,6 +1620,7 @@ if tab_admin is not None:
                 if force_local_flag: cmd.append("--local")
                 if not resolve_oa_flag: cmd.append("--no-resolve-oa")
                 if limit_val > 0: cmd.extend(["--limit", str(limit_val)])
+                if skip_val > 0: cmd.extend(["--skip", str(skip_val)])
                 if name_filter.strip(): cmd.extend(["--name", name_filter.strip()])
 
                 _run_admin_bg_task(cmd, "Cosecha de Obras (sync_works)")
@@ -2025,6 +2175,11 @@ with tab_chat:
                         if isinstance(response_data, dict):
                             response = response_data.get("answer", "")
                             intermediate_steps = response_data.get("intermediate_steps", [])
+                            if response_data.get("fallback_triggered"):
+                                fb_info = response_data.get("fallback_info", {})
+                                from_m = fb_info.get("from_model", "Gemini")
+                                to_m = fb_info.get("to_model", "modelo local")
+                                st.toast(f"⚠️ Cuota agotada en {from_m}. Conmutado automáticamente a {to_m}.", icon="🔄")
                         else:
                             response = response_data
 
@@ -2691,6 +2846,11 @@ def explain_chart_dialog():
                     placeholder.empty()
                     response = st.write_stream(orchestrator.ask_lightweight_stream_sync(session_id, current_prompt, ui_ctx))
                     
+                    if getattr(orchestrator, "fallback_info", None):
+                        fb = orchestrator.fallback_info
+                        if time.time() - fb.get("timestamp", 0) < 15:
+                            st.toast(f"⚠️ Cuota agotada en {fb.get('from_model')}. Conmutado a {fb.get('to_model')}.", icon="🔄")
+
                     st.session_state.chat_history.append({
                         "role": "assistant",
                         "content": response

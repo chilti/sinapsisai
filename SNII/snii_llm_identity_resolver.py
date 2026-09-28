@@ -99,7 +99,9 @@ embeddings_model = OpenAIEmbeddings(
 )
 
 # --- Config LLM ---
-llm_model_name = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
+llm_model_name = os.getenv("LLM_MODEL", "openai/default")
+if llm_model_name == "default":
+    llm_model_name = "openai/default"
 llm = ChatOpenAI(
     model=llm_model_name,
     base_url=auth_url,

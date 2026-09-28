@@ -40,7 +40,9 @@ if user and password:
         auth_url = f"http://{user}:{password}@{base_url}"
 
 http_client = httpx.Client(verify=False, timeout=120)
-llm_model_name = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
+llm_model_name = os.getenv("LLM_MODEL", "openai/default")
+if llm_model_name == "default":
+    llm_model_name = "openai/default"
 
 llm = ChatOpenAI(
     model=llm_model_name,

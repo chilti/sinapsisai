@@ -73,8 +73,11 @@ def check_orcid_exists_in_neo4j(orcid_input: str) -> bool:
 
 def _run_sync_worker(orcid_input: str, user_name: str, force: bool):
     try:
+        import os
+        import sys
         import subprocess
         from SNII.ingest_snii_apis import ingest_researcher_data
+        
         orcid_id = str(orcid_input).rstrip('/').split('/')[-1]
         orcid_url = f"https://orcid.org/{orcid_id}"
         
@@ -87,14 +90,37 @@ def _run_sync_worker(orcid_input: str, user_name: str, force: bool):
             'is_snii': False,
             'is_independent': True
         }
+
+        # Intentar enriquecer afiliación y nombres canónicos desde ClickHouse
+        canonical_names = {author_name}
+        try:
+            from database.clickhouse_client import ClickHouseClient
+            ch = ClickHouseClient().get_client()
+            res_names = ch.query(
+                "SELECT DISTINCT academic_name, institution, dependency, subdependency FROM paper_author_map WHERE orcid LIKE %(orc)s",
+                {'orc': f"%{orcid_id}%"}
+            ).result_rows
+            for r in res_names:
+                if r[0] and r[0].strip():
+                    canonical_names.add(r[0].strip())
+                    if r[1] and r[1] not in ['SIN INFORMACIÓN', 'SIN INFORMACION', 'INDEPENDIENTE']:
+                        data['snii_institution'] = r[1]
+                        data['snii_dependency'] = r[2]
+                        data['snii_subdependency'] = r[3]
+                        data['is_snii'] = True
+                        data['is_independent'] = False
+        except Exception as _e_ch:
+            pass
+
         print(f"🚀 [Background Sync] Iniciando ingesta de publicaciones para {author_name} ({orcid_url})...")
         ingest_researcher_data(data, force=force, save_to_ch=True)
         
-        # 1. Regenerar parquets de métricas para el académico
-        print(f"📊 [Background Sync] Regenerando archivos Parquet de caché para {author_name}...")
-        base_dir = os.path.dirname(os.path.dirname(__file__))
-        cmd = [sys.executable, "ingestion/compute_scholar_metrics_ch.py", "--academic", author_name]
-        subprocess.run(cmd, cwd=base_dir, capture_output=True, text=True)
+        # 1. Regenerar parquets de métricas para todos los nombres canónicos asociados
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for c_name in canonical_names:
+            print(f"📊 [Background Sync] Regenerando archivos Parquet de caché para '{c_name}'...")
+            cmd = [sys.executable, "ingestion/compute_scholar_metrics_ch.py", "--academic", c_name]
+            subprocess.run(cmd, cwd=base_dir, capture_output=True, text=True)
         
         # 2. Buscar instituciones ancestro en Neo4j y recalcular sus métricas
         try:
@@ -103,23 +129,23 @@ def _run_sync_worker(orcid_input: str, user_name: str, force: bool):
             q_anc = """
             MATCH (a:Person)-[:AFFILIATED_TO]->(ent)
             OPTIONAL MATCH (ent)-[:PART_OF*0..2]->(i:Institution)
-            WHERE a.fullname = $name OR a.id = $name OR a.orcid = $orcid
+            WHERE a.fullname IN $names OR a.id IN $names OR a.orcid = $orcid
             RETURN DISTINCT coalesce(i.name, ent.name) AS inst_name
             """
             with gs.driver.session() as session:
-                res_anc = session.run(q_anc, name=author_name, orcid=orcid_url).data()
+                res_anc = session.run(q_anc, names=list(canonical_names), orcid=orcid_url).data()
             gs.close()
 
             for row in res_anc:
                 inst_name = row.get('inst_name')
-                if inst_name and inst_name.upper() not in ["MÉXICO", "MEXICO", "SIN INFORMACIÓN", "SIN INFORMACION"]:
+                if inst_name and inst_name.upper() not in ["MÉXICO", "MEXICO", "SIN INFORMACIÓN", "SIN INFORMACION", "INDEPENDIENTE"]:
                     print(f"🏛️ [Background Sync] Recalculando métricas para institución ancestro: {inst_name}...")
                     cmd_inst = [sys.executable, "ingestion/compute_scholar_metrics_ch.py", "--institution", inst_name]
                     subprocess.run(cmd_inst, cwd=base_dir, capture_output=True, text=True)
         except Exception as e_anc:
             print(f"⚠️ [Background Sync] Error al recalcular ancestros institucionales: {e_anc}")
 
-        print(f"✅ [Background Sync] Ingesta y actualización de Parquets (investigador y ancestros) completada con éxito para {author_name} ({orcid_url}).")
+        print(f"✅ [Background Sync] Ingesta y actualización de Parquets completada con éxito para {author_name} ({orcid_url}).")
     except Exception as e:
         print(f"❌ [Background Sync] Error en ingesta para ORCID {orcid_input}: {e}")
 

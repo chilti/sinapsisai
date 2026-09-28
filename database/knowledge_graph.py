@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env')))
 from neo4j import GraphDatabase
 from typing import List, Dict, Any
 
@@ -16,8 +18,7 @@ class Neo4jGraphStore:
             user = os.getenv("NEO4J_USER") or "neo4j"
             
         if not password:
-            # Intentar NEO4J_PASS o NEO4J_PASSWORD
-            password = os.getenv("NEO4J_PASS") or os.getenv("NEO4J_PASSWORD") or "password"
+            password = os.getenv("NEO4J_PASS") or os.getenv("NEO4J_PASSWORD") or "password123"
             
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
         self._init_constraints()
