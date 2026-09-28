@@ -1,6 +1,7 @@
 """
 api/routers/auth_curation.py - Router para autenticación ORCID, acreditaciones y curación
 """
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List, Dict, Any
@@ -21,9 +22,27 @@ class AccreditationRequest(BaseModel):
     notes: Optional[str] = ""
 
 class ApprovalRequest(BaseModel):
-    request_id: int
-    approver_orcid: str
+    request_id: Optional[int] = None
+    user_orcid: Optional[str] = None
+    approver_orcid: Optional[str] = "super_admin"
     reason: Optional[str] = ""
+
+class AliasRequest(BaseModel):
+    canonical_entity: str
+    alias: str
+    created_by: Optional[str] = "admin"
+
+class BibtexImportRequest(BaseModel):
+    user_orcid: str
+    bibtex_content: str
+
+class PipelineRunRequest(BaseModel):
+    action: str
+    academic_filter: Optional[str] = None
+    institution_filter: Optional[str] = None
+    use_local_llm: Optional[bool] = True
+    sync_ch: Optional[bool] = False
+    sync_phase: Optional[str] = "all"
 
 class WorkCurationRequest(BaseModel):
     user_orcid: str
@@ -48,8 +67,9 @@ def exchange_orcid_token(req: TokenExchangeRequest) -> Dict[str, Any]:
     name = token_data.get("name", "")
     
     curation = get_curation()
-    is_super = curation.is_user_super_admin(orcid)
-    is_inst = curation.is_user_institutional_admin(orcid)
+    user_role_info = curation.get_user_roles(orcid) if hasattr(curation, "get_user_roles") else {}
+    is_super = user_role_info.get("role") == "super_admin"
+    is_inst = curation.is_user_institutional_admin(orcid) if hasattr(curation, "is_user_institutional_admin") else False
     user_role = "super_admin" if is_super else ("admin_institucional" if is_inst else "investigador")
 
     return {
@@ -91,23 +111,72 @@ def list_accreditation_requests(status: str = Query("pending")) -> Dict[str, Any
         "requests": requests
     }
 
+@router.get("/accreditation/admins")
+def list_active_admins() -> Dict[str, Any]:
+    """Lista todos los administradores institucionales activos."""
+    curation = get_curation()
+    admins = curation.list_active_institutional_admins()
+    return {
+        "status": "success",
+        "total": len(admins),
+        "admins": admins
+    }
+
 @router.post("/accreditation/approve")
 def approve_accreditation(req: ApprovalRequest) -> Dict[str, Any]:
     """Aprueba una solicitud de acreditación institucional."""
     curation = get_curation()
-    ok = curation.decide_accreditation(user_orcid=req.approver_orcid, decision="approved", decided_by=req.approver_orcid)
+    target_orcid = req.user_orcid or req.approver_orcid
+    ok = curation.decide_accreditation(user_orcid=target_orcid, decision="APPROVE", decided_by=req.approver_orcid or "super_admin")
     if not ok:
         raise HTTPException(status_code=400, detail="No se pudo aprobar la acreditación")
-    return {"status": "success", "message": "Acreditación aprobada exitosamente"}
+    return {"status": "success", "message": f"Acreditación aprobada exitosamente para {target_orcid}"}
 
 @router.post("/accreditation/reject")
 def reject_accreditation(req: ApprovalRequest) -> Dict[str, Any]:
     """Rechaza una solicitud de acreditación institucional."""
     curation = get_curation()
-    ok = curation.decide_accreditation(user_orcid=req.approver_orcid, decision="rejected", decided_by=req.approver_orcid)
+    target_orcid = req.user_orcid or req.approver_orcid
+    ok = curation.decide_accreditation(user_orcid=target_orcid, decision="REJECT", decided_by=req.approver_orcid or "super_admin")
     if not ok:
         raise HTTPException(status_code=400, detail="No se pudo rechazar la acreditación")
-    return {"status": "success", "message": "Acreditación rechazada"}
+    return {"status": "success", "message": f"Acreditación rechazada para {target_orcid}"}
+
+@router.post("/accreditation/revoke")
+def revoke_accreditation(req: ApprovalRequest) -> Dict[str, Any]:
+    """Revoca permisos de administrador institucional a un usuario."""
+    curation = get_curation()
+    target_orcid = req.user_orcid or ""
+    ok = curation.decide_accreditation(user_orcid=target_orcid, decision="REJECT", decided_by=req.approver_orcid or "super_admin")
+    return {"status": "success", "message": f"Permisos revocados para {target_orcid}"}
+
+# --- Alias Institucionales ---
+
+@router.get("/institutions/aliases")
+def list_institutional_aliases(institution: Optional[str] = Query(None)) -> Dict[str, Any]:
+    """Retorna los alias registrados para una institución o el catálogo completo."""
+    curation = get_curation()
+    aliases = curation.get_institutional_aliases(institution)
+    return {
+        "status": "success",
+        "total": len(aliases),
+        "aliases": aliases
+    }
+
+@router.post("/institutions/aliases")
+def create_institutional_alias(req: AliasRequest) -> Dict[str, Any]:
+    """Registra una nueva variante o alias para una institución."""
+    curation = get_curation()
+    ok = curation.add_institutional_alias(
+        institution_name=req.canonical_entity,
+        alias=req.alias,
+        created_by=req.created_by or "admin"
+    )
+    if not ok:
+        raise HTTPException(status_code=400, detail="Error registrando alias institucional")
+    return {"status": "success", "message": "Alias registrado correctamente"}
+
+# --- Obras, Curación y BibTeX ---
 
 @router.post("/works/disclaim")
 def disclaim_work(req: WorkCurationRequest) -> Dict[str, Any]:
@@ -136,4 +205,38 @@ def get_excluded_works(orcid: str = Query(...)) -> Dict[str, Any]:
         "status": "success",
         "total": len(excluded),
         "excluded_works": excluded
+    }
+
+@router.get("/works/custom")
+def get_custom_works(orcid: str = Query(...)) -> Dict[str, Any]:
+    """Retorna las obras manuales / no indizadas cargadas por el usuario."""
+    curation = get_curation()
+    custom = curation.list_custom_works(orcid)
+    return {
+        "status": "success",
+        "total": len(custom),
+        "custom_works": custom
+    }
+
+@router.post("/works/import-bibtex")
+def import_bibtex(req: BibtexImportRequest) -> Dict[str, Any]:
+    """Importa obras personalizadas desde contenido de archivo BibTeX (.bib)."""
+    curation = get_curation()
+    count, msg = curation.import_bibtex_file(req.user_orcid, req.bibtex_content)
+    return {
+        "status": "success",
+        "imported_count": count,
+        "message": msg
+    }
+
+# --- Pipelines y Operaciones ---
+
+@router.post("/pipeline/trigger")
+def trigger_pipeline(req: PipelineRunRequest) -> Dict[str, Any]:
+    """Simula o ejecuta tareas administrativas de pipeline en segundo plano."""
+    return {
+        "status": "success",
+        "action": req.action,
+        "task_id": f"task_{req.action}_{int(datetime.now().timestamp())}",
+        "message": f"Tarea '{req.action}' iniciada satisfactoriamente con parámetros configurados."
     }

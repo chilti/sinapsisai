@@ -80,13 +80,53 @@ export const apiClient = {
     return res.data;
   },
 
-  // Curación y Acreditación
+  // Curación, Acreditación & Auth
+  getOrcidLoginUrl: async () => {
+    const res = await api.get('/auth/orcid/login-url');
+    return res.data;
+  },
+  exchangeOrcidToken: async (code) => {
+    const res = await api.post('/auth/orcid/token', { code });
+    return res.data;
+  },
   submitAccreditation: async (payload) => {
     const res = await api.post('/auth/accreditation/request', payload);
     return res.data;
   },
+  getPendingAccreditations: async () => {
+    const res = await api.get('/auth/accreditation/requests');
+    return res.data;
+  },
+  getActiveAdmins: async () => {
+    const res = await api.get('/auth/accreditation/admins');
+    return res.data;
+  },
+  approveAccreditation: async (payload) => {
+    const res = await api.post('/auth/accreditation/approve', payload);
+    return res.data;
+  },
+  rejectAccreditation: async (payload) => {
+    const res = await api.post('/auth/accreditation/reject', payload);
+    return res.data;
+  },
+  revokeAccreditation: async (payload) => {
+    const res = await api.post('/auth/accreditation/revoke', payload);
+    return res.data;
+  },
+  getInstitutionalAliases: async (institution) => {
+    const res = await api.get('/auth/institutions/aliases', { params: { institution } });
+    return res.data;
+  },
+  createInstitutionalAlias: async (payload) => {
+    const res = await api.post('/auth/institutions/aliases', payload);
+    return res.data;
+  },
   getExcludedWorks: async (orcid) => {
     const res = await api.get('/auth/works/excluded', { params: { orcid } });
+    return res.data;
+  },
+  getCustomWorks: async (orcid) => {
+    const res = await api.get('/auth/works/custom', { params: { orcid } });
     return res.data;
   },
   disclaimWork: async (payload) => {
@@ -95,6 +135,14 @@ export const apiClient = {
   },
   restoreWork: async (payload) => {
     const res = await api.post('/auth/works/restore', payload);
+    return res.data;
+  },
+  importBibtex: async (payload) => {
+    const res = await api.post('/auth/works/import-bibtex', payload);
+    return res.data;
+  },
+  triggerPipeline: async (payload) => {
+    const res = await api.post('/auth/pipeline/trigger', payload);
     return res.data;
   },
 
@@ -106,7 +154,14 @@ export const apiClient = {
   downloadDossierPdf: async (academic_name, orcid) => {
     const res = await api.post('/reports/dossier/pdf', { academic_name, orcid }, { responseType: 'blob' });
     return res.data;
+  },
+
+  // Asistente IA
+  clearChatSession: async (session_id = 'default_session') => {
+    const res = await api.post('/assistant/clear', null, { params: { session_id } });
+    return res.data;
   }
 };
 
 export default apiClient;
+

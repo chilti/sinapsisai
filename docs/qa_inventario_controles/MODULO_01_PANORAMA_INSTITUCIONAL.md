@@ -9,24 +9,24 @@
 
 | # | ID de Control en Streamlit | Tipo de Control | Etiqueta / Propósito Original | Clave i18n Propuesta | Comportamiento Esperado en React | Estado QA |
 | :-: | :--- | :--- | :--- | :--- | :--- | :-: |
-| 1 | `selected_institution_sidebar` | Selectbox / Autocompletado | 🏛️ Institución (UNAM por defecto) | `institutional.select_institution` | Autocompletado reactivo desde `/api/hierarchy/institutions` sin re-run. | [ ] |
-| 2 | `selected_dep_sidebar` | Selectbox | 🏢 Dependencia (filtrada por institución) | `institutional.select_dependency` | Se actualiza automáticamente al cambiar institución. Permite valor vacío (Toda la institución). | [ ] |
-| 3 | `selected_sub_sidebar` | Selectbox | 🎯 Subdependencia / Centro | `institutional.select_subdependency` | Se actualiza según la dependencia elegida. Opción "Todas las subdependencias". | [ ] |
-| 4 | `breadcrumbs_inst` | Display UI | Migajas de pan (Inst ➔ Dep ➔ Sub) | `institutional.hierarchy_path` | Barra interactiva con enlaces para subir niveles en el árbol. | [ ] |
-| 5 | `load_tab_inst` | Button | ▶️ Cargar Panorama Institucional | `institutional.btn_load_data` | En React se carga de forma inmediata y automática con *skeleton loader* (sin necesidad de botón forzado de carga perezosa). | [ ] |
-| 6 | `view_mode_inst` | Radio / Segmented Control | Modo de Vista: General, Capacidad SNII, Producción & Citas, ODS | `institutional.view_mode` | Pestañas o tabs internos con transición animada instantánea. | [ ] |
-| 7 | `kpi_total_researchers` | KPI Metric Card | Total de Investigadores en Padrón | `institutional.kpi_researchers` | Tarjeta con cifra formateada, icono y desglose rápido por género. | [ ] |
-| 8 | `kpi_total_works` | KPI Metric Card | Total de Obras Científicas | `institutional.kpi_works` | Total de artículos indexados en ClickHouse OpenAlex. | [ ] |
-| 9 | `kpi_total_citations` | KPI Metric Card | Total de Citas Recibidas | `institutional.kpi_citations` | Conteo acumulado de citas directas de la entidad. | [ ] |
-| 10 | `kpi_avg_fwci` | KPI Metric Card | FWCI Promedio (Impacto Ponderado) | `institutional.kpi_fwci` | Indicador con semáforo de color (verde > 1.0, amarillo = 1.0, rojo < 1.0). | [ ] |
-| 11 | `kpi_oa_percent` | KPI Metric Card | % en Acceso Abierto | `institutional.kpi_oa_rate` | Porcentaje global con desglose por vía (Gold, Green, Diamond, Hybrid). | [ ] |
-| 12 | `chart_snii_levels` | Plotly Bar Chart | Capacidad Instalada por Nivel SNII | `institutional.chart_snii_distribution` | Gráfico interactivo de barras (Candidato, I, II, III, Emérito) con hover tooltip. | [ ] |
-| 13 | `chart_knowledge_areas` | Plotly Donut / Bar | Distribución por Áreas del Conocimiento | `institutional.chart_areas_distribution` | Gráfico de dona o barras de las 9 áreas oficiales del SNII. | [ ] |
-| 14 | `chart_temporal_evolution` | Plotly Multi-line / Area | Producción Anual y Citas Temporales | `institutional.chart_annual_evolution` | Gráfico combinado con filtro interactivo de rango de años (2010–2026). | [ ] |
-| 15 | `chart_sdg_radar` | Plotly Radar Chart | Alineación con los 17 ODS de la ONU | `institutional.chart_sdg_radar` | Gráfico de radar con puntaje de afinidad por ODS (1 al 17). | [ ] |
-| 16 | `network_inter_dependencies` | Force-directed Graph / WebGL | Red de Colaboración Interna | `institutional.chart_collaboration_network` | Visualizador de coautoría entre facultades/institutos de la misma universidad. | [ ] |
-| 17 | `table_top_journals` | Data Table | Revistas de Mayor Publicación | `institutional.table_top_sources` | Tabla paginada con buscador, ISSN, cuartil SJR/JCR y conteo de artículos. | [ ] |
-| 18 | `btn_export_institutional` | Download Button | Descargar Reporte Institucional (HTML/PDF) | `institutional.btn_export_report` | Genera y descarga el informe ejecutivo consolidado en 1 clic. | [ ] |
+| 1 | `selected_institution_sidebar` | Selectbox / Autocompletado | 🏛️ Institución (UNAM por defecto) | `institutional.select_institution` | Autocompletado reactivo desde `/api/hierarchy/institutions` sin re-run. | [x] |
+| 2 | `selected_dep_sidebar` | Selectbox | 🏢 Dependencia (filtrada por institución) | `institutional.select_dependency` | Se actualiza automáticamente al cambiar institución. Permite valor vacío (Toda la institución). | [x] |
+| 3 | `selected_sub_sidebar` | Selectbox | 🎯 Subdependencia / Centro | `institutional.select_subdependency` | Se actualiza según la dependencia elegida. Opción "Todas las subdependencias". | [x] |
+| 4 | `breadcrumbs_inst` | Display UI | Migajas de pan (Inst ➔ Dep ➔ Sub) | `institutional.hierarchy_path` | Barra interactiva con enlaces para subir niveles en el árbol. | [x] |
+| 5 | `load_tab_inst` | Button | ▶️ Cargar Panorama Institucional | `institutional.btn_load_data` | En React se carga de forma inmediata y automática con *skeleton loader* (sin necesidad de botón forzado de carga perezosa). | [x] |
+| 6 | `view_mode_inst` | Radio / Segmented Control | Modo de Vista: General, Capacidad SNII, Producción & Citas, ODS | `institutional.view_mode` | Pestañas o tabs internos con transición animada instantánea. | [x] |
+| 7 | `kpi_total_researchers` | KPI Metric Card | Total de Investigadores en Padrón | `institutional.kpi_researchers` | Tarjeta con cifra formateada, icono y desglose rápido por género. | [x] |
+| 8 | `kpi_total_works` | KPI Metric Card | Total de Obras Científicas | `institutional.kpi_works` | Total de artículos indexados en ClickHouse OpenAlex. | [x] |
+| 9 | `kpi_total_citations` | KPI Metric Card | Total de Citas Recibidas | `institutional.kpi_citations` | Conteo acumulado de citas directas de la entidad. | [x] |
+| 10 | `kpi_avg_fwci` | KPI Metric Card | FWCI Promedio (Impacto Ponderado) | `institutional.kpi_fwci` | Indicador con semáforo de color (verde > 1.0, amarillo = 1.0, rojo < 1.0). | [x] |
+| 11 | `kpi_oa_percent` | KPI Metric Card | % en Acceso Abierto | `institutional.kpi_oa_rate` | Porcentaje global con desglose por vía (Gold, Green, Diamond, Hybrid). | [x] |
+| 12 | `chart_snii_levels` | Plotly Bar Chart | Capacidad Instalada por Nivel SNII | `institutional.chart_snii_distribution` | Gráfico interactivo de barras (Candidato, I, II, III, Emérito) con hover tooltip. | [x] |
+| 13 | `chart_knowledge_areas` | Plotly Donut / Bar | Distribución por Áreas del Conocimiento | `institutional.chart_areas_distribution` | Gráfico de dona o barras de las 9 áreas oficiales del SNII. | [x] |
+| 14 | `chart_temporal_evolution` | Plotly Multi-line / Area | Producción Anual y Citas Temporales | `institutional.chart_annual_evolution` | Gráfico combinado con filtro interactivo de rango de años (2010–2026). | [x] |
+| 15 | `chart_sdg_radar` | Plotly Radar Chart | Alineación con los 17 ODS de la ONU | `institutional.chart_sdg_radar` | Gráfico de radar con puntaje de afinidad por ODS (1 al 17). | [x] |
+| 16 | `network_inter_dependencies` | Force-directed Graph / WebGL | Red de Colaboración Interna | `institutional.chart_collaboration_network` | Visualizador de coautoría entre facultades/institutos de la misma universidad. | [x] |
+| 17 | `table_top_journals` | Data Table | Revistas de Mayor Publicación | `institutional.table_top_sources` | Tabla paginada con buscador, ISSN, cuartil SJR/JCR y conteo de artículos. | [x] |
+| 18 | `btn_export_institutional` | Download Button | Descargar Reporte Institucional (HTML/PDF) | `institutional.btn_export_report` | Genera y descarga el informe ejecutivo consolidado en 1 clic. | [x] |
 
 ---
 
