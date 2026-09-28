@@ -3,6 +3,7 @@ api/routers/citations.py - Router para el explorador Zero-Join de Citas y Autoci
 """
 from fastapi import APIRouter, Query, HTTPException
 from typing import Dict, Any, Optional
+import numpy as np
 from lib.citations_explorer import get_citing_works_analysis, get_author_work_and_openalex_ids, get_citing_works_data
 
 router = APIRouter(prefix="/api/citations", tags=["Citaciones & Autocitas"])
@@ -21,17 +22,20 @@ def get_citations_summary(
     if not name and not orcid:
         raise HTTPException(status_code=400, detail="Debe especificar 'name' o 'orcid'")
 
-    summary = get_citing_works_analysis(academic_name=name, orcid=orcid, limit=limit)
+    clean_orcid = str(orcid).replace("https://orcid.org/", "").strip() if orcid else None
+    summary = get_citing_works_analysis(academic_name=name, orcid=clean_orcid, limit=limit)
     
     # Asegurar serialización JSON pura eliminando o convirtiendo DataFrames de pandas
     if "citing_works_df" in summary:
         df = summary.pop("citing_works_df")
+        if hasattr(df, "replace"):
+            df = df.replace({float("nan"): None, np.nan: None})
         summary["citing_works"] = df.to_dict(orient="records") if hasattr(df, "to_dict") else []
 
     return {
         "status": "success",
         "academic_name": name or "",
-        "orcid": orcid or "",
+        "orcid": clean_orcid or "",
         "data": summary
     }
 
@@ -45,7 +49,8 @@ def get_citing_works(
     if not name and not orcid:
         raise HTTPException(status_code=400, detail="Debe especificar 'name' o 'orcid'")
 
-    wids, author_oa_ids = get_author_work_and_openalex_ids(name, orcid)
+    clean_orcid = str(orcid).replace("https://orcid.org/", "").strip() if orcid else None
+    wids, author_oa_ids = get_author_work_and_openalex_ids(name, clean_orcid)
     if not wids:
         return {"total": 0, "citing_works": []}
 
@@ -56,9 +61,14 @@ def get_citing_works(
         limit=limit
     )
     
-    # Extraer lista de obras citantes serializable
+    # Extraer lista de obras citantes serializable sin NaN
     df = raw_data.get("citing_works_df")
-    citing_works = df.to_dict(orient="records") if hasattr(df, "to_dict") else raw_data.get("top_citing_works", [])
+    citing_works = []
+    if hasattr(df, "to_dict"):
+        df_clean = df.replace({float("nan"): None, np.nan: None})
+        citing_works = df_clean.to_dict(orient="records")
+    else:
+        citing_works = raw_data.get("top_citing_works", [])
 
     return {
         "total": len(citing_works),

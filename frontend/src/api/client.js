@@ -56,14 +56,19 @@ export const apiClient = {
     const res = await api.get('/academics/profile', { params: { name, orcid } });
     return res.data;
   },
-  getAcademicWorks: async (orcid, name) => {
-    const res = await api.get('/academics/works', { params: { orcid, name } });
+  getAcademicWorks: async (orcid, name, extra = {}) => {
+    const params = typeof orcid === 'object' && orcid !== null ? orcid : { orcid, name, ...extra };
+    const res = await api.get('/academics/works', { params });
     return res.data;
   },
 
   // Citas Zero-Join
   getCitationsSummary: async (orcid, name) => {
     const res = await api.get('/citations/summary', { params: { orcid, name } });
+    return res.data;
+  },
+  getCitingWorks: async (name, orcid, limit = 250) => {
+    const res = await api.get('/citations/citing-works', { params: { name, orcid, limit } });
     return res.data;
   },
 
