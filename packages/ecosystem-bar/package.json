@@ -1,0 +1,29 @@
+{
+  "name": "@tlachia/ecosystem-bar",
+  "version": "1.0.0",
+  "description": "Barra de navegación unificada Obsidian Glass para el Ecosistema Científico TlachIA",
+  "main": "index.js",
+  "module": "index.js",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./css": "./src/tlachia-suite-bar.css",
+    "./config": "./src/config.js",
+    "./standalone": "./src/standalone.js"
+  },
+  "keywords": [
+    "tlachia",
+    "ecosystem",
+    "suite-bar",
+    "science-mapping",
+    "snii",
+    "revistaslatam",
+    "knomap"
+  ],
+  "author": "Ecosistema TlachIA / UNAM",
+  "license": "MIT",
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  }
+}

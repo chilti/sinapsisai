@@ -1,0 +1,225 @@
+/**
+ * packages/ecosystem-bar/src/tlachia-suite-bar.css
+ * Estilos Obsidian Glass para la Franja del Ecosistema TlachIA
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --tlachia-bar-bg: #0b0f17;
+  --tlachia-bar-glass: rgba(11, 15, 23, 0.88);
+  --tlachia-bar-border: rgba(255, 255, 255, 0.08);
+  --tlachia-bar-border-glow: rgba(0, 242, 254, 0.25);
+  --tlachia-text-primary: #f8fafc;
+  --tlachia-text-muted: #94a3b8;
+  --tlachia-font-display: 'Outfit', sans-serif;
+  --tlachia-font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.tlachia-suite-container {
+  width: 100%;
+  background: var(--tlachia-bar-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--tlachia-bar-border);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+  position: relative;
+  z-index: 9999;
+  font-family: var(--tlachia-font-body);
+  user-select: none;
+}
+
+.tlachia-suite-inner {
+  max-width: 1800px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+/* Marca del Ecosistema */
+.tlachia-suite-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  text-decoration: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.tlachia-suite-logo-pulse {
+  width: 18px;
+  height: 18px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tlachia-suite-logo-pulse-circle {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00f2fe;
+  box-shadow: 0 0 10px #00f2fe;
+}
+
+.tlachia-suite-logo-pulse-ring {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 242, 254, 0.45);
+  animation: tlachiaPulse 2.4s infinite ease-out;
+}
+
+@keyframes tlachiaPulse {
+  0% { transform: scale(0.6); opacity: 1; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+.tlachia-suite-brand-title {
+  font-family: var(--tlachia-font-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #ffffff 30%, #94a3b8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.tlachia-suite-badge-version {
+  font-size: 0.62rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #38bdf8;
+  letter-spacing: 0.05em;
+}
+
+/* Navegación por las 4 aplicaciones */
+.tlachia-suite-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tlachia-suite-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.tlachia-suite-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 4px 10px;
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--tlachia-text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.tlachia-suite-item:hover {
+  color: var(--tlachia-text-primary);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.tlachia-suite-item-active {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  box-shadow: 0 0 14px rgba(0, 242, 254, 0.12);
+}
+
+.tlachia-suite-item-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.tlachia-suite-item-active .tlachia-suite-item-dot {
+  transform: scale(1.3);
+  box-shadow: 0 0 8px currentColor;
+}
+
+.tlachia-suite-tagline {
+  font-size: 0.68rem;
+  color: #64748b;
+  margin-left: 2px;
+}
+
+.tlachia-suite-arrow-icon {
+  width: 10px;
+  height: 10px;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: all 0.2s ease;
+}
+
+.tlachia-suite-item:hover .tlachia-suite-arrow-icon {
+  opacity: 0.7;
+  transform: translateX(0);
+}
+
+/* Barra lateral derecha: Acceso rápido / Estado */
+.tlachia-suite-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.tlachia-suite-status-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.68rem;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-weight: 500;
+}
+
+.tlachia-suite-status-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
+}
+
+/* Responsividad */
+@media (max-width: 900px) {
+  .tlachia-suite-tagline {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .tlachia-suite-brand-title {
+    display: none;
+  }
+  .tlachia-suite-status-pill {
+    display: none;
+  }
+  .tlachia-suite-inner {
+    padding: 0 0.75rem;
+  }
+}

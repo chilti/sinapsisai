@@ -1,0 +1,30 @@
+{
+  "name": "snii-info-tlachia-frontend",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tlachia/ecosystem-bar": "file:../packages/ecosystem-bar",
+    "axios": "^1.7.9",
+    "chroma-js": "^3.1.2",
+    "clsx": "^2.1.1",
+    "d3-shape": "^3.2.0",
+    "lucide-react": "^0.475.0",
+    "plotly.js-dist-min": "^3.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-plotly.js": "^2.6.0",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.1.0"
+  }
+}
