@@ -394,8 +394,19 @@ def get_hierarchy_metrics(
         if 'ODS_Nombre' in df_papers.columns:
             available_ods = sorted([str(o) for o in df_papers['ODS_Nombre'].dropna().unique() if str(o).strip() and str(o).lower() != "null"])
 
-        # Seleccionar top 50 por citas para la vista inicial
-        top_p = df_papers.dropna(subset=['year']).sort_values(by=['citations', 'year'], ascending=[False, False]).head(50)
+        # Seleccionar publicaciones del año en curso por defecto (o el año más reciente con publicaciones)
+        from datetime import datetime
+        cur_year = datetime.now().year
+        df_cur_year = df_papers[df_papers['year'] == cur_year]
+        if not df_cur_year.empty:
+            top_p = df_cur_year.sort_values(by=['citations', 'year'], ascending=[False, False]).head(50)
+            initial_total_papers = int((df_papers['year'] == cur_year).sum())
+            default_year = cur_year
+        else:
+            top_p = df_papers.dropna(subset=['year']).sort_values(by=['citations', 'year'], ascending=[False, False]).head(50)
+            initial_total_papers = len(df_papers)
+            default_year = "Todos"
+
         for _, p in top_p.iterrows():
             title = str(p.get("Title") or p.get("title") or "Sin título")
             source = str(p.get("Source") or p.get("source") or "Revista Científica")
@@ -444,6 +455,8 @@ def get_hierarchy_metrics(
         "sunburst_trace": sunburst_trace,
         "keywords": keywords_list,
         "papers_sample": papers_sample,
+        "initial_total_papers": initial_total_papers,
+        "default_year": default_year,
         "available_years": available_years,
         "available_ods": available_ods,
         "snii_distribution": snii_dist

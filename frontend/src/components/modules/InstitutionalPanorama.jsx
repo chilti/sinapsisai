@@ -53,8 +53,9 @@ export function InstitutionalPanorama() {
   const [loading, setLoading] = useState(true);
   const [showGlossary, setShowGlossary] = useState(false);
 
+  const currentYear = new Date().getFullYear();
   // Estados para tabla de publicaciones y filtros
-  const [selectedYear, setSelectedYear] = useState('Todos');
+  const [selectedYear, setSelectedYear] = useState(String(currentYear));
   const [selectedOds, setSelectedOds] = useState('Todos');
   const [searchPaper, setSearchPaper] = useState('');
   const [papersPage, setPapersPage] = useState(0);
@@ -125,7 +126,10 @@ export function InstitutionalPanorama() {
         );
         setMetricsData(res);
         setPapersData(res.papers_sample || []);
-        setTotalPapers(res.kpi?.general?.indexed_works || res.kpi?.total_works || 0);
+        setTotalPapers(res.initial_total_papers !== undefined ? res.initial_total_papers : (res.kpi?.general?.indexed_works || res.kpi?.total_works || 0));
+        if (res.default_year) {
+          setSelectedYear(String(res.default_year));
+        }
       } catch (err) {
         console.error('Error cargando métricas:', err);
       } finally {
@@ -139,11 +143,12 @@ export function InstitutionalPanorama() {
   useEffect(() => {
     if (!selectedInstitution || loading) return;
     
-    // Si no hay filtros aplicados, usamos la muestra inicial
-    if (selectedYear === 'Todos' && selectedOds === 'Todos' && !searchPaper && papersPage === 0) {
+    // Si no hay filtros adicionales y coincide con el año inicial, usamos la muestra precargada
+    const isInitialDefault = String(selectedYear) === String(metricsData?.default_year || currentYear) && selectedOds === 'Todos' && !searchPaper && papersPage === 0;
+    if (isInitialDefault) {
       if (metricsData?.papers_sample) {
         setPapersData(metricsData.papers_sample);
-        setTotalPapers(metricsData.kpi?.general?.indexed_works || metricsData.kpi?.total_works || 0);
+        setTotalPapers(metricsData.initial_total_papers !== undefined ? metricsData.initial_total_papers : (metricsData.kpi?.general?.indexed_works || 0));
       }
       return;
     }
@@ -982,7 +987,9 @@ export function InstitutionalPanorama() {
             <BookOpen size={20} style={{ color: 'var(--accent-blue)' }} />
             <h3 style={{ fontSize: '1.15rem', fontWeight: 700 }}>Publicaciones Científicas Institucionales</h3>
           </div>
-          <span className="badge badge-cyan">{totalPapers.toLocaleString()} artículos disponibles</span>
+          <span className="badge badge-cyan">
+            {totalPapers.toLocaleString()} artículos {selectedYear !== 'Todos' ? `en ${selectedYear}` : 'totales'}
+          </span>
         </div>
 
         {/* Controles de Filtros Dinámicos */}
@@ -996,7 +1003,9 @@ export function InstitutionalPanorama() {
             >
               <option value="Todos">Todos los años</option>
               {availableYears.map((yr) => (
-                <option key={yr} value={yr}>{yr}</option>
+                <option key={yr} value={yr}>
+                  {yr} {yr === currentYear ? '★ (Año en curso)' : ''}
+                </option>
               ))}
             </select>
           </div>
