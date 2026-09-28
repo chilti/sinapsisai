@@ -1,10 +1,10 @@
 /**
  * frontend/src/components/modules/InstitutionalPanorama.jsx
  * Módulo 1: Panorama Institucional y Cartografía de Desempeño
- * Implementación 1 a 1 de los 18 controles de QA
+ * Implementación al 100% de paridad con Streamlit (22 bloques analíticos y visualizadores)
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import Plot from 'react-plotly.js';
 import {
   Building2,
@@ -15,11 +15,22 @@ import {
   TrendingUp,
   Percent,
   CheckCircle2,
+  ExternalLink,
+  HelpCircle,
+  ChevronDown,
+  ChevronUp,
+  Globe2,
+  PieChart as PieIcon,
+  Layers,
+  Sparkles,
+  Search,
+  Filter,
   ArrowRight,
-  Filter
+  ShieldCheck,
+  DollarSign
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore.js';
-import apiClient from '../../api/client.js';
+import { apiClient } from '../../api/client.js';
 
 export function InstitutionalPanorama() {
   const t = useAppStore((state) => state.t)();
@@ -29,22 +40,31 @@ export function InstitutionalPanorama() {
   const setSelectedDependency = useAppStore((state) => state.setSelectedDependency);
   const selectedSubdependency = useAppStore((state) => state.selectedSubdependency);
   const setSelectedSubdependency = useAppStore((state) => state.setSelectedSubdependency);
-  const selectedArea = useAppStore((state) => state.selectedArea);
-  const setSelectedArea = useAppStore((state) => state.setSelectedArea);
-  const selectedLevel = useAppStore((state) => state.selectedLevel);
-  const setSelectedLevel = useAppStore((state) => state.setSelectedLevel);
   const selectedPeriod = useAppStore((state) => state.selectedPeriod);
   const setSelectedPeriod = useAppStore((state) => state.setSelectedPeriod);
   const theme = useAppStore((state) => state.theme);
-  
-  const setSelectedResearcher = useAppStore((state) => state.setSelectedResearcher);
-  const setActiveTab = useAppStore((state) => state.setActiveTab);
 
+  // Estados locales
+  const [viewMode, setViewMode] = useState('capacidad_instalada'); // 'capacidad_instalada' vs 'produccion_institucional'
   const [institutions, setInstitutions] = useState([]);
   const [dependencies, setDependencies] = useState([]);
   const [subdependencies, setSubdependencies] = useState([]);
   const [metricsData, setMetricsData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showGlossary, setShowGlossary] = useState(false);
+
+  // Estados para tabla de publicaciones y filtros
+  const [selectedYear, setSelectedYear] = useState('Todos');
+  const [selectedOds, setSelectedOds] = useState('Todos');
+  const [searchPaper, setSearchPaper] = useState('');
+  const [papersPage, setPapersPage] = useState(0);
+  const [papersData, setPapersData] = useState([]);
+  const [totalPapers, setTotalPapers] = useState(0);
+  const [loadingPapers, setLoadingPapers] = useState(false);
+
+  const isLight = theme === 'claro';
+  const fontColor = isLight ? '#334155' : '#94a3b8';
+  const gridColor = isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.06)';
 
   // 1. Cargar lista de instituciones
   useEffect(() => {
@@ -100,9 +120,12 @@ export function InstitutionalPanorama() {
           selectedInstitution,
           selectedDependency,
           selectedSubdependency,
-          selectedPeriod
+          selectedPeriod,
+          viewMode
         );
         setMetricsData(res);
+        setPapersData(res.papers_sample || []);
+        setTotalPapers(res.kpi?.general?.indexed_works || res.kpi?.total_works || 0);
       } catch (err) {
         console.error('Error cargando métricas:', err);
       } finally {
@@ -110,101 +133,104 @@ export function InstitutionalPanorama() {
       }
     }
     loadMetrics();
-  }, [selectedInstitution, selectedDependency, selectedSubdependency, selectedPeriod]);
+  }, [selectedInstitution, selectedDependency, selectedSubdependency, selectedPeriod, viewMode]);
 
-  const kpi = metricsData?.kpi || {
-    total_researchers: 0,
-    total_works: 0,
+  // 5. Cargar publicaciones dinámicas al cambiar filtros de tabla
+  useEffect(() => {
+    if (!selectedInstitution || loading) return;
+    
+    // Si no hay filtros aplicados, usamos la muestra inicial
+    if (selectedYear === 'Todos' && selectedOds === 'Todos' && !searchPaper && papersPage === 0) {
+      if (metricsData?.papers_sample) {
+        setPapersData(metricsData.papers_sample);
+        setTotalPapers(metricsData.kpi?.general?.indexed_works || metricsData.kpi?.total_works || 0);
+      }
+      return;
+    }
+
+    async function fetchFilteredPapers() {
+      setLoadingPapers(true);
+      try {
+        const params = {
+          institution: selectedInstitution,
+          dependency: selectedDependency || undefined,
+          subdependency: selectedSubdependency || undefined,
+          view_mode: viewMode,
+          year: selectedYear !== 'Todos' ? Number(selectedYear) : undefined,
+          ods: selectedOds !== 'Todos' ? selectedOds : undefined,
+          search: searchPaper.trim() || undefined,
+          limit: 30,
+          offset: papersPage * 30
+        };
+        const res = await apiClient.getHierarchyPapers(params);
+        setPapersData(res.papers || []);
+        setTotalPapers(res.total || 0);
+      } catch (err) {
+        console.error('Error cargando papers filtrados:', err);
+      } finally {
+        setLoadingPapers(false);
+      }
+    }
+
+    const timer = setTimeout(fetchFilteredPapers, 250);
+    return () => clearTimeout(timer);
+  }, [selectedYear, selectedOds, searchPaper, papersPage, selectedInstitution, selectedDependency, selectedSubdependency, viewMode]);
+
+  // Datos extraídos del backend
+  const meta = metricsData?.metadata || {};
+  const kpiIds = metricsData?.kpi?.academic_ids || {
+    pct_academic_orcid: 0,
+    pct_academic_any_id: 0,
+    pct_snii_orcid: 0,
+    pct_snii_any_id: 0
+  };
+  const kpiGen = metricsData?.kpi?.general || {
+    total_census: 0,
+    indexed_works: 0,
+    official_snii_count: 0,
     total_citations: 0,
+    citations_per_paper: 0,
     fwci_mean: 1.0,
-    top_10_percent: 0.0,
-    oa_ratio: 0.0,
+    pct_open_access: 0
+  };
+  const kpiExcel = metricsData?.kpi?.excellence || {
+    percentile_avg: 50,
+    pct_top_10: 0,
+    pct_top_1: 0,
     h_index: 0
+  };
+  const kpiVel = metricsData?.kpi?.velocity || {
+    velocity_avg: 0,
+    recent_cites_3yr: 0,
+    pct_international: 0,
+    avg_countries: 0,
+    avg_author_count: 0
+  };
+  const kpiCosts = metricsData?.kpi?.costs || {
+    apc_paid_usd: 0,
+    pct_apc: 0,
+    half_life_avg: 0
   };
 
   const annual = metricsData?.annual_evolution || [];
-  const sniiDist = metricsData?.snii_distribution || {
-    Candidato: 0,
-    'Nivel 1': 0,
-    'Nivel 2': 0,
-    'Nivel 3': 0,
-    Emérito: 0
-  };
+  const oaDist = metricsData?.oa_distribution || { Gold: 0, Green: 0, Hybrid: 0, Bronze: 0, Closed: 100 };
+  const thematic = metricsData?.thematic_profile || { gini_topics: null, domain_diversity: 0, unique_topics: 0, top_domain: '—' };
+  const docTypes = metricsData?.document_types || [];
+  const sdgMatrix = metricsData?.sdg_matrix || [];
+  const sunburstTrace = metricsData?.sunburst_trace;
+  const keywords = metricsData?.keywords || [];
+  const availableYears = metricsData?.available_years || [];
+  const availableOds = metricsData?.available_ods || [];
 
-  // Datos para Gráfica de Evolución Temporal Dual-Axis
-  const evolutionChartData = [
+  // 1. Gráfica Donut Open Access
+  const oaChartData = [
     {
-      x: annual.map((d) => d.year),
-      y: annual.map((d) => d.works),
-      name: 'Publicaciones',
-      type: 'bar',
-      marker: {
-        color: '#00f2fe',
-        opacity: 0.85
-      },
-      yaxis: 'y'
-    },
-    {
-      x: annual.map((d) => d.year),
-      y: annual.map((d) => d.citations),
-      name: 'Citas Recibidas',
-      type: 'scatter',
-      mode: 'lines+markers',
-      line: {
-        color: '#a855f7',
-        width: 3,
-        shape: 'spline'
-      },
-      marker: {
-        color: '#ff0080',
-        size: 6
-      },
-      yaxis: 'y2'
-    }
-  ];
-
-  const isLight = theme === 'claro';
-  const fontColor = isLight ? '#334155' : '#94a3b8';
-  const gridColor = isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.06)';
-
-  const evolutionChartLayout = {
-    paper_bgcolor: 'transparent',
-    plot_bgcolor: 'transparent',
-    font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
-    margin: { l: 50, r: 50, t: 30, b: 40 },
-    height: 320,
-    autosize: true,
-    showlegend: true,
-    legend: { orientation: 'h', y: 1.15, x: 0, font: { color: fontColor } },
-    xaxis: {
-      gridcolor: gridColor,
-      tickfont: { color: isLight ? '#475569' : '#64748b' }
-    },
-    yaxis: {
-      title: 'Publicaciones',
-      titlefont: { color: isLight ? '#0284c7' : '#00f2fe' },
-      tickfont: { color: isLight ? '#0284c7' : '#00f2fe' },
-      gridcolor: gridColor
-    },
-    yaxis2: {
-      title: 'Citas',
-      titlefont: { color: isLight ? '#7928ca' : '#a855f7' },
-      tickfont: { color: isLight ? '#7928ca' : '#a855f7' },
-      overlaying: 'y',
-      side: 'right',
-      showgrid: false
-    }
-  };
-
-  // Datos para Gráfica Donut de Distribución SNII
-  const sniiDonutData = [
-    {
-      labels: Object.keys(sniiDist),
-      values: Object.values(sniiDist),
+      labels: Object.keys(oaDist),
+      values: Object.values(oaDist),
       type: 'pie',
       hole: 0.65,
       marker: {
-        colors: ['#38bdf8', '#00f2fe', '#a855f7', '#ec4899', '#f59e0b']
+        colors: ['#FFD700', '#2ECC71', '#3498DB', '#CD7F32', '#94a3b8']
       },
       textinfo: 'label+percent',
       textposition: 'outside',
@@ -212,44 +238,161 @@ export function InstitutionalPanorama() {
     }
   ];
 
-  const sniiDonutLayout = {
-    paper_bgcolor: 'transparent',
-    plot_bgcolor: 'transparent',
-    font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
-    margin: { l: 20, r: 20, t: 20, b: 20 },
-    height: 320,
-    showlegend: false
-  };
+  // 2. Gráfica Donut Tipos de Documentos
+  const docTypesChartData = [
+    {
+      labels: docTypes.map((d) => d.type),
+      values: docTypes.map((d) => d.count),
+      type: 'pie',
+      hole: 0.6,
+      marker: {
+        colors: ['#0284c7', '#00f2fe', '#a855f7', '#ec4899', '#f59e0b', '#10b981', '#64748b']
+      },
+      textinfo: 'label+percent',
+      textposition: 'inside',
+      automargin: true
+    }
+  ];
+
+  // 3. Gráfica Histórica de Documentos (Área)
+  const annualDocsChartData = [
+    {
+      x: annual.map((d) => d.year),
+      y: annual.map((d) => d.works),
+      name: 'Documentos',
+      type: 'scatter',
+      mode: 'lines+markers',
+      fill: 'tozeroy',
+      line: { color: '#f59e0b', width: 2.5 },
+      marker: { size: 5, color: '#d97706' }
+    }
+  ];
+
+  // 4. Gráfica FWCI Anual con línea de referencia 1.0
+  const annualFwciChartData = [
+    {
+      x: annual.map((d) => d.year),
+      y: annual.map((d) => d.fwci),
+      name: 'FWCI Promedio',
+      type: 'scatter',
+      mode: 'lines+markers',
+      line: { color: '#0284c7', width: 2.5 },
+      marker: { size: 5, color: '#00f2fe' }
+    }
+  ];
+
+  // 5. Gráfica Evolución % Colaboración Internacional
+  const annualIntlChartData = [
+    {
+      x: annual.map((d) => d.year),
+      y: annual.map((d) => d.pct_international),
+      name: '% Internacional',
+      type: 'scatter',
+      mode: 'lines+markers',
+      fill: 'tozeroy',
+      line: { color: '#7928ca', width: 2.5 },
+      marker: { size: 5, color: '#a855f7' }
+    }
+  ];
+
+  // 6. Gráfica Stacked Bar OA por Año
+  const annualOaStackedData = [
+    { x: annual.map((d) => d.year), y: annual.map((d) => d.pct_oa_gold), name: 'Gold', type: 'bar', marker: { color: '#FFD700' } },
+    { x: annual.map((d) => d.year), y: annual.map((d) => d.pct_oa_green), name: 'Green', type: 'bar', marker: { color: '#2ECC71' } },
+    { x: annual.map((d) => d.year), y: annual.map((d) => d.pct_oa_hybrid), name: 'Hybrid', type: 'bar', marker: { color: '#3498DB' } },
+    { x: annual.map((d) => d.year), y: annual.map((d) => d.pct_oa_bronze), name: 'Bronze', type: 'bar', marker: { color: '#CD7F32' } },
+    { x: annual.map((d) => d.year), y: annual.map((d) => d.pct_oa_closed), name: 'Closed', type: 'bar', marker: { color: '#94a3b8' } }
+  ];
 
   return (
     <div className="module-container" id="MODULO-01-PANORAMA">
-      {/* 1. Header con Filtros Jerárquicos y Controles QA */}
+      {/* ── 1. Header con Perspectiva Analítica y Exportación ───────────────── */}
       <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-              <Building2 size={24} style={{ color: 'var(--accent-cyan)' }} />
-              <h1 style={{ fontSize: '1.6rem' }}>{t.panorama.title}</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.25rem' }}>
+              <Building2 size={26} style={{ color: 'var(--accent-cyan)' }} />
+              <h1 style={{ fontSize: '1.65rem', fontWeight: 700 }}>
+                {selectedDependency || selectedInstitution || 'Panorama Institucional'}
+              </h1>
             </div>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-              Ecosistema Analítico Padrón SNII 2025/2026 · Cómputo OLAP Desacoplado
+              Ecosistema Analítico Cienciométrico · Computación OLAP Desacoplada (DuckDB / ClickHouse)
             </p>
           </div>
 
-          {/* CTL-M01-018: Botón Exportar */}
-          <button id="CTL-M01-018" className="btn btn-secondary btn-sm">
-            <Download size={15} />
-            <span>{t.panorama.exportReport}</span>
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            {/* Conmutador de Perspectiva (Capacidad vs Producción) */}
+            <div style={{ display: 'flex', background: 'var(--bg-card)', padding: '0.25rem', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
+              <button
+                className={`btn btn-sm ${viewMode === 'capacidad_instalada' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
+                onClick={() => setViewMode('capacidad_instalada')}
+              >
+                Capacidad Instalada
+              </button>
+              <button
+                className={`btn btn-sm ${viewMode === 'produccion_institucional' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
+                onClick={() => setViewMode('produccion_institucional')}
+              >
+                Producción Institucional
+              </button>
+            </div>
+
+            {/* Botón Exportar */}
+            <button id="CTL-M01-018" className="btn btn-secondary btn-sm">
+              <Download size={15} />
+              <span>Exportar Reporte</span>
+            </button>
+          </div>
         </div>
 
-        {/* Formulario de Filtros Interactivos (CTL-M01-001 a CTL-M01-006) */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginTop: '1.25rem' }}>
-          {/* CTL-M01-001: Selector de Institución */}
+        {/* Badges de Identificadores Institucionales */}
+        {(meta.ror_url || meta.openalex_url) && (
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '1rem', alignItems: 'center' }}>
+            {meta.ror_url && (
+              <a
+                href={meta.ror_url}
+                target="_blank"
+                rel="noreferrer"
+                className="badge badge-cyan"
+                style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.3rem 0.6rem' }}
+              >
+                <b>ROR:</b> {meta.ror_id.replace('https://ror.org/', '')}
+                <ExternalLink size={11} />
+              </a>
+            )}
+            {meta.openalex_url && (
+              <a
+                href={meta.openalex_url}
+                target="_blank"
+                rel="noreferrer"
+                className="badge badge-purple"
+                style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.3rem 0.6rem' }}
+              >
+                <b>OpenAlex:</b> {meta.openalex_id.replace('https://openalex.org/', '')}
+                <ExternalLink size={11} />
+              </a>
+            )}
+            {meta.institution_type && (
+              <span className="badge badge-emerald" style={{ padding: '0.3rem 0.6rem' }}>
+                <b>Tipo:</b> {meta.institution_type}
+              </span>
+            )}
+            {meta.institution_country && (
+              <span className="badge badge-amber" style={{ padding: '0.3rem 0.6rem' }}>
+                <b>País:</b> {meta.institution_country}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Formulario de Filtros Jerárquicos */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginTop: '1.25rem' }}>
           <div>
             <label className="form-label">{t.panorama.institutionSelect}</label>
             <select
-              id="CTL-M01-001"
               className="form-select"
               value={selectedInstitution}
               onChange={(e) => setSelectedInstitution(e.target.value)}
@@ -260,11 +403,9 @@ export function InstitutionalPanorama() {
             </select>
           </div>
 
-          {/* CTL-M01-002: Selector de Dependencia */}
           <div>
             <label className="form-label">{t.panorama.dependencySelect}</label>
             <select
-              id="CTL-M01-002"
               className="form-select"
               value={selectedDependency}
               onChange={(e) => setSelectedDependency(e.target.value)}
@@ -276,11 +417,9 @@ export function InstitutionalPanorama() {
             </select>
           </div>
 
-          {/* CTL-M01-003: Selector de Subdependencia */}
           <div>
             <label className="form-label">{t.panorama.subdependencySelect}</label>
             <select
-              id="CTL-M01-003"
               className="form-select"
               value={selectedSubdependency}
               onChange={(e) => setSelectedSubdependency(e.target.value)}
@@ -293,51 +432,9 @@ export function InstitutionalPanorama() {
             </select>
           </div>
 
-          {/* CTL-M01-004: Área de Conocimiento */}
-          <div>
-            <label className="form-label">{t.panorama.knowledgeArea}</label>
-            <select
-              id="CTL-M01-004"
-              className="form-select"
-              value={selectedArea}
-              onChange={(e) => setSelectedArea(e.target.value)}
-            >
-              <option value="">{t.panorama.allAreas}</option>
-              <option value="I">Área I - Físico-Matemáticas y Ciencias de la Tierra</option>
-              <option value="II">Área II - Biología y Química</option>
-              <option value="III">Área III - Medicina y Ciencias de la Salud</option>
-              <option value="IV">Área IV - Ciencias de la Conducta y la Educación</option>
-              <option value="V">Área V - Humanidades</option>
-              <option value="VI">Área VI - Ciencias Sociales</option>
-              <option value="VII">Área VII - Ciencias de la Agricultura y Biotecnología</option>
-              <option value="VIII">Área VIII - Ingenierías y Desarrollo Tecnológico</option>
-              <option value="IX">Área IX - Interdisciplinaria</option>
-            </select>
-          </div>
-
-          {/* CTL-M01-005: Nivel SNII */}
-          <div>
-            <label className="form-label">{t.panorama.sniiLevel}</label>
-            <select
-              id="CTL-M01-005"
-              className="form-select"
-              value={selectedLevel}
-              onChange={(e) => setSelectedLevel(e.target.value)}
-            >
-              <option value="">{t.panorama.allLevels}</option>
-              <option value="C">Candidato</option>
-              <option value="1">Nivel 1</option>
-              <option value="2">Nivel 2</option>
-              <option value="3">Nivel 3</option>
-              <option value="E">Emérito</option>
-            </select>
-          </div>
-
-          {/* CTL-M01-006: Periodo Temporal */}
           <div>
             <label className="form-label">{t.panorama.periodFilter}</label>
             <select
-              id="CTL-M01-006"
               className="form-select"
               value={selectedPeriod}
               onChange={(e) => setSelectedPeriod(e.target.value)}
@@ -350,193 +447,703 @@ export function InstitutionalPanorama() {
         </div>
       </div>
 
-      {/* 2. Grid de 6 Tarjetas KPIs (CTL-M01-007 a CTL-M01-012) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-        {/* CTL-M01-007: Investigadores Activos */}
-        <div className="glass-card kpi-metric-card" id="CTL-M01-007">
-          <span className="kpi-metric-label">{t.panorama.metrics.totalResearchers}</span>
-          <span className="kpi-metric-val">{kpi.total_researchers.toLocaleString()}</span>
-          <span className="badge badge-cyan" style={{ width: 'fit-content' }}>Padrón Oficial SNII</span>
+      {/* ── 2. GRUPO 1: Identificadores de Académicos (4 Métricas) ──────────── */}
+      <div style={{ marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.6rem' }}>
+          <ShieldCheck size={17} style={{ color: 'var(--accent-cyan)' }} />
+          <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Identificadores de Académicos</h3>
         </div>
-
-        {/* CTL-M01-008: Publicaciones Indexadas */}
-        <div className="glass-card kpi-metric-card" id="CTL-M01-008">
-          <span className="kpi-metric-label">{t.panorama.metrics.totalWorks}</span>
-          <span className="kpi-metric-val">{kpi.total_works.toLocaleString()}</span>
-          <span className="badge badge-purple" style={{ width: 'fit-content' }}>Indexadas ClickHouse</span>
-        </div>
-
-        {/* CTL-M01-009: Citas Recibidas */}
-        <div className="glass-card kpi-metric-card" id="CTL-M01-009">
-          <span className="kpi-metric-label">{t.panorama.metrics.totalCitations}</span>
-          <span className="kpi-metric-val">{kpi.total_citations.toLocaleString()}</span>
-          <span className="badge badge-emerald" style={{ width: 'fit-content' }}>Zero-Join OLAP</span>
-        </div>
-
-        {/* CTL-M01-010: FWCI Promedio */}
-        <div className="glass-card kpi-metric-card" id="CTL-M01-010">
-          <span className="kpi-metric-label">{t.panorama.metrics.fwciMean}</span>
-          <span className="kpi-metric-val">{kpi.fwci_mean}</span>
-          <span className="badge badge-amber" style={{ width: 'fit-content' }}>
-            {kpi.fwci_mean > 1 ? `+${Math.round((kpi.fwci_mean - 1) * 100)}% s/ Mundo` : 'En referencia'}
-          </span>
-        </div>
-
-        {/* CTL-M01-011: Top 10% */}
-        <div className="glass-card kpi-metric-card" id="CTL-M01-011">
-          <span className="kpi-metric-label">{t.panorama.metrics.top10Percent}</span>
-          <span className="kpi-metric-val">{kpi.top_10_percent}%</span>
-          <span className="badge badge-cyan" style={{ width: 'fit-content' }}>H-Index: {kpi.h_index}</span>
-        </div>
-
-        {/* CTL-M01-012: Acceso Abierto */}
-        <div className="glass-card kpi-metric-card" id="CTL-M01-012">
-          <span className="kpi-metric-label">{t.panorama.metrics.oaRatio}</span>
-          <span className="kpi-metric-val">{kpi.oa_ratio}%</span>
-          <span className="badge badge-emerald" style={{ width: 'fit-content' }}>Acceso Abierto Global</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">% Académicos con ORCID</span>
+            <span className="kpi-metric-val">{kpiIds.pct_academic_orcid}%</span>
+            <span className="badge badge-cyan" style={{ width: 'fit-content', fontSize: '0.7rem' }}>ORCID Registrado</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">% Académicos con algún ID</span>
+            <span className="kpi-metric-val">{kpiIds.pct_academic_any_id}%</span>
+            <span className="badge badge-purple" style={{ width: 'fit-content', fontSize: '0.7rem' }}>ORCID, OA, Scopus o CVU</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">% SNII con ORCID</span>
+            <span className="kpi-metric-val">{kpiIds.pct_snii_orcid}%</span>
+            <span className="badge badge-emerald" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Padrón Oficial SNII</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">% SNII con algún ID</span>
+            <span className="kpi-metric-val">{kpiIds.pct_snii_any_id}%</span>
+            <span className="badge badge-amber" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Multicátalogo SNII</span>
+          </div>
         </div>
       </div>
 
-      {/* 3. Gráficas Analíticas (CTL-M01-015 y CTL-M01-013) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
-        {/* CTL-M01-015: Evolución Temporal Dual-Axis */}
-        <div className="glass-card" id="CTL-M01-015">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <TrendingUp size={18} style={{ color: 'var(--accent-cyan)' }} />
-            <h3 style={{ fontSize: '1.1rem' }}>{t.panorama.charts.temporalEvolution}</h3>
+      {/* ── 3. GRUPO 2: Métricas Generales (7 Métricas) ─────────────────────── */}
+      <div style={{ marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.6rem' }}>
+          <Layers size={17} style={{ color: 'var(--accent-purple)' }} />
+          <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Métricas Generales de Producción e Impacto</h3>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">Producción Total</span>
+            <span className="kpi-metric-val">{kpiGen.total_census.toLocaleString()}</span>
+            <span className="badge badge-cyan" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Censo Neo4j</span>
           </div>
-          {annual.length > 0 ? (
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">Indizada en OpenAlex</span>
+            <span className="kpi-metric-val">{kpiGen.indexed_works.toLocaleString()}</span>
+            <span className="badge badge-purple" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Metadatos Completos</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">No. de SNIIs 2025</span>
+            <span className="kpi-metric-val">{kpiGen.official_snii_count.toLocaleString()}</span>
+            <span className="badge badge-emerald" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Padrón Oficial</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">Citas Acumuladas</span>
+            <span className="kpi-metric-val">{kpiGen.total_citations.toLocaleString()}</span>
+            <span className="badge badge-amber" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Total Directo</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">Citas/artículo</span>
+            <span className="kpi-metric-val">{kpiGen.citations_per_paper}</span>
+            <span className="badge badge-cyan" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Promedio</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">FWCI Promedio</span>
+            <span className="kpi-metric-val">{kpiGen.fwci_mean}</span>
+            <span className="badge badge-emerald" style={{ width: 'fit-content', fontSize: '0.7rem' }}>
+              {kpiGen.fwci_mean > 1 ? `+${Math.round((kpiGen.fwci_mean - 1) * 100)}% s/ Mundo` : 'Normalizado'}
+            </span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">% Open Access</span>
+            <span className="kpi-metric-val">{kpiGen.pct_open_access}%</span>
+            <span className="badge badge-purple" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Acceso Abierto</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 4. GRUPO 3: Métricas de Excelencia (4 Métricas) ─────────────────── */}
+      <div style={{ marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.6rem' }}>
+          <Award size={17} style={{ color: 'var(--accent-amber)' }} />
+          <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Métricas de Excelencia Científica</h3>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">Percentil Promedio</span>
+            <span className="kpi-metric-val">{kpiExcel.percentile_avg}</span>
+            <span className="badge badge-cyan" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Impacto Relativo</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">% Top 10%</span>
+            <span className="kpi-metric-val">{kpiExcel.pct_top_10}%</span>
+            <span className="badge badge-purple" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Decil Superior Mundial</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">% Top 1%</span>
+            <span className="kpi-metric-val">{kpiExcel.pct_top_1}%</span>
+            <span className="badge badge-emerald" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Élite Mundial</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">Índice H</span>
+            <span className="kpi-metric-val">{kpiExcel.h_index}</span>
+            <span className="badge badge-amber" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Índice de Hirsch</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 5. GRUPO 4 & 5: Velocidad, Colaboración y Costos APC ────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+        {/* Velocidad y Colaboración */}
+        <div className="glass-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem' }}>
+            <TrendingUp size={17} style={{ color: 'var(--accent-cyan)' }} />
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 600 }}>Velocidad de Citas y Colaboración</h3>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.6rem' }}>
+            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Citas/año (avg)</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{kpiVel.velocity_avg}</div>
+            </div>
+            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Citas últ. 3 años</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{kpiVel.recent_cites_3yr.toLocaleString()}</div>
+            </div>
+            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>% Colab. Internacional</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--accent-purple)' }}>{kpiVel.pct_international}%</div>
+            </div>
+            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Países/paper (avg)</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{kpiVel.avg_countries}</div>
+            </div>
+            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Autores/paper (avg)</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{kpiVel.avg_author_count}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Acceso Abierto y Costos APC */}
+        <div className="glass-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem' }}>
+            <DollarSign size={17} style={{ color: 'var(--accent-emerald)' }} />
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 600 }}>Acceso Abierto y Costos Estimados (APC)</h3>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.6rem' }}>
+            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>APC Total Estimado</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--accent-emerald)' }}>${kpiCosts.apc_paid_usd.toLocaleString()} USD</div>
+            </div>
+            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>% Papers con APC</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{kpiCosts.pct_apc}%</div>
+            </div>
+            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Vida Media Citas</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{kpiCosts.half_life_avg} años</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 6. Distribución OA, Perfil Temático (Gini) y Tipos de Documentos ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
+        {/* Donut OA */}
+        <div className="glass-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <PieIcon size={18} style={{ color: 'var(--accent-cyan)' }} />
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Distribución Open Access</h3>
+          </div>
+          <Plot
+            data={oaChartData}
+            layout={{
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent',
+              font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
+              margin: { l: 20, r: 20, t: 20, b: 20 },
+              height: 250,
+              showlegend: false
+            }}
+            config={{ responsive: true, displayModeBar: false }}
+            style={{ width: '100%' }}
+          />
+        </div>
+
+        {/* Perfil Temático (Gini) */}
+        <div className="glass-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <Layers size={18} style={{ color: 'var(--accent-purple)' }} />
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Perfil Temático y Concentración</h3>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+              <tbody>
+                <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <td style={{ padding: '0.5rem 0', color: 'var(--text-secondary)' }}>Índice de Gini temático</td>
+                  <td style={{ padding: '0.5rem 0', textAlign: 'right', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
+                    {thematic.gini_topics !== null ? thematic.gini_topics : 'N/A'}
+                  </td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <td style={{ padding: '0.5rem 0', color: 'var(--text-secondary)' }}>Dominios de investigación</td>
+                  <td style={{ padding: '0.5rem 0', textAlign: 'right', fontWeight: 700 }}>{thematic.domain_diversity}</td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <td style={{ padding: '0.5rem 0', color: 'var(--text-secondary)' }}>Tópicos únicos detectados</td>
+                  <td style={{ padding: '0.5rem 0', textAlign: 'right', fontWeight: 700 }}>{thematic.unique_topics.toLocaleString()}</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '0.5rem 0', color: 'var(--text-secondary)' }}>Dominio principal</td>
+                  <td style={{ padding: '0.5rem 0', textAlign: 'right', fontWeight: 700, color: 'var(--accent-blue)' }}>
+                    {thematic.top_domain}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
+            * Gini temático: 0 = producción concentrada en un tema, 1 = producción completamente diversificada.
+          </div>
+        </div>
+
+        {/* Tipos de Documentos */}
+        <div className="glass-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <BookOpen size={18} style={{ color: 'var(--accent-emerald)' }} />
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Tipos de Documentos</h3>
+          </div>
+          {docTypes.length > 0 ? (
             <Plot
-              data={evolutionChartData}
-              layout={evolutionChartLayout}
+              data={docTypesChartData}
+              layout={{
+                paper_bgcolor: 'transparent',
+                plot_bgcolor: 'transparent',
+                font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
+                margin: { l: 20, r: 20, t: 20, b: 20 },
+                height: 250,
+                showlegend: false
+              }}
               config={{ responsive: true, displayModeBar: false }}
               style={{ width: '100%' }}
             />
           ) : (
-            <p style={{ color: 'var(--text-muted)', padding: '2rem 0', textAlign: 'center' }}>
-              {t.common.loading}
-            </p>
+            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '3rem 0' }}>Sin datos de tipos de documento</p>
           )}
         </div>
+      </div>
 
-        {/* CTL-M01-013: Distribución por Nivel SNII */}
-        <div className="glass-card" id="CTL-M01-013">
+      {/* ── 7. Glosario Metodológico Interactivo (Accordion) ───────────────── */}
+      <div className="glass-card" style={{ marginBottom: '1.5rem', padding: '0.85rem 1.25rem' }}>
+        <button
+          onClick={() => setShowGlossary(!showGlossary)}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)' }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <HelpCircle size={18} style={{ color: 'var(--accent-cyan)' }} />
+            <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>¿Qué significan estos indicadores metodológicos?</span>
+          </div>
+          {showGlossary ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </button>
+
+        {showGlossary && (
+          <div style={{ marginTop: '0.85rem', paddingTop: '0.85rem', borderTop: '1px solid var(--border-subtle)', fontSize: '0.85rem', lineHeight: '1.6', color: 'var(--text-secondary)' }}>
+            <ul style={{ paddingLeft: '1.25rem', margin: 0 }}>
+              <li><b>FWCI (Field-Weighted Citation Impact):</b> Relación entre las citas recibidas y el promedio esperado para la misma disciplina y año (Promedio Mundial = 1.0).</li>
+              <li><b>Percentil Promedio:</b> Posición promedio mundial de los artículos respecto a sus citas (menor número indica mayor impacto; Top 10% son percentiles ≤ 10).</li>
+              <li><b>% Top 10% / Top 1%:</b> Porcentaje de la producción científica ubicada en el 10% o 1% más citado a nivel internacional.</li>
+              <li><b>% Open Access:</b> Proporción de artículos disponibles en acceso abierto (vías Gold, Green, Hybrid, Bronze).</li>
+              <li><b>Citas/año (avg):</b> Velocidad promedio de citación anual desde la fecha de publicación del artículo.</li>
+              <li><b>Citas últ. 3 años:</b> Impacto fresco acumulado en los últimos 36 meses.</li>
+              <li><b>% Colaboración Internacional:</b> Porcentaje de artículos donde participa al menos una institución extranjera.</li>
+              <li><b>Países/paper (avg):</b> Número promedio de países representados en las firmas de cada publicación.</li>
+              <li><b>Autores/paper (avg):</b> Número promedio de coautores firmantes por artículo.</li>
+              <li><b>APC Total:</b> Costo referencial acumulado en USD por cargos de procesamiento de artículos (Article Processing Charges).</li>
+              <li><b>Vida Media Citas:</b> Años transcurridos hasta que los artículos acumulan el 50% de sus citas totales históricas.</li>
+              <li><b>Gini temático:</b> Grado de concentración de la producción científica (0 = mono-temático, 1 = completamente disperso).</li>
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {/* ── 8. Evolución Histórica de Producción e Impacto (2 Gráficos) ───── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+        {/* Documentos Anuales */}
+        <div className="glass-card">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <Award size={18} style={{ color: 'var(--accent-purple)' }} />
-            <h3 style={{ fontSize: '1.1rem' }}>{t.panorama.charts.sniiDistribution}</h3>
+            <BookOpen size={18} style={{ color: '#f59e0b' }} />
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Documentos Publicados por Año (1950–2026)</h3>
           </div>
           <Plot
-            data={sniiDonutData}
-            layout={sniiDonutLayout}
+            data={annualDocsChartData}
+            layout={{
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent',
+              font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
+              margin: { l: 50, r: 20, t: 20, b: 35 },
+              height: 280,
+              autosize: true,
+              xaxis: { gridcolor: gridColor, tickformat: 'd' },
+              yaxis: { gridcolor: gridColor, title: 'Documentos' }
+            }}
+            config={{ responsive: true, displayModeBar: false }}
+            style={{ width: '100%' }}
+          />
+        </div>
+
+        {/* FWCI Anual */}
+        <div className="glass-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <TrendingUp size={18} style={{ color: 'var(--accent-blue)' }} />
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Evolución FWCI Promedio Institucional</h3>
+          </div>
+          <Plot
+            data={annualFwciChartData}
+            layout={{
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent',
+              font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
+              margin: { l: 50, r: 20, t: 20, b: 35 },
+              height: 280,
+              autosize: true,
+              xaxis: { gridcolor: gridColor, tickformat: 'd' },
+              yaxis: { gridcolor: gridColor, title: 'FWCI' },
+              shapes: [
+                {
+                  type: 'line',
+                  xref: 'paper',
+                  x0: 0,
+                  x1: 1,
+                  y0: 1.0,
+                  y1: 1.0,
+                  line: { color: '#ef4444', width: 2, dash: 'dash' }
+                }
+              ],
+              annotations: [
+                {
+                  xref: 'paper',
+                  yref: 'y',
+                  x: 0.98,
+                  y: 1.05,
+                  text: 'Base Mundial (1.0)',
+                  showarrow: false,
+                  font: { color: '#ef4444', size: 10 }
+                }
+              ]
+            }}
             config={{ responsive: true, displayModeBar: false }}
             style={{ width: '100%' }}
           />
         </div>
       </div>
 
-      {/* 4. Top Investigadores de la Entidad (CTL-M01-017) */}
-      <div className="glass-card" id="CTL-M01-017">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Users size={18} style={{ color: 'var(--accent-cyan)' }} />
-            <h3 style={{ fontSize: '1.1rem' }}>Investigadores Destacados de {selectedDependency || selectedInstitution}</h3>
+      {/* ── 9. Temáticas de Investigación Institucional (Sunburst 4 Niveles) ── */}
+      {sunburstTrace && sunburstTrace.labels.length > 0 && (
+        <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Layers size={18} style={{ color: 'var(--accent-cyan)' }} />
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Temáticas de Investigación Institucional (Sunburst Jerárquico)</h3>
+            </div>
+            <span className="badge badge-cyan">4 Niveles: Dominio ➔ Campo ➔ Subcampo ➔ Tópico</span>
           </div>
-          <span className="badge badge-cyan">{kpi.total_researchers} miembros activos</span>
+          <Plot
+            data={[
+              {
+                type: 'sunburst',
+                ids: sunburstTrace.ids,
+                labels: sunburstTrace.labels,
+                parents: sunburstTrace.parents,
+                values: sunburstTrace.values,
+                branchvalues: 'total',
+                marker: {
+                  colorscale: 'Blues',
+                  colorbar: { title: 'Obras' }
+                },
+                hoverinfo: 'label+value+percent parent',
+                insidetextorientation: 'radial'
+              }
+            ]}
+            layout={{
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent',
+              font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
+              margin: { l: 10, r: 10, t: 10, b: 10 },
+              height: 540,
+              autosize: true
+            }}
+            config={{ responsive: true, displayModeBar: true }}
+            style={{ width: '100%' }}
+          />
+        </div>
+      )}
+
+      {/* ── 10. Vocabulario Científico Institucional (Keywords) ─────────────── */}
+      {keywords.length > 0 && (
+        <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <Sparkles size={18} style={{ color: 'var(--accent-purple)' }} />
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Vocabulario Científico Institucional (Keywords Frecuentes)</h3>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+            {keywords.map((kw, idx) => (
+              <span
+                key={idx}
+                className="badge"
+                style={{
+                  background: isLight ? 'rgba(2, 132, 199, 0.08)' : 'rgba(2, 132, 199, 0.15)',
+                  color: isLight ? '#0284c7' : '#38bdf8',
+                  border: '1px solid rgba(2, 132, 199, 0.2)',
+                  padding: '0.35rem 0.65rem',
+                  fontSize: '0.8rem',
+                  borderRadius: '20px'
+                }}
+              >
+                {kw.keyword} <b style={{ marginLeft: '4px', opacity: 0.8 }}>({kw.freq.toLocaleString()})</b>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── 11. Colaboración Internacional y Stacked Bar OA Anual ───────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+        {/* % Colaboración Internacional */}
+        <div className="glass-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <Globe2 size={18} style={{ color: 'var(--accent-purple)' }} />
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Evolución de Colaboración Internacional (%)</h3>
+          </div>
+          <Plot
+            data={annualIntlChartData}
+            layout={{
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent',
+              font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
+              margin: { l: 50, r: 20, t: 20, b: 35 },
+              height: 280,
+              autosize: true,
+              xaxis: { gridcolor: gridColor, tickformat: 'd' },
+              yaxis: { gridcolor: gridColor, title: '%', range: [0, 100] }
+            }}
+            config={{ responsive: true, displayModeBar: false }}
+            style={{ width: '100%' }}
+          />
         </div>
 
+        {/* Stacked Bar OA por Año */}
+        <div className="glass-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <Layers size={18} style={{ color: 'var(--accent-emerald)' }} />
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Evolución del Acceso Abierto por Año (%)</h3>
+          </div>
+          <Plot
+            data={annualOaStackedData}
+            layout={{
+              barmode: 'stack',
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent',
+              font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
+              margin: { l: 50, r: 20, t: 20, b: 35 },
+              height: 280,
+              autosize: true,
+              xaxis: { gridcolor: gridColor, tickformat: 'd' },
+              yaxis: { gridcolor: gridColor, title: '%' },
+              showlegend: true,
+              legend: { orientation: 'h', y: 1.15, x: 0 }
+            }}
+            config={{ responsive: true, displayModeBar: false }}
+            style={{ width: '100%' }}
+          />
+        </div>
+      </div>
+
+      {/* ── 12. Impacto Global en Sostenibilidad (ODS 1–17) ──────────────────── */}
+      <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Globe2 size={20} style={{ color: 'var(--accent-cyan)' }} />
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Impacto Global Institucional en Sostenibilidad (ODS)</h3>
+          </div>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Haz clic en un ODS para filtrar las publicaciones
+          </span>
+        </div>
+        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+          Distribución de la producción científica etiquetada con los 17 Objetivos de Desarrollo Sostenible de la Agenda 2030 de la ONU.
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '0.75rem' }}>
+          {sdgMatrix.map((sdg) => {
+            const isSelected = selectedOds === sdg.name;
+            return (
+              <div
+                key={sdg.id}
+                onClick={() => setSelectedOds(isSelected ? 'Todos' : sdg.name)}
+                style={{
+                  background: isSelected ? sdg.color : (isLight ? '#ffffff' : 'rgba(255, 255, 255, 0.04)'),
+                  color: isSelected ? '#ffffff' : 'var(--text-primary)',
+                  border: `2px solid ${sdg.color}`,
+                  borderRadius: '10px',
+                  padding: '0.75rem 0.6rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  textAlign: 'center',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  minHeight: '105px'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, background: isSelected ? 'rgba(255,255,255,0.3)' : sdg.color, color: '#ffffff', borderRadius: '4px', padding: '1px 5px' }}>
+                    {sdg.id}
+                  </span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{sdg.pct}%</span>
+                </div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, lineHeight: 1.2, margin: '0.25rem 0' }}>
+                  {sdg.name}
+                </div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 800 }}>
+                  {sdg.count.toLocaleString()} <span style={{ fontSize: '0.65rem', fontWeight: 400, opacity: 0.8 }}>papers</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── 13. Tabla Completa de Publicaciones Institucionales ─────────────── */}
+      <div className="glass-card">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <BookOpen size={20} style={{ color: 'var(--accent-blue)' }} />
+            <h3 style={{ fontSize: '1.15rem', fontWeight: 700 }}>Publicaciones Científicas Institucionales</h3>
+          </div>
+          <span className="badge badge-cyan">{totalPapers.toLocaleString()} artículos disponibles</span>
+        </div>
+
+        {/* Controles de Filtros Dinámicos */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
+          <div>
+            <label className="form-label" style={{ fontSize: '0.75rem' }}>Filtrar por Año</label>
+            <select
+              className="form-select"
+              value={selectedYear}
+              onChange={(e) => { setSelectedYear(e.target.value); setPapersPage(0); }}
+            >
+              <option value="Todos">Todos los años</option>
+              {availableYears.map((yr) => (
+                <option key={yr} value={yr}>{yr}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="form-label" style={{ fontSize: '0.75rem' }}>Filtrar por ODS</label>
+            <select
+              className="form-select"
+              value={selectedOds}
+              onChange={(e) => { setSelectedOds(e.target.value); setPapersPage(0); }}
+            >
+              <option value="Todos">Todos los ODS</option>
+              {availableOds.map((ods) => (
+                <option key={ods} value={ods}>{ods}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="form-label" style={{ fontSize: '0.75rem' }}>Buscar por Título / Revista</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Escribe para buscar..."
+                value={searchPaper}
+                onChange={(e) => { setSearchPaper(e.target.value); setPapersPage(0); }}
+                style={{ paddingLeft: '2rem' }}
+              />
+              <Search size={14} style={{ position: 'absolute', left: '0.7rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            </div>
+          </div>
+        </div>
+
+        {/* Tabla */}
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}>
-                <th style={{ padding: '0.6rem 0.8rem' }}>Investigador</th>
-                <th style={{ padding: '0.6rem 0.8rem' }}>Nivel SNII</th>
-                <th style={{ padding: '0.6rem 0.8rem' }}>Adscripción</th>
-                <th style={{ padding: '0.6rem 0.8rem' }}>ORCID</th>
-                <th style={{ padding: '0.6rem 0.8rem', textAlign: 'right' }}>Acción</th>
+                <th style={{ padding: '0.6rem 0.8rem', width: '60px' }}>Año</th>
+                <th style={{ padding: '0.6rem 0.8rem' }}>Título</th>
+                <th style={{ padding: '0.6rem 0.8rem' }}>Revista / Fuente</th>
+                <th style={{ padding: '0.6rem 0.8rem', width: '70px', textAlign: 'right' }}>Citas</th>
+                <th style={{ padding: '0.6rem 0.8rem' }}>ODS</th>
+                <th style={{ padding: '0.6rem 0.8rem' }}>Tópico</th>
+                <th style={{ padding: '0.6rem 0.8rem' }}>Autores</th>
+                <th style={{ padding: '0.6rem 0.8rem', textAlign: 'right', width: '130px' }}>Enlaces</th>
               </tr>
             </thead>
             <tbody>
-              <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                <td style={{ padding: '0.75rem 0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  CARRILLO CALVET, HUMBERTO ANDRES
-                </td>
-                <td style={{ padding: '0.75rem 0.8rem' }}>
-                  <span className="badge badge-cyan">SNII 3</span>
-                </td>
-                <td style={{ padding: '0.75rem 0.8rem', color: 'var(--text-secondary)' }}>
-                  Facultad de Ciencias · Matemáticas
-                </td>
-                <td style={{ padding: '0.75rem 0.8rem', fontFamily: 'var(--font-mono)', color: 'var(--accent-blue)' }}>
-                  0000-0003-3659-6769
-                </td>
-                <td style={{ padding: '0.75rem 0.8rem', textAlign: 'right' }}>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => {
-                      setSelectedResearcher('CARRILLO CALVET HUMBERTO', '0000-0003-3659-6769');
-                      setActiveTab('researchers');
-                    }}
-                  >
-                    <span>Ver Producción</span>
-                    <ArrowRight size={13} />
-                  </button>
-                </td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                <td style={{ padding: '0.75rem 0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  JIMENEZ ANDRADE, JOSE LUIS
-                </td>
-                <td style={{ padding: '0.75rem 0.8rem' }}>
-                  <span className="badge badge-purple">SNII 1</span>
-                </td>
-                <td style={{ padding: '0.75rem 0.8rem', color: 'var(--text-secondary)' }}>
-                  Facultad de Ciencias · Física
-                </td>
-                <td style={{ padding: '0.75rem 0.8rem', fontFamily: 'var(--font-mono)', color: 'var(--accent-blue)' }}>
-                  0000-0002-3920-539X
-                </td>
-                <td style={{ padding: '0.75rem 0.8rem', textAlign: 'right' }}>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => {
-                      setSelectedResearcher('JIMENEZ ANDRADE JOSE LUIS', '0000-0002-3920-539X');
-                      setActiveTab('researchers');
-                    }}
-                  >
-                    <span>Ver Producción</span>
-                    <ArrowRight size={13} />
-                  </button>
-                </td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                <td style={{ padding: '0.75rem 0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  LAZCANO ARAUJO, ANTONIO EUSEBIO
-                </td>
-                <td style={{ padding: '0.75rem 0.8rem' }}>
-                  <span className="badge badge-amber">SNII Emérito</span>
-                </td>
-                <td style={{ padding: '0.75rem 0.8rem', color: 'var(--text-secondary)' }}>
-                  Facultad de Ciencias · Biología Evolutiva
-                </td>
-                <td style={{ padding: '0.75rem 0.8rem', fontFamily: 'var(--font-mono)', color: 'var(--accent-blue)' }}>
-                  0000-0002-2357-1234
-                </td>
-                <td style={{ padding: '0.75rem 0.8rem', textAlign: 'right' }}>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => {
-                      setSelectedResearcher('LAZCANO ARAUJO ANTONIO', '');
-                      setActiveTab('researchers');
-                    }}
-                  >
-                    <span>Ver Producción</span>
-                    <ArrowRight size={13} />
-                  </button>
-                </td>
-              </tr>
+              {loadingPapers ? (
+                <tr>
+                  <td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    Cargando publicaciones...
+                  </td>
+                </tr>
+              ) : papersData.length > 0 ? (
+                papersData.map((p, idx) => (
+                  <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                    <td style={{ padding: '0.7rem 0.8rem', fontWeight: 600 }}>{p.year}</td>
+                    <td style={{ padding: '0.7rem 0.8rem', fontWeight: 600, color: 'var(--text-primary)', maxWidth: '300px' }}>
+                      {p.title}
+                    </td>
+                    <td style={{ padding: '0.7rem 0.8rem', color: 'var(--text-secondary)' }}>{p.source}</td>
+                    <td style={{ padding: '0.7rem 0.8rem', textAlign: 'right', fontWeight: 700, color: 'var(--accent-purple)' }}>
+                      {p.citations.toLocaleString()}
+                    </td>
+                    <td style={{ padding: '0.7rem 0.8rem' }}>
+                      {p.ods && p.ods !== '—' ? (
+                        <span className="badge badge-emerald" style={{ fontSize: '0.7rem' }}>{p.ods}</span>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)' }}>—</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '0.7rem 0.8rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                      {p.topic}
+                    </td>
+                    <td style={{ padding: '0.7rem 0.8rem', fontSize: '0.8rem', color: 'var(--text-muted)', maxWidth: '200px' }}>
+                      {p.authors}
+                    </td>
+                    <td style={{ padding: '0.7rem 0.8rem', textAlign: 'right' }}>
+                      <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'flex-end' }}>
+                        {p.doi_url && (
+                          <a
+                            href={p.doi_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '0.2rem 0.45rem', fontSize: '0.7rem' }}
+                            title="Ver en DOI"
+                          >
+                            DOI
+                            <ExternalLink size={10} />
+                          </a>
+                        )}
+                        {p.openalex_url && (
+                          <a
+                            href={p.openalex_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '0.2rem 0.45rem', fontSize: '0.7rem' }}
+                            title="Ver en OpenAlex"
+                          >
+                            OA
+                            <ExternalLink size={10} />
+                          </a>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    No se encontraron publicaciones con los filtros seleccionados.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
+
+        {/* Paginación */}
+        {totalPapers > 30 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              Mostrando página {papersPage + 1} de {Math.ceil(totalPapers / 30)}
+            </span>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={papersPage === 0}
+                onClick={() => setPapersPage((prev) => Math.max(0, prev - 1))}
+              >
+                Anterior
+              </button>
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={(papersPage + 1) * 30 >= totalPapers}
+                onClick={() => setPapersPage((prev) => prev + 1)}
+              >
+                Siguiente
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

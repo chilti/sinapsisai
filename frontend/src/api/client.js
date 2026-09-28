@@ -36,10 +36,14 @@ export const apiClient = {
     const res = await api.get('/hierarchy/subdependencies', { params: { institution, dependency } });
     return res.data;
   },
-  getHierarchyMetrics: async (institution, dependency, subdependency, period = 'all') => {
+  getHierarchyMetrics: async (institution, dependency, subdependency, period = 'all', viewMode = 'capacidad_instalada') => {
     const res = await api.get('/hierarchy/metrics', {
-      params: { institution, dependency, subdependency, period }
+      params: { institution, dependency, subdependency, period, view_mode: viewMode }
     });
+    return res.data;
+  },
+  getHierarchyPapers: async (params) => {
+    const res = await api.get('/hierarchy/papers', { params });
     return res.data;
   },
 

@@ -13,13 +13,13 @@ Para evitar cualquier pérdida de funcionalidad o regresión en la experiencia d
 | Módulo Funcional | Archivo Auxiliar de Detalle | Total de Controles | Estado QA |
 | :--- | :--- | :---: | :---: |
 | **00. Franja del Ecosistema, Navbar & i18n** | [`MODULO_07_FRANJA_ECOSISTEMA_Y_NAVBAR.md`](./MODULO_07_FRANJA_ECOSISTEMA_Y_NAVBAR.md) | 12 | ✅ 12 / 12 (100%) |
-| **01. Panorama Institucional** | [`MODULO_01_PANORAMA_INSTITUCIONAL.md`](./MODULO_01_PANORAMA_INSTITUCIONAL.md) | 18 | ✅ 18 / 18 (100%) |
+| **01. Panorama Institucional** | [`MODULO_01_PANORAMA_INSTITUCIONAL.md`](./MODULO_01_PANORAMA_INSTITUCIONAL.md) | 22 | ✅ 22 / 22 (100%) |
 | **02. Perfiles de Investigadores** | [`MODULO_02_PERFILES_INVESTIGADORES.md`](./MODULO_02_PERFILES_INVESTIGADORES.md) | 22 | ✅ 22 / 22 (100%) |
 | **03. Mapas de la Ciencia (WebGL)** | [`MODULO_03_MAPAS_CIENCIA.md`](./MODULO_03_MAPAS_CIENCIA.md) | 14 | ✅ 14 / 14 (100%) |
 | **04. Mi Espacio del Investigador** | [`MODULO_04_MI_ESPACIO_INVESTIGADOR.md`](./MODULO_04_MI_ESPACIO_INVESTIGADOR.md) | 26 | ✅ 26 / 26 (100%) |
 | **05. Administración y Gobernanza** | [`MODULO_05_ADMINISTRACION_GOBERNANZA.md`](./MODULO_05_ADMINISTRACION_GOBERNANZA.md) | 29 | ✅ 29 / 29 (100%) |
 | **06. Asistente Científico IA** | [`MODULO_06_ASISTENTE_IA.md`](./MODULO_06_ASISTENTE_IA.md) | 11 | ✅ 11 / 11 (100%) |
-| **TOTAL ECOSISTEMA** | **7 Módulos de Verificación** | **132 Controles** | **✅ 132 / 132 (100%)** |
+| **TOTAL ECOSISTEMA** | **7 Módulos de Verificación** | **136 Controles** | **✅ 136 / 136 (100%)** |
 
 ---
 

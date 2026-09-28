@@ -1,55 +1,75 @@
-# Inventario de Controles: Módulo 1 - Panorama Institucional
-**Archivo Origen (Streamlit):** `dashboard_v2.py` (Líneas 715–815, 2320–2345) y `dashboard_analytics.py`  
-**Archivo Destino (React):** `frontend/src/pages/InstitutionalPage.jsx` y `frontend/src/components/Sidebar.jsx`  
+# Inventario de Controles: Módulo 1 - Panorama Institucional y Cartografía de Desempeño
+**Archivo Origen (Streamlit):** `dashboard_v2.py` (Líneas 715–815, 2320–2345) y `dashboard_analytics.py` (`render_institucion_view`, Líneas 1264–1956)  
+**Archivo Destino (React):** `frontend/src/components/modules/InstitutionalPanorama.jsx`  
 **Soporte Multilingüe:** 🇲🇽 ES &bull; 🇧🇷 PT &bull; 🇺🇸 EN  
+**Caché de Datos:** `analytics_cache.duckdb` & Parquets en `data/cache/` (52 columnas analíticas precalculadas, Zero-Join)
 
 ---
 
-## 1. Inventario Detallado de Controles
+## 1. Inventario Detallado de Controles y Visualizadores
 
-| # | ID de Control en Streamlit | Tipo de Control | Etiqueta / Propósito Original | Clave i18n Propuesta | Comportamiento Esperado en React | Estado QA |
+| # | ID de Control en Streamlit | Tipo de Elemento | Etiqueta / Propósito Original | Clave i18n Propuesta | Comportamiento Esperado en React | Estado QA |
 | :-: | :--- | :--- | :--- | :--- | :--- | :-: |
-| 1 | `selected_institution_sidebar` | Selectbox / Autocompletado | 🏛️ Institución (UNAM por defecto) | `institutional.select_institution` | Autocompletado reactivo desde `/api/hierarchy/institutions` sin re-run. | [x] |
+| 1 | `selected_institution_sidebar` | Selectbox / Autocompletado | 🏛️ Institución (UNAM por defecto) | `institutional.select_institution` | Autocompletado reactivo desde `/api/hierarchy/institutions`. | [x] |
 | 2 | `selected_dep_sidebar` | Selectbox | 🏢 Dependencia (filtrada por institución) | `institutional.select_dependency` | Se actualiza automáticamente al cambiar institución. Permite valor vacío (Toda la institución). | [x] |
 | 3 | `selected_sub_sidebar` | Selectbox | 🎯 Subdependencia / Centro | `institutional.select_subdependency` | Se actualiza según la dependencia elegida. Opción "Todas las subdependencias". | [x] |
-| 4 | `breadcrumbs_inst` | Display UI | Migajas de pan (Inst ➔ Dep ➔ Sub) | `institutional.hierarchy_path` | Barra interactiva con enlaces para subir niveles en el árbol. | [x] |
-| 5 | `load_tab_inst` | Button | ▶️ Cargar Panorama Institucional | `institutional.btn_load_data` | En React se carga de forma inmediata y automática con *skeleton loader* (sin necesidad de botón forzado de carga perezosa). | [x] |
-| 6 | `view_mode_inst` | Radio / Segmented Control | Modo de Vista: General, Capacidad SNII, Producción & Citas, ODS | `institutional.view_mode` | Pestañas o tabs internos con transición animada instantánea. | [x] |
-| 7 | `kpi_total_researchers` | KPI Metric Card | Total de Investigadores en Padrón | `institutional.kpi_researchers` | Tarjeta con cifra formateada, icono y desglose rápido por género. | [x] |
-| 8 | `kpi_total_works` | KPI Metric Card | Total de Obras Científicas | `institutional.kpi_works` | Total de artículos indexados en ClickHouse OpenAlex. | [x] |
-| 9 | `kpi_total_citations` | KPI Metric Card | Total de Citas Recibidas | `institutional.kpi_citations` | Conteo acumulado de citas directas de la entidad. | [x] |
-| 10 | `kpi_avg_fwci` | KPI Metric Card | FWCI Promedio (Impacto Ponderado) | `institutional.kpi_fwci` | Indicador con semáforo de color (verde > 1.0, amarillo = 1.0, rojo < 1.0). | [x] |
-| 11 | `kpi_oa_percent` | KPI Metric Card | % en Acceso Abierto | `institutional.kpi_oa_rate` | Porcentaje global con desglose por vía (Gold, Green, Diamond, Hybrid). | [x] |
-| 12 | `chart_snii_levels` | Plotly Bar Chart | Capacidad Instalada por Nivel SNII | `institutional.chart_snii_distribution` | Gráfico interactivo de barras (Candidato, I, II, III, Emérito) con hover tooltip. | [x] |
-| 13 | `chart_knowledge_areas` | Plotly Donut / Bar | Distribución por Áreas del Conocimiento | `institutional.chart_areas_distribution` | Gráfico de dona o barras de las 9 áreas oficiales del SNII. | [x] |
-| 14 | `chart_temporal_evolution` | Plotly Multi-line / Area | Producción Anual y Citas Temporales | `institutional.chart_annual_evolution` | Gráfico combinado con filtro interactivo de rango de años (2010–2026). | [x] |
-| 15 | `chart_sdg_radar` | Plotly Radar Chart | Alineación con los 17 ODS de la ONU | `institutional.chart_sdg_radar` | Gráfico de radar con puntaje de afinidad por ODS (1 al 17). | [x] |
-| 16 | `network_inter_dependencies` | Force-directed Graph / WebGL | Red de Colaboración Interna | `institutional.chart_collaboration_network` | Visualizador de coautoría entre facultades/institutos de la misma universidad. | [x] |
-| 17 | `table_top_journals` | Data Table | Revistas de Mayor Publicación | `institutional.table_top_sources` | Tabla paginada con buscador, ISSN, cuartil SJR/JCR y conteo de artículos. | [x] |
-| 18 | `btn_export_institutional` | Download Button | Descargar Reporte Institucional (HTML/PDF) | `institutional.btn_export_report` | Genera y descarga el informe ejecutivo consolidado en 1 clic. | [x] |
+| 4 | `view_mode_perspective` | Radio / Segmented Toggle | Perspectiva Analítica: Capacidad Instalada vs Producción Institucional | `institutional.perspective_mode` | Conmuta entre producción de académicos adscritos vs papers con firma institucional directa. | [x] |
+| 5 | `badge_institutional_ids` | UI Badges / External Links | Identificadores: ROR ID, OpenAlex ID, Tipo, País | `institutional.identifiers` | Píldoras con enlaces directos verificados a `https://ror.org/...` y `https://openalex.org/...`. | [x] |
+| 6 | `kpis_academic_ids` | KPI Metric Cards (Grupo 1) | Identificadores de Académicos (4 métricas) | `institutional.kpi_group_ids` | `% Académicos con ORCID`, `% con algún ID`, `% SNII con ORCID`, `% SNII con algún ID`. | [x] |
+| 7 | `kpis_general_metrics` | KPI Metric Cards (Grupo 2) | Métricas Generales (7 métricas) | `institutional.kpi_group_general` | `Producción Total` (Neo4j), `Indizada en OpenAlex`, `No. SNIIs 2025`, `Citas Acumuladas`, `Citas/artículo`, `FWCI Promedio`, `% Open Access`. | [x] |
+| 8 | `kpis_excellence_metrics` | KPI Metric Cards (Grupo 3) | Métricas de Excelencia (3 métricas) | `institutional.kpi_group_excellence` | `Percentil Promedio`, `% Top 10%`, `% Top 1%` de citación mundial. | [x] |
+| 9 | `kpis_velocity_collab` | KPI Metric Cards (Grupo 4) | Velocidad de Citas y Colaboración (5 métricas) | `institutional.kpi_group_velocity` | `Citas/año (avg)`, `Citas últ. 3 años`, `% Colaboración Internacional`, `Países/paper (avg)`, `Autores/paper (avg)`. | [x] |
+| 10 | `kpis_apc_costs` | KPI Metric Cards (Grupo 5) | Acceso Abierto y Costos APC (3 métricas) | `institutional.kpi_group_apc` | `APC Total ($ USD estimado)`, `% Papers con APC`, `Vida Media Citas (años)`. | [x] |
+| 11 | `chart_oa_donut` | Plotly Donut Chart | Distribución Open Access | `institutional.chart_oa_donut` | Desglose porcentual y numérico por vía: Gold, Green, Hybrid, Bronze y Closed. | [x] |
+| 12 | `table_thematic_profile` | Summary Table / Grid | Perfil Temático y Concentración (Gini) | `institutional.table_thematic_profile` | `Índice de Gini temático`, `Dominios de investigación`, `Tópicos únicos` y `Dominio principal`. | [x] |
+| 13 | `chart_document_types` | Plotly Donut Chart | Distribución por Tipos de Documentos | `institutional.chart_doc_types` | Proporción de artículos, capítulos de libro, revisiones y actas de congreso. | [x] |
+| 14 | `expander_methodological_glossary`| Accordion / Collapsible | Glosario Metodológico Interactivo | `institutional.methodology_glossary` | Definiciones exhaustivas de los 14 indicadores cienciométricos oficiales. | [x] |
+| 15 | `chart_annual_documents_area` | Plotly Area Chart | Documentos Publicados por Año (1950–2026) | `institutional.chart_annual_docs` | Gráfico de área interactivo con conteo histórico de publicaciones por año. | [x] |
+| 16 | `chart_annual_fwci_line` | Plotly Line Chart | Evolución FWCI Promedio Institucional | `institutional.chart_annual_fwci` | Gráfico de línea con umbral horizontal en 1.0 (Promedio Mundial de referencia). | [x] |
+| 17 | `chart_thematic_sunburst` | Plotly Sunburst 4-Levels | Temáticas de Investigación (Sunburst) | `institutional.chart_sunburst` | Desglose jerárquico interactivo: `domain` ➔ `field` ➔ `subfield` ➔ `topic` con escala de color Blues. | [x] |
+| 18 | `chart_keywords_cloud` | Chips / Bar Grid | Vocabulario Científico Institucional (Keywords) | `institutional.keywords_vocab` | Términos científicos más representativos con sus frecuencias relativas. | [x] |
+| 19 | `chart_intl_collab_evolution` | Plotly Line / Area Chart | Evolución % Colaboración Internacional | `institutional.chart_intl_collab` | Porcentaje anual de publicaciones con coautoría internacional (0–100%). | [x] |
+| 20 | `chart_oa_annual_stacked` | Plotly Stacked Bar Chart | Evolución del Acceso Abierto por Año | `institutional.chart_oa_stacked` | Barras apiladas anuales por vía de OA (`Gold`, `Green`, `Hybrid`, `Bronze`, `Closed`). | [x] |
+| 21 | `matrix_sdg_impact` | Interactive Grid (17 ODS) | Impacto Global en Sostenibilidad (ODS 1–17) | `institutional.matrix_sdg` | Matriz oficial con los 17 Objetivos de la ONU, códigos de color y conteo de obras asociadas. | [x] |
+| 22 | `table_institutional_publications`| Interactive Data Table | Publicaciones de la Institución | `institutional.table_publications` | Tabla completa paginada con filtros por Año y por ODS, enlaces a DOI y OpenAlex. | [x] |
 
 ---
 
 ## 2. Textos Multilingües Clave Requeridos (i18n)
 
 ```javascript
-// Claves a incluir en es.js, pt.js, en.js
 institutional: {
   title: "Panorama Institucional",
+  perspective_installed: "Capacidad Instalada",
+  perspective_institutional: "Producción Institucional",
   select_institution: "Institución",
   select_dependency: "Dependencia",
   select_subdependency: "Subdependencia / Centro",
-  kpi_researchers: "Investigadores SNII",
-  kpi_works: "Publicaciones Científicas",
-  kpi_citations: "Citas Recibidas",
-  kpi_fwci: "FWCI Promedio",
-  kpi_oa_rate: "% Acceso Abierto",
-  snii_levels: {
-    candidate: "Candidato",
-    level_1: "Nivel I",
-    level_2: "Nivel II",
-    level_3: "Nivel III",
-    emeritus: "Emérito"
+  identifiers: {
+    ror: "ROR ID",
+    openalex: "OpenAlex ID",
+    type: "Tipo de Institución",
+    country: "País"
+  },
+  kpi_groups: {
+    academic_ids: "Identificadores de Académicos",
+    general: "Métricas Generales",
+    excellence: "Métricas de Excelencia",
+    velocity: "Velocidad de Citas y Colaboración",
+    costs: "Acceso Abierto y Costos (APC)"
+  },
+  charts: {
+    oa_distribution: "Distribución Open Access",
+    thematic_profile: "Perfil Temático (Gini)",
+    document_types: "Tipos de Documentos",
+    annual_production: "Documentos Publicados por Año",
+    annual_fwci: "Evolución FWCI Promedio",
+    sunburst_topics: "Temáticas de Investigación Institucional",
+    keywords: "Vocabulario Científico (Keywords)",
+    intl_collaboration: "Colaboración Internacional (%)",
+    annual_oa_stacked: "Evolución de Acceso Abierto por Año",
+    sdg_matrix: "Impacto Global en Sostenibilidad (ODS)",
+    publications_table: "Publicaciones Científicas"
   }
 }
 ```

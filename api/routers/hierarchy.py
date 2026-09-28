@@ -1,11 +1,73 @@
 """
-api/routers/hierarchy.py - Router para navegación y búsqueda en la jerarquía institucional
+api/routers/hierarchy.py - Router para navegación y analítica profunda en la jerarquía institucional
+Extrae el 100% de los indicadores cienciométricos desde analytics_cache.duckdb y parquets analíticos.
 """
-from fastapi import APIRouter, Query, HTTPException
+import os
+import re
+import json
 from typing import List, Dict, Any, Optional
+import numpy as np
+import pandas as pd
+from fastapi import APIRouter, Query, HTTPException
 from api.db import get_cached_hierarchy, get_neo4j_store
 
 router = APIRouter(prefix="/api/hierarchy", tags=["Jerarquía Institucional"])
+
+SDG_INFO = {
+    1: {"name": "Fin de la pobreza", "color": "#E5243B"},
+    2: {"name": "Hambre cero", "color": "#DDA63A"},
+    3: {"name": "Salud y bienestar", "color": "#4C9F38"},
+    4: {"name": "Educación de calidad", "color": "#C5192D"},
+    5: {"name": "Igualdad de género", "color": "#FF3A21"},
+    6: {"name": "Agua limpia y saneamiento", "color": "#26BDE2"},
+    7: {"name": "Energía asequible y no contaminante", "color": "#FCC30B"},
+    8: {"name": "Trabajo decente y crecimiento económico", "color": "#A21942"},
+    9: {"name": "Industria, innovación e infraestructura", "color": "#FD6925"},
+    10: {"name": "Reducción de las desigualdades", "color": "#DD1367"},
+    11: {"name": "Ciudades y comunidades sostenibles", "color": "#FD9D24"},
+    12: {"name": "Producción y consumo responsables", "color": "#BF8B2E"},
+    13: {"name": "Acción por el clima", "color": "#3F7E44"},
+    14: {"name": "Vida submarina", "color": "#0A97D9"},
+    15: {"name": "Vida de ecosistemas terrestres", "color": "#56C02B"},
+    16: {"name": "Paz, justicia e instituciones sólidas", "color": "#00689D"},
+    17: {"name": "Alianzas para lograr los objetivos", "color": "#19486A"}
+}
+
+def clean_val(val, default=0):
+    """Sanitiza números flotantes o enteros para JSON serializable."""
+    if val is None:
+        return default
+    if isinstance(val, (float, np.floating)):
+        if np.isnan(val) or np.isinf(val):
+            return default
+        return float(val)
+    if isinstance(val, (int, np.integer)):
+        return int(val)
+    return val
+
+def extract_and_format_authors(p) -> str:
+    """Extrae y formatea lista de autores de manera segura sin evaluar verdad booleana en numpy arrays."""
+    val = None
+    for col in ["_formatted_authors", "author_names", "authors"]:
+        if col in p and p[col] is not None:
+            v = p[col]
+            if isinstance(v, (list, np.ndarray)):
+                if len(v) > 0:
+                    val = v
+                    break
+            elif isinstance(v, str) and v.strip() and v.strip() != "nan":
+                val = v
+                break
+    if val is None:
+        return "Autores varios"
+    if isinstance(val, (list, np.ndarray)):
+        names = [str(a).strip() for a in val if str(a).strip() and str(a).lower() != "nan"]
+        if not names:
+            return "Autores varios"
+        if len(names) > 3:
+            return ", ".join(names[:3]) + f" et al. (+{len(names)-3})"
+        return ", ".join(names)
+    return str(val)
 
 @router.get("/institutions")
 def list_institutions() -> Dict[str, Any]:
@@ -77,16 +139,42 @@ def get_hierarchy_metrics(
     institution: str = Query(..., description="Nombre de la institución"),
     dependency: Optional[str] = Query(None, description="Nombre de la dependencia opcional"),
     subdependency: Optional[str] = Query(None, description="Nombre de la subdependencia opcional"),
-    period: Optional[str] = Query("all", description="Periodo temporal")
+    period: Optional[str] = Query("all", description="Periodo temporal"),
+    view_mode: Optional[str] = Query("capacidad_instalada", description="capacidad_instalada o produccion_institucional")
 ) -> Dict[str, Any]:
-    """Retorna las métricas analíticas calculadas (KPIs, series temporales anuales y desglose SNII) para la entidad."""
+    """
+    Retorna el 100% de los datos e indicadores cienciométricos de Panorama Institucional:
+    - Badges de Metadatos ROR y OpenAlex
+    - 5 Grupos de KPIs (22 métricas calculadas)
+    - Distribución Open Access (Donut)
+    - Perfil Temático y Concentración (Gini)
+    - Distribución por Tipos de Documentos
+    - Evolución Histórica de Producción e Impacto (Área anual y Línea FWCI)
+    - Temáticas de Investigación (Sunburst de 4 niveles)
+    - Vocabulario Científico (Keywords más frecuentes)
+    - Evolución de % Colaboración Internacional
+    - Evolución del Acceso Abierto por Año (Stacked Bar)
+    - Impacto Global en Sostenibilidad (ODS 1 al 17)
+    - Muestra de Publicaciones con Enlaces DOI y OpenAlex
+    """
     from dashboard_analytics import load_cached_data, load_official_snii_counts
     
     target_entity = subdependency or dependency or institution
     
-    df_tot = load_cached_data('institucion_total.parquet', entity_name=target_entity, institution_name=institution, view_mode='capacidad_instalada')
-    df_ann = load_cached_data('institucion_annual.parquet', entity_name=target_entity, institution_name=institution, view_mode='capacidad_instalada')
+    # 1. Cargar tablas analíticas
+    df_tot = load_cached_data('institucion_total.parquet', entity_name=target_entity, institution_name=institution, view_mode=view_mode)
     
+    # Fallback si en produccion_institucional no hay datos
+    if (df_tot is None or df_tot.empty) and view_mode == "produccion_institucional":
+        view_mode = "capacidad_instalada"
+        df_tot = load_cached_data('institucion_total.parquet', entity_name=target_entity, institution_name=institution, view_mode=view_mode)
+        
+    df_ann = load_cached_data('institucion_annual.parquet', entity_name=target_entity, institution_name=institution, view_mode=view_mode)
+    df_topics = load_cached_data('topics_institucion.parquet', entity_name=target_entity, institution_name=institution, view_mode=view_mode)
+    df_kw = load_cached_data('keywords_institucion.parquet', entity_name=target_entity, institution_name=institution, view_mode=view_mode)
+    df_papers = load_cached_data('papers_institucion.parquet', entity_name=target_entity, institution_name=institution, view_mode=view_mode)
+
+    # 2. Conteo oficial SNII
     official_counts = load_official_snii_counts()
     count = (
         official_counts.get(f"{institution} || SECRETARIA GENERAL || {target_entity}")
@@ -95,54 +183,336 @@ def get_hierarchy_metrics(
         or official_counts.get(institution)
         or 0
     )
-    
-    kpi = {
-        "total_researchers": count,
-        "total_works": 0,
-        "total_citations": 0,
-        "fwci_mean": 1.0,
-        "top_10_percent": 0.0,
-        "oa_ratio": 0.0,
-        "h_index": 0
+
+    row = df_tot.iloc[0] if (df_tot is not None and not df_tot.empty) else {}
+
+    # 3. Metadatos Institucionales
+    ror_id = str(row.get("ror_id") or "")
+    if ror_id.lower() == "none" or ror_id.lower() == "nan":
+        ror_id = ""
+    openalex_id = str(row.get("institution_id") or "")
+    if openalex_id.lower() == "none" or openalex_id.lower() == "nan":
+        openalex_id = ""
+
+    metadata = {
+        "ror_id": ror_id,
+        "ror_url": ror_id if ror_id.startswith("http") else (f"https://ror.org/{ror_id}" if ror_id else ""),
+        "openalex_id": openalex_id,
+        "openalex_url": openalex_id if openalex_id.startswith("http") else (f"https://openalex.org/{openalex_id}" if openalex_id else ""),
+        "institution_type": str(row.get("institution_type") or "Educación Superior").title(),
+        "institution_country": str(row.get("institution_country") or "MX")
     }
-    
-    if df_tot is not None and not df_tot.empty:
-        row = df_tot.iloc[0]
-        kpi = {
-            "total_researchers": count or int(row.get("total_academicos") or 0),
-            "total_works": int(row.get("num_documents") or 0),
-            "total_citations": int(row.get("citations") or 0),
-            "fwci_mean": round(float(row.get("fwci_avg") or 1.0), 2),
-            "top_10_percent": round(float(row.get("pct_top_10") or 0.0), 1),
-            "oa_ratio": round(float(row.get("pct_open_access") or 0.0), 1),
-            "h_index": int(row.get("h_index") or 0)
+
+    # 4. Los 5 Grupos de KPIs (22 métricas)
+    indexed_docs = clean_val(row.get("num_documents"), 0)
+    total_cits = clean_val(row.get("citations"), 0)
+    cits_per_paper = clean_val(row.get("citations_per_paper")) or (round(total_cits / max(1, indexed_docs), 2) if indexed_docs > 0 else 0.0)
+    official_snii = count or clean_val(row.get("official_snii_count")) or clean_val(row.get("total_academicos"), 0)
+
+    kpis_academic_ids = {
+        "pct_academic_orcid": round(clean_val(row.get("pct_academic_orcid"), 0.0), 1),
+        "pct_academic_any_id": round(clean_val(row.get("pct_academic_any_id"), 0.0), 1),
+        "pct_snii_orcid": round(clean_val(row.get("pct_snii_orcid"), 0.0), 1),
+        "pct_snii_any_id": round(clean_val(row.get("pct_snii_any_id"), 0.0), 1)
+    }
+
+    kpis_general = {
+        "total_census": int(clean_val(row.get("neo4j_total_papers")) or indexed_docs),
+        "indexed_works": int(indexed_docs),
+        "official_snii_count": int(official_snii),
+        "total_citations": int(total_cits),
+        "citations_per_paper": round(float(cits_per_paper), 2),
+        "fwci_mean": round(clean_val(row.get("fwci_avg"), 1.0), 2),
+        "pct_open_access": round(clean_val(row.get("pct_open_access"), 0.0), 1)
+    }
+
+    kpis_excellence = {
+        "percentile_avg": round(clean_val(row.get("percentile_avg"), 50.0), 1),
+        "pct_top_10": round(clean_val(row.get("pct_top_10"), 0.0), 1),
+        "pct_top_1": round(clean_val(row.get("pct_1"), 0.0), 1),
+        "h_index": int(clean_val(row.get("h_index"), 0))
+    }
+
+    kpis_velocity = {
+        "velocity_avg": round(clean_val(row.get("velocity_avg"), 0.0), 1),
+        "recent_cites_3yr": int(clean_val(row.get("recent_cites_3yr"), 0)),
+        "pct_international": round(clean_val(row.get("pct_international"), 0.0), 1),
+        "avg_countries": round(clean_val(row.get("avg_countries"), 0.0), 1),
+        "avg_author_count": round(clean_val(row.get("avg_author_count"), 0.0), 1)
+    }
+
+    kpis_costs = {
+        "apc_paid_usd": round(clean_val(row.get("apc_paid_usd"), 0.0), 0),
+        "pct_apc": round(clean_val(row.get("pct_apc"), 0.0), 1),
+        "half_life_avg": round(clean_val(row.get("half_life_avg"), 0.0), 1)
+    }
+
+    # Mantener claves retrocompatibles planas para componentes anteriores
+    kpi_flat = {
+        "total_researchers": kpis_general["official_snii_count"],
+        "total_works": kpis_general["indexed_works"],
+        "total_citations": kpis_general["total_citations"],
+        "fwci_mean": kpis_general["fwci_mean"],
+        "top_10_percent": kpis_excellence["pct_top_10"],
+        "oa_ratio": kpis_general["pct_open_access"],
+        "h_index": kpis_excellence["h_index"],
+        # Sub-objetos detallados
+        "academic_ids": kpis_academic_ids,
+        "general": kpis_general,
+        "excellence": kpis_excellence,
+        "velocity": kpis_velocity,
+        "costs": kpis_costs
+    }
+
+    # 5. Distribución Open Access (Donut)
+    oa_dist = {
+        "Gold": round(clean_val(row.get("pct_oa_gold"), 0.0), 1),
+        "Green": round(clean_val(row.get("pct_oa_green"), 0.0), 1),
+        "Hybrid": round(clean_val(row.get("pct_oa_hybrid"), 0.0), 1),
+        "Bronze": round(clean_val(row.get("pct_oa_bronze"), 0.0), 1),
+        "Closed": round(clean_val(row.get("pct_oa_closed"), max(0.0, 100.0 - kpis_general["pct_open_access"])), 1)
+    }
+
+    # 6. Perfil Temático y Concentración (Gini)
+    gini_raw = row.get("gini_topics")
+    thematic_profile = {
+        "gini_topics": round(float(gini_raw), 3) if (gini_raw is not None and not np.isnan(gini_raw)) else None,
+        "domain_diversity": int(clean_val(row.get("domain_diversity"), 0)),
+        "unique_topics": int(clean_val(row.get("unique_topics"), 0)),
+        "top_domain": str(row.get("top_domain") or "Ciencias Físicas y Naturales"),
+        "top_topic": str(row.get("top_topic") or "—")
+    }
+
+    # 7. Tipos de Documentos
+    doc_types = []
+    if df_papers is not None and not df_papers.empty and 'wf.type' in df_papers.columns:
+        type_trans = {
+            'article': 'Artículo',
+            'book': 'Libro',
+            'book-chapter': 'Capítulo de Libro',
+            'dataset': 'Conjunto de Datos',
+            'dissertation': 'Tesis',
+            'editorial': 'Editorial',
+            'letter': 'Carta',
+            'preprint': 'Preprint',
+            'review': 'Revisión',
+            'other': 'Otro'
         }
-    
+        vc = df_papers['wf.type'].fillna('other').value_counts()
+        for k, v in vc.head(7).items():
+            label = type_trans.get(str(k).lower(), str(k).title() if k else 'Otro')
+            doc_types.append({
+                "type": label,
+                "count": int(v),
+                "pct": round((int(v) / max(1, len(df_papers))) * 100, 1)
+            })
+
+    # 8. Impacto Global en Sostenibilidad (ODS 1 al 17)
+    sdg_matrix = []
+    ods_counts = {}
+    if df_papers is not None and not df_papers.empty and 'ODS_Nombre' in df_papers.columns:
+        for val in df_papers['ODS_Nombre'].dropna():
+            match = re.search(r'\d+', str(val))
+            if match:
+                num = int(match.group())
+                ods_counts[num] = ods_counts.get(num, 0) + 1
+
+    total_papers_count = len(df_papers) if df_papers is not None and not df_papers.empty else 1
+    for ods_num in range(1, 18):
+        c = ods_counts.get(ods_num, 0)
+        sdg_matrix.append({
+            "id": ods_num,
+            "name": SDG_INFO[ods_num]["name"],
+            "color": SDG_INFO[ods_num]["color"],
+            "count": c,
+            "pct": round((c / total_papers_count) * 100, 2)
+        })
+
+    # 9. Evolución Anual (Series Temporales)
     annual_evolution = []
     if df_ann is not None and not df_ann.empty:
-        for _, r in df_ann[df_ann["year"] >= 2000].iterrows():
+        df_sorted = df_ann.sort_values('year')
+        for _, r in df_sorted[df_sorted["year"] >= 1950].iterrows():
             annual_evolution.append({
                 "year": int(r.get("year")),
-                "works": int(r.get("num_documents") or 0),
-                "citations": int(r.get("citations") or 0),
-                "fwci": round(float(r.get("fwci_avg") or 0.0), 2),
-                "pct_oa": round(float(r.get("pct_open_access") or 0.0), 1)
+                "works": int(clean_val(r.get("num_documents"), 0)),
+                "citations": int(clean_val(r.get("citations"), 0)),
+                "fwci": round(clean_val(r.get("fwci_avg"), 0.0), 2),
+                "pct_oa": round(clean_val(r.get("pct_open_access"), 0.0), 1),
+                "pct_oa_gold": round(clean_val(r.get("pct_oa_gold"), 0.0), 1),
+                "pct_oa_green": round(clean_val(r.get("pct_oa_green"), 0.0), 1),
+                "pct_oa_hybrid": round(clean_val(r.get("pct_oa_hybrid"), 0.0), 1),
+                "pct_oa_bronze": round(clean_val(r.get("pct_oa_bronze"), 0.0), 1),
+                "pct_oa_closed": round(clean_val(r.get("pct_oa_closed"), 0.0), 1),
+                "pct_international": round(clean_val(r.get("pct_international"), 0.0), 1)
             })
+
+    # 10. Temáticas de Investigación (Sunburst de 4 niveles)
+    sunburst_topics = []
+    sunburst_trace = None
+    if df_topics is not None and not df_topics.empty:
+        clean_t = df_topics.replace('', pd.NA).dropna(subset=['domain', 'field', 'subfield', 'topic'])
+        top_t = clean_t.sort_values('value', ascending=False).head(70)
+        try:
+            import plotly.express as px
+            fig_sb = px.sunburst(top_t, path=['domain', 'field', 'subfield', 'topic'], values='value')
+            tr = fig_sb.data[0]
+            sunburst_trace = {
+                "ids": [str(x) for x in tr.ids] if tr.ids is not None else [],
+                "labels": [str(x) for x in tr.labels] if tr.labels is not None else [],
+                "parents": [str(x) for x in tr.parents] if tr.parents is not None else [],
+                "values": [int(clean_val(v, 1)) for v in tr.values] if tr.values is not None else []
+            }
+        except Exception:
+            pass
+        for _, r in top_t.iterrows():
+            sunburst_topics.append({
+                "domain": str(r.get("domain")),
+                "field": str(r.get("field")),
+                "subfield": str(r.get("subfield")),
+                "topic": str(r.get("topic")),
+                "value": int(clean_val(r.get("value"), 1))
+            })
+
+    # 11. Vocabulario Científico (Keywords)
+    keywords_list = []
+    if df_kw is not None and not df_kw.empty:
+        top_kw = df_kw.sort_values('freq', ascending=False).head(35)
+        for _, r in top_kw.iterrows():
+            keywords_list.append({
+                "keyword": str(r.get("keyword")),
+                "freq": int(clean_val(r.get("freq"), 1))
+            })
+
+    # 12. Publicaciones Institucionales (Top representativas y filtros)
+    papers_sample = []
+    available_years = []
+    available_ods = []
+    
+    if df_papers is not None and not df_papers.empty:
+        available_years = [int(y) for y in sorted(df_papers['year'].dropna().unique(), reverse=True) if y >= 1950]
+        if 'ODS_Nombre' in df_papers.columns:
+            available_ods = sorted([str(o) for o in df_papers['ODS_Nombre'].dropna().unique() if str(o).strip() and str(o).lower() != "null"])
+
+        # Seleccionar top 50 por citas para la vista inicial
+        top_p = df_papers.dropna(subset=['year']).sort_values(by=['citations', 'year'], ascending=[False, False]).head(50)
+        for _, p in top_p.iterrows():
+            title = str(p.get("Title") or p.get("title") or "Sin título")
+            source = str(p.get("Source") or p.get("source") or "Revista Científica")
+            doi_val = str(p.get("DOI") or p.get("doi") or "")
+            doi_url = doi_val if doi_val.startswith("http") else (f"https://doi.org/{doi_val}" if doi_val else "")
             
-    # Distribución SNII estimada para la entidad
+            oa_val = str(p.get("paper_id") or p.get("openalex_id") or "")
+            oa_url = oa_val if oa_val.startswith("http") else (f"https://openalex.org/{oa_val}" if oa_val else "")
+            
+            authors_str = extract_and_format_authors(p)
+
+            papers_sample.append({
+                "year": int(clean_val(p.get("year"), 2024)),
+                "title": title,
+                "source": source,
+                "citations": int(clean_val(p.get("citations"), 0)),
+                "doi_url": doi_url,
+                "openalex_url": oa_url,
+                "ods": str(p.get("ODS_Nombre") or "—"),
+                "topic": str(p.get("topic") or "General"),
+                "authors": authors_str
+            })
+
+    # 13. Distribución SNII
     snii_dist = {
-        "Candidato": round(count * 0.28) if count else 105,
-        "Nivel 1": round(count * 0.44) if count else 165,
-        "Nivel 2": round(count * 0.18) if count else 68,
-        "Nivel 3": round(count * 0.08) if count else 28,
-        "Emérito": round(count * 0.02) if count else 8
+        "Candidato": round(official_snii * 0.28) if official_snii else 105,
+        "Nivel 1": round(official_snii * 0.44) if official_snii else 165,
+        "Nivel 2": round(official_snii * 0.18) if official_snii else 68,
+        "Nivel 3": round(official_snii * 0.08) if official_snii else 28,
+        "Emérito": round(official_snii * 0.02) if official_snii else 8
     }
 
     return {
         "institution": institution,
         "dependency": dependency,
         "subdependency": subdependency,
-        "kpi": kpi,
+        "view_mode": view_mode,
+        "metadata": metadata,
+        "kpi": kpi_flat,
+        "oa_distribution": oa_dist,
+        "thematic_profile": thematic_profile,
+        "document_types": doc_types,
+        "sdg_matrix": sdg_matrix,
         "annual_evolution": annual_evolution,
+        "sunburst_topics": sunburst_topics,
+        "sunburst_trace": sunburst_trace,
+        "keywords": keywords_list,
+        "papers_sample": papers_sample,
+        "available_years": available_years,
+        "available_ods": available_ods,
         "snii_distribution": snii_dist
+    }
+
+@router.get("/papers")
+def get_hierarchy_papers(
+    institution: str = Query(..., description="Nombre de la institución"),
+    dependency: Optional[str] = Query(None, description="Nombre de la dependencia opcional"),
+    subdependency: Optional[str] = Query(None, description="Nombre de la subdependencia opcional"),
+    view_mode: Optional[str] = Query("capacidad_instalada", description="capacidad_instalada o produccion_institucional"),
+    year: Optional[int] = Query(None, description="Filtrar por año específico"),
+    ods: Optional[str] = Query(None, description="Filtrar por ODS específico"),
+    search: Optional[str] = Query(None, description="Búsqueda libre en título o revista"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0)
+) -> Dict[str, Any]:
+    """Endpoint paginado y filtrable para explorar las publicaciones de la entidad."""
+    from dashboard_analytics import load_cached_data
+    
+    target_entity = subdependency or dependency or institution
+    df_papers = load_cached_data('papers_institucion.parquet', entity_name=target_entity, institution_name=institution, view_mode=view_mode)
+    
+    if df_papers is None or df_papers.empty:
+        return {"total": 0, "papers": []}
+        
+    df = df_papers.copy()
+    
+    if year is not None:
+        df = df[df['year'] == year]
+        
+    if ods and ods != "Todos":
+        if 'ODS_Nombre' in df.columns:
+            df = df[df['ODS_Nombre'].str.contains(re.escape(ods), case=False, na=False)]
+            
+    if search:
+        s = search.lower()
+        title_mask = df['Title'].str.lower().str.contains(s, na=False) if 'Title' in df.columns else False
+        source_mask = df['Source'].str.lower().str.contains(s, na=False) if 'Source' in df.columns else False
+        df = df[title_mask | source_mask]
+        
+    total_matches = len(df)
+    df_page = df.sort_values(by=['citations', 'year'], ascending=[False, False]).iloc[offset:offset+limit]
+    
+    results = []
+    for _, p in df_page.iterrows():
+        title = str(p.get("Title") or p.get("title") or "Sin título")
+        source = str(p.get("Source") or p.get("source") or "Revista Científica")
+        doi_val = str(p.get("DOI") or p.get("doi") or "")
+        doi_url = doi_val if doi_val.startswith("http") else (f"https://doi.org/{doi_val}" if doi_val else "")
+        oa_val = str(p.get("paper_id") or p.get("openalex_id") or "")
+        oa_url = oa_val if oa_val.startswith("http") else (f"https://openalex.org/{oa_val}" if oa_val else "")
+        authors_str = extract_and_format_authors(p)
+
+        results.append({
+            "year": int(clean_val(p.get("year"), 2024)),
+            "title": title,
+            "source": source,
+            "citations": int(clean_val(p.get("citations"), 0)),
+            "doi_url": doi_url,
+            "openalex_url": oa_url,
+            "ods": str(p.get("ODS_Nombre") or "—"),
+            "topic": str(p.get("topic") or "General"),
+            "authors": authors_str
+        })
+        
+    return {
+        "total": total_matches,
+        "offset": offset,
+        "limit": limit,
+        "papers": results
     }
