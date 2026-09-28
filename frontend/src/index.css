@@ -3,13 +3,15 @@
  * Sistema de Diseño Visual "Obsidian Glass" - SNII Info TlachIA
  */
 
-:root {
+[data-theme="oscuro"] {
   /* Paleta Base Obsidian */
   --bg-deep: #07090e;
   --bg-surface: #0b0f17;
   --bg-card: rgba(15, 23, 42, 0.65);
   --bg-card-hover: rgba(22, 33, 56, 0.75);
   --bg-glass: rgba(11, 15, 23, 0.85);
+  --bg-input: rgba(15, 23, 42, 0.85);
+  --bg-input-focus: rgba(22, 33, 56, 0.95);
 
   /* Bordes & Resplandores */
   --border-subtle: rgba(255, 255, 255, 0.07);
@@ -31,6 +33,7 @@
   --grad-emerald: linear-gradient(135deg, #10b981 0%, #059669 100%);
   --grad-gold: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
   --grad-dark-card: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 100%);
+  --grad-text-kpi: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
 
   /* Tipografía */
   --font-display: 'Outfit', sans-serif;
@@ -42,6 +45,105 @@
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
   --text-dim: #475569;
+
+  /* Sombras */
+  --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  --card-shadow-hover: 0 8px 30px rgba(0, 0, 0, 0.45);
+  --ambient-opacity: 0.08;
+
+  /* Plotly Adaptativo */
+  --plotly-font: #94a3b8;
+  --plotly-grid: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="navy"] {
+  --bg-deep: #030a16;
+  --bg-surface: #071731;
+  --bg-card: rgba(7, 23, 49, 0.75);
+  --bg-card-hover: rgba(12, 35, 75, 0.85);
+  --bg-glass: rgba(7, 23, 49, 0.9);
+  --bg-input: rgba(7, 23, 49, 0.85);
+  --bg-input-focus: rgba(12, 35, 75, 0.95);
+
+  --border-subtle: rgba(56, 189, 248, 0.15);
+  --border-focus: rgba(56, 189, 248, 0.5);
+  --glow-cyan: 0 0 20px rgba(56, 189, 248, 0.3);
+  --glow-purple: 0 0 20px rgba(129, 140, 248, 0.3);
+
+  --accent-cyan: #38bdf8;
+  --accent-blue: #0284c7;
+  --accent-purple: #818cf8;
+  --accent-emerald: #10b981;
+  --accent-amber: #f59e0b;
+  --accent-rose: #f43f5e;
+
+  --grad-primary: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
+  --grad-purple: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+  --grad-emerald: linear-gradient(135deg, #10b981 0%, #047857 100%);
+  --grad-gold: linear-gradient(135deg, #f59e0b 0%, #b45309 100%);
+  --grad-dark-card: linear-gradient(180deg, rgba(56, 189, 248, 0.05) 0%, rgba(56, 189, 248, 0) 100%);
+  --grad-text-kpi: linear-gradient(135deg, #e0f2fe 40%, #7dd3fc 100%);
+
+  --font-display: 'Outfit', sans-serif;
+  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --text-primary: #e0f2fe;
+  --text-secondary: #93c5fd;
+  --text-muted: #60a5fa;
+  --text-dim: #2563eb;
+
+  --card-shadow: 0 4px 20px rgba(2, 6, 23, 0.5);
+  --card-shadow-hover: 0 8px 30px rgba(2, 6, 23, 0.7);
+  --ambient-opacity: 0.12;
+
+  --plotly-font: #93c5fd;
+  --plotly-grid: rgba(56, 189, 248, 0.1);
+}
+
+:root, [data-theme="claro"] {
+  --bg-deep: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f1f5f9;
+  --bg-glass: rgba(255, 255, 255, 0.94);
+  --bg-input: #ffffff;
+  --bg-input-focus: #ffffff;
+
+  --border-subtle: #e2e8f0;
+  --border-focus: #0284c7;
+  --glow-cyan: 0 0 20px rgba(2, 132, 199, 0.15);
+  --glow-purple: 0 0 20px rgba(121, 40, 202, 0.15);
+
+  --accent-cyan: #0284c7;
+  --accent-blue: #0369a1;
+  --accent-purple: #7928ca;
+  --accent-emerald: #059669;
+  --accent-amber: #d97706;
+  --accent-rose: #e11d48;
+
+  --grad-primary: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  --grad-purple: linear-gradient(135deg, #7928ca 0%, #c026d3 100%);
+  --grad-emerald: linear-gradient(135deg, #059669 0%, #047857 100%);
+  --grad-gold: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+  --grad-dark-card: linear-gradient(180deg, rgba(0, 0, 0, 0.02) 0%, transparent 100%);
+  --grad-text-kpi: linear-gradient(135deg, #0f172a 40%, #0284c7 100%);
+
+  --font-display: 'Outfit', sans-serif;
+  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --text-dim: #94a3b8;
+
+  --card-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.03);
+  --card-shadow-hover: 0 10px 25px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --ambient-opacity: 0.02;
+
+  --plotly-font: #334155;
+  --plotly-grid: rgba(0, 0, 0, 0.06);
 }
 
 * {
@@ -117,7 +219,7 @@ h4 { font-size: 1.1rem; line-height: 1.35; }
   border-radius: 12px;
   padding: 1.5rem;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--card-shadow);
   position: relative;
   overflow: hidden;
 }
@@ -136,7 +238,21 @@ h4 { font-size: 1.1rem; line-height: 1.35; }
   background: var(--bg-card-hover);
   border-color: rgba(255, 255, 255, 0.12);
   transform: translateY(-2px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--card-shadow-hover);
+}
+
+[data-theme="claro"] .glass-card {
+  background: #ffffff;
+  border-color: #e2e8f0;
+}
+
+[data-theme="claro"] .glass-card::before {
+  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.04), transparent);
+}
+
+[data-theme="claro"] .glass-card:hover {
+  background: #ffffff;
+  border-color: #cbd5e1;
 }
 
 /* Botones Primarios y Secundarios */
@@ -230,7 +346,7 @@ h4 { font-size: 1.1rem; line-height: 1.35; }
 /* Controles de Formulario & Inputs */
 .form-input, .form-select {
   width: 100%;
-  background: rgba(15, 23, 42, 0.8);
+  background: var(--bg-input);
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
   padding: 0.65rem 0.95rem;
@@ -244,7 +360,7 @@ h4 { font-size: 1.1rem; line-height: 1.35; }
 .form-input:focus, .form-select:focus {
   border-color: var(--accent-cyan);
   box-shadow: 0 0 12px rgba(0, 242, 254, 0.2);
-  background: rgba(22, 33, 56, 0.95);
+  background: var(--bg-input-focus);
 }
 
 .form-label {
@@ -271,7 +387,7 @@ h4 { font-size: 1.1rem; line-height: 1.35; }
   font-size: 2.2rem;
   font-weight: 800;
   line-height: 1.1;
-  background: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
+  background: var(--grad-text-kpi);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -284,6 +400,62 @@ h4 { font-size: 1.1rem; line-height: 1.35; }
   letter-spacing: 0.05em;
 }
 
+/* Controles Segmentados (Segmented Pills para Tema & Filtros) */
+.segmented-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--bg-input);
+  padding: 3px;
+  border-radius: 9px;
+  border: 1px solid var(--border-subtle);
+  user-select: none;
+}
+
+.segmented-pill-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  border: none;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-muted);
+  transition: all 0.2s ease;
+  font-family: var(--font-display);
+}
+
+.segmented-pill-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="claro"] .segmented-pill-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.segmented-pill-btn.active {
+  background: var(--accent-cyan);
+  color: #050b14;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(0, 242, 254, 0.3);
+}
+
+[data-theme="claro"] .segmented-pill-btn.active {
+  background: #0284c7;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.25);
+}
+
+[data-theme="navy"] .segmented-pill-btn.active {
+  background: #38bdf8;
+  color: #030a16;
+  box-shadow: 0 2px 8px rgba(56, 189, 248, 0.3);
+}
+
 /* Skeleton Loading */
 .skeleton {
   background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.03) 75%);
@@ -292,7 +464,59 @@ h4 { font-size: 1.1rem; line-height: 1.35; }
   border-radius: 6px;
 }
 
+[data-theme="claro"] .skeleton {
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.03) 25%, rgba(0, 0, 0, 0.07) 50%, rgba(0, 0, 0, 0.03) 75%);
+  background-size: 200% 100%;
+}
+
 @keyframes skeletonPulse {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* Reglas Adicionales para Tema Claro */
+[data-theme="claro"] .btn-secondary {
+  background: #f1f5f9;
+  color: #0f172a;
+  border-color: #e2e8f0;
+}
+
+[data-theme="claro"] .btn-secondary:hover {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+[data-theme="claro"] .btn-ghost {
+  color: #475569;
+}
+
+[data-theme="claro"] .btn-ghost:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: #0f172a;
+}
+
+[data-theme="claro"] .badge-cyan {
+  background: #e0f2fe;
+  color: #0284c7;
+  border-color: #bae6fd;
+}
+
+[data-theme="claro"] .badge-purple {
+  background: #f3e8ff;
+  color: #7928ca;
+  border-color: #e9d5ff;
+}
+
+[data-theme="claro"] .badge-emerald {
+  background: #d1fae5;
+  color: #059669;
+  border-color: #a7f3d0;
+}
+
+[data-theme="claro"] .badge-amber {
+  background: #fef3c7;
+  color: #d97706;
+  border-color: #fde68a;
+}
+

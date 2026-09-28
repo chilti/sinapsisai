@@ -24,6 +24,7 @@ export function ScienceMaps() {
   const t = useAppStore((state) => state.t)();
   const setSelectedResearcher = useAppStore((state) => state.setSelectedResearcher);
   const setActiveTab = useAppStore((state) => state.setActiveTab);
+  const theme = useAppStore((state) => state.theme);
 
   const [spaces, setSpaces] = useState([]);
   const [selectedSpace, setSelectedSpace] = useState('researchers'); // 'researchers', 'nomic', 'specter', 'preview'
@@ -142,10 +143,13 @@ export function ScienceMaps() {
     }
   }, [filteredPoints, colorMode]);
 
+  const isLight = theme === 'claro';
+  const fontColor = isLight ? '#334155' : '#94a3b8';
+
   const plotLayout = {
     paper_bgcolor: 'transparent',
     plot_bgcolor: 'transparent',
-    font: { family: 'Plus Jakarta Sans, sans-serif', color: '#94a3b8' },
+    font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
     margin: { l: 20, r: 20, t: 20, b: 20 },
     height: 580,
     autosize: true,
@@ -157,7 +161,7 @@ export function ScienceMaps() {
       y: -0.05,
       x: 0.5,
       xanchor: 'center',
-      font: { size: 11, color: '#e2e8f0' }
+      font: { size: 11, color: fontColor }
     },
     xaxis: {
       showgrid: false,

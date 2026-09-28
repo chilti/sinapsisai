@@ -256,3 +256,84 @@
 .footer-link:hover {
   color: var(--accent-cyan);
 }
+
+/* Soporte de Tema Claro en App.css */
+[data-theme="claro"] .main-navbar {
+  background: rgba(255, 255, 255, 0.94);
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="claro"] .brand-main-title {
+  background: linear-gradient(135deg, #0f172a 40%, #0284c7 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+[data-theme="claro"] .brand-icon-wrapper {
+  background: linear-gradient(135deg, rgba(2, 132, 199, 0.1) 0%, rgba(121, 40, 202, 0.1) 100%);
+  border-color: rgba(2, 132, 199, 0.25);
+  box-shadow: 0 0 15px rgba(2, 132, 199, 0.15);
+}
+
+[data-theme="claro"] .navbar-tabs-group {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+}
+
+[data-theme="claro"] .navbar-tab-btn {
+  color: #64748b;
+}
+
+[data-theme="claro"] .navbar-tab-btn:hover {
+  color: #0f172a;
+  background: #e2e8f0;
+}
+
+[data-theme="claro"] .tab-btn-active {
+  background: #ffffff !important;
+  color: #0284c7 !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="claro"] .tab-btn-active .tab-btn-icon {
+  color: #0284c7;
+}
+
+[data-theme="claro"] .lang-selector-btn {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  color: #0f172a;
+}
+
+[data-theme="claro"] .lang-selector-btn:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+[data-theme="claro"] .lang-dropdown-menu {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="claro"] .lang-dropdown-item {
+  color: #475569;
+}
+
+[data-theme="claro"] .lang-dropdown-item:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+[data-theme="claro"] .lang-item-active {
+  background: rgba(2, 132, 199, 0.1);
+  color: #0284c7;
+}
+
+[data-theme="claro"] .app-footer {
+  background: #ffffff;
+  border-color: #e2e8f0;
+}
+

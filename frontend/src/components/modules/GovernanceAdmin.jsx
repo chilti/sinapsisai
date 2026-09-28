@@ -532,7 +532,7 @@ export function GovernanceAdmin() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '1.25rem' }}>
           {/* Panel de Controles de Ingesta */}
           <div className="glass-card">
-            <h3 style={{ fontSize: '1.15rem', marginBottom: '1rem', color: '#f8fafc' }}>
+            <h3 style={{ fontSize: '1.15rem', marginBottom: '1rem', color: 'var(--text-primary)' }}>
               Centro de Operaciones y Procesos E2E
             </h3>
 

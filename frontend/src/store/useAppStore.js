@@ -20,6 +20,16 @@ export const useAppStore = create((set, get) => ({
     set({ language: lang });
   },
 
+  // Tema Visual ('claro' | 'oscuro' | 'navy') - Blanco por defecto
+  theme: typeof window !== 'undefined' ? (localStorage.getItem('tlachia_theme') || 'claro') : 'claro',
+  setTheme: (theme) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tlachia_theme', theme);
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+    set({ theme });
+  },
+
   // Obtener diccionario actual reactivo
   t: () => getDictionary(get().language),
 

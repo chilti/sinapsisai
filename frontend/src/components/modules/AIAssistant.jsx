@@ -323,9 +323,9 @@ export function AIAssistant() {
                   style={{
                     padding: '0.85rem 1.15rem',
                     borderRadius: '10px',
-                    background: isUser ? 'rgba(0, 242, 254, 0.12)' : 'rgba(255, 255, 255, 0.04)',
-                    border: `1px solid ${isUser ? 'rgba(0, 242, 254, 0.3)' : 'rgba(255, 255, 255, 0.08)'}`,
-                    color: '#f8fafc',
+                    background: isUser ? 'rgba(0, 242, 254, 0.12)' : 'var(--bg-input)',
+                    border: `1px solid ${isUser ? 'rgba(0, 242, 254, 0.3)' : 'var(--border-subtle)'}`,
+                    color: 'var(--text-primary)',
                     fontSize: '0.9rem',
                     lineHeight: 1.6,
                     whiteSpace: 'pre-wrap',

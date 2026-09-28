@@ -248,5 +248,12 @@ export const pt = {
     language: "Idioma",
     total: "Total",
     all: "Todos"
+  },
+
+  theme: {
+    title: "Tema Visual",
+    light: "Claro",
+    dark: "Escuro",
+    navy: "Navy"
   }
 };

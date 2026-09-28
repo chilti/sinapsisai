@@ -279,7 +279,7 @@ export function MyResearcherSpace() {
             {userSession.isAuthenticated ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#f8fafc' }}>{userSession.name}</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>{userSession.name}</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)', fontFamily: 'monospace' }}>{userSession.orcid}</div>
                 </div>
                 <button
@@ -338,7 +338,7 @@ export function MyResearcherSpace() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
               <div>
                 <span className="badge badge-purple" style={{ marginBottom: '0.5rem' }}>Padrón Oficial SNII</span>
-                <h3 style={{ fontSize: '1.25rem', color: '#f8fafc' }}>{activeName}</h3>
+                <h3 style={{ fontSize: '1.25rem', color: 'var(--text-primary)' }}>{activeName}</h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
                   <span id="CTL-M04-010" className="badge badge-cyan" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                     <CheckCircle size={12} />
@@ -440,7 +440,7 @@ export function MyResearcherSpace() {
           </div>
 
           <div className="glass-card">
-            <h3 style={{ fontSize: '1.15rem', marginBottom: '0.75rem', color: '#f8fafc' }}>
+            <h3 style={{ fontSize: '1.15rem', marginBottom: '0.75rem', color: 'var(--text-primary)' }}>
               Estado del Expediente Científico
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -727,7 +727,7 @@ export function MyResearcherSpace() {
             </div>
 
             <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1rem', fontSize: '0.85rem', lineHeight: 1.6 }}>
-              <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#f8fafc', marginBottom: '0.5rem' }}>
+              <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
                 EXPEDIENTE: {activeName}
               </div>
               <div style={{ color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
@@ -797,7 +797,7 @@ export function MyResearcherSpace() {
 
           {/* Obras Activas */}
           <div className="glass-card" style={{ marginBottom: '1.25rem' }}>
-            <h4 style={{ fontSize: '1.05rem', marginBottom: '0.75rem', color: '#f8fafc' }}>
+            <h4 style={{ fontSize: '1.05rem', marginBottom: '0.75rem', color: 'var(--text-primary)' }}>
               Obras Activas Vinculadas ({filteredWorks.length})
             </h4>
 
@@ -903,7 +903,7 @@ export function MyResearcherSpace() {
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
         }}>
           <div className="glass-card" style={{ maxWidth: '440px', width: '90%', border: '1px solid var(--accent-cyan)' }}>
-            <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem', color: '#f8fafc' }}>
+            <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
               Autenticación con ORCID
             </h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>

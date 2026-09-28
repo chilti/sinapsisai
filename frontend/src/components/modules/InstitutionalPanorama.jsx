@@ -35,6 +35,7 @@ export function InstitutionalPanorama() {
   const setSelectedLevel = useAppStore((state) => state.setSelectedLevel);
   const selectedPeriod = useAppStore((state) => state.selectedPeriod);
   const setSelectedPeriod = useAppStore((state) => state.setSelectedPeriod);
+  const theme = useAppStore((state) => state.theme);
   
   const setSelectedResearcher = useAppStore((state) => state.setSelectedResearcher);
   const setActiveTab = useAppStore((state) => state.setActiveTab);
@@ -162,29 +163,33 @@ export function InstitutionalPanorama() {
     }
   ];
 
+  const isLight = theme === 'claro';
+  const fontColor = isLight ? '#334155' : '#94a3b8';
+  const gridColor = isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.06)';
+
   const evolutionChartLayout = {
     paper_bgcolor: 'transparent',
     plot_bgcolor: 'transparent',
-    font: { family: 'Plus Jakarta Sans, sans-serif', color: '#94a3b8' },
+    font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
     margin: { l: 50, r: 50, t: 30, b: 40 },
     height: 320,
     autosize: true,
     showlegend: true,
-    legend: { orientation: 'h', y: 1.15, x: 0 },
+    legend: { orientation: 'h', y: 1.15, x: 0, font: { color: fontColor } },
     xaxis: {
-      gridcolor: 'rgba(255, 255, 255, 0.06)',
-      tickfont: { color: '#64748b' }
+      gridcolor: gridColor,
+      tickfont: { color: isLight ? '#475569' : '#64748b' }
     },
     yaxis: {
       title: 'Publicaciones',
-      titlefont: { color: '#00f2fe' },
-      tickfont: { color: '#00f2fe' },
-      gridcolor: 'rgba(255, 255, 255, 0.06)'
+      titlefont: { color: isLight ? '#0284c7' : '#00f2fe' },
+      tickfont: { color: isLight ? '#0284c7' : '#00f2fe' },
+      gridcolor: gridColor
     },
     yaxis2: {
       title: 'Citas',
-      titlefont: { color: '#a855f7' },
-      tickfont: { color: '#a855f7' },
+      titlefont: { color: isLight ? '#7928ca' : '#a855f7' },
+      tickfont: { color: isLight ? '#7928ca' : '#a855f7' },
       overlaying: 'y',
       side: 'right',
       showgrid: false
@@ -210,7 +215,7 @@ export function InstitutionalPanorama() {
   const sniiDonutLayout = {
     paper_bgcolor: 'transparent',
     plot_bgcolor: 'transparent',
-    font: { family: 'Plus Jakarta Sans, sans-serif', color: '#94a3b8' },
+    font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
     margin: { l: 20, r: 20, t: 20, b: 20 },
     height: 320,
     showlegend: false
@@ -442,7 +447,7 @@ export function InstitutionalPanorama() {
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-muted)' }}>
+              <tr style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}>
                 <th style={{ padding: '0.6rem 0.8rem' }}>Investigador</th>
                 <th style={{ padding: '0.6rem 0.8rem' }}>Nivel SNII</th>
                 <th style={{ padding: '0.6rem 0.8rem' }}>Adscripción</th>
@@ -451,8 +456,8 @@ export function InstitutionalPanorama() {
               </tr>
             </thead>
             <tbody>
-              <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
-                <td style={{ padding: '0.75rem 0.8rem', fontWeight: 600, color: '#f8fafc' }}>
+              <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                <td style={{ padding: '0.75rem 0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                   CARRILLO CALVET, HUMBERTO ANDRES
                 </td>
                 <td style={{ padding: '0.75rem 0.8rem' }}>
@@ -461,7 +466,7 @@ export function InstitutionalPanorama() {
                 <td style={{ padding: '0.75rem 0.8rem', color: 'var(--text-secondary)' }}>
                   Facultad de Ciencias · Matemáticas
                 </td>
-                <td style={{ padding: '0.75rem 0.8rem', fontFamily: 'var(--font-mono)', color: '#38bdf8' }}>
+                <td style={{ padding: '0.75rem 0.8rem', fontFamily: 'var(--font-mono)', color: 'var(--accent-blue)' }}>
                   0000-0003-3659-6769
                 </td>
                 <td style={{ padding: '0.75rem 0.8rem', textAlign: 'right' }}>
@@ -477,8 +482,8 @@ export function InstitutionalPanorama() {
                   </button>
                 </td>
               </tr>
-              <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
-                <td style={{ padding: '0.75rem 0.8rem', fontWeight: 600, color: '#f8fafc' }}>
+              <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                <td style={{ padding: '0.75rem 0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                   JIMENEZ ANDRADE, JOSE LUIS
                 </td>
                 <td style={{ padding: '0.75rem 0.8rem' }}>
@@ -487,7 +492,7 @@ export function InstitutionalPanorama() {
                 <td style={{ padding: '0.75rem 0.8rem', color: 'var(--text-secondary)' }}>
                   Facultad de Ciencias · Física
                 </td>
-                <td style={{ padding: '0.75rem 0.8rem', fontFamily: 'var(--font-mono)', color: '#38bdf8' }}>
+                <td style={{ padding: '0.75rem 0.8rem', fontFamily: 'var(--font-mono)', color: 'var(--accent-blue)' }}>
                   0000-0002-3920-539X
                 </td>
                 <td style={{ padding: '0.75rem 0.8rem', textAlign: 'right' }}>
@@ -503,8 +508,8 @@ export function InstitutionalPanorama() {
                   </button>
                 </td>
               </tr>
-              <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
-                <td style={{ padding: '0.75rem 0.8rem', fontWeight: 600, color: '#f8fafc' }}>
+              <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                <td style={{ padding: '0.75rem 0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                   LAZCANO ARAUJO, ANTONIO EUSEBIO
                 </td>
                 <td style={{ padding: '0.75rem 0.8rem' }}>
@@ -513,7 +518,7 @@ export function InstitutionalPanorama() {
                 <td style={{ padding: '0.75rem 0.8rem', color: 'var(--text-secondary)' }}>
                   Facultad de Ciencias · Biología Evolutiva
                 </td>
-                <td style={{ padding: '0.75rem 0.8rem', fontFamily: 'var(--font-mono)', color: '#38bdf8' }}>
+                <td style={{ padding: '0.75rem 0.8rem', fontFamily: 'var(--font-mono)', color: 'var(--accent-blue)' }}>
                   0000-0002-2357-1234
                 </td>
                 <td style={{ padding: '0.75rem 0.8rem', textAlign: 'right' }}>

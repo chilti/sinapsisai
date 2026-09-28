@@ -20,7 +20,12 @@ import './App.css';
 
 export function App() {
   const activeTab = useAppStore((state) => state.activeTab);
+  const theme = useAppStore((state) => state.theme);
   const t = useAppStore((state) => state.t)();
+
+  React.useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
 
   return (
     <div className="app-root">
@@ -49,9 +54,9 @@ export function App() {
           <span>© 2026 Ecosistema TlachIA · Universidad Nacional Autónoma de México (UNAM)</span>
         </div>
         <div className="footer-credits">
-          <a href="/revistaslatam/" className="footer-link" target="_blank" rel="noreferrer">Revistas LATAM</a>
-          <a href="/knomap/" className="footer-link" target="_blank" rel="noreferrer">KnoMap</a>
-          <a href="/tlachia-metrics/" className="footer-link" target="_blank" rel="noreferrer">TlachIA Metrics</a>
+          <a href="https://dinamica1.fciencias.unam.mx/revistaslatam/" className="footer-link" target="_blank" rel="noreferrer">Revistas LATAM</a>
+          <a href="https://dinamica1.fciencias.unam.mx/knomap/" className="footer-link" target="_blank" rel="noreferrer">KnoMap</a>
+          <a href="https://dinamica1.fciencias.unam.mx/tlachiametrics/" className="footer-link" target="_blank" rel="noreferrer">TlachIA Metrics</a>
           <span style={{ color: 'var(--text-dim)' }}>|</span>
           <span>Padrón SNII 2025/2026</span>
         </div>

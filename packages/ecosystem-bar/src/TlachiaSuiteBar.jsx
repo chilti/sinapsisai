@@ -32,7 +32,7 @@ export function TlachiaSuiteBar({
     <header className="tlachia-suite-container" role="banner" aria-label={i18n.suiteTitle}>
       <div className="tlachia-suite-inner">
         {/* Brand / Logo */}
-        <div className="tlachia-suite-brand" title={i18n.suiteSubtitle}>
+        <div id="suite_brand_link" className="tlachia-suite-brand" title={i18n.suiteSubtitle}>
           <div className="tlachia-suite-logo-pulse">
             <span className="tlachia-suite-logo-pulse-circle"></span>
             <span className="tlachia-suite-logo-pulse-ring"></span>
@@ -47,10 +47,18 @@ export function TlachiaSuiteBar({
             const isActive = app.id === currentApp;
             const targetUrl = isDev ? app.devUrl : app.prodUrl;
             const tagline = app.tagline[lang] || app.tagline.es;
+            const controlId = app.id === 'sinapsisai' 
+              ? 'suite_tab_infotlachia' 
+              : app.id === 'revistaslatam' 
+              ? 'suite_tab_revistaslatam' 
+              : app.id === 'knomap' 
+              ? 'suite_tab_knomap' 
+              : 'suite_tab_metrics';
 
             return (
               <a
                 key={app.id}
+                id={controlId}
                 href={isActive ? '#' : targetUrl}
                 onClick={(e) => handleAppClick(app, e)}
                 className={`tlachia-suite-item ${isActive ? 'tlachia-suite-item-active' : ''}`}

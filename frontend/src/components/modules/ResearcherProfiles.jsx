@@ -29,6 +29,7 @@ export function ResearcherProfiles() {
   const researcherName = useAppStore((state) => state.selectedResearcherName);
   const researcherOrcid = useAppStore((state) => state.selectedResearcherOrcid);
   const setSelectedResearcher = useAppStore((state) => state.setSelectedResearcher);
+  const theme = useAppStore((state) => state.theme);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -146,10 +147,13 @@ export function ResearcherProfiles() {
     }
   ];
 
+  const isLight = theme === 'claro';
+  const fontColor = isLight ? '#334155' : '#94a3b8';
+
   const citationsDonutLayout = {
     paper_bgcolor: 'transparent',
     plot_bgcolor: 'transparent',
-    font: { family: 'Plus Jakarta Sans, sans-serif', color: '#94a3b8' },
+    font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
     margin: { l: 20, r: 20, t: 20, b: 20 },
     height: 260,
     showlegend: false
@@ -176,15 +180,15 @@ export function ResearcherProfiles() {
         {searchResults.length > 0 && (
           <div style={{
             position: 'absolute', top: '100%', left: 0, right: 0,
-            background: '#0f172a', border: '1px solid rgba(255, 255, 255, 0.15)',
+            background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
             borderRadius: '8px', marginTop: '6px', zIndex: 100, maxHeight: '300px', overflowY: 'auto',
-            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.6)'
+            boxShadow: 'var(--card-shadow-hover)'
           }}>
             {searchResults.map((item, idx) => (
               <div
                 key={idx}
                 style={{
-                  padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                  padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                 }}
                 onClick={() => {
@@ -194,7 +198,7 @@ export function ResearcherProfiles() {
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: 600, color: '#ffffff' }}>{item.name}</div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.name}</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                     {item.institution} · {item.snii_level ? `SNII ${item.snii_level}` : 'Sin Nivel'}
                   </div>
@@ -361,7 +365,7 @@ export function ResearcherProfiles() {
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-muted)' }}>
+                  <tr style={{ borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}>
                     <th style={{ padding: '0.6rem 0.8rem' }}>{t.researchers.table.title}</th>
                     <th style={{ padding: '0.6rem 0.8rem' }}>{t.researchers.table.journal}</th>
                     <th style={{ padding: '0.6rem 0.8rem', textAlign: 'center' }}>{t.researchers.table.year}</th>
@@ -372,9 +376,9 @@ export function ResearcherProfiles() {
                 </thead>
                 <tbody>
                   {filteredWorks.map((w, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
+                    <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                       <td style={{ padding: '0.75rem 0.8rem', maxWidth: '420px' }}>
-                        <div style={{ fontWeight: 600, color: '#f8fafc', marginBottom: '0.2rem' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.2rem' }}>
                           {w.title}
                         </div>
                         {w.doi && (

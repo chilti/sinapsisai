@@ -15,7 +15,9 @@ import {
   LogIn,
   LogOut,
   Sparkles,
-  ChevronDown
+  ChevronDown,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore.js';
 import { LANGUAGES } from '../../i18n/index.js';
@@ -25,6 +27,8 @@ export function Navbar() {
   const setActiveTab = useAppStore((state) => state.setActiveTab);
   const language = useAppStore((state) => state.language);
   const setLanguage = useAppStore((state) => state.setLanguage);
+  const theme = useAppStore((state) => state.theme);
+  const setTheme = useAppStore((state) => state.setTheme);
   const userSession = useAppStore((state) => state.userSession);
   const logout = useAppStore((state) => state.logout);
   const t = useAppStore((state) => state.t)();
@@ -79,12 +83,56 @@ export function Navbar() {
           })}
         </div>
 
-        {/* Right Actions: Language & Auth */}
+        {/* Right Actions: Theme, Language & Auth */}
         <div className="navbar-actions">
-          {/* Trilingual Selector (CTL-M07-011) */}
+          {/* Selector Segmentado de Tema Visual (CTL-M07-007) */}
+          <div
+            id="CTL-M07-007"
+            data-testid="navbar_theme_toggle"
+            className="segmented-pills"
+            role="radiogroup"
+            aria-label={t.theme?.title || "Tema Visual"}
+          >
+            <button
+              type="button"
+              role="radio"
+              aria-checked={theme === 'claro'}
+              className={`segmented-pill-btn ${theme === 'claro' ? 'active' : ''}`}
+              onClick={() => setTheme('claro')}
+              title="Tema Claro / Light"
+            >
+              <Sun size={13} />
+              <span>{t.theme?.light || "Claro"}</span>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={theme === 'oscuro'}
+              className={`segmented-pill-btn ${theme === 'oscuro' ? 'active' : ''}`}
+              onClick={() => setTheme('oscuro')}
+              title="Tema Oscuro / Dark"
+            >
+              <Moon size={13} />
+              <span>{t.theme?.dark || "Oscuro"}</span>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={theme === 'navy'}
+              className={`segmented-pill-btn ${theme === 'navy' ? 'active' : ''}`}
+              onClick={() => setTheme('navy')}
+              title="Tema Navy / Azul Noche"
+            >
+              <Sparkles size={13} />
+              <span>{t.theme?.navy || "Navy"}</span>
+            </button>
+          </div>
+
+          {/* Trilingual Selector (CTL-M07-006 / CTL-M07-011) */}
           <div className="lang-selector-wrapper">
             <button
-              id="CTL-M07-011"
+              id="CTL-M07-006"
+              data-testid="navbar_lang_selector"
               type="button"
               className="lang-selector-btn"
               onClick={() => setLangMenuOpen(!langMenuOpen)}
@@ -114,12 +162,12 @@ export function Navbar() {
             )}
           </div>
 
-          {/* ORCID Login Button (CTL-M07-012) */}
+          {/* ORCID Login Button (CTL-M07-009 / CTL-M07-012) */}
           {userSession.isAuthenticated ? (
             <div className="user-profile-badge">
               <span className="user-name-label">{userSession.name || userSession.orcid}</span>
               <button
-                id="CTL-M07-012-logout"
+                id="CTL-M07-009-logout"
                 className="user-logout-btn"
                 onClick={logout}
                 title={t.mySpace.logout}
@@ -129,7 +177,8 @@ export function Navbar() {
             </div>
           ) : (
             <button
-              id="CTL-M07-012"
+              id="CTL-M07-009"
+              data-testid="navbar_user_auth_button"
               className="btn btn-secondary btn-sm auth-btn"
               onClick={() => setActiveTab('mySpace')}
             >

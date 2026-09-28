@@ -248,5 +248,12 @@ export const en = {
     language: "Language",
     total: "Total",
     all: "All"
+  },
+
+  theme: {
+    title: "Visual Theme",
+    light: "Light",
+    dark: "Dark",
+    navy: "Navy"
   }
 };
