@@ -28,7 +28,8 @@ import {
   ArrowRight,
   ShieldCheck,
   DollarSign,
-  Flag
+  Flag,
+  Loader2
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore.js';
 import { apiClient } from '../../api/client.js';
@@ -161,7 +162,7 @@ export function NationalPanorama() {
     half_life_avg: 6.8
   };
 
-  const annual = metricsData?.annual_evolution || [];
+  const annual = (metricsData?.annual_evolution || []).filter((d) => d.year >= 1980 && d.year <= 2026);
   const oaDist = metricsData?.oa_distribution || { Gold: 22, Green: 8, Hybrid: 5, Bronze: 4, Closed: 61 };
   const thematic = metricsData?.thematic_profile || { gini_topics: 0.38, domain_diversity: 4, unique_topics: 284, top_domain: 'Physical Sciences' };
   const docTypes = metricsData?.document_types || [];
@@ -288,16 +289,20 @@ export function NationalPanorama() {
             <div style={{ display: 'flex', background: 'var(--bg-card)', padding: '0.25rem', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
               <button
                 className={`btn btn-sm ${viewMode === 'capacidad_instalada' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
+                style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
                 onClick={() => setViewMode('capacidad_instalada')}
+                disabled={loading}
               >
+                {loading && viewMode === 'capacidad_instalada' && <Loader2 size={13} className="animate-spin" />}
                 Capacidad Instalada
               </button>
               <button
                 className={`btn btn-sm ${viewMode === 'produccion_institucional' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
+                style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
                 onClick={() => setViewMode('produccion_institucional')}
+                disabled={loading}
               >
+                {loading && viewMode === 'produccion_institucional' && <Loader2 size={13} className="animate-spin" />}
                 Producción Consolidada
               </button>
             </div>
@@ -595,7 +600,7 @@ export function NationalPanorama() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
         {/* Documentos Anuales */}
         <div className="glass-card">
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Evolución Histórica de Producción Nacional (Docs por Año)</h3>
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Documentos Publicados por Año (1980–2026)</h3>
           <Plot
             data={annualDocsChartData}
             layout={{
@@ -605,7 +610,7 @@ export function NationalPanorama() {
               paper_bgcolor: 'transparent',
               plot_bgcolor: 'transparent',
               font: { color: fontColor, family: 'Inter, sans-serif' },
-              xaxis: { gridcolor: gridColor },
+              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
               yaxis: { gridcolor: gridColor }
             }}
             config={{ responsive: true, displayModeBar: false }}
@@ -615,7 +620,7 @@ export function NationalPanorama() {
 
         {/* FWCI Anual */}
         <div className="glass-card">
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Evolución del Impacto Normalizado (FWCI vs 1.0 Mundial)</h3>
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Evolución del Impacto Normalizado (FWCI vs 1.0 Mundial) (1980–2026)</h3>
           <Plot
             data={annualFwciChartData}
             layout={{
@@ -625,13 +630,13 @@ export function NationalPanorama() {
               paper_bgcolor: 'transparent',
               plot_bgcolor: 'transparent',
               font: { color: fontColor, family: 'Inter, sans-serif' },
-              xaxis: { gridcolor: gridColor },
+              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
               yaxis: { gridcolor: gridColor },
               shapes: [
                 {
                   type: 'line',
-                  x0: annual.length > 0 ? annual[0].year : 1980,
-                  x1: annual.length > 0 ? annual[annual.length - 1].year : 2026,
+                  x0: 1980,
+                  x1: 2026,
                   y0: 1.0,
                   y1: 1.0,
                   line: { color: '#ec4899', width: 2, dash: 'dash' }
@@ -697,7 +702,7 @@ export function NationalPanorama() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
         {/* Evolución Colaboración Internacional */}
         <div className="glass-card">
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Evolución de % Colaboración Internacional</h3>
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Evolución de % Colaboración Internacional (1980–2026)</h3>
           <Plot
             data={annualIntlChartData}
             layout={{
@@ -707,7 +712,7 @@ export function NationalPanorama() {
               paper_bgcolor: 'transparent',
               plot_bgcolor: 'transparent',
               font: { color: fontColor, family: 'Inter, sans-serif' },
-              xaxis: { gridcolor: gridColor },
+              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
               yaxis: { gridcolor: gridColor, range: [0, 100] }
             }}
             config={{ responsive: true, displayModeBar: false }}
@@ -717,7 +722,7 @@ export function NationalPanorama() {
 
         {/* Evolución Acceso Abierto (Stacked Bar) */}
         <div className="glass-card">
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Evolución de Vías de Acceso Abierto (Proporción Anual)</h3>
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Evolución de Vías de Acceso Abierto (1980–2026)</h3>
           <Plot
             data={annualOaStackedData}
             layout={{
@@ -728,7 +733,7 @@ export function NationalPanorama() {
               paper_bgcolor: 'transparent',
               plot_bgcolor: 'transparent',
               font: { color: fontColor, family: 'Inter, sans-serif' },
-              xaxis: { gridcolor: gridColor },
+              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
               yaxis: { gridcolor: gridColor, range: [0, 100] },
               legend: { orientation: 'h', y: -0.2 }
             }}

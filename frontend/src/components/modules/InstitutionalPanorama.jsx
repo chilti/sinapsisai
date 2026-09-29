@@ -27,7 +27,8 @@ import {
   Filter,
   ArrowRight,
   ShieldCheck,
-  DollarSign
+  DollarSign,
+  Loader2
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore.js';
 import { apiClient } from '../../api/client.js';
@@ -218,7 +219,7 @@ export function InstitutionalPanorama() {
     half_life_avg: 0
   };
 
-  const annual = metricsData?.annual_evolution || [];
+  const annual = (metricsData?.annual_evolution || []).filter((d) => d.year >= 1980 && d.year <= 2026);
   const oaDist = metricsData?.oa_distribution || { Gold: 0, Green: 0, Hybrid: 0, Bronze: 0, Closed: 100 };
   const thematic = metricsData?.thematic_profile || { gini_topics: null, domain_diversity: 0, unique_topics: 0, top_domain: '—' };
   const docTypes = metricsData?.document_types || [];
@@ -332,16 +333,20 @@ export function InstitutionalPanorama() {
             <div style={{ display: 'flex', background: 'var(--bg-card)', padding: '0.25rem', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
               <button
                 className={`btn btn-sm ${viewMode === 'capacidad_instalada' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
+                style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
                 onClick={() => setViewMode('capacidad_instalada')}
+                disabled={loading}
               >
+                {loading && viewMode === 'capacidad_instalada' && <Loader2 size={13} className="animate-spin" />}
                 Capacidad Instalada
               </button>
               <button
                 className={`btn btn-sm ${viewMode === 'produccion_institucional' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
+                style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
                 onClick={() => setViewMode('produccion_institucional')}
+                disabled={loading}
               >
+                {loading && viewMode === 'produccion_institucional' && <Loader2 size={13} className="animate-spin" />}
                 Producción Institucional
               </button>
             </div>
@@ -740,7 +745,7 @@ export function InstitutionalPanorama() {
         <div className="glass-card">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
             <BookOpen size={18} style={{ color: '#f59e0b' }} />
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Documentos Publicados por Año (1950–2026)</h3>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Documentos Publicados por Año (1980–2026)</h3>
           </div>
           <Plot
             data={annualDocsChartData}
@@ -751,7 +756,7 @@ export function InstitutionalPanorama() {
               margin: { l: 50, r: 20, t: 20, b: 35 },
               height: 280,
               autosize: true,
-              xaxis: { gridcolor: gridColor, tickformat: 'd' },
+              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
               yaxis: { gridcolor: gridColor, title: 'Documentos' }
             }}
             config={{ responsive: true, displayModeBar: false }}
@@ -763,7 +768,7 @@ export function InstitutionalPanorama() {
         <div className="glass-card">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
             <TrendingUp size={18} style={{ color: 'var(--accent-blue)' }} />
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Evolución FWCI Promedio Institucional</h3>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Evolución FWCI Promedio Institucional (1980–2026)</h3>
           </div>
           <Plot
             data={annualFwciChartData}
@@ -774,7 +779,7 @@ export function InstitutionalPanorama() {
               margin: { l: 50, r: 20, t: 20, b: 35 },
               height: 280,
               autosize: true,
-              xaxis: { gridcolor: gridColor, tickformat: 'd' },
+              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
               yaxis: { gridcolor: gridColor, title: 'FWCI' },
               shapes: [
                 {
@@ -880,7 +885,7 @@ export function InstitutionalPanorama() {
         <div className="glass-card">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
             <Globe2 size={18} style={{ color: 'var(--accent-purple)' }} />
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Evolución de Colaboración Internacional (%)</h3>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Evolución de Colaboración Internacional (%) (1980–2026)</h3>
           </div>
           <Plot
             data={annualIntlChartData}
@@ -891,7 +896,7 @@ export function InstitutionalPanorama() {
               margin: { l: 50, r: 20, t: 20, b: 35 },
               height: 280,
               autosize: true,
-              xaxis: { gridcolor: gridColor, tickformat: 'd' },
+              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
               yaxis: { gridcolor: gridColor, title: '%', range: [0, 100] }
             }}
             config={{ responsive: true, displayModeBar: false }}
@@ -903,7 +908,7 @@ export function InstitutionalPanorama() {
         <div className="glass-card">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
             <Layers size={18} style={{ color: 'var(--accent-emerald)' }} />
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Evolución del Acceso Abierto por Año (%)</h3>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Evolución del Acceso Abierto por Año (%) (1980–2026)</h3>
           </div>
           <Plot
             data={annualOaStackedData}
@@ -915,7 +920,7 @@ export function InstitutionalPanorama() {
               margin: { l: 50, r: 20, t: 20, b: 35 },
               height: 280,
               autosize: true,
-              xaxis: { gridcolor: gridColor, tickformat: 'd' },
+              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
               yaxis: { gridcolor: gridColor, title: '%' },
               showlegend: true,
               legend: { orientation: 'h', y: 1.15, x: 0 }
