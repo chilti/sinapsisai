@@ -7,8 +7,8 @@ import { create } from 'zustand';
 import { getDictionary } from '../i18n/index.js';
 
 export const useAppStore = create((set, get) => ({
-  // Pestaña Activa
-  activeTab: 'home', // 'home', 'national', 'panorama', 'researchers', 'maps', 'mySpace', 'governance', 'assistant'
+  // Pestaña Activa (Inicio desactivada/oculta; Panorama Nacional por defecto)
+  activeTab: 'national', // 'national', 'panorama', 'researchers', 'maps', 'mySpace', 'governance', 'assistant'
   setActiveTab: (tab) => set({ activeTab: tab }),
 
   // Idioma (Persistente en localStorage)

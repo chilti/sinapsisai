@@ -36,7 +36,8 @@ export function Navbar() {
   const [langMenuOpen, setLangMenuOpen] = useState(false);
 
   const navItems = [
-    { id: 'home', label: t.tabs?.home || 'Inicio', icon: Sparkles, controlId: 'CTL-M07-004' },
+    // Pestaña Inicio desactivada/oculta a solicitud
+    // { id: 'home', label: t.tabs?.home || 'Inicio', icon: Sparkles, controlId: 'CTL-M07-004' },
     { id: 'national', label: t.tabs?.national || 'Panorama Nacional', icon: Globe, controlId: 'CTL-M07-004B' },
     { id: 'panorama', label: t.tabs.panorama, icon: Building2, controlId: 'CTL-M07-005' },
     { id: 'researchers', label: t.tabs.researchers, icon: Users, controlId: 'CTL-M07-006' },
@@ -52,7 +53,7 @@ export function Navbar() {
     <nav className="main-navbar" role="navigation" aria-label="Navegación Principal">
       <div className="navbar-container">
         {/* Brand */}
-        <div className="navbar-brand" onClick={() => setActiveTab('home')}>
+        <div className="navbar-brand" onClick={() => setActiveTab('national')}>
           <div className="brand-icon-wrapper">
             <Sparkles className="brand-sparkle-icon" size={18} />
           </div>
