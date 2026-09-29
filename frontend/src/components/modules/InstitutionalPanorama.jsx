@@ -442,19 +442,6 @@ export function InstitutionalPanorama() {
               ))}
             </select>
           </div>
-
-          <div>
-            <label className="form-label">{t.panorama.periodFilter}</label>
-            <select
-              className="form-select"
-              value={selectedPeriod}
-              onChange={(e) => setSelectedPeriod(e.target.value)}
-            >
-              <option value="all">Histórico Completo (1940-2026)</option>
-              <option value="2020-2026">Últimos 6 años (2020-2026)</option>
-              <option value="2015-2026">Últimos 10 años (2015-2026)</option>
-            </select>
-          </div>
         </div>
       </div>
 
