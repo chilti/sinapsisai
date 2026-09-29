@@ -9,6 +9,7 @@ export const en = {
   appSubtitle: "Scientific Intelligence for SNII Registry and Academic Output",
   tabs: {
     home: "Home",
+    national: "National Overview",
     panorama: "Institutional Overview",
     researchers: "Researchers",
     maps: "Science Maps",

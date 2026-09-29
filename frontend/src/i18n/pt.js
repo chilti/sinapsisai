@@ -9,6 +9,7 @@ export const pt = {
   appSubtitle: "Inteligência Científica do Registro SNII e Produção Acadêmica",
   tabs: {
     home: "Início",
+    national: "Panorama Nacional",
     panorama: "Panorama Institucional",
     researchers: "Pesquisadores",
     maps: "Mapas da Ciência",

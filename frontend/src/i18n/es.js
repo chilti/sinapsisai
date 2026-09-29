@@ -9,6 +9,7 @@ export const es = {
   appSubtitle: "Inteligencia Científica del Padrón SNII y Producción Académica",
   tabs: {
     home: "Inicio",
+    national: "Panorama Nacional",
     panorama: "Panorama Institucional",
     researchers: "Investigadores",
     maps: "Mapas de la Ciencia",

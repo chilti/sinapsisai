@@ -10,6 +10,7 @@ import { Navbar } from './components/layout/Navbar.jsx';
 
 // Módulos
 import { HomeGalaxy } from './components/modules/HomeGalaxy.jsx';
+import { NationalPanorama } from './components/modules/NationalPanorama.jsx';
 import { InstitutionalPanorama } from './components/modules/InstitutionalPanorama.jsx';
 import { ResearcherProfiles } from './components/modules/ResearcherProfiles.jsx';
 import { ScienceMaps } from './components/modules/ScienceMaps.jsx';
@@ -42,6 +43,7 @@ export function App() {
       {/* 3. Área de Contenido Dinámico */}
       <main className="main-content-area" role="main">
         {activeTab === 'home' && <HomeGalaxy />}
+        {activeTab === 'national' && <NationalPanorama />}
         {activeTab === 'panorama' && <InstitutionalPanorama />}
         {activeTab === 'researchers' && <ResearcherProfiles />}
         {activeTab === 'maps' && <ScienceMaps />}

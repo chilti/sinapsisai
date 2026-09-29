@@ -74,11 +74,11 @@ export function HomeGalaxy() {
             </div>
             <div>
               <h2 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                Galaxia del Conocimiento Científico
+                Mapa de la Ciencia Mexicana
                 <span className="badge badge-purple" style={{ fontSize: '0.7rem' }}>WebGL 3D/2D</span>
               </h2>
               <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                Cartografía topológica interactiva de artículos, clústeres temáticos y trayectorias
+                Cartografía topológica interactiva de artículos, clústeres temáticos y trayectorias nacionales
               </span>
             </div>
           </div>
@@ -117,7 +117,7 @@ export function HomeGalaxy() {
         </div>
       )}
 
-      {/* Contenedor Iframe de la Galaxia */}
+      {/* Contenedor Iframe del Mapa de la Ciencia Mexicana */}
       <div
         className="glass-card"
         style={{
@@ -160,7 +160,7 @@ export function HomeGalaxy() {
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <Sparkles size={16} style={{ color: 'var(--accent-cyan)' }} />
-                Cargando la galaxia del conocimiento...
+                Cargando mapa de la ciencia Mexicana...
               </div>
               <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                 Renderizando mapa topológico de artículos y clústeres en WebGL
@@ -172,7 +172,7 @@ export function HomeGalaxy() {
         <iframe
           key={iframeKey}
           id="galaxy-map-iframe"
-          title="Galaxia del Conocimiento"
+          title="Mapa de la Ciencia Mexicana"
           src={iframeUrl}
           onLoad={() => setIsLoading(false)}
           style={{

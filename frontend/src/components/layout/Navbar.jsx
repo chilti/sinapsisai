@@ -37,6 +37,7 @@ export function Navbar() {
 
   const navItems = [
     { id: 'home', label: t.tabs?.home || 'Inicio', icon: Sparkles, controlId: 'CTL-M07-004' },
+    { id: 'national', label: t.tabs?.national || 'Panorama Nacional', icon: Globe, controlId: 'CTL-M07-004B' },
     { id: 'panorama', label: t.tabs.panorama, icon: Building2, controlId: 'CTL-M07-005' },
     { id: 'researchers', label: t.tabs.researchers, icon: Users, controlId: 'CTL-M07-006' },
     { id: 'maps', label: t.tabs.maps, icon: Compass, controlId: 'CTL-M07-007' },
