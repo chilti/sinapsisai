@@ -319,7 +319,7 @@ export function InstitutionalPanorama() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.25rem' }}>
               <Building2 size={26} style={{ color: 'var(--accent-cyan)' }} />
               <h1 style={{ fontSize: '1.65rem', fontWeight: 700 }}>
-                {selectedDependency || selectedInstitution || 'Panorama Institucional'}
+                {selectedSubdependency || selectedDependency || selectedInstitution || 'Panorama Institucional'}
               </h1>
             </div>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>

@@ -35,8 +35,8 @@ export const useAppStore = create((set, get) => ({
 
   // Filtros Institucionales Globales
   selectedInstitution: 'UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)',
-  selectedDependency: 'FACULTAD DE CIENCIAS',
-  selectedSubdependency: '',
+  selectedDependency: 'SECRETARIA GENERAL',
+  selectedSubdependency: 'FACULTAD DE CIENCIAS',
   selectedArea: '',
   selectedLevel: '',
   selectedPeriod: 'all',
