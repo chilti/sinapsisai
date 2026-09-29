@@ -1,105 +1,7 @@
 /**
  * frontend/src/index.css
- * Sistema de Diseño Visual "Obsidian Glass" - SNII Info TlachIA
+ * Sistema de Diseño Visual "Obsidian Glass" - Info TlachIA
  */
-
-[data-theme="oscuro"] {
-  /* Paleta Base Obsidian */
-  --bg-deep: #07090e;
-  --bg-surface: #0b0f17;
-  --bg-card: rgba(15, 23, 42, 0.65);
-  --bg-card-hover: rgba(22, 33, 56, 0.75);
-  --bg-glass: rgba(11, 15, 23, 0.85);
-  --bg-input: rgba(15, 23, 42, 0.85);
-  --bg-input-focus: rgba(22, 33, 56, 0.95);
-
-  /* Bordes & Resplandores */
-  --border-subtle: rgba(255, 255, 255, 0.07);
-  --border-focus: rgba(0, 242, 254, 0.45);
-  --glow-cyan: 0 0 20px rgba(0, 242, 254, 0.25);
-  --glow-purple: 0 0 20px rgba(168, 85, 247, 0.25);
-
-  /* Acentos Cromáticos */
-  --accent-cyan: #00f2fe;
-  --accent-blue: #38bdf8;
-  --accent-purple: #a855f7;
-  --accent-emerald: #10b981;
-  --accent-amber: #f59e0b;
-  --accent-rose: #f43f5e;
-
-  /* Gradientes de Impacto */
-  --grad-primary: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
-  --grad-purple: linear-gradient(135deg, #7928ca 0%, #ff0080 100%);
-  --grad-emerald: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  --grad-gold: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  --grad-dark-card: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 100%);
-  --grad-text-kpi: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
-
-  /* Tipografía */
-  --font-display: 'Outfit', sans-serif;
-  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-
-  /* Textos */
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --text-dim: #475569;
-
-  /* Sombras */
-  --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
-  --card-shadow-hover: 0 8px 30px rgba(0, 0, 0, 0.45);
-  --ambient-opacity: 0.08;
-
-  /* Plotly Adaptativo */
-  --plotly-font: #94a3b8;
-  --plotly-grid: rgba(255, 255, 255, 0.06);
-}
-
-[data-theme="navy"] {
-  --bg-deep: #030a16;
-  --bg-surface: #071731;
-  --bg-card: rgba(7, 23, 49, 0.75);
-  --bg-card-hover: rgba(12, 35, 75, 0.85);
-  --bg-glass: rgba(7, 23, 49, 0.9);
-  --bg-input: rgba(7, 23, 49, 0.85);
-  --bg-input-focus: rgba(12, 35, 75, 0.95);
-
-  --border-subtle: rgba(56, 189, 248, 0.15);
-  --border-focus: rgba(56, 189, 248, 0.5);
-  --glow-cyan: 0 0 20px rgba(56, 189, 248, 0.3);
-  --glow-purple: 0 0 20px rgba(129, 140, 248, 0.3);
-
-  --accent-cyan: #38bdf8;
-  --accent-blue: #0284c7;
-  --accent-purple: #818cf8;
-  --accent-emerald: #10b981;
-  --accent-amber: #f59e0b;
-  --accent-rose: #f43f5e;
-
-  --grad-primary: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
-  --grad-purple: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-  --grad-emerald: linear-gradient(135deg, #10b981 0%, #047857 100%);
-  --grad-gold: linear-gradient(135deg, #f59e0b 0%, #b45309 100%);
-  --grad-dark-card: linear-gradient(180deg, rgba(56, 189, 248, 0.05) 0%, rgba(56, 189, 248, 0) 100%);
-  --grad-text-kpi: linear-gradient(135deg, #e0f2fe 40%, #7dd3fc 100%);
-
-  --font-display: 'Outfit', sans-serif;
-  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-
-  --text-primary: #e0f2fe;
-  --text-secondary: #93c5fd;
-  --text-muted: #60a5fa;
-  --text-dim: #2563eb;
-
-  --card-shadow: 0 4px 20px rgba(2, 6, 23, 0.5);
-  --card-shadow-hover: 0 8px 30px rgba(2, 6, 23, 0.7);
-  --ambient-opacity: 0.12;
-
-  --plotly-font: #93c5fd;
-  --plotly-grid: rgba(56, 189, 248, 0.1);
-}
 
 :root, [data-theme="claro"] {
   --bg-deep: #f8fafc;
@@ -144,6 +46,104 @@
 
   --plotly-font: #334155;
   --plotly-grid: rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="oscuro"] {
+  /* Paleta Base Obsidian */
+  --bg-deep: #07090e;
+  --bg-surface: #0b0f17;
+  --bg-card: rgba(15, 23, 42, 0.75);
+  --bg-card-hover: rgba(22, 33, 56, 0.85);
+  --bg-glass: rgba(11, 15, 23, 0.9);
+  --bg-input: rgba(15, 23, 42, 0.85);
+  --bg-input-focus: rgba(22, 33, 56, 0.95);
+
+  /* Bordes & Resplandores */
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-focus: rgba(0, 242, 254, 0.45);
+  --glow-cyan: 0 0 20px rgba(0, 242, 254, 0.25);
+  --glow-purple: 0 0 20px rgba(168, 85, 247, 0.25);
+
+  /* Acentos Cromáticos */
+  --accent-cyan: #00f2fe;
+  --accent-blue: #38bdf8;
+  --accent-purple: #a855f7;
+  --accent-emerald: #10b981;
+  --accent-amber: #f59e0b;
+  --accent-rose: #f43f5e;
+
+  /* Gradientes de Impacto */
+  --grad-primary: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+  --grad-purple: linear-gradient(135deg, #7928ca 0%, #ff0080 100%);
+  --grad-emerald: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  --grad-gold: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  --grad-dark-card: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 100%);
+  --grad-text-kpi: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
+
+  /* Tipografía */
+  --font-display: 'Outfit', sans-serif;
+  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Textos */
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --text-dim: #475569;
+
+  /* Sombras */
+  --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+  --card-shadow-hover: 0 8px 30px rgba(0, 0, 0, 0.6);
+  --ambient-opacity: 0.08;
+
+  /* Plotly Adaptativo */
+  --plotly-font: #94a3b8;
+  --plotly-grid: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="navy"] {
+  --bg-deep: #030a16;
+  --bg-surface: #071731;
+  --bg-card: rgba(7, 23, 49, 0.85);
+  --bg-card-hover: rgba(12, 35, 75, 0.9);
+  --bg-glass: rgba(7, 23, 49, 0.92);
+  --bg-input: rgba(7, 23, 49, 0.85);
+  --bg-input-focus: rgba(12, 35, 75, 0.95);
+
+  --border-subtle: rgba(56, 189, 248, 0.15);
+  --border-focus: rgba(56, 189, 248, 0.5);
+  --glow-cyan: 0 0 20px rgba(56, 189, 248, 0.3);
+  --glow-purple: 0 0 20px rgba(129, 140, 248, 0.3);
+
+  --accent-cyan: #38bdf8;
+  --accent-blue: #0284c7;
+  --accent-purple: #818cf8;
+  --accent-emerald: #10b981;
+  --accent-amber: #f59e0b;
+  --accent-rose: #f43f5e;
+
+  --grad-primary: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
+  --grad-purple: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+  --grad-emerald: linear-gradient(135deg, #10b981 0%, #047857 100%);
+  --grad-gold: linear-gradient(135deg, #f59e0b 0%, #b45309 100%);
+  --grad-dark-card: linear-gradient(180deg, rgba(56, 189, 248, 0.05) 0%, rgba(56, 189, 248, 0) 100%);
+  --grad-text-kpi: linear-gradient(135deg, #e0f2fe 40%, #7dd3fc 100%);
+
+  --font-display: 'Outfit', sans-serif;
+  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --text-primary: #e0f2fe;
+  --text-secondary: #93c5fd;
+  --text-muted: #60a5fa;
+  --text-dim: #2563eb;
+
+  --card-shadow: 0 4px 20px rgba(2, 6, 23, 0.6);
+  --card-shadow-hover: 0 8px 30px rgba(2, 6, 23, 0.8);
+  --ambient-opacity: 0.12;
+
+  --plotly-font: #93c5fd;
+  --plotly-grid: rgba(56, 189, 248, 0.1);
 }
 
 * {

@@ -530,7 +530,19 @@ def _translate_sources_and_authors(df: pd.DataFrame) -> pd.DataFrame:
 def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Garantiza columnas mínimas para aggregate_metrics."""
     df = _translate_sources_and_authors(df)
-    num_na = ['fwci', 'citation_normalized_percentile']
+
+    # Normalizar nombres de percentil y tops entre esquemas
+    if 'percentile' in df.columns and 'citation_normalized_percentile' not in df.columns:
+        df['citation_normalized_percentile'] = df['percentile']
+    elif 'citation_normalized_percentile' in df.columns and 'percentile' not in df.columns:
+        df['percentile'] = df['citation_normalized_percentile']
+
+    if 'is_top_10' in df.columns and 'is_in_top_10_percent' not in df.columns:
+        df['is_in_top_10_percent'] = df['is_top_10']
+    if 'is_top_1' in df.columns and 'is_in_top_1_percent' not in df.columns:
+        df['is_in_top_1_percent'] = df['is_top_1']
+
+    num_na = ['fwci', 'citation_normalized_percentile', 'percentile']
     for c in num_na:
         if c not in df.columns:
             df[c] = np.nan

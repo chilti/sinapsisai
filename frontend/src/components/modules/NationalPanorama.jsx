@@ -1,7 +1,7 @@
 /**
  * frontend/src/components/modules/NationalPanorama.jsx
  * Pestaña de Panorama Nacional: Analítica Consolidada de la Ciencia Mexicana
- * Replicación exacta del Panorama Institucional fijado para MÉXICO (837k+ publicaciones, 48k SNII, 8.65M citas).
+ * Replicación exacta del Panorama Institucional fijado para MÉXICO (837k+ publicaciones, 48k Investigadores, 8.65M citas).
  */
 
 import React, { useEffect, useState, useMemo } from 'react';
@@ -147,8 +147,10 @@ export function NationalPanorama() {
     percentile_avg: 48.2,
     pct_top_10: 14.8,
     pct_top_1: 1.9,
-    h_index: 678
+    h_index: 678,
+    tiers: { T1: 208278, T2: 66483, T3: 76131, T4: 853627, t1Pct: 17.3, t2Pct: 5.5, t3Pct: 6.3, t4Pct: 70.9, total: 1204519 }
   };
+  const tiersNat = kpiExcel.tiers || metricsData?.kpi?.tiers || { T1: 208278, T2: 66483, T3: 76131, T4: 853627, t1Pct: 17.3, t2Pct: 5.5, t3Pct: 6.3, t4Pct: 70.9, total: 1204519 };
   const kpiVel = metricsData?.kpi?.velocity || {
     velocity_avg: 1.4,
     recent_cites_3yr: 2450000,
@@ -324,7 +326,7 @@ export function NationalPanorama() {
             32 Entidades Federativas · 3,000+ Dependencias Censadas
           </span>
           <span className="badge badge-amber" style={{ fontSize: '0.82rem', padding: '0.35rem 0.75rem' }}>
-            Padrón SNII 2026: {(kpiGen.official_snii_count || 48000).toLocaleString()} Investigadores
+            Padrón de Investigadores: {(kpiGen.official_snii_count || 48000).toLocaleString()}
           </span>
           <span className="badge badge-green" style={{ fontSize: '0.82rem', padding: '0.35rem 0.75rem' }}>
             OpenAlex: {(kpiGen.indexed_works || 837695).toLocaleString()} Obras Científicas
@@ -352,7 +354,7 @@ export function NationalPanorama() {
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Con analítica</span>
             </div>
             <div className="glass-card" style={{ padding: '0.75rem', textAlign: 'center' }}>
-              <span className="kpi-metric-label">Padrón SNII</span>
+              <span className="kpi-metric-label">Padrón Investigadores</span>
               <div className="kpi-metric-val" style={{ color: '#00f2fe' }}>{(kpiGen.official_snii_count ?? 48000).toLocaleString()}</div>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Investigadores</span>
             </div>
@@ -407,6 +409,68 @@ export function NationalPanorama() {
               <span className="kpi-metric-label">Índice H Nacional</span>
               <div className="kpi-metric-val">{kpiExcel.h_index}</div>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Hirsch acumulado</span>
+            </div>
+          </div>
+
+          {/* Distribución por Tramos de Impacto Observado (Tiers T1–T4) */}
+          <div style={{ marginTop: '1rem', paddingTop: '0.85rem', borderTop: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.6rem' }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                Distribución por Tramos de Impacto Observado (Tiers T1–T4):
+              </span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                Normalizado por disciplina y año (DORA / Leiden)
+              </span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
+              <div className="glass-card" style={{ padding: '0.5rem 0.75rem', borderLeft: '3px solid #8b5cf6', background: 'rgba(139, 92, 246, 0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#a78bfa' }}>Tier 1 (T1)</span>
+                  <span className="badge badge-purple" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Alto</span>
+                </div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
+                  {tiersNat?.t1Pct ?? 17.3}%
+                </div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  {tiersNat?.T1 ? `${tiersNat.T1.toLocaleString()} obras` : 'Top 25% mundial'}
+                </div>
+              </div>
+              <div className="glass-card" style={{ padding: '0.5rem 0.75rem', borderLeft: '3px solid #3b82f6', background: 'rgba(59, 130, 246, 0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#60a5fa' }}>Tier 2 (T2)</span>
+                  <span className="badge badge-blue" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Medio-Alto</span>
+                </div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
+                  {tiersNat?.t2Pct ?? 5.5}%
+                </div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  {tiersNat?.T2 ? `${tiersNat.T2.toLocaleString()} obras` : 'Percentil 50–74%'}
+                </div>
+              </div>
+              <div className="glass-card" style={{ padding: '0.5rem 0.75rem', borderLeft: '3px solid #10b981', background: 'rgba(16, 185, 129, 0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#34d399' }}>Tier 3 (T3)</span>
+                  <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Medio-Bajo</span>
+                </div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
+                  {tiersNat?.t3Pct ?? 6.3}%
+                </div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  {tiersNat?.T3 ? `${tiersNat.T3.toLocaleString()} obras` : 'Percentil 25–49%'}
+                </div>
+              </div>
+              <div className="glass-card" style={{ padding: '0.5rem 0.75rem', borderLeft: '3px solid #f59e0b', background: 'rgba(245, 158, 11, 0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#fbbf24' }}>Tier 4 (T4)</span>
+                  <span className="badge badge-amber" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Base</span>
+                </div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
+                  {tiersNat?.t4Pct ?? 70.9}%
+                </div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  {tiersNat?.T4 ? `${tiersNat.T4.toLocaleString()} obras` : 'Percentil 0–24%'}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -481,14 +545,14 @@ export function NationalPanorama() {
             </h4>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem' }}>
               <div className="glass-card" style={{ padding: '0.65rem', textAlign: 'center' }}>
-                <span className="kpi-metric-label">% SNII con ORCID</span>
+                <span className="kpi-metric-label">% con ORCID</span>
                 <div className="kpi-metric-val" style={{ fontSize: '1.25rem', color: '#10b981' }}>{kpiIds.pct_snii_orcid}%</div>
                 <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Identidad validada</span>
               </div>
               <div className="glass-card" style={{ padding: '0.65rem', textAlign: 'center' }}>
-                <span className="kpi-metric-label">% SNII con Algún ID</span>
+                <span className="kpi-metric-label">% con Algún ID</span>
                 <div className="kpi-metric-val" style={{ fontSize: '1.25rem', color: '#00f2fe' }}>{kpiIds.pct_snii_any_id}%</div>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Scopus/ORCID/CVU</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>ORCID / CVU / Fuentes</span>
               </div>
             </div>
           </div>
@@ -825,7 +889,7 @@ export function NationalPanorama() {
               >
                 {/* Imagen Oficial del ODS */}
                 <img
-                  src={`/img/ods/ods_${odsId}.png`}
+                  src={`./img/ods/ods_${odsId}.png`}
                   alt={`ODS ${odsId}: ${sdg.name}`}
                   loading="lazy"
                   style={{

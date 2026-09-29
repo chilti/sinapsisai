@@ -1,6 +1,6 @@
 /**
  * frontend/src/components/layout/Navbar.jsx
- * Barra de Navegación Principal de SNII Info TlachIA (Control 1 a 1 de Módulo 7)
+ * Barra de Navegación Principal de Info TlachIA (Control 1 a 1 de Módulo 7)
  */
 
 import React, { useState } from 'react';

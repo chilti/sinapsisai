@@ -4,7 +4,7 @@
  * Cumple con los 26 controles del inventario QA (CTL-M04-001 a CTL-M04-026)
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   UserCheck, Shield, FileText, CheckCircle, AlertCircle, LogIn,
   LogOut, Send, Search, RefreshCw, Download, ExternalLink,
@@ -53,6 +53,8 @@ export function MyResearcherSpace() {
   // Estados de Dossier (CTL-M04-020 a 023)
   const [dossierPeriod, setDossierPeriod] = useState('2020-2026');
   const [downloadingDoc, setDownloadingDoc] = useState(null);
+  const [dossierData, setDossierData] = useState(null);
+  const [loadingDossier, setLoadingDossier] = useState(false);
 
   // Estados de Curación y Obras (CTL-M04-024 a 026)
   const [works, setWorks] = useState([]);
@@ -73,6 +75,11 @@ export function MyResearcherSpace() {
       loadCitations();
     } else if (activeSubTab === 'curation') {
       loadWorksAndExcluded();
+    } else if (activeSubTab === 'dossier') {
+      loadDossierData();
+      if (works.length === 0) {
+        loadWorksAndExcluded();
+      }
     }
   }, [activeSubTab, activeOrcid, activeName]);
 
@@ -105,6 +112,95 @@ export function MyResearcherSpace() {
       setLoadingWorks(false);
     }
   };
+
+  const loadDossierData = async () => {
+    setLoadingDossier(true);
+    try {
+      const res = await apiClient.getDossierData(activeName, activeOrcid);
+      if (res && res.data) {
+        setDossierData(res.data);
+      }
+    } catch (err) {
+      console.warn('Error cargando datos estructurados del dossier:', err);
+    } finally {
+      setLoadingDossier(false);
+    }
+  };
+
+  // Cálculo de estadísticas dinámicas de Tramos de Impacto Observado (Tiers T1 - T4)
+  const tiersBreakdown = useMemo(() => {
+    if (dossierData?.tiers_breakdown) {
+      const tb = dossierData.tiers_breakdown;
+      const total = dossierData.metrics?.total_works || ((tb.T1 || 0) + (tb.T2 || 0) + (tb.T3 || 0) + (tb.T4 || 0)) || 1;
+      return {
+        T1: tb.T1 || 0,
+        T2: tb.T2 || 0,
+        T3: tb.T3 || 0,
+        T4: tb.T4 || 0,
+        total: dossierData.metrics?.total_works || total,
+        t1Pct: Math.round(((tb.T1 || 0) / total) * 100),
+        t2Pct: Math.round(((tb.T2 || 0) / total) * 100),
+        t3Pct: Math.round(((tb.T3 || 0) / total) * 100),
+        t4Pct: Math.round(((tb.T4 || 0) / total) * 100),
+      };
+    }
+    const counts = { T1: 0, T2: 0, T3: 0, T4: 0 };
+    works.forEach((w) => {
+      let tier = w.tier || '';
+      if (!tier) {
+        const p = w.percentile != null ? Number(w.percentile) : null;
+        const f = w.fwci != null ? Number(w.fwci) : null;
+        if (w.is_top_1 || (p !== null && p >= 99) || w.is_top_10 || (p !== null && p >= 75) || (f !== null && f >= 1.5)) {
+          tier = 'T1';
+        } else if ((p !== null && p >= 50) || (f !== null && f >= 1.0)) {
+          tier = 'T2';
+        } else if ((p !== null && p >= 25) || (f !== null && f >= 0.6)) {
+          tier = 'T3';
+        } else {
+          tier = 'T4';
+        }
+      }
+      const base = tier.startsWith('T1') ? 'T1' : (tier.startsWith('T2') ? 'T2' : (tier.startsWith('T3') ? 'T3' : 'T4'));
+      counts[base] = (counts[base] || 0) + 1;
+    });
+    const total = works.length || 1;
+    return {
+      T1: counts.T1,
+      T2: counts.T2,
+      T3: counts.T3,
+      T4: counts.T4,
+      total: works.length,
+      t1Pct: works.length > 0 ? Math.round((counts.T1 / total) * 100) : 0,
+      t2Pct: works.length > 0 ? Math.round((counts.T2 / total) * 100) : 0,
+      t3Pct: works.length > 0 ? Math.round((counts.T3 / total) * 100) : 0,
+      t4Pct: works.length > 0 ? Math.round((counts.T4 / total) * 100) : 0,
+    };
+  }, [dossierData, works]);
+
+  // Cálculo de estadísticas dinámicas de Acceso Abierto
+  const oaMetrics = useMemo(() => {
+    if (dossierData?.metrics) {
+      const m = dossierData.metrics;
+      const diamondCount = dossierData.oa_breakdown?.diamond || 0;
+      const goldCount = dossierData.oa_breakdown?.gold || 0;
+      return {
+        pct: m.pct_oa || 0,
+        diamond: diamondCount,
+        gold: goldCount,
+        savings: m.estimated_apc_savings_usd || 0,
+        total: m.total_works || 0
+      };
+    }
+    const diamondOrGold = works.filter((w) => ['diamond', 'gold', 'open'].includes(String(w.oa_status || '').toLowerCase())).length;
+    const total = works.length || 1;
+    return {
+      pct: works.length > 0 ? Math.round((diamondOrGold / total) * 100) : 0,
+      diamond: works.filter((w) => String(w.oa_status || '').toLowerCase() === 'diamond').length,
+      gold: works.filter((w) => String(w.oa_status || '').toLowerCase() === 'gold').length,
+      savings: diamondOrGold * 2500,
+      total: works.length
+    };
+  }, [dossierData, works]);
 
   // Manejo de Acreditación (CTL-M04-016)
   const handleRequestAccreditation = async (e) => {
@@ -189,7 +285,7 @@ export function MyResearcherSpace() {
   // Sincronizar en background (CTL-M04-009)
   const handleTriggerSync = () => {
     setIsSyncing(true);
-    setSyncAlert('Iniciando barrido asíncrono con OpenAlex, Scopus y ORCID API...');
+    setSyncAlert('Iniciando barrido asíncrono con fuentes internacionales y ORCID API...');
     setTimeout(() => {
       setIsSyncing(false);
       setSyncAlert('Sincronización completada. Metadatos del padrón 2026 y obras actualizadas.');
@@ -240,7 +336,22 @@ export function MyResearcherSpace() {
     setActiveTab('researchers');
   };
 
-  // Login handler
+  // Iniciar flujo OAuth oficial de ORCID
+  const handleInitiateOrcidLogin = async () => {
+    try {
+      const res = await apiClient.getOrcidLoginUrl();
+      if (res && res.login_url) {
+        window.location.href = res.login_url;
+      } else {
+        setShowLoginModal(true);
+      }
+    } catch (err) {
+      console.warn('No se pudo conectar con OAuth de ORCID, abriendo diálogo manual:', err);
+      setShowLoginModal(true);
+    }
+  };
+
+  // Login manual / sandbox fallback
   const handleLoginSubmit = (e) => {
     e.preventDefault();
     setUserSession({
@@ -296,7 +407,7 @@ export function MyResearcherSpace() {
               <button
                 id="CTL-M04-001"
                 className="btn btn-primary"
-                onClick={() => setShowLoginModal(true)}
+                onClick={handleInitiateOrcidLogin}
               >
                 <LogIn size={15} />
                 <span>{t.mySpace.btn_orcid_login}</span>
@@ -337,7 +448,7 @@ export function MyResearcherSpace() {
           <div className="glass-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
               <div>
-                <span className="badge badge-purple" style={{ marginBottom: '0.5rem' }}>Padrón Oficial SNII</span>
+                <span className="badge badge-purple" style={{ marginBottom: '0.5rem' }}>Padrón Oficial de Investigadores</span>
                 <h3 style={{ fontSize: '1.25rem', color: 'var(--text-primary)' }}>{activeName}</h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
                   <span id="CTL-M04-010" className="badge badge-cyan" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
@@ -446,7 +557,7 @@ export function MyResearcherSpace() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <div style={{ padding: '0.85rem', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Censo SNII 2026</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Censo de Investigadores 2026</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Vigente y ratificado oficialmente</div>
                 </div>
                 <span className="badge badge-cyan">Confirmado</span>
@@ -462,7 +573,7 @@ export function MyResearcherSpace() {
 
               <div style={{ padding: '0.85rem', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Integración OpenAlex & Scopus</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Integración y Cobertura Académica</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Cosecha continua activa</div>
                 </div>
                 <span className="badge badge-cyan">Sincronizado</span>
@@ -607,7 +718,7 @@ export function MyResearcherSpace() {
                 <div className="kpi-card">
                   <span className="kpi-label">Total Citas Brutas</span>
                   <div className="kpi-value">{citationsData.total_citations?.toLocaleString() ?? 0}</div>
-                  <span className="kpi-sub">OpenAlex / Scopus</span>
+                  <span className="kpi-sub">Fuentes Internacionales</span>
                 </div>
 
                 <div className="kpi-card">
@@ -686,14 +797,14 @@ export function MyResearcherSpace() {
                 value={dossierPeriod}
                 onChange={(e) => setDossierPeriod(e.target.value)}
               >
-                <option value="2020-2026">Convocatoria SNII Actual (2020 - 2026)</option>
-                <option value="2018-2024">Evaluación PRIDE (2018 - 2024)</option>
+                <option value="2020-2026">Periodo Sexenal Reciente (2020 - 2026)</option>
+                <option value="2018-2024">Periodo Sexenal Anterior (2018 - 2024)</option>
                 <option value="all">Trayectoria Completa Histórica</option>
               </select>
             </div>
 
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem', lineHeight: 1.5 }}>
-              El generador compila automáticamente el catálogo de obras arbitradas, cuartiles Scimago/WoS, liderazgo en coautoría y balance de citas para dictámenes del SNII y PRIDE UNAM.
+              El generador compila automáticamente el catálogo de obras arbitradas, tramos de impacto observado (Tiers T1–T4 por percentil de citas), liderazgo en coautoría y balance de citas para comisiones dictaminadoras y evaluación de trayectoria académica.
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -726,7 +837,7 @@ export function MyResearcherSpace() {
               <span className="badge badge-purple">{dossierPeriod}</span>
             </div>
 
-            <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1rem', fontSize: '0.85rem', lineHeight: 1.6 }}>
+            <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1.25rem', fontSize: '0.85rem', lineHeight: 1.6 }}>
               <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
                 EXPEDIENTE: {activeName}
               </div>
@@ -734,11 +845,66 @@ export function MyResearcherSpace() {
                 ORCID: {activeOrcid} &bull; Adscripción: {lowestUnit}
               </div>
               
-              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                <div><strong>Liderazgo Académico:</strong> Primer Autor / Autor de Correspondencia</div>
-                <div><strong>Distribución por Cuartil:</strong> Q1 (42%) &bull; Q2 (35%) &bull; Q3 (15%) &bull; Q4 (8%)</div>
-                <div><strong>Acceso Abierto Diamante / Dorado:</strong> 68% de las obras</div>
-                <div><strong>Índice H de Campo:</strong> Verificado con OpenAlex / Scopus</div>
+              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <strong>Distribución por Tramos de Impacto Observado (Tiers):</strong>
+                  {loadingDossier || loadingWorks ? (
+                    <span style={{ color: 'var(--text-secondary)' }}>Calculando tramos...</span>
+                  ) : tiersBreakdown.total > 0 ? (
+                    <div style={{ display: 'inline-flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span className="badge badge-purple" title="Tier 1: Top 25% mundial de citación en su área (Impacto Observado Alto)">
+                        T1: {tiersBreakdown.t1Pct}% ({tiersBreakdown.T1})
+                      </span>
+                      <span className="badge badge-blue" title="Tier 2: Percentil 50–74% mundial (Impacto Observado Medio-Alto)">
+                        T2: {tiersBreakdown.t2Pct}% ({tiersBreakdown.T2})
+                      </span>
+                      <span className="badge badge-emerald" title="Tier 3: Percentil 25–49% mundial (Impacto Observado Medio-Bajo)">
+                        T3: {tiersBreakdown.t3Pct}% ({tiersBreakdown.T3})
+                      </span>
+                      <span className="badge badge-amber" title="Tier 4: Percentil 0–24% mundial (Impacto Observado Inicial o Base)">
+                        T4: {tiersBreakdown.t4Pct}% ({tiersBreakdown.T4})
+                      </span>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                        ({tiersBreakdown.total} publicaciones analizadas)
+                      </span>
+                    </div>
+                  ) : (
+                    <span style={{ color: 'var(--text-secondary)' }}>Sin publicaciones registradas</span>
+                  )}
+                </div>
+
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', background: 'rgba(255, 255, 255, 0.03)', padding: '0.45rem 0.65rem', borderRadius: '4px', borderLeft: '3px solid var(--accent-cyan)' }}>
+                  ℹ️ <strong>Tramos (Tiers T1–T4):</strong> Miden la <em>calidad observada</em> a nivel de artículo según su percentil de citación normalizado por disciplina y año (DORA / Leiden), diferenciándolo del cuartil de revista (JCR/SJR) que mide únicamente calidad esperada del medio.
+                </div>
+
+                <div>
+                  <strong>Acceso Abierto Diamante / Dorado:</strong>{' '}
+                  {oaMetrics.total > 0 ? (
+                    <span>
+                      {oaMetrics.pct}% de las publicaciones ({oaMetrics.diamond} Diamante, {oaMetrics.gold} Dorado). Ahorro estimado en APC: <strong>${oaMetrics.savings.toLocaleString()} USD</strong>.
+                    </span>
+                  ) : (
+                    'N/D'
+                  )}
+                </div>
+                <div>
+                  <strong>Liderazgo Académico:</strong>{' '}
+                  {dossierData?.metrics?.leadership_rate != null ? (
+                    <span>
+                      {dossierData.metrics.leadership_rate}% como Primer Autor o Autor de Correspondencia ({dossierData.metrics.lead_count} de {dossierData.metrics.total_works} obras)
+                    </span>
+                  ) : (
+                    'Primer Autor / Autor de Correspondencia evaluado en publicaciones'
+                  )}
+                </div>
+                <div>
+                  <strong>Índice H y Desempeño:</strong>{' '}
+                  {dossierData?.metrics?.h_index != null ? (
+                    <span>Índice H: <strong>{dossierData.metrics.h_index}</strong> &bull; FWCI promedio: <strong>{dossierData.metrics.avg_fwci}</strong> (Verificado con fuentes internacionales)</span>
+                  ) : (
+                    'Verificado con fuentes internacionales'
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -815,32 +981,43 @@ export function MyResearcherSpace() {
                       <th>Título</th>
                       <th>Año</th>
                       <th>Revista</th>
+                      <th style={{ textAlign: 'center' }}>Tramo (Tier)</th>
                       <th>Citas</th>
                       <th>Acción</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredWorks.slice(0, 15).map((w, idx) => (
-                      <tr key={idx}>
-                        <td style={{ fontWeight: 500, maxWidth: '400px' }}>{w.title}</td>
-                        <td>{w.publication_year || w.year || '-'}</td>
-                        <td style={{ color: 'var(--text-secondary)' }}>{w.journal || 'N/D'}</td>
-                        <td style={{ fontWeight: 600, color: 'var(--accent-cyan)' }}>{w.cited_by_count || w.citations || 0}</td>
-                        <td>
-                          {/* Botón Desvincular (CTL-M04-025) */}
-                          <button
-                            id="CTL-M04-025"
-                            className="btn btn-secondary btn-sm"
-                            style={{ color: '#fb7185', borderColor: 'rgba(244, 63, 94, 0.3)' }}
-                            onClick={() => handleDisclaim(w)}
-                            title={t.mySpace.btn_disclaim_work}
-                          >
-                            <Trash2 size={12} />
-                            <span>{t.mySpace.btn_disclaim_work}</span>
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredWorks.slice(0, 15).map((w, idx) => {
+                      const tier = w.tier || (w.is_top_1 || (w.percentile != null && w.percentile >= 75) || (w.fwci != null && w.fwci >= 1.5) ? 'T1' : (w.percentile != null && w.percentile >= 50) || (w.fwci != null && w.fwci >= 1.0) ? 'T2' : (w.percentile != null && w.percentile >= 25) || (w.fwci != null && w.fwci >= 0.6) ? 'T3' : 'T4');
+                      const tierBadgeClass = tier.startsWith('T1') ? 'badge-purple' : tier.startsWith('T2') ? 'badge-blue' : tier.startsWith('T3') ? 'badge-emerald' : 'badge-amber';
+                      const pDesc = w.percentile != null ? `Percentil: ${w.percentile}%` : (tier.startsWith('T1') ? 'Top 25% mundial' : '');
+                      return (
+                        <tr key={idx}>
+                          <td style={{ fontWeight: 500, maxWidth: '380px' }}>{w.title}</td>
+                          <td>{w.publication_year || w.year || '-'}</td>
+                          <td style={{ color: 'var(--text-secondary)' }}>{w.journal || 'N/D'}</td>
+                          <td style={{ textAlign: 'center' }}>
+                            <span className={`badge ${tierBadgeClass}`} title={`Impacto Observado: ${tier} ${pDesc ? `• ${pDesc}` : ''} (FWCI: ${w.fwci != null ? w.fwci : 1.0})`}>
+                              {tier}
+                            </span>
+                          </td>
+                          <td style={{ fontWeight: 600, color: 'var(--accent-cyan)' }}>{w.cited_by_count || w.citations || 0}</td>
+                          <td>
+                            {/* Botón Desvincular (CTL-M04-025) */}
+                            <button
+                              id="CTL-M04-025"
+                              className="btn btn-secondary btn-sm"
+                              style={{ color: '#fb7185', borderColor: 'rgba(244, 63, 94, 0.3)' }}
+                              onClick={() => handleDisclaim(w)}
+                              title={t.mySpace.btn_disclaim_work}
+                            >
+                              <Trash2 size={12} />
+                              <span>{t.mySpace.btn_disclaim_work}</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -909,6 +1086,27 @@ export function MyResearcherSpace() {
             <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
               Inicia sesión mediante tu identificador iD de ORCID para gestionar tu expediente científico.
             </p>
+
+            <div style={{ marginBottom: '1.25rem' }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ width: '100%', justifyContent: 'center', padding: '0.65rem' }}
+                onClick={() => {
+                  setShowLoginModal(false);
+                  handleInitiateOrcidLogin();
+                }}
+              >
+                <LogIn size={16} />
+                <span>Conectar con ORCID Oficial (OAuth)</span>
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '1rem 0', color: 'var(--text-dim)', fontSize: '0.75rem' }}>
+              <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }} />
+              <span>O INGRESO DIRECTO DE PRUEBA</span>
+              <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }} />
+            </div>
 
             <form onSubmit={handleLoginSubmit}>
               <div style={{ marginBottom: '1rem' }}>

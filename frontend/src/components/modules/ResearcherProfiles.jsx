@@ -286,7 +286,7 @@ export function ResearcherProfiles() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Dossier_SNII_${researcherName.replace(/\s+/g, '_')}.pdf`;
+      a.download = `Dossier_Trayectoria_${researcherName.replace(/\s+/g, '_')}.pdf`;
       a.click();
     } catch (err) {
       console.error('Error descargando PDF:', err);
@@ -297,6 +297,7 @@ export function ResearcherProfiles() {
   const kpis = profile?.kpis || {};
   const gen = kpis.general || {};
   const exc = kpis.excellence || {};
+  const tiersProf = exc.tiers || kpis.tiers;
   const vel = kpis.velocity || {};
   const apc = kpis.apc || {};
   const oa = profile?.oa_distribution || {};
@@ -584,7 +585,7 @@ export function ResearcherProfiles() {
             background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)',
             borderRadius: '6px'
           }}>
-            ℹ️ Los indicadores se calcularon a partir de la producción académica que se pudo recoger de Scopus y ORCID, lo cual implica que puede haber trabajos faltantes y trabajos con afiliaciones distintas a la actual.
+            ℹ️ Los indicadores se calcularon a partir de la producción académica recuperada de fuentes internacionales y ORCID, lo cual implica que puede haber trabajos faltantes y trabajos con afiliaciones distintas a la actual.
           </div>
         </div>
       </div>
@@ -598,11 +599,11 @@ export function ResearcherProfiles() {
                 <h2 style={{ fontSize: '1.75rem', fontWeight: 800 }}>{profile.name}</h2>
                 {profile.is_snii ? (
                   <span className="badge badge-amber" style={{ fontSize: '0.85rem', padding: '0.3rem 0.8rem', fontWeight: 700 }}>
-                    SNII: {profile.snii_level_label || `Nivel ${profile.snii_level}`}
+                    {profile.snii_level_label || `Nivel ${profile.snii_level}`}
                   </span>
                 ) : (
                   <span className="badge badge-cyan" style={{ fontSize: '0.82rem', padding: '0.25rem 0.75rem' }}>
-                    SNII No registrado en Padrón
+                    No registrado en Padrón
                   </span>
                 )}
                 {profile.snii_area && (
@@ -654,7 +655,7 @@ export function ResearcherProfiles() {
                     rel="noreferrer"
                     style={{ color: '#f59e0b', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
                   >
-                    <span>Scopus: {profile.scopus_ids[0]}</span>
+                    <span>ID Autor: {profile.scopus_ids[0]}</span>
                     <ExternalLink size={12} />
                   </a>
                 )}
@@ -796,6 +797,70 @@ export function ResearcherProfiles() {
                 <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Cúspide científica</span>
               </div>
             </div>
+
+            {/* Distribución por Tramos de Impacto Observado (Tiers T1–T4) */}
+            {tiersProf && (
+              <div style={{ marginTop: '1rem', paddingTop: '0.85rem', borderTop: '1px solid var(--border-subtle)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.6rem' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Distribución por Tramos de Impacto Observado (Tiers T1–T4):
+                  </span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    Normalizado por disciplina y año (DORA / Leiden)
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
+                  <div className="glass-card" style={{ padding: '0.5rem 0.75rem', borderLeft: '3px solid #8b5cf6', background: 'rgba(139, 92, 246, 0.05)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#a78bfa' }}>Tier 1 (T1)</span>
+                      <span className="badge badge-purple" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Alto</span>
+                    </div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
+                      {tiersProf.t1Pct ?? 0}%
+                    </div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                      {tiersProf.T1 ? `${tiersProf.T1.toLocaleString()} obras` : 'Top 25% mundial'}
+                    </div>
+                  </div>
+                  <div className="glass-card" style={{ padding: '0.5rem 0.75rem', borderLeft: '3px solid #3b82f6', background: 'rgba(59, 130, 246, 0.05)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#60a5fa' }}>Tier 2 (T2)</span>
+                      <span className="badge badge-blue" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Medio-Alto</span>
+                    </div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
+                      {tiersProf.t2Pct ?? 0}%
+                    </div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                      {tiersProf.T2 ? `${tiersProf.T2.toLocaleString()} obras` : 'Percentil 50–74%'}
+                    </div>
+                  </div>
+                  <div className="glass-card" style={{ padding: '0.5rem 0.75rem', borderLeft: '3px solid #10b981', background: 'rgba(16, 185, 129, 0.05)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#34d399' }}>Tier 3 (T3)</span>
+                      <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Medio-Bajo</span>
+                    </div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
+                      {tiersProf.t3Pct ?? 0}%
+                    </div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                      {tiersProf.T3 ? `${tiersProf.T3.toLocaleString()} obras` : 'Percentil 25–49%'}
+                    </div>
+                  </div>
+                  <div className="glass-card" style={{ padding: '0.5rem 0.75rem', borderLeft: '3px solid #f59e0b', background: 'rgba(245, 158, 11, 0.05)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#fbbf24' }}>Tier 4 (T4)</span>
+                      <span className="badge badge-amber" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Base</span>
+                    </div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
+                      {tiersProf.t4Pct ?? 0}%
+                    </div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                      {tiersProf.T4 ? `${tiersProf.T4.toLocaleString()} obras` : 'Percentil 0–24%'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Grupo 3: Velocidad y Colaboración (5 KPIs) */}
@@ -1117,7 +1182,7 @@ export function ResearcherProfiles() {
                   >
                     {/* Imagen Oficial del ODS */}
                     <img
-                      src={`/img/ods/ods_${odsId}.png`}
+                      src={`./img/ods/ods_${odsId}.png`}
                       alt={`ODS ${odsId}: ${sdg.name}`}
                       loading="lazy"
                       style={{
@@ -1255,6 +1320,7 @@ export function ResearcherProfiles() {
                       <th style={{ padding: '0.6rem 0.8rem' }}>Título de la Obra</th>
                       <th style={{ padding: '0.6rem 0.8rem' }}>Revista / Fuente</th>
                       <th style={{ padding: '0.6rem 0.8rem', textAlign: 'center' }}>Año</th>
+                      <th style={{ padding: '0.6rem 0.8rem', textAlign: 'center' }}>Tramo (Tier)</th>
                       <th style={{ padding: '0.6rem 0.8rem', textAlign: 'center' }}>Citas</th>
                       <th style={{ padding: '0.6rem 0.8rem', textAlign: 'center' }}>FWCI</th>
                       <th style={{ padding: '0.6rem 0.8rem', textAlign: 'center' }}>Acceso Abierto</th>
@@ -1279,6 +1345,17 @@ export function ResearcherProfiles() {
                         </td>
                         <td style={{ padding: '0.75rem 0.8rem', textAlign: 'center', fontWeight: 600 }}>
                           {w.year || w.publication_year || 'S/F'}
+                        </td>
+                        <td style={{ padding: '0.75rem 0.8rem', textAlign: 'center' }}>
+                          {(() => {
+                            const tier = w.tier || (w.is_top_1 || (w.percentile != null && w.percentile >= 75) || (w.fwci != null && w.fwci >= 1.5) ? 'T1' : (w.percentile != null && w.percentile >= 50) || (w.fwci != null && w.fwci >= 1.0) ? 'T2' : (w.percentile != null && w.percentile >= 25) || (w.fwci != null && w.fwci >= 0.6) ? 'T3' : 'T4');
+                            const bClass = tier.startsWith('T1') ? 'badge-purple' : tier.startsWith('T2') ? 'badge-blue' : tier.startsWith('T3') ? 'badge-emerald' : 'badge-amber';
+                            return (
+                              <span className={`badge ${bClass}`} style={{ fontSize: '0.75rem', fontWeight: 700 }} title={`Tramo ${tier}`}>
+                                {tier}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td style={{ padding: '0.75rem 0.8rem', textAlign: 'center', fontWeight: 700, color: 'var(--accent-cyan)' }}>
                           {w.citations || 0}

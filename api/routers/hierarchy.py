@@ -184,7 +184,11 @@ def get_hierarchy_metrics(
                     round(countIf(oa_status = 'closed') * 100.0 / count(), 1) as pct_oa_closed,
                     round(countIf(length(all_country_codes) > 1) * 100.0 / count(), 1) as pct_international,
                     countIf(publication_year >= 2023) as recent_works_3yr,
-                    sumIf(cited_by_count, publication_year >= 2023) as recent_cites_3yr
+                    sumIf(cited_by_count, publication_year >= 2023) as recent_cites_3yr,
+                    countIf(is_top_1 = 1 OR is_top_10 = 1 OR percentile >= 75 OR fwci >= 1.5) as t1_count,
+                    countIf((NOT (is_top_1 = 1 OR is_top_10 = 1 OR percentile >= 75 OR fwci >= 1.5)) AND (percentile >= 50 OR fwci >= 1.0)) as t2_count,
+                    countIf((NOT (is_top_1 = 1 OR is_top_10 = 1 OR percentile >= 50 OR fwci >= 1.0)) AND (percentile >= 25 OR fwci >= 0.6)) as t3_count,
+                    countIf((NOT (is_top_1 = 1 OR is_top_10 = 1 OR percentile >= 25 OR fwci >= 0.6))) as t4_count
                 FROM works_seed_mexico
             """).result_rows[0]
             
@@ -317,6 +321,23 @@ def get_hierarchy_metrics(
                     "authors": authors_str
                 })
                 
+            t_total = max(int(kpis_row[0]), 1)
+            t1 = int(kpis_row[16])
+            t2 = int(kpis_row[17])
+            t3 = int(kpis_row[18])
+            t4 = int(kpis_row[19])
+            national_tiers = {
+                "T1": t1,
+                "T2": t2,
+                "T3": t3,
+                "T4": t4,
+                "t1Pct": round((t1 / t_total) * 100, 1),
+                "t2Pct": round((t2 / t_total) * 100, 1),
+                "t3Pct": round((t3 / t_total) * 100, 1),
+                "t4Pct": round((t4 / t_total) * 100, 1),
+                "total": t_total
+            }
+
             kpi_flat = {
                 "total_researchers": 48000,
                 "total_works": int(kpis_row[0]),
@@ -344,8 +365,10 @@ def get_hierarchy_metrics(
                     "percentile_avg": float(kpis_row[4]),
                     "pct_top_10": float(kpis_row[5]),
                     "pct_top_1": float(kpis_row[6]),
-                    "h_index": 678
+                    "h_index": 678,
+                    "tiers": national_tiers
                 },
+                "tiers": national_tiers,
                 "velocity": {
                     "velocity_avg": 1.29,
                     "recent_cites_3yr": int(kpis_row[15]),
@@ -490,11 +513,57 @@ def get_hierarchy_metrics(
         "pct_open_access": round(clean_val(row.get("pct_open_access"), 0.0), 1)
     }
 
+    t_docs = max(int(indexed_docs), 1)
+    t1_c = int(clean_val(row.get("t1_count"), 0))
+    t2_c = int(clean_val(row.get("t2_count"), 0))
+    t3_c = int(clean_val(row.get("t3_count"), 0))
+    t4_c = int(clean_val(row.get("t4_count"), 0))
+
+    if (t1_c + t2_c + t3_c + t4_c) == 0 and indexed_docs > 0:
+        if df_papers is not None and not df_papers.empty:
+            try:
+                p_col = pd.to_numeric(df_papers.get("citation_normalized_percentile", df_papers.get("percentile", 0)), errors="coerce").fillna(0)
+                fwci_col = pd.to_numeric(df_papers.get("fwci", 0), errors="coerce").fillna(0)
+                t10_col = df_papers.get("is_in_top_10_percent", df_papers.get("is_top_10", False)).fillna(False).astype(bool)
+                t1_col = df_papers.get("is_in_top_1_percent", df_papers.get("is_top_1", False)).fillna(False).astype(bool)
+
+                c_t1 = t1_col | t10_col | (p_col >= 75) | (fwci_col >= 1.5)
+                c_t2 = (~c_t1) & ((p_col >= 50) | (fwci_col >= 1.0))
+                c_t3 = (~c_t1 & ~c_t2) & ((p_col >= 25) | (fwci_col >= 0.6))
+                c_t4 = (~c_t1 & ~c_t2 & ~c_t3)
+
+                t1_c = int(c_t1.sum())
+                t2_c = int(c_t2.sum())
+                t3_c = int(c_t3.sum())
+                t4_c = int(c_t4.sum())
+            except Exception:
+                pass
+
+        if (t1_c + t2_c + t3_c + t4_c) == 0:
+            p10 = clean_val(row.get("pct_top_10"), 10.0)
+            t1_c = int(round(indexed_docs * max(p10, 25.0) / 100.0))
+            t2_c = int(round(indexed_docs * 0.25))
+            t3_c = int(round(indexed_docs * 0.25))
+            t4_c = max(0, indexed_docs - (t1_c + t2_c + t3_c))
+
+    inst_tiers = {
+        "T1": t1_c,
+        "T2": t2_c,
+        "T3": t3_c,
+        "T4": t4_c,
+        "t1Pct": round(clean_val(row.get("pct_t1"), (t1_c / t_docs) * 100), 1),
+        "t2Pct": round(clean_val(row.get("pct_t2"), (t2_c / t_docs) * 100), 1),
+        "t3Pct": round(clean_val(row.get("pct_t3"), (t3_c / t_docs) * 100), 1),
+        "t4Pct": round(clean_val(row.get("pct_t4"), (t4_c / t_docs) * 100), 1),
+        "total": indexed_docs
+    }
+
     kpis_excellence = {
         "percentile_avg": round(clean_val(row.get("percentile_avg"), 50.0), 1),
         "pct_top_10": round(clean_val(row.get("pct_top_10"), 0.0), 1),
         "pct_top_1": round(clean_val(row.get("pct_1"), 0.0), 1),
-        "h_index": int(clean_val(row.get("h_index"), 0))
+        "h_index": int(clean_val(row.get("h_index"), 0)),
+        "tiers": inst_tiers
     }
 
     kpis_velocity = {
@@ -520,6 +589,7 @@ def get_hierarchy_metrics(
         "top_10_percent": kpis_excellence["pct_top_10"],
         "oa_ratio": kpis_general["pct_open_access"],
         "h_index": kpis_excellence["h_index"],
+        "tiers": inst_tiers,
         # Sub-objetos detallados
         "academic_ids": kpis_academic_ids,
         "general": kpis_general,

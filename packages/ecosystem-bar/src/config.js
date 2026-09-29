@@ -6,14 +6,14 @@
 export const ECOSYSTEM_APPS = [
   {
     id: "sinapsisai",
-    name: "SNII Info TlachIA",
-    shortName: "SNII Info",
+    name: "Info TlachIA",
+    shortName: "Info TlachIA",
     tagline: {
-      es: "Padrón SNII, Trayectoria y Producción Académica",
-      pt: "Registro SNII, Trajetória e Produção Acadêmica",
-      en: "SNII Registry, Academic Trajectory & Output"
+      es: "Trayectoria y Producción Académica",
+      pt: "Trajetória e Produção Acadêmica",
+      en: "Academic Trajectory & Output"
     },
-    badge: "SNII & Trayectoria",
+    badge: "Trayectoria",
     badgeColor: "#00f2fe",
     path: "/sinapsisai/",
     devUrl: "http://localhost:3006",

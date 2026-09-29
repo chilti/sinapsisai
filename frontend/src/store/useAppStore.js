@@ -64,25 +64,48 @@ export const useAppStore = create((set, get) => ({
   }),
 
   // Sesión y Autenticación
-  userSession: {
-    isAuthenticated: false,
-    orcid: null,
-    name: null,
-    role: 'guest', // 'guest', 'investigador', 'admin_institucional', 'super_admin'
-    institution: null,
-    token: null
-  },
-  setUserSession: (session) => set({ userSession: { ...get().userSession, ...session } }),
-  logout: () => set({
-    userSession: {
+  userSession: (() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('tlachia_user');
+        if (saved) return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return {
       isAuthenticated: false,
       orcid: null,
       name: null,
       role: 'guest',
       institution: null,
       token: null
+    };
+  })(),
+  setUserSession: (session) => {
+    const updated = { ...get().userSession, ...session };
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tlachia_user', JSON.stringify(updated));
+      if (updated.token) {
+        localStorage.setItem('tlachia_token', updated.token);
+      }
     }
-  }),
+    set({ userSession: updated });
+  },
+  logout: () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('tlachia_user');
+      localStorage.removeItem('tlachia_token');
+    }
+    set({
+      userSession: {
+        isAuthenticated: false,
+        orcid: null,
+        name: null,
+        role: 'guest',
+        institution: null,
+        token: null
+      }
+    });
+  },
 
   // Notificaciones Flash
   notification: null,

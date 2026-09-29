@@ -69,13 +69,6 @@ class TlachiaSuiteBarElement extends HTMLElement {
           <nav class="tlachia-suite-nav" aria-label="Ecosystem Apps">
             ${navItems}
           </nav>
-
-          <div class="tlachia-suite-meta">
-            <div class="tlachia-suite-status-pill" title="Servicios del Ecosistema Operativos">
-              <span class="tlachia-suite-status-dot"></span>
-              <span>Ecosystem Live</span>
-            </div>
-          </div>
         </div>
       </header>
     `;

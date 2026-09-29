@@ -1,6 +1,6 @@
 /**
  * frontend/src/App.jsx
- * Componente Principal de la Aplicación SNII Info TlachIA
+ * Componente Principal de la Aplicación Info TlachIA
  */
 
 import React from 'react';
@@ -19,16 +19,60 @@ import { MyResearcherSpace } from './components/modules/MyResearcherSpace.jsx';
 import { GovernanceAdmin } from './components/modules/GovernanceAdmin.jsx';
 import { AIAssistant } from './components/modules/AIAssistant.jsx';
 
+import { apiClient } from './api/client.js';
+
 import './App.css';
 
 export function App() {
   const activeTab = useAppStore((state) => state.activeTab);
   const theme = useAppStore((state) => state.theme);
   const t = useAppStore((state) => state.t)();
+  const setUserSession = useAppStore((state) => state.setUserSession);
+  const setNotification = useAppStore((state) => state.setNotification);
 
   React.useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  // Interceptar callback de autorización OAuth de ORCID (?code=...)
+  React.useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      if (code) {
+        apiClient.exchangeOrcidToken(code)
+          .then((data) => {
+            if (data && data.orcid) {
+              const sessionData = {
+                isAuthenticated: true,
+                orcid: data.orcid,
+                name: data.name || data.orcid,
+                role: data.role || 'investigador',
+                institution: data.institution || null,
+                token: data.access_token || null
+              };
+              setUserSession(sessionData);
+              setNotification({
+                type: 'success',
+                message: `Bienvenido, ${sessionData.name}. Sesión iniciada con ORCID ${sessionData.orcid}`
+              });
+              // Limpiar parámetro ?code= de la URL sin recargar la página
+              const cleanUrl = window.location.pathname;
+              window.history.replaceState({}, document.title, cleanUrl);
+            }
+          })
+          .catch((err) => {
+            console.error('Error al intercambiar código ORCID:', err);
+            setNotification({
+              type: 'error',
+              message: 'No se pudo completar el inicio de sesión con ORCID.'
+            });
+          });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [setUserSession, setNotification]);
 
   return (
     <div className="app-root">
@@ -65,7 +109,7 @@ export function App() {
           <a href="https://dinamica1.fciencias.unam.mx/knomap/" className="footer-link" target="_blank" rel="noreferrer">KnoMap</a>
           <a href="https://dinamica1.fciencias.unam.mx/tlachiametrics/" className="footer-link" target="_blank" rel="noreferrer">TlachIA Metrics</a>
           <span style={{ color: 'var(--text-dim)' }}>|</span>
-          <span>Padrón SNII 2025/2026</span>
+          <span>Padrón de Investigadores 2025/2026</span>
         </div>
       </footer>
     </div>

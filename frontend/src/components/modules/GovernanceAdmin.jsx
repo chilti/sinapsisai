@@ -637,7 +637,7 @@ export function GovernanceAdmin() {
               <button
                 id="CTL-M05-021"
                 className="btn btn-secondary btn-sm"
-                onClick={() => triggerTask('ror_step2', '2.2 Resolver SNII a ROR')}
+                onClick={() => triggerTask('ror_step2', '2.2 Resolver Padrón a ROR')}
                 disabled={Boolean(runningTask)}
               >
                 <Search size={13} />

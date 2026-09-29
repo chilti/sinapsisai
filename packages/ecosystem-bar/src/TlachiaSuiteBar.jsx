@@ -92,14 +92,6 @@ export function TlachiaSuiteBar({
             );
           })}
         </nav>
-
-        {/* Meta / Status */}
-        <div className="tlachia-suite-meta">
-          <div className="tlachia-suite-status-pill" title="Servicios del Ecosistema Operativos">
-            <span className="tlachia-suite-status-dot"></span>
-            <span>Ecosystem Live</span>
-          </div>
-        </div>
       </div>
     </header>
   );

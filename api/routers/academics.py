@@ -17,6 +17,7 @@ from lib.citations_explorer import (
     get_citing_works_analysis,
     get_citing_works_data
 )
+from lib.dossier_generator import _determine_tier
 
 router = APIRouter(prefix="/api/academics", tags=["Investigadores"])
 
@@ -55,10 +56,10 @@ SDG_NAMES = {
 }
 
 
-def _clean_val(v: Any) -> Any:
+def _clean_val(v: Any, default: Any = None) -> Any:
     """Convierte NaN o tipos numpy a tipos estándar de Python serializables en JSON."""
     if v is None or (isinstance(v, float) and np.isnan(v)):
-        return None
+        return default
     if isinstance(v, (np.floating, float)):
         return round(float(v), 2)
     if isinstance(v, (np.integer, int)):
@@ -398,6 +399,49 @@ def get_academic_profile(
                 total_cites = int(r.get("citations", 0) or 0)
                 cites_per_paper = round(total_cites / max(indexed_count, 1), 2)
 
+                t1_c = int(r.get("t1_count", 0) or 0)
+                t2_c = int(r.get("t2_count", 0) or 0)
+                t3_c = int(r.get("t3_count", 0) or 0)
+                t4_c = int(r.get("t4_count", 0) or 0)
+                t_tot = max(indexed_count, 1)
+
+                if (t1_c + t2_c + t3_c + t4_c) == 0 and indexed_count > 0:
+                    if pdir and os.path.exists(os.path.join(pdir, "papers_profesor.parquet")):
+                        try:
+                            df_p_temp = pd.read_parquet(os.path.join(pdir, "papers_profesor.parquet"))
+                            if not df_p_temp.empty:
+                                for _, pr in df_p_temp.iterrows():
+                                    top1 = bool(pr.get("is_top_1", False) or pr.get("top_1", False))
+                                    top10 = bool(pr.get("is_top_10", False) or pr.get("top_10", False) or top1)
+                                    p_val = float(pr.get("citation_normalized_percentile", pr.get("percentile", 0.0)) or 0.0)
+                                    fwci_val = float(pr.get("fwci", 0.0) or 0.0)
+                                    t = _determine_tier({"is_top_10": top10, "is_top_1": top1, "percentile": p_val, "fwci": fwci_val})
+                                    if t == "T1": t1_c += 1
+                                    elif t == "T2": t2_c += 1
+                                    elif t == "T3": t3_c += 1
+                                    else: t4_c += 1
+                        except Exception:
+                            pass
+
+                    if (t1_c + t2_c + t3_c + t4_c) == 0:
+                        p10 = _clean_val(r.get("pct_top_10", 10.0))
+                        t1_c = int(round(indexed_count * max(p10, 25.0) / 100.0))
+                        t2_c = int(round(indexed_count * 0.25))
+                        t3_c = int(round(indexed_count * 0.25))
+                        t4_c = max(0, indexed_count - (t1_c + t2_c + t3_c))
+
+                tiers_dict = {
+                    "T1": t1_c,
+                    "T2": t2_c,
+                    "T3": t3_c,
+                    "T4": t4_c,
+                    "t1Pct": round(_clean_val(r.get("pct_t1"), (t1_c / t_tot) * 100), 1),
+                    "t2Pct": round(_clean_val(r.get("pct_t2"), (t2_c / t_tot) * 100), 1),
+                    "t3Pct": round(_clean_val(r.get("pct_t3"), (t3_c / t_tot) * 100), 1),
+                    "t4Pct": round(_clean_val(r.get("pct_t4"), (t4_c / t_tot) * 100), 1),
+                    "total": indexed_count
+                }
+
                 kpis["general"] = {
                     "total_census": total_census,
                     "indexed_count": indexed_count,
@@ -410,8 +454,10 @@ def get_academic_profile(
                     "fwci_avg": _clean_val(r.get("fwci_avg", 1.0)),
                     "percentile_avg": _clean_val(r.get("percentile_avg", 50.0)),
                     "pct_top_10": _clean_val(r.get("pct_top_10", 0.0)),
-                    "pct_1": _clean_val(r.get("pct_1", 0.0))
+                    "pct_1": _clean_val(r.get("pct_1", 0.0)),
+                    "tiers": tiers_dict
                 }
+                kpis["tiers"] = tiers_dict
                 kpis["velocity"] = {
                     "velocity_avg": _clean_val(r.get("velocity_avg", 0.0)),
                     "recent_cites_3yr": int(r.get("recent_cites_3yr", 0) or 0),
@@ -601,6 +647,12 @@ def get_academic_profile(
     except Exception as e:
         print(f"[get_academic_profile] Error en citations_summary: {e}")
 
+    if "tiers" not in kpis.get("excellence", {}):
+        kpis.setdefault("excellence", {})["tiers"] = {
+            "T1": 0, "T2": 0, "T3": 0, "T4": 0,
+            "t1Pct": 0.0, "t2Pct": 0.0, "t3Pct": 0.0, "t4Pct": 0.0, "total": 0
+        }
+
     profile_dict.update({
         "kpis": kpis,
         "oa_distribution": oa_dist,
@@ -673,6 +725,25 @@ def get_academic_works(
                     if oa_val in ["", "none", "nan"]:
                         oa_val = "closed"
 
+                    # Calcular percentil y tramo (tier) de impacto observado
+                    p_val = None
+                    if "percentile" in r and pd.notna(r.get("percentile")):
+                        p_val = float(r.get("percentile"))
+                    elif "citation_normalized_percentile" in r and pd.notna(r.get("citation_normalized_percentile")):
+                        p_val = float(r.get("citation_normalized_percentile"))
+
+                    fwci_val = round(float(r.get("fwci", 1.0)), 2) if pd.notna(r.get("fwci")) else 1.0
+                    top10 = int(r.get("is_in_top_10_percent", 0)) == 1 or int(r.get("is_top_10", 0)) == 1
+                    top1 = int(r.get("is_in_top_1_percent", 0)) == 1 or int(r.get("is_top_1", 0)) == 1
+
+                    work_temp = {
+                        "is_top_10": top10,
+                        "is_top_1": top1,
+                        "percentile": p_val,
+                        "fwci": fwci_val
+                    }
+                    tier_str = _determine_tier(work_temp)
+
                     works_list.append({
                         "id": str(r.get("paper_id") or doi or ""),
                         "title": str(r.get("Title") or "Sin título"),
@@ -681,15 +752,17 @@ def get_academic_works(
                         "year": int(r.get("year")) if pd.notna(r.get("year")) else None,
                         "publication_year": int(r.get("year")) if pd.notna(r.get("year")) else None,
                         "citations": int(r.get("citations", 0)) if pd.notna(r.get("citations")) else 0,
-                        "fwci": round(float(r.get("fwci", 1.0)), 2) if pd.notna(r.get("fwci")) else 1.0,
+                        "fwci": fwci_val,
+                        "tier": tier_str,
+                        "percentile": p_val,
                         "oa_status": oa_val,
                         "doi": doi_clean,
                         "doi_url": doi_url,
                         "openalex_url": str(r.get("openalex_url") or "") if pd.notna(r.get("openalex_url")) else None,
                         "topic": str(r.get("topic") or "") if pd.notna(r.get("topic")) else "",
                         "ods_name": str(r.get("ODS_Nombre") or "") if pd.notna(r.get("ODS_Nombre")) else None,
-                        "is_top_10": int(r.get("is_in_top_10_percent", 0)) == 1,
-                        "is_top_1": int(r.get("is_in_top_1_percent", 0)) == 1,
+                        "is_top_10": top10,
+                        "is_top_1": top1,
                     })
         except Exception as e:
             print(f"[get_academic_works] Error leyendo papers_profesor.parquet: {e}")
@@ -705,7 +778,7 @@ def get_academic_works(
             where_sql = " AND ".join(conditions)
             query = f"""
                 SELECT id, doi, title, publication_year, author_names, institution_names,
-                       topic, fwci, oa_status, is_top_10, is_top_1, cited_by_count, source_type, source_id
+                       topic, fwci, percentile, oa_status, is_top_10, is_top_1, cited_by_count, source_type, source_id
                 FROM works
                 WHERE {where_sql}
                 ORDER BY publication_year DESC, cited_by_count DESC
@@ -727,6 +800,19 @@ def get_academic_works(
                         
                         sid = str(r.get("source_id") or "")
                         journal = src_map.get(sid) or (str(r.get("source_type") or "").capitalize() if r.get("source_type") else "Revista no especificada")
+
+                        p_val = float(r.get("percentile")) if pd.notna(r.get("percentile")) else None
+                        fwci_val = round(float(r.get("fwci", 1.0)), 2) if pd.notna(r.get("fwci")) else 1.0
+                        top10 = int(r.get("is_top_10", 0)) == 1
+                        top1 = int(r.get("is_top_1", 0)) == 1
+
+                        work_temp = {
+                            "is_top_10": top10,
+                            "is_top_1": top1,
+                            "percentile": p_val,
+                            "fwci": fwci_val
+                        }
+                        tier_str = _determine_tier(work_temp)
                         
                         works_list.append({
                             "id": str(r.get("id")),
@@ -736,15 +822,17 @@ def get_academic_works(
                             "year": int(r.get("publication_year")) if pd.notna(r.get("publication_year")) else None,
                             "publication_year": int(r.get("publication_year")) if pd.notna(r.get("publication_year")) else None,
                             "citations": int(r.get("cited_by_count", 0)) if pd.notna(r.get("cited_by_count")) else 0,
-                            "fwci": round(float(r.get("fwci", 1.0)), 2) if pd.notna(r.get("fwci")) else 1.0,
+                            "fwci": fwci_val,
+                            "tier": tier_str,
+                            "percentile": p_val,
                             "oa_status": str(r.get("oa_status") or "closed").lower(),
                             "doi": doi_clean,
                             "doi_url": doi_url,
                             "openalex_url": f"https://openalex.org/{r.get('id').split('/')[-1]}" if r.get("id") else None,
                             "topic": str(r.get("topic") or ""),
                             "ods_name": None,
-                            "is_top_10": int(r.get("is_top_10", 0)) == 1,
-                            "is_top_1": int(r.get("is_top_1", 0)) == 1,
+                            "is_top_10": top10,
+                            "is_top_1": top1,
                         })
             except Exception as e:
                 print(f"[get_academic_works] Error ClickHouse: {e}")

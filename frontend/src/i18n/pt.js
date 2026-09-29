@@ -5,8 +5,8 @@
 
 export const pt = {
   // Franja & Navegação
-  appName: "SNII Info TlachIA",
-  appSubtitle: "Inteligência Científica do Registro SNII e Produção Acadêmica",
+  appName: "Info TlachIA",
+  appSubtitle: "Inteligência Científica e Produção Acadêmica",
   tabs: {
     home: "Início",
     national: "Panorama Nacional",
@@ -24,8 +24,8 @@ export const pt = {
     institutionSelect: "Instituição",
     dependencySelect: "Dependência / Faculdade",
     subdependencySelect: "Subdependência / Centro",
-    knowledgeArea: "Área de Conhecimento SNII",
-    sniiLevel: "Nível SNII",
+    knowledgeArea: "Área de Conhecimento",
+    sniiLevel: "Nível de Carreira",
     periodFilter: "Período Temporal",
     allInstitutions: "Todas as Instituições",
     allDependencies: "Todas as Dependências",
@@ -41,7 +41,7 @@ export const pt = {
       oaRatio: "Taxa de Acesso Aberto"
     },
     charts: {
-      sniiDistribution: "Distribuição por Nível SNII (Candidato a Nível III / Emérito)",
+      sniiDistribution: "Distribuição por Nível de Carreira",
       genderBalance: "Equidade de Gênero por Área Científica",
       temporalEvolution: "Evolução Temporal de Produção e Citações",
       sdgImpact: "Contribuição aos Objetivos de Desenvolvimento Sustentável (ODS)"
@@ -55,7 +55,7 @@ export const pt = {
     searching: "Buscando pesquisadores...",
     noResults: "Nenhum pesquisador encontrado correspondente à busca.",
     profile: {
-      sniiBadge: "SNII",
+      sniiBadge: "Pesquisador",
       active2026: "Registro 2026 Confirmado",
       area: "Área Científica",
       subdiscipline: "Subdisciplina",
@@ -123,7 +123,7 @@ export const pt = {
     disclaimedWorks: "Obras Desvinculadas",
     restoreWork: "Reincorporar Obra",
     addCustomWork: "Carregar Obra Manualmente (.bib / RIS)",
-    generateDossier: "Gerar Dossier de Avaliação SNII / PRIDE",
+    generateDossier: "Gerar Dossier de Trajetória Acadêmica",
     subtabs: {
       identity: "Resumo de Identidade",
       accreditation: "Credenciamento Institucional",
@@ -190,7 +190,7 @@ export const pt = {
     check_local_llm: "Usar recursos locais / LM Studio",
     btn_run_pipeline_e2e: "Executar Pipeline Completo E2E",
     btn_ror_extract: "2.1 Extrair Catálogo ROR",
-    btn_ror_resolve: "2.2 Resolver SNII para ROR",
+    btn_ror_resolve: "2.2 Resolver Pesquisadores para ROR",
     btn_ror_neo4j_sync: "2.3 Sincronizar e Mesclar Neo4j",
     btn_run_missing_orcids: "Iniciar Varredura sem ORCID",
     check_sync_academics: "Sincronizar por Pesquisadores",
@@ -222,7 +222,7 @@ export const pt = {
       direct: "Chat Cienciométrico",
       agent: "Agente Autônomo Híbrido"
     },
-    skills_filter: "Habilidades Ativas (ClickHouse, Neo4j, SNII)",
+    skills_filter: "Habilidades Ativas (ClickHouse, Neo4j, Cadastro)",
     btn_send: "Enviar Consulta",
     btn_clear: "Nova Conversa",
     btn_copy: "Copiar para Área de Transferência",

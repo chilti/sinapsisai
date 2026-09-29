@@ -1,7 +1,7 @@
 """
-lib/dossier_generator.py - Generador de Dossier Ejecutivo Oficial SNII / PRIDE
-Genera informes probatorios estructurados de trayectoria e impacto científico para convocatorias de
-SECIHTI/CONAHCYT (SNII) y de la UNAM (PRIDE / Carrera Docente / Informes Anuales).
+lib/dossier_generator.py - Generador de Dossier Ejecutivo de Trayectoria Académica
+Genera informes probatorios estructurados de trayectoria e impacto científico para comisiones dictaminadoras
+y evaluación académica integral.
 Soporta formatos:
 - Markdown estructurado descargable (.md)
 - PDF formal de calidad ejecutiva con WeasyPrint
@@ -111,25 +111,26 @@ def _determine_authorship_role(work_dict: Dict[str, Any], academic_name: str) ->
     }
 
 
-def _determine_quartile(work_dict: Dict[str, Any]) -> str:
+def _determine_tier(work_dict: Dict[str, Any]) -> str:
     """
-    Determina el cuartil de impacto de la obra según percentiles y distinciones globales.
+    Determina el Tramo de Impacto Observado (Tier T1-T4) según percentiles normalizados,
+    distinciones globales (Top 1%, Top 10%) o FWCI (estándares DORA / Leiden).
     """
     top10 = work_dict.get("is_top_10") or 0
     top1 = work_dict.get("is_top_1") or 0
     percentile = work_dict.get("percentile")
 
     if top1 or (percentile is not None and percentile >= 99):
-        return "Q1 (Top 1%)"
+        return "T1 (Top 1%)"
     if top10 or (percentile is not None and percentile >= 75):
-        return "Q1"
+        return "T1"
     if percentile is not None:
         if percentile >= 50:
-            return "Q2"
+            return "T2"
         elif percentile >= 25:
-            return "Q3"
+            return "T3"
         elif percentile >= 0:
-            return "Q4"
+            return "T4"
 
     # Heurística basada en FWCI
     fwci = work_dict.get("fwci")
@@ -137,17 +138,20 @@ def _determine_quartile(work_dict: Dict[str, Any]) -> str:
         try:
             f = float(fwci)
             if f >= 1.5:
-                return "Q1 (Est.)"
+                return "T1 (Est.)"
             elif f >= 1.0:
-                return "Q2 (Est.)"
+                return "T2 (Est.)"
             elif f >= 0.6:
-                return "Q3 (Est.)"
+                return "T3 (Est.)"
             else:
-                return "Q4 (Est.)"
+                return "T4 (Est.)"
         except (ValueError, TypeError):
             pass
 
-    return "Sin Clasificar"
+    return "T4 (Base)"
+
+
+_determine_quartile = _determine_tier
 
 
 def fetch_academic_works(academic_name: Optional[str] = None, orcid: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -254,7 +258,7 @@ def generate_dossier_data(
     snii_level: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Recopila y calcula todas las métricas requeridas para el Dossier SNII / PRIDE.
+    Recopila y calcula todas las métricas requeridas para el Dossier de Trayectoria Académica.
     """
     curation = get_curation_service()
     clean_orc = _clean_str(orcid).replace("https://orcid.org/", "").replace("http://orcid.org/", "").strip()
@@ -355,7 +359,7 @@ def generate_dossier_data(
     lead_count = 0
 
     catalog = []
-    quartiles_count = {"Q1": 0, "Q2": 0, "Q3": 0, "Q4": 0, "Sin Clasificar": 0}
+    tiers_count = {"T1": 0, "T2": 0, "T3": 0, "T4": 0, "Sin Clasificar": 0}
     oa_counts = {"diamond": 0, "gold": 0, "green": 0, "hybrid": 0, "bronze": 0, "closed": 0, "otro": 0}
     sdg_counts = {k: 0 for k in range(1, 18)}
 
@@ -370,13 +374,13 @@ def generate_dossier_data(
         if auth_info["is_lead"]:
             lead_count += 1
 
-        # Cuartil
-        quartile = _determine_quartile(w)
-        base_q = quartile.split()[0]
-        if base_q in quartiles_count:
-            quartiles_count[base_q] += 1
+        # Tramo de Impacto Observado (Tier T1-T4)
+        tier = _determine_tier(w)
+        base_t = tier.split()[0]
+        if base_t in tiers_count:
+            tiers_count[base_t] += 1
         else:
-            quartiles_count["Sin Clasificar"] += 1
+            tiers_count["Sin Clasificar"] += 1
 
         # Acceso Abierto
         oa_st = str(w.get("oa_status") or "").lower().strip()
@@ -406,7 +410,8 @@ def generate_dossier_data(
             "doi": w.get("doi") or "",
             "citations": int(w.get("citations") or w.get("cited_by_count") or 0),
             "fwci": round(float(w.get("fwci") or 1.0), 2),
-            "quartile": quartile,
+            "tier": tier,
+            "quartile": tier,
             "authorship_role": role,
             "oa_status": oa_st,
             "topic": w.get("topic") or ""
@@ -461,7 +466,8 @@ def generate_dossier_data(
             "estimated_apc_savings_usd": estimated_apc_savings_usd
         },
         "authorship_breakdown": role_counts,
-        "quartiles_breakdown": quartiles_count,
+        "tiers_breakdown": tiers_count,
+        "quartiles_breakdown": tiers_count,
         "oa_breakdown": oa_counts,
         "sdg_breakdown": {f"SDG {k}: {SDG_NAMES[k]}": v for k, v in sdg_counts.items() if v > 0},
         "annual_timeline": annual_timeline,
@@ -480,16 +486,16 @@ def generate_dossier_markdown(data: Dict[str, Any]) -> str:
     md.append(f"**Institución:** {data['institution']}  ")
     if data.get('dependency'):
         md.append(f"**Dependencia:** {data['dependency']}  ")
-    md.append(f"**Nivel SNII:** {data['snii_level']}  ")
+    md.append(f"**Nivel:** {data['snii_level']}  ")
     md.append(f"**Fecha de Emisión:** {data['generated_at']}  ")
-    md.append(f"**Plataforma de Auditoría:** SNII Info TlachIA (UNAM)\n")
+    md.append(f"**Plataforma de Auditoría:** Info TlachIA (UNAM)\n")
 
     md.append("---")
     md.append("## 1. Resumen Ejecutivo de Impacto Científico\n")
     md.append("| Indicador | Valor | Descripción / Estándar Internacional |")
     md.append("|---|---|---|")
     md.append(f"| **Total de Publicaciones** | **{m['total_works']}** | Artículos indizados y obras curadas |")
-    md.append(f"| **Total de Citas Recibidas** | **{m['total_citations']}** | Citas globales (Scopus / OpenAlex / Crossref) |")
+    md.append(f"| **Total de Citas Recibidas** | **{m['total_citations']}** | Citas globales verificadas (OpenAlex / Crossref / Fuentes Internacionales) |")
     md.append(f"| **Índice H (H-Index)** | **{m['h_index']}** | Al menos {m['h_index']} artículos con {m['h_index']} o más citas |")
     md.append(f"| **Índice G (G-Index)** | **{m['g_index']}** | Ponderación de citas en obras de mayor impacto |")
     md.append(f"| **Impacto Normalizado (FWCI)** | **{m['avg_fwci']}** | Promedio mundial = 1.0 (Valores > 1 superan el estándar global) |")
@@ -499,13 +505,22 @@ def generate_dossier_markdown(data: Dict[str, Any]) -> str:
     md.append(f"| **Acceso Abierto (OA)** | **{m['pct_oa']}%** | Proporción de producción en vías de libre acceso |")
     md.append(f"| **Ahorro Estimado en APC (USD)** | **${m['estimated_apc_savings_usd']:,} USD** | Ahorro público generado vía Acceso Abierto Diamante y Verde |\n")
 
-    md.append("## 2. Clasificación por Cuartiles de Calidad")
-    md.append("Distribución de publicaciones según el cuartil de impacto de la revista:\n")
-    md.append("| Cuartil | Número de Obras | Proporción |")
-    md.append("|---|---|---|")
-    for q, cnt in data["quartiles_breakdown"].items():
+    md.append("## 2. Clasificación por Tramos de Impacto Observado (Tiers T1–T4)")
+    md.append("Distribución de publicaciones según su percentil de citación normalizado por campo y año (calidad e impacto real observado a nivel de artículo, en concordancia con los principios DORA y el Manifiesto de Leiden):\n")
+    md.append("| Tramo (Tier) | Número de Obras | Proporción | Nivel de Excelencia Citacional Relativo |")
+    md.append("|---|---|---|---|")
+    tier_labels = {
+        "T1": "Tier 1 (T1) - Alto Impacto Observado (Percentil superior 75%–100%)",
+        "T2": "Tier 2 (T2) - Impacto Medio-Alto (Percentil 50%–74%)",
+        "T3": "Tier 3 (T3) - Impacto Medio-Bajo (Percentil 25%–49%)",
+        "T4": "Tier 4 (T4) - Impacto Base / Inicial (Percentil 0%–24%)",
+        "Sin Clasificar": "Sin Clasificar"
+    }
+    for t_key in ["T1", "T2", "T3", "T4"]:
+        cnt = data.get("tiers_breakdown", {}).get(t_key, 0)
         pct = round((cnt / m['total_works']) * 100, 1) if m['total_works'] > 0 else 0.0
-        md.append(f"| **{q}** | {cnt} | {pct}% |")
+        desc = tier_labels.get(t_key, "")
+        md.append(f"| **{t_key}** | {cnt} | {pct}% | {desc} |")
     md.append("")
 
     md.append("## 3. Desglose de Liderazgo y Roles de Autoría\n")
@@ -535,13 +550,14 @@ def generate_dossier_markdown(data: Dict[str, Any]) -> str:
         md.append("")
 
     md.append("## 6. Catálogo Detallado de Publicaciones Probatorias\n")
-    md.append("| Año | Título de la Obra | Revista / Medio | Rol | Cuartil | Citas | FWCI | DOI |")
+    md.append("| Año | Título de la Obra | Revista / Medio | Rol | Tramo (Tier) | Citas | FWCI | DOI |")
     md.append("|---|---|---|---|---|---|---|---|")
     for item in data["catalog"]:
         doi_link = f"[{item['doi']}](https://doi.org/{item['doi']})" if item['doi'] else "-"
         title_esc = item['title'].replace("|", "-")
         journal_esc = item['journal'].replace("|", "-")
-        md.append(f"| {item['year']} | {title_esc} | {journal_esc} | {item['authorship_role']} | {item['quartile']} | {item['citations']} | {item['fwci']} | {doi_link} |")
+        tier_str = item.get("tier") or item.get("quartile") or "T4"
+        md.append(f"| {item['year']} | {title_esc} | {journal_esc} | {item['authorship_role']} | {tier_str} | {item['citations']} | {item['fwci']} | {doi_link} |")
 
     return "\n".join(md)
 
@@ -549,7 +565,7 @@ def generate_dossier_markdown(data: Dict[str, Any]) -> str:
 def generate_dossier_pdf(data: Dict[str, Any]) -> bytes:
     """
     Genera un informe formal en PDF listo para presentación ante comisiones dictaminadoras
-    del SNII y comités evaluadores del PRIDE en la UNAM.
+    y evaluación integral de trayectoria académica.
     Utiliza WeasyPrint con maquetación ejecutiva.
     """
     m = data["metrics"]
@@ -566,7 +582,7 @@ def generate_dossier_pdf(data: Dict[str, Any]) -> bytes:
                 size: letter portrait;
                 margin: 20mm 15mm 20mm 15mm;
                 @top-left {{
-                    content: "SNII Info TlachIA • Trayectoria Académica";
+                    content: "Info TlachIA • Trayectoria Académica";
                     font-size: 8pt;
                     color: #64748b;
                     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
@@ -702,7 +718,7 @@ def generate_dossier_pdf(data: Dict[str, Any]) -> bytes:
                 <strong>Investigador(a):</strong> {data['academic_name']} &bull; 
                 <strong>ORCID iD:</strong> {data.get('orcid') or 'No especificado'}<br>
                 <strong>Afiliación:</strong> {data['institution']} {f"• {data['dependency']}" if data.get('dependency') else ""}<br>
-                <strong>Distinción:</strong> SNII {data['snii_level']} &bull; 
+                <strong>Distinción:</strong> {data['snii_level']} &bull; 
                 <strong>Fecha de Generación:</strong> {data['generated_at']}
             </div>
         </div>
@@ -783,40 +799,43 @@ def generate_dossier_pdf(data: Dict[str, Any]) -> bytes:
             </tbody>
         </table>
 
-        <h2>2. Clasificación por Cuartiles Internacionales de Calidad</h2>
+        <h2>2. Clasificación por Tramos de Impacto Observado (Tiers T1–T4)</h2>
+        <p style="font-size: 8pt; color: #475569; margin-top: -6px; margin-bottom: 8px;">
+            Distribución de publicaciones según el percentil de citación normalizado por disciplina y año (calidad e impacto observado a nivel de artículo según estándares DORA y Manifiesto de Leiden).
+        </p>
         <table>
             <thead>
                 <tr>
-                    <th>Cuartil</th>
+                    <th>Tramo (Tier)</th>
                     <th style="text-align: center;">Cantidad</th>
                     <th style="text-align: center;">Proporción</th>
-                    <th>Nivel de Excelencia Relativo</th>
+                    <th>Nivel de Excelencia Relativo Observado</th>
                 </tr>
             </thead>
             <tbody>
                 <tr>
-                    <td><span class="badge badge-q1">Cuartil 1 (Q1)</span></td>
-                    <td style="text-align: center;">{data['quartiles_breakdown'].get('Q1', 0)}</td>
-                    <td style="text-align: center;">{round((data['quartiles_breakdown'].get('Q1', 0) / max(m['total_works'], 1)) * 100, 1)}%</td>
-                    <td>Percentil superior 75%–100% de la disciplina.</td>
+                    <td><span class="badge badge-q1">Tier 1 (T1)</span></td>
+                    <td style="text-align: center;">{data.get('tiers_breakdown', {}).get('T1', 0)}</td>
+                    <td style="text-align: center;">{round((data.get('tiers_breakdown', {}).get('T1', 0) / max(m['total_works'], 1)) * 100, 1)}%</td>
+                    <td>Percentil superior 75%–100% de la disciplina mundial (Alto Impacto Observado).</td>
                 </tr>
                 <tr>
-                    <td><span class="badge badge-q2">Cuartil 2 (Q2)</span></td>
-                    <td style="text-align: center;">{data['quartiles_breakdown'].get('Q2', 0)}</td>
-                    <td style="text-align: center;">{round((data['quartiles_breakdown'].get('Q2', 0) / max(m['total_works'], 1)) * 100, 1)}%</td>
-                    <td>Percentil 50%–74% de impacto estándar.</td>
+                    <td><span class="badge badge-q2">Tier 2 (T2)</span></td>
+                    <td style="text-align: center;">{data.get('tiers_breakdown', {}).get('T2', 0)}</td>
+                    <td style="text-align: center;">{round((data.get('tiers_breakdown', {}).get('T2', 0) / max(m['total_works'], 1)) * 100, 1)}%</td>
+                    <td>Percentil 50%–74% mundial de impacto medio-alto.</td>
                 </tr>
                 <tr>
-                    <td><span class="badge badge-q3">Cuartil 3 (Q3)</span></td>
-                    <td style="text-align: center;">{data['quartiles_breakdown'].get('Q3', 0)}</td>
-                    <td style="text-align: center;">{round((data['quartiles_breakdown'].get('Q3', 0) / max(m['total_works'], 1)) * 100, 1)}%</td>
-                    <td>Percentil 25%–49% de impacto medio.</td>
+                    <td><span class="badge badge-q3">Tier 3 (T3)</span></td>
+                    <td style="text-align: center;">{data.get('tiers_breakdown', {}).get('T3', 0)}</td>
+                    <td style="text-align: center;">{round((data.get('tiers_breakdown', {}).get('T3', 0) / max(m['total_works'], 1)) * 100, 1)}%</td>
+                    <td>Percentil 25%–49% mundial de impacto medio-bajo.</td>
                 </tr>
                 <tr>
-                    <td><span class="badge badge-q4">Cuartil 4 (Q4)</span></td>
-                    <td style="text-align: center;">{data['quartiles_breakdown'].get('Q4', 0)}</td>
-                    <td style="text-align: center;">{round((data['quartiles_breakdown'].get('Q4', 0) / max(m['total_works'], 1)) * 100, 1)}%</td>
-                    <td>Percentil 0%–24% o revistas regionales iniciales.</td>
+                    <td><span class="badge badge-q4">Tier 4 (T4)</span></td>
+                    <td style="text-align: center;">{data.get('tiers_breakdown', {}).get('T4', 0)}</td>
+                    <td style="text-align: center;">{round((data.get('tiers_breakdown', {}).get('T4', 0) / max(m['total_works'], 1)) * 100, 1)}%</td>
+                    <td>Percentil 0%–24% mundial o publicaciones iniciales.</td>
                 </tr>
             </tbody>
         </table>
@@ -828,7 +847,7 @@ def generate_dossier_pdf(data: Dict[str, Any]) -> bytes:
                     <th style="width: 35px;">Año</th>
                     <th>Título y Revista</th>
                     <th style="width: 80px;">Rol</th>
-                    <th style="width: 45px; text-align: center;">Nivel</th>
+                    <th style="width: 60px; text-align: center;">Tramo</th>
                     <th style="width: 35px; text-align: center;">Citas</th>
                     <th style="width: 35px; text-align: center;">FWCI</th>
                 </tr>
@@ -837,7 +856,8 @@ def generate_dossier_pdf(data: Dict[str, Any]) -> bytes:
     """
 
     for item in data["catalog"][:60]:  # Limitar a las 60 obras principales para impresión formal
-        badge_cls = "badge-q1" if "Q1" in item["quartile"] else "badge-q2" if "Q2" in item["quartile"] else "badge-q3" if "Q3" in item["quartile"] else "badge-q4"
+        t_val = item.get("tier") or item.get("quartile") or "T4"
+        badge_cls = "badge-q1" if ("T1" in t_val or "Q1" in t_val) else "badge-q2" if ("T2" in t_val or "Q2" in t_val) else "badge-q3" if ("T3" in t_val or "Q3" in t_val) else "badge-q4"
         doi_display = f"<br><span class='doi-col'>https://doi.org/{item['doi']}</span>" if item.get('doi') else ""
         html_content += f"""
                 <tr>
@@ -848,7 +868,7 @@ def generate_dossier_pdf(data: Dict[str, Any]) -> bytes:
                         {doi_display}
                     </td>
                     <td>{item['authorship_role']}</td>
-                    <td style="text-align: center;"><span class="badge {badge_cls}">{item['quartile']}</span></td>
+                    <td style="text-align: center;"><span class="badge {badge_cls}">{t_val}</span></td>
                     <td style="text-align: center;"><strong>{item['citations']}</strong></td>
                     <td style="text-align: center;">{item['fwci']}</td>
                 </tr>
@@ -859,11 +879,11 @@ def generate_dossier_pdf(data: Dict[str, Any]) -> bytes:
         </table>
 
         <div class="footer-legal">
-            <strong>Certificación de Datos:</strong> Este documento fue generado automáticamente por <em>SNII Info TlachIA</em> 
-            a partir de la sincronización de identificadores oficiales (ORCID, Scopus, OpenAlex) y las tablas canónicas 
+            <strong>Certificación de Datos:</strong> Este documento fue generado automáticamente por <em>Info TlachIA</em> 
+            a partir de la sincronización de identificadores oficiales (ORCID, OpenAlex) y las tablas canónicas 
             de producción científica nacional e internacional alojadas en la infraestructura UNAM. 
-            Los indicadores bibliométricos presentados se adhieren a la declaración DORA y a los criterios vigentes 
-            del Sistema Nacional de Investigadoras e Investigadores (SNII / SECIHTI).
+            Los indicadores bibliométricos presentados se adhieren a la declaración DORA y a las mejores prácticas 
+            internacionales de evaluación responsable de la trayectoria académica.
         </div>
     </body>
     </html>

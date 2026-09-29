@@ -206,6 +206,7 @@ export function InstitutionalPanorama() {
     pct_top_1: 0,
     h_index: 0
   };
+  const tiersInst = kpiExcel.tiers || metricsData?.kpi?.tiers;
   const kpiVel = metricsData?.kpi?.velocity || {
     velocity_avg: 0,
     recent_cites_3yr: 0,
@@ -460,17 +461,17 @@ export function InstitutionalPanorama() {
           <div className="glass-card kpi-metric-card">
             <span className="kpi-metric-label">% Académicos con algún ID</span>
             <span className="kpi-metric-val">{kpiIds.pct_academic_any_id}%</span>
-            <span className="badge badge-purple" style={{ width: 'fit-content', fontSize: '0.7rem' }}>ORCID, OA, Scopus o CVU</span>
+            <span className="badge badge-purple" style={{ width: 'fit-content', fontSize: '0.7rem' }}>ORCID, OA o CVU</span>
           </div>
           <div className="glass-card kpi-metric-card">
-            <span className="kpi-metric-label">% SNII con ORCID</span>
+            <span className="kpi-metric-label">% con ORCID</span>
             <span className="kpi-metric-val">{kpiIds.pct_snii_orcid}%</span>
-            <span className="badge badge-emerald" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Padrón Oficial SNII</span>
+            <span className="badge badge-emerald" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Padrón Oficial</span>
           </div>
           <div className="glass-card kpi-metric-card">
-            <span className="kpi-metric-label">% SNII con algún ID</span>
+            <span className="kpi-metric-label">% con algún ID</span>
             <span className="kpi-metric-val">{kpiIds.pct_snii_any_id}%</span>
-            <span className="badge badge-amber" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Multicátalogo SNII</span>
+            <span className="badge badge-amber" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Multicatálogo</span>
           </div>
         </div>
       </div>
@@ -493,7 +494,7 @@ export function InstitutionalPanorama() {
             <span className="badge badge-purple" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Metadatos Completos</span>
           </div>
           <div className="glass-card kpi-metric-card">
-            <span className="kpi-metric-label">No. de SNIIs 2025</span>
+            <span className="kpi-metric-label">No. de Investigadores</span>
             <span className="kpi-metric-val">{kpiGen.official_snii_count.toLocaleString()}</span>
             <span className="badge badge-emerald" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Padrón Oficial</span>
           </div>
@@ -550,6 +551,70 @@ export function InstitutionalPanorama() {
             <span className="badge badge-amber" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Índice de Hirsch</span>
           </div>
         </div>
+
+        {/* Distribución por Tramos de Impacto Observado (Tiers T1–T4) */}
+        {tiersInst && (
+          <div className="glass-card" style={{ marginTop: '0.75rem', padding: '0.85rem 1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.6rem' }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                Distribución por Tramos de Impacto Observado (Tiers T1–T4):
+              </span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                Normalizado por disciplina y año (DORA / Leiden)
+              </span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
+              <div style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', borderLeft: '3px solid #8b5cf6', background: 'rgba(139, 92, 246, 0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#a78bfa' }}>Tier 1 (T1)</span>
+                  <span className="badge badge-purple" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Alto</span>
+                </div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
+                  {tiersInst.t1Pct ?? 0}%
+                </div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  {tiersInst.T1 ? `${tiersInst.T1.toLocaleString()} obras` : 'Top 25% mundial'}
+                </div>
+              </div>
+              <div style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', borderLeft: '3px solid #3b82f6', background: 'rgba(59, 130, 246, 0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#60a5fa' }}>Tier 2 (T2)</span>
+                  <span className="badge badge-blue" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Medio-Alto</span>
+                </div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
+                  {tiersInst.t2Pct ?? 0}%
+                </div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  {tiersInst.T2 ? `${tiersInst.T2.toLocaleString()} obras` : 'Percentil 50–74%'}
+                </div>
+              </div>
+              <div style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', borderLeft: '3px solid #10b981', background: 'rgba(16, 185, 129, 0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#34d399' }}>Tier 3 (T3)</span>
+                  <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Medio-Bajo</span>
+                </div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
+                  {tiersInst.t3Pct ?? 0}%
+                </div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  {tiersInst.T3 ? `${tiersInst.T3.toLocaleString()} obras` : 'Percentil 25–49%'}
+                </div>
+              </div>
+              <div style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', borderLeft: '3px solid #f59e0b', background: 'rgba(245, 158, 11, 0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#fbbf24' }}>Tier 4 (T4)</span>
+                  <span className="badge badge-amber" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Base</span>
+                </div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
+                  {tiersInst.t4Pct ?? 0}%
+                </div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  {tiersInst.T4 ? `${tiersInst.T4.toLocaleString()} obras` : 'Percentil 0–24%'}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── 5. GRUPO 4 & 5: Velocidad, Colaboración y Costos APC ────────────── */}
@@ -998,7 +1063,7 @@ export function InstitutionalPanorama() {
               >
                 {/* Imagen Oficial del ODS */}
                 <img
-                  src={`/img/ods/ods_${odsId}.png`}
+                  src={`./img/ods/ods_${odsId}.png`}
                   alt={`ODS ${odsId}: ${sdg.name}`}
                   loading="lazy"
                   style={{

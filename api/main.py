@@ -49,7 +49,7 @@ app.add_middleware(
 @app.middleware("http")
 async def rewrite_proxy_path(request: Request, call_next):
     path = request.scope.get("path", "")
-    for prefix in ["/sinapsisai", "/infotlachia"]:
+    for prefix in ["/sinapsisai_dev", "/sinapsisai", "/infotlachia"]:
         if path.startswith(prefix + "/") or path == prefix:
             request.scope["path"] = path.replace(prefix, "", 1) or "/"
             break

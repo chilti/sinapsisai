@@ -753,6 +753,13 @@ def aggregate_metrics(df_papers, group_cols):
     if df_papers.empty: return pd.DataFrame()
     
     # Preparamos las columnas
+    if 'percentile' in df_papers.columns and 'citation_normalized_percentile' not in df_papers.columns:
+        df_papers['citation_normalized_percentile'] = df_papers['percentile']
+    if 'is_top_10' in df_papers.columns and 'is_in_top_10_percent' not in df_papers.columns:
+        df_papers['is_in_top_10_percent'] = df_papers['is_top_10']
+    if 'is_top_1' in df_papers.columns and 'is_in_top_1_percent' not in df_papers.columns:
+        df_papers['is_in_top_1_percent'] = df_papers['is_top_1']
+
     if 'fwci' in df_papers.columns:
         df_papers['fwci'] = pd.to_numeric(df_papers['fwci'], errors='coerce')
     if 'is_in_top_10_percent' in df_papers.columns:
@@ -770,7 +777,12 @@ def aggregate_metrics(df_papers, group_cols):
         df_papers['is_oa_closed'] = (df_papers['oa_status'] == 'closed').astype(int)
 
     # Identificar papers con datos reales de OpenAlex (enriquecidos)
-    _has_oa = df_papers['has_oa_data'] == 1 if 'has_oa_data' in df_papers.columns else df_papers['openalex_url'].notna()
+    if 'has_oa_data' in df_papers.columns:
+        _has_oa = df_papers['has_oa_data'] == 1
+    elif 'openalex_url' in df_papers.columns:
+        _has_oa = df_papers['openalex_url'].notna()
+    else:
+        _has_oa = pd.Series(True, index=df_papers.index)
 
     # Limpiar columnas de impacto: si no hay OA, deben ser NaN para no sesgar promedios
     impact_cols = ['fwci', 'citation_normalized_percentile', 
@@ -860,6 +872,30 @@ def aggregate_metrics(df_papers, group_cols):
     else:
         df_papers['is_cc_by'] = 0
 
+    # ── Tramos de Impacto Observado (Tiers T1–T4) ─────────────────────────
+    p_col = 'citation_normalized_percentile' if 'citation_normalized_percentile' in df_papers.columns else ('percentile' if 'percentile' in df_papers.columns else None)
+    p_vals = pd.to_numeric(df_papers[p_col], errors='coerce') if p_col else pd.Series(np.nan, index=df_papers.index)
+
+    fwci_vals = pd.to_numeric(df_papers['fwci'], errors='coerce') if 'fwci' in df_papers.columns else pd.Series(np.nan, index=df_papers.index)
+
+    top1_vals = pd.to_numeric(df_papers.get('is_in_top_1_percent', df_papers.get('is_top_1', 0)), errors='coerce').fillna(0) == 1
+    top10_vals = pd.to_numeric(df_papers.get('is_in_top_10_percent', df_papers.get('is_top_10', 0)), errors='coerce').fillna(0) == 1
+
+    cond_t1 = top1_vals | top10_vals | (p_vals >= 75) | (fwci_vals >= 1.5)
+    cond_t2 = (~cond_t1) & ((p_vals >= 50) | (fwci_vals >= 1.0))
+    cond_t3 = (~cond_t1) & (~cond_t2) & ((p_vals >= 25) | (fwci_vals >= 0.6))
+    cond_t4 = (~cond_t1) & (~cond_t2) & (~cond_t3)
+
+    df_papers['t1_count'] = cond_t1.astype(int)
+    df_papers['t2_count'] = cond_t2.astype(int)
+    df_papers['t3_count'] = cond_t3.astype(int)
+    df_papers['t4_count'] = cond_t4.astype(int)
+
+    df_papers['pct_t1'] = cond_t1.astype(float)
+    df_papers['pct_t2'] = cond_t2.astype(float)
+    df_papers['pct_t3'] = cond_t3.astype(float)
+    df_papers['pct_t4'] = cond_t4.astype(float)
+
     agg_funcs = {
         'paper_id': 'count',
         'citations': 'sum',
@@ -873,6 +909,15 @@ def aggregate_metrics(df_papers, group_cols):
         'is_oa_hybrid': 'mean',
         'is_oa_bronze': 'mean',
         'is_oa_closed': 'mean',
+        # Tramos de Impacto Observado (Tiers T1–T4)
+        't1_count': 'sum',
+        't2_count': 'sum',
+        't3_count': 'sum',
+        't4_count': 'sum',
+        'pct_t1':   'mean',
+        'pct_t2':   'mean',
+        'pct_t3':   'mean',
+        'pct_t4':   'mean',
         # Velocidad de citas
         'velocity':          'mean',
         'recent_cites_3yr':  'sum',
@@ -955,14 +1000,17 @@ def aggregate_metrics(df_papers, group_cols):
                 'pct_oa_hybrid', 'pct_oa_bronze', 'pct_oa_closed',
                 'pct_apc', 'pct_international', 'pct_pubmed', 'pct_doaj_indexed',
                 'pct_doaj_journal', 'pct_core_journal', 'pct_retracted',
-                'pct_repository', 'pct_english', 'pct_cc_by']
+                'pct_repository', 'pct_english', 'pct_cc_by',
+                'pct_t1', 'pct_t2', 'pct_t3', 'pct_t4']
     for col in pct_cols:
         if col in df_agg.columns:
             df_agg[col] *= 100
 
     # Llenar nulos - FWCI NO se debe llenar con citas/doc, se queda como NaN si no hay data.
-    df_agg['fwci_avg'] = df_agg['fwci_avg'].replace([np.inf, -np.inf], 0)
-    df_agg['percentile_avg'] = df_agg['percentile_avg'].replace([np.inf, -np.inf], 0)
+    if 'fwci_avg' in df_agg.columns:
+        df_agg['fwci_avg'] = df_agg['fwci_avg'].replace([np.inf, -np.inf], 0)
+    if 'percentile_avg' in df_agg.columns:
+        df_agg['percentile_avg'] = df_agg['percentile_avg'].replace([np.inf, -np.inf], 0)
     
     # Calcular Citations per Paper (CPP)
     df_agg['citations_per_paper'] = df_agg['citations'] / df_agg['num_documents'].replace(0, 1)

@@ -5,8 +5,8 @@
 
 export const en = {
   // Bar & Navigation
-  appName: "SNII Info TlachIA",
-  appSubtitle: "Scientific Intelligence for SNII Registry and Academic Output",
+  appName: "Info TlachIA",
+  appSubtitle: "Scientific Intelligence & Academic Output",
   tabs: {
     home: "Home",
     national: "National Overview",
@@ -24,8 +24,8 @@ export const en = {
     institutionSelect: "Institution",
     dependencySelect: "Dependency / School",
     subdependencySelect: "Subdependency / Department",
-    knowledgeArea: "SNII Knowledge Area",
-    sniiLevel: "SNII Level",
+    knowledgeArea: "Knowledge Area",
+    sniiLevel: "Career Level",
     periodFilter: "Time Period",
     allInstitutions: "All Institutions",
     allDependencies: "All Dependencies",
@@ -41,7 +41,7 @@ export const en = {
       oaRatio: "Open Access Rate"
     },
     charts: {
-      sniiDistribution: "Distribution by SNII Level (Candidate to Level III / Emeritus)",
+      sniiDistribution: "Distribution by Career Level",
       genderBalance: "Gender Balance by Scientific Area",
       temporalEvolution: "Temporal Evolution of Output and Citations",
       sdgImpact: "Contribution to UN Sustainable Development Goals (SDGs)"
@@ -55,7 +55,7 @@ export const en = {
     searching: "Searching researchers...",
     noResults: "No researchers matched your search query.",
     profile: {
-      sniiBadge: "SNII",
+      sniiBadge: "Researcher",
       active2026: "2026 Registry Confirmed",
       area: "Scientific Area",
       subdiscipline: "Subdiscipline",
@@ -123,7 +123,7 @@ export const en = {
     disclaimedWorks: "Disclaimed Works",
     restoreWork: "Restore Work",
     addCustomWork: "Upload Custom Work (.bib / RIS)",
-    generateDossier: "Generate SNII / PRIDE Evaluation Dossier",
+    generateDossier: "Generate Academic Career Dossier",
     subtabs: {
       identity: "Identity Summary",
       accreditation: "Institutional Accreditation",
@@ -190,7 +190,7 @@ export const en = {
     check_local_llm: "Use local resources / LM Studio",
     btn_run_pipeline_e2e: "Execute Full E2E Pipeline",
     btn_ror_extract: "2.1 Extract ROR Catalog",
-    btn_ror_resolve: "2.2 Resolve SNII to ROR",
+    btn_ror_resolve: "2.2 Resolve Researchers to ROR",
     btn_ror_neo4j_sync: "2.3 Sync & Merge Neo4j",
     btn_run_missing_orcids: "Start Missing ORCID Sweep",
     check_sync_academics: "Sync by Academics",
@@ -222,7 +222,7 @@ export const en = {
       direct: "Scientometric Direct Chat",
       agent: "Hybrid Autonomous Agent"
     },
-    skills_filter: "Active Skills (ClickHouse, Neo4j, SNII)",
+    skills_filter: "Active Skills (ClickHouse, Neo4j, Registry)",
     btn_send: "Send Query",
     btn_clear: "New Conversation",
     btn_copy: "Copy to Clipboard",

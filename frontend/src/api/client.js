@@ -5,8 +5,18 @@
 
 import axios from 'axios';
 
+const getBaseApiUrl = () => {
+  if (typeof window !== 'undefined') {
+    const path = window.location.pathname;
+    if (path.includes('/sinapsisai_dev')) return '/sinapsisai_dev/api';
+    if (path.includes('/sinapsisai')) return '/sinapsisai/api';
+    if (path.includes('/infotlachia')) return '/infotlachia/api';
+  }
+  return '/api';
+};
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: getBaseApiUrl(),
   timeout: 45000,
   headers: {
     'Content-Type': 'application/json'
@@ -162,6 +172,10 @@ export const apiClient = {
   },
 
   // Reportes y Descargas
+  getDossierData: async (academic_name, orcid) => {
+    const res = await api.post('/reports/dossier/data', { academic_name, orcid });
+    return res.data;
+  },
   downloadDossierMarkdown: async (academic_name, orcid) => {
     const res = await api.post('/reports/dossier/markdown', { academic_name, orcid }, { responseType: 'blob' });
     return res.data;

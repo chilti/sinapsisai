@@ -138,10 +138,24 @@
 }
 
 .tlachia-suite-item-active {
-  color: #ffffff !important;
-  background: rgba(255, 255, 255, 0.06) !important;
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
-  box-shadow: 0 0 14px rgba(0, 242, 254, 0.12);
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 14px rgba(0, 242, 254, 0.15);
+}
+
+.tlachia-suite-item-name {
+  font-weight: 600;
+  color: inherit;
+}
+
+.tlachia-suite-item-active .tlachia-suite-item-name {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.tlachia-suite-item-active .tlachia-suite-tagline {
+  color: #00f2fe;
 }
 
 .tlachia-suite-item-dot {
@@ -206,7 +220,7 @@
 }
 
 /* Responsividad */
-@media (max-width: 900px) {
+@media (max-width: 1650px) {
   .tlachia-suite-tagline {
     display: none;
   }
@@ -256,6 +270,16 @@
   background: rgba(2, 132, 199, 0.08);
   border-color: rgba(2, 132, 199, 0.25);
   color: #0284c7;
+}
+
+[data-theme="claro"] .tlachia-suite-item-active .tlachia-suite-item-name {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+[data-theme="claro"] .tlachia-suite-item-active .tlachia-suite-tagline {
+  color: #0284c7;
+  font-weight: 600;
 }
 
 [data-theme="claro"] .tlachia-suite-status-pill {

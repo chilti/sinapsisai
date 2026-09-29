@@ -34,8 +34,8 @@ export function AIAssistant() {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: '¡Hola! Soy el Asistente de Inteligencia Científica de SNII Info TlachIA. Puedo responder preguntas sobre la producción académica de investigadores, indicadores de impacto, redes de coautoría o cartografía temática.',
-      thoughts: 'Inicialización de memoria conversacional y registro de herramientas cienciométricas (ClickHouse, Neo4j, SNII).'
+      content: '¡Hola! Soy el Asistente de Inteligencia Científica de Info TlachIA. Puedo responder preguntas sobre la producción académica de investigadores, indicadores de impacto, redes de coautoría o cartografía temática.',
+      thoughts: 'Inicialización de memoria conversacional y registro de herramientas cienciométricas (ClickHouse, Neo4j, Padrón de Investigadores).'
     }
   ]);
 
@@ -73,7 +73,7 @@ export function AIAssistant() {
 
     const activeSkillsList = Object.keys(skills).filter((k) => skills[k]).join(', ');
     const simThoughts = `Modo: ${assistantMode.toUpperCase()} | Modelo: ${selectedModel.toUpperCase()} | Habilidades: [${activeSkillsList}]\n` +
-      `Consultando Padrón SNII 2026 y motor Zero-Join para la petición: "${q.slice(0, 60)}..."`;
+      `Consultando Padrón de Investigadores 2026 y motor Zero-Join para la petición: "${q.slice(0, 60)}..."`;
 
     setMessages((prev) => [
       ...prev,
@@ -210,7 +210,7 @@ export function AIAssistant() {
             <div>
               <h1 style={{ fontSize: '1.5rem', margin: 0 }}>{t.assistant.title}</h1>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: '0.2rem' }}>
-                RAG Híbrido sobre Grafo de Conocimiento Neo4j, Padrón SNII 2026 y OLAP ClickHouse
+                RAG Híbrido sobre Grafo de Conocimiento Neo4j, Padrón de Investigadores 2026 y OLAP ClickHouse
               </p>
             </div>
           </div>
@@ -283,7 +283,7 @@ export function AIAssistant() {
             {[
               { id: 'clickhouse', label: 'ClickHouse' },
               { id: 'neo4j', label: 'Neo4j' },
-              { id: 'snii', label: 'Padrón SNII' },
+              { id: 'snii', label: 'Padrón Oficial' },
               { id: 'embeddings', label: 'Embeddings' }
             ].map((sk) => {
               const active = skills[sk.id];
