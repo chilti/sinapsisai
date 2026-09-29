@@ -9,6 +9,7 @@ import { SuiteBar } from './components/layout/SuiteBar.jsx';
 import { Navbar } from './components/layout/Navbar.jsx';
 
 // Módulos
+import { HomeGalaxy } from './components/modules/HomeGalaxy.jsx';
 import { InstitutionalPanorama } from './components/modules/InstitutionalPanorama.jsx';
 import { ResearcherProfiles } from './components/modules/ResearcherProfiles.jsx';
 import { ScienceMaps } from './components/modules/ScienceMaps.jsx';
@@ -35,11 +36,12 @@ export function App() {
       {/* 1. Franja del Ecosistema Científico TlachIA (Fase 2.1) */}
       <SuiteBar />
 
-      {/* 2. Barra de Navegación de la Aplicación (6 Pestañas + Selector de Idioma) */}
+      {/* 2. Barra de Navegación de la Aplicación (Pestaña Inicio + Módulos Analíticos) */}
       <Navbar />
 
       {/* 3. Área de Contenido Dinámico */}
       <main className="main-content-area" role="main">
+        {activeTab === 'home' && <HomeGalaxy />}
         {activeTab === 'panorama' && <InstitutionalPanorama />}
         {activeTab === 'researchers' && <ResearcherProfiles />}
         {activeTab === 'maps' && <ScienceMaps />}

@@ -8,6 +8,7 @@ export const en = {
   appName: "SNII Info TlachIA",
   appSubtitle: "Scientific Intelligence for SNII Registry and Academic Output",
   tabs: {
+    home: "Home",
     panorama: "Institutional Overview",
     researchers: "Researchers",
     maps: "Science Maps",

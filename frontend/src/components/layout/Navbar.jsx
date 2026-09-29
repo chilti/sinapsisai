@@ -36,6 +36,7 @@ export function Navbar() {
   const [langMenuOpen, setLangMenuOpen] = useState(false);
 
   const navItems = [
+    { id: 'home', label: t.tabs?.home || 'Inicio', icon: Sparkles, controlId: 'CTL-M07-004' },
     { id: 'panorama', label: t.tabs.panorama, icon: Building2, controlId: 'CTL-M07-005' },
     { id: 'researchers', label: t.tabs.researchers, icon: Users, controlId: 'CTL-M07-006' },
     { id: 'maps', label: t.tabs.maps, icon: Compass, controlId: 'CTL-M07-007' },
@@ -50,7 +51,7 @@ export function Navbar() {
     <nav className="main-navbar" role="navigation" aria-label="Navegación Principal">
       <div className="navbar-container">
         {/* Brand */}
-        <div className="navbar-brand" onClick={() => setActiveTab('panorama')}>
+        <div className="navbar-brand" onClick={() => setActiveTab('home')}>
           <div className="brand-icon-wrapper">
             <Sparkles className="brand-sparkle-icon" size={18} />
           </div>
