@@ -7,6 +7,7 @@ import React from 'react';
 import { useAppStore } from './store/useAppStore.js';
 import { SuiteBar } from './components/layout/SuiteBar.jsx';
 import { Navbar } from './components/layout/Navbar.jsx';
+import { ErrorBoundary } from './components/common/ErrorBoundary.jsx';
 
 // Módulos
 import { HomeGalaxy } from './components/modules/HomeGalaxy.jsx';
@@ -42,14 +43,16 @@ export function App() {
 
       {/* 3. Área de Contenido Dinámico */}
       <main className="main-content-area" role="main">
-        {activeTab === 'home' && <HomeGalaxy />}
-        {activeTab === 'national' && <NationalPanorama />}
-        {activeTab === 'panorama' && <InstitutionalPanorama />}
-        {activeTab === 'researchers' && <ResearcherProfiles />}
-        {activeTab === 'maps' && <ScienceMaps />}
-        {activeTab === 'mySpace' && <MyResearcherSpace />}
-        {activeTab === 'governance' && <GovernanceAdmin />}
-        {activeTab === 'assistant' && <AIAssistant />}
+        <ErrorBoundary>
+          {activeTab === 'home' && <HomeGalaxy />}
+          {activeTab === 'national' && <NationalPanorama />}
+          {activeTab === 'panorama' && <InstitutionalPanorama />}
+          {activeTab === 'researchers' && <ResearcherProfiles />}
+          {activeTab === 'maps' && <ScienceMaps />}
+          {activeTab === 'mySpace' && <MyResearcherSpace />}
+          {activeTab === 'governance' && <GovernanceAdmin />}
+          {activeTab === 'assistant' && <AIAssistant />}
+        </ErrorBoundary>
       </main>
 
       {/* 4. Pie de Página */}

@@ -8,6 +8,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import Plot from 'react-plotly.js';
 import {
   Globe2,
+  Building2,
   Users,
   BookOpen,
   Award,
@@ -337,22 +338,22 @@ export function NationalPanorama() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem' }}>
             <div className="glass-card" style={{ padding: '0.75rem', textAlign: 'center' }}>
               <span className="kpi-metric-label">Producción Total</span>
-              <div className="kpi-metric-val">{kpiGen.total_census.toLocaleString()}</div>
+              <div className="kpi-metric-val">{(kpiGen.total_census ?? 0).toLocaleString()}</div>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Censo Nacional</span>
             </div>
             <div className="glass-card" style={{ padding: '0.75rem', textAlign: 'center' }}>
               <span className="kpi-metric-label">Indizada OpenAlex</span>
-              <div className="kpi-metric-val">{kpiGen.indexed_works.toLocaleString()}</div>
+              <div className="kpi-metric-val">{(kpiGen.indexed_works ?? 0).toLocaleString()}</div>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Con analítica</span>
             </div>
             <div className="glass-card" style={{ padding: '0.75rem', textAlign: 'center' }}>
               <span className="kpi-metric-label">Padrón SNII</span>
-              <div className="kpi-metric-val" style={{ color: '#00f2fe' }}>{(kpiGen.official_snii_count || 48000).toLocaleString()}</div>
+              <div className="kpi-metric-val" style={{ color: '#00f2fe' }}>{(kpiGen.official_snii_count ?? 48000).toLocaleString()}</div>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Investigadores</span>
             </div>
             <div className="glass-card" style={{ padding: '0.75rem', textAlign: 'center' }}>
               <span className="kpi-metric-label">Total Citas</span>
-              <div className="kpi-metric-val">{kpiGen.total_citations.toLocaleString()}</div>
+              <div className="kpi-metric-val">{(kpiGen.total_citations ?? 0).toLocaleString()}</div>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Citas brutas</span>
             </div>
             <div className="glass-card" style={{ padding: '0.75rem', textAlign: 'center' }}>
@@ -419,7 +420,7 @@ export function NationalPanorama() {
             </div>
             <div className="glass-card" style={{ padding: '0.75rem', textAlign: 'center' }}>
               <span className="kpi-metric-label">Citas últ. 3 años</span>
-              <div className="kpi-metric-val">{kpiVel.recent_cites_3yr.toLocaleString()}</div>
+              <div className="kpi-metric-val">{(kpiVel.recent_cites_3yr ?? 0).toLocaleString()}</div>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Impacto reciente</span>
             </div>
             <div className="glass-card" style={{ padding: '0.75rem', textAlign: 'center' }}>
@@ -852,7 +853,7 @@ export function NationalPanorama() {
                     <td style={{ fontWeight: 600 }}>{p.title}</td>
                     <td style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{p.authors || '—'}</td>
                     <td style={{ fontStyle: 'italic', color: 'var(--text-secondary)' }}>{p.source}</td>
-                    <td style={{ textAlign: 'center', fontWeight: 700 }}>{p.citations.toLocaleString()}</td>
+                    <td style={{ textAlign: 'center', fontWeight: 700 }}>{(p.citations ?? 0).toLocaleString()}</td>
                     <td>
                       {p.ods && p.ods !== '—' ? (
                         <span className="badge badge-cyan" style={{ fontSize: '0.7rem' }}>{p.ods}</span>
