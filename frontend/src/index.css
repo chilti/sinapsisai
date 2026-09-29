@@ -520,3 +520,14 @@ h4 { font-size: 1.1rem; line-height: 1.35; }
   border-color: #fde68a;
 }
 
+/* ODS / SDG Cards Interactivity */
+.sdg-card-hover:hover {
+  transform: scale(1.05) translateY(-3px) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3) !important;
+  z-index: 5;
+}
+
+.sdg-card-hover:hover img {
+  transform: scale(1.04);
+}
+

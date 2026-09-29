@@ -933,39 +933,133 @@ export function InstitutionalPanorama() {
           Distribución de la producción científica etiquetada con los 17 Objetivos de Desarrollo Sostenible de la Agenda 2030 de la ONU.
         </p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '0.75rem' }}>
+        {/* Notificación de Filtro ODS Activo */}
+        {selectedOds !== 'Todos' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+            <span
+              className="badge badge-cyan"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', fontSize: '0.82rem' }}
+            >
+              Filtrando publicaciones por: <b>{selectedOds}</b>
+              <button
+                onClick={() => { setSelectedOds('Todos'); setPapersPage(0); }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'inherit',
+                  cursor: 'pointer',
+                  fontWeight: 800,
+                  fontSize: '0.9rem',
+                  marginLeft: '4px',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+                title="Limpiar filtro ODS"
+              >
+                ✕
+              </button>
+            </span>
+          </div>
+        )}
+
+        {/* Matriz de Tarjetas ODS con Imágenes Oficiales */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '0.85rem' }}>
           {sdgMatrix.map((sdg) => {
-            const isSelected = selectedOds === sdg.name;
+            const odsId = sdg.id || sdg.sdg_id;
+            const odsKey = `${odsId}. ${sdg.name}`;
+            const isSelected = selectedOds === odsKey || selectedOds === sdg.name || selectedOds === String(odsId);
+            const count = sdg.count ?? sdg.papers_count ?? 0;
+            const pct = sdg.pct ?? 0;
+
             return (
               <div
-                key={sdg.id}
-                onClick={() => setSelectedOds(isSelected ? 'Todos' : sdg.name)}
+                key={odsId}
+                onClick={() => {
+                  setSelectedOds(isSelected ? 'Todos' : odsKey);
+                  setPapersPage(0);
+                }}
+                className="sdg-card-hover"
+                title={`ODS ${odsId}: ${sdg.name} — ${count.toLocaleString()} obras (${pct}%)`}
                 style={{
-                  background: isSelected ? sdg.color : (isLight ? '#ffffff' : 'rgba(255, 255, 255, 0.04)'),
-                  color: isSelected ? '#ffffff' : 'var(--text-primary)',
-                  border: `2px solid ${sdg.color}`,
-                  borderRadius: '10px',
-                  padding: '0.75rem 0.6rem',
+                  position: 'relative',
+                  aspectRatio: '1 / 1',
+                  borderRadius: '12px',
+                  overflow: 'hidden',
                   cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  textAlign: 'center',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  minHeight: '105px'
+                  background: isLight ? '#f1f5f9' : '#1e293b',
+                  border: isSelected ? '3px solid var(--accent-cyan)' : '2px solid rgba(255,255,255,0.08)',
+                  boxShadow: isSelected
+                    ? '0 0 16px rgba(0, 242, 254, 0.45)'
+                    : '0 2px 6px rgba(0,0,0,0.12)',
+                  transform: isSelected ? 'scale(1.04)' : 'scale(1)',
+                  transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                  filter: count === 0 ? 'grayscale(85%) opacity(0.4)' : 'none'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 800, background: isSelected ? 'rgba(255,255,255,0.3)' : sdg.color, color: '#ffffff', borderRadius: '4px', padding: '1px 5px' }}>
-                    {sdg.id}
+                {/* Imagen Oficial del ODS */}
+                <img
+                  src={`/img/ods/ods_${odsId}.png`}
+                  alt={`ODS ${odsId}: ${sdg.name}`}
+                  loading="lazy"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    display: 'block'
+                  }}
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = `https://open-sdg.org/sdg-translations/assets/img/goals/es/${odsId}.png`;
+                  }}
+                />
+
+                {/* Indicador de Selección Activa */}
+                {isSelected && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '6px',
+                      right: '6px',
+                      background: 'var(--accent-cyan)',
+                      color: '#000',
+                      borderRadius: '50%',
+                      width: '22px',
+                      height: '22px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.4)',
+                      zIndex: 3
+                    }}
+                  >
+                    <CheckCircle2 size={16} />
+                  </div>
+                )}
+
+                {/* Overlay Inferior con Estadísticas */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    background: 'linear-gradient(to top, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.65) 70%, transparent 100%)',
+                    padding: '0.45rem 0.3rem 0.25rem',
+                    textAlign: 'center',
+                    color: '#ffffff',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    pointerEvents: 'none',
+                    zIndex: 2
+                  }}
+                >
+                  <span style={{ fontSize: '0.88rem', fontWeight: 800, textShadow: '0 1px 3px rgba(0,0,0,0.9)', letterSpacing: '-0.02em', color: '#ffffff' }}>
+                    {pct}%
                   </span>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{sdg.pct}%</span>
-                </div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 600, lineHeight: 1.2, margin: '0.25rem 0' }}>
-                  {sdg.name}
-                </div>
-                <div style={{ fontSize: '0.85rem', fontWeight: 800 }}>
-                  {sdg.count.toLocaleString()} <span style={{ fontSize: '0.65rem', fontWeight: 400, opacity: 0.8 }}>papers</span>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 600, opacity: 0.9, textShadow: '0 1px 2px rgba(0,0,0,0.9)', color: '#e2e8f0' }}>
+                    {count.toLocaleString()} {count === 1 ? 'obra' : 'obras'}
+                  </span>
                 </div>
               </div>
             );

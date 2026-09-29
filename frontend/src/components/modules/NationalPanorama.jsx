@@ -745,40 +745,152 @@ export function NationalPanorama() {
 
       {/* ── 9. Impacto Global en Sostenibilidad (ODS 1 al 17) ──────────────── */}
       <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
-        <h3 style={{ fontSize: '1.15rem', marginBottom: '0.5rem', fontWeight: 700 }}>
-          Contribución de México a los Objetivos de Desarrollo Sostenible (ONU ODS 1–17)
-        </h3>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Globe2 size={20} style={{ color: 'var(--accent-cyan)' }} />
+            <h3 style={{ fontSize: '1.15rem', fontWeight: 700 }}>
+              Contribución de México a los Objetivos de Desarrollo Sostenible (ONU ODS 1–17)
+            </h3>
+          </div>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Haz clic en un ODS para filtrar las publicaciones
+          </span>
+        </div>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1rem' }}>
-          Volumen consolidado de publicaciones científicas mexicanas alineadas con las metas de la Agenda 2030.
+          Volumen consolidado de publicaciones científicas mexicanas alineadas con las metas de la Agenda 2030 de la ONU.
         </p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem' }}>
-          {sdgMatrix.map((sdg) => (
-            <div
-              key={sdg.sdg_id}
-              style={{
-                borderRadius: '8px',
-                padding: '0.65rem 0.5rem',
-                textAlign: 'center',
-                background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)',
-                borderTop: `4px solid ${sdg.color || '#00f2fe'}`,
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                minHeight: '85px'
-              }}
+        {/* Notificación de Filtro ODS Activo */}
+        {selectedOds !== 'Todos' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+            <span
+              className="badge badge-cyan"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', fontSize: '0.82rem' }}
             >
-              <div style={{ fontWeight: 800, fontSize: '0.85rem', color: sdg.color || 'var(--text-primary)' }}>
-                ODS {sdg.sdg_id}
+              Filtrando publicaciones por: <b>{selectedOds}</b>
+              <button
+                onClick={() => { setSelectedOds('Todos'); setPapersPage(0); }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'inherit',
+                  cursor: 'pointer',
+                  fontWeight: 800,
+                  fontSize: '0.9rem',
+                  marginLeft: '4px',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+                title="Limpiar filtro ODS"
+              >
+                ✕
+              </button>
+            </span>
+          </div>
+        )}
+
+        {/* Matriz de Tarjetas ODS con Imágenes Oficiales */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '0.85rem' }}>
+          {sdgMatrix.map((sdg) => {
+            const odsId = sdg.id || sdg.sdg_id;
+            const odsKey = `${odsId}. ${sdg.name}`;
+            const isSelected = selectedOds === odsKey || selectedOds === sdg.name || selectedOds === String(odsId);
+            const count = sdg.count ?? sdg.papers_count ?? 0;
+            const pct = sdg.pct ?? 0;
+
+            return (
+              <div
+                key={odsId}
+                onClick={() => {
+                  setSelectedOds(isSelected ? 'Todos' : odsKey);
+                  setPapersPage(0);
+                }}
+                className="sdg-card-hover"
+                title={`ODS ${odsId}: ${sdg.name} — ${count.toLocaleString()} obras (${pct}%)`}
+                style={{
+                  position: 'relative',
+                  aspectRatio: '1 / 1',
+                  borderRadius: '12px',
+                  overflow: 'hidden',
+                  cursor: 'pointer',
+                  background: isLight ? '#f1f5f9' : '#1e293b',
+                  border: isSelected ? '3px solid var(--accent-cyan)' : '2px solid rgba(255,255,255,0.08)',
+                  boxShadow: isSelected
+                    ? '0 0 16px rgba(0, 242, 254, 0.45)'
+                    : '0 2px 6px rgba(0,0,0,0.12)',
+                  transform: isSelected ? 'scale(1.04)' : 'scale(1)',
+                  transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                  filter: count === 0 ? 'grayscale(85%) opacity(0.4)' : 'none'
+                }}
+              >
+                {/* Imagen Oficial del ODS */}
+                <img
+                  src={`/img/ods/ods_${odsId}.png`}
+                  alt={`ODS ${odsId}: ${sdg.name}`}
+                  loading="lazy"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    display: 'block'
+                  }}
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = `https://open-sdg.org/sdg-translations/assets/img/goals/es/${odsId}.png`;
+                  }}
+                />
+
+                {/* Indicador de Selección Activa */}
+                {isSelected && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '6px',
+                      right: '6px',
+                      background: 'var(--accent-cyan)',
+                      color: '#000',
+                      borderRadius: '50%',
+                      width: '22px',
+                      height: '22px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.4)',
+                      zIndex: 3
+                    }}
+                  >
+                    <CheckCircle2 size={16} />
+                  </div>
+                )}
+
+                {/* Overlay Inferior con Estadísticas */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    background: 'linear-gradient(to top, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.65) 70%, transparent 100%)',
+                    padding: '0.45rem 0.3rem 0.25rem',
+                    textAlign: 'center',
+                    color: '#ffffff',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    pointerEvents: 'none',
+                    zIndex: 2
+                  }}
+                >
+                  <span style={{ fontSize: '0.88rem', fontWeight: 800, textShadow: '0 1px 3px rgba(0,0,0,0.9)', letterSpacing: '-0.02em', color: '#ffffff' }}>
+                    {pct}%
+                  </span>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 600, opacity: 0.9, textShadow: '0 1px 2px rgba(0,0,0,0.9)', color: '#e2e8f0' }}>
+                    {count.toLocaleString()} {count === 1 ? 'obra' : 'obras'}
+                  </span>
+                </div>
               </div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: 1.2, margin: '0.2rem 0' }}>
-                {sdg.name}
-              </div>
-              <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-                {(sdg.papers_count || 0).toLocaleString()}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
