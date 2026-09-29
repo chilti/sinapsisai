@@ -73,6 +73,7 @@ export function ResearcherProfiles() {
   const currentYear = new Date().getFullYear();
   const [yearFilter, setYearFilter] = useState('all');
   const [oaFilter, setOaFilter] = useState('all');
+  const [odsFilter, setOdsFilter] = useState('all');
   const [searchPaper, setSearchPaper] = useState('');
   const [papersPage, setPapersPage] = useState(0);
   const [papersData, setPapersData] = useState([]);
@@ -149,6 +150,7 @@ export function ResearcherProfiles() {
           offset: papersPage * PAGE_SIZE,
           year: yearFilter !== 'all' ? parseInt(yearFilter, 10) : undefined,
           oa_status: oaFilter !== 'all' ? oaFilter : undefined,
+          ods: odsFilter !== 'all' ? odsFilter : undefined,
           search: searchPaper.trim() ? searchPaper.trim() : undefined
         };
         const res = await apiClient.getAcademicWorks(researcherOrcid, researcherName, params);
@@ -163,7 +165,7 @@ export function ResearcherProfiles() {
       }
     }
     loadWorks();
-  }, [researcherName, researcherOrcid, papersPage, yearFilter, oaFilter, searchPaper]);
+  }, [researcherName, researcherOrcid, papersPage, yearFilter, oaFilter, odsFilter, searchPaper]);
 
   // 4. Cargar Trabajos Citantes cuando se abre la pestaña de citas
   useEffect(() => {
@@ -1037,34 +1039,146 @@ export function ResearcherProfiles() {
 
           {/* Panorama General de Sostenibilidad (ODS 1 a 17) */}
           <div className="glass-card">
-            <h3 style={{ fontSize: '1.1rem', marginBottom: '0.5rem', fontWeight: 700 }}>🌍 Panorama General de Sostenibilidad (ODS)</h3>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
-              Distribución de la producción del investigador alineada a los 17 Objetivos de Desarrollo Sostenible (ONU).
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Globe size={20} style={{ color: 'var(--accent-cyan)' }} />
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Impacto en Sostenibilidad (ODS 1 a 17)</h3>
+              </div>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Haz clic en un ODS para filtrar las publicaciones
+              </span>
+            </div>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+              Distribución de la producción científica del investigador alineada a los 17 Objetivos de Desarrollo Sostenible (ONU).
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem' }}>
+
+            {/* Notificación de Filtro ODS Activo */}
+            {odsFilter !== 'all' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                <span
+                  className="badge badge-cyan"
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', fontSize: '0.82rem' }}
+                >
+                  Filtrando por: <b>ODS {odsFilter}</b>
+                  <button
+                    onClick={() => { setOdsFilter('all'); setPapersPage(0); }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'inherit',
+                      cursor: 'pointer',
+                      fontWeight: 800,
+                      fontSize: '0.9rem',
+                      marginLeft: '4px',
+                      display: 'flex',
+                      alignItems: 'center'
+                    }}
+                    title="Limpiar filtro ODS"
+                  >
+                    ✕
+                  </button>
+                </span>
+              </div>
+            )}
+
+            {/* Matriz de Tarjetas ODS con Imágenes Oficiales */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.85rem' }}>
               {profile?.sdg_matrix?.map((sdg) => {
-                const color = SDG_COLORS[sdg.sdg] || '#0284c7';
+                const odsId = sdg.sdg || sdg.id;
+                const isSelected = odsFilter === String(odsId);
+                const count = sdg.count || 0;
+                const totalWorksCount = profile?.kpis?.indexed_works || totalPapers || 1;
+                const pct = sdg.pct !== undefined ? sdg.pct : (totalWorksCount > 0 ? ((count / totalWorksCount) * 100).toFixed(1) : 0);
+
                 return (
                   <div
-                    key={sdg.sdg}
-                    className="glass-card"
+                    key={odsId}
+                    onClick={() => {
+                      setOdsFilter(isSelected ? 'all' : String(odsId));
+                      setPapersPage(0);
+                    }}
+                    className="sdg-card-hover"
+                    title={`ODS ${odsId}: ${sdg.name} — ${count.toLocaleString()} obras (${pct}%)`}
                     style={{
-                      padding: '0.75rem',
-                      borderLeft: `4px solid ${color}`,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between',
-                      background: sdg.count > 0 ? `${color}10` : 'transparent'
+                      position: 'relative',
+                      aspectRatio: '1 / 1',
+                      borderRadius: '12px',
+                      overflow: 'hidden',
+                      cursor: 'pointer',
+                      background: isLight ? '#f1f5f9' : '#1e293b',
+                      border: isSelected ? '3px solid var(--accent-cyan)' : '2px solid rgba(255,255,255,0.08)',
+                      boxShadow: isSelected
+                        ? '0 0 16px rgba(0, 242, 254, 0.45)'
+                        : '0 2px 6px rgba(0,0,0,0.12)',
+                      transform: isSelected ? 'scale(1.04)' : 'scale(1)',
+                      transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                      filter: count === 0 ? 'grayscale(85%) opacity(0.4)' : 'none'
                     }}
                   >
-                    <div>
-                      <div style={{ fontSize: '0.72rem', fontWeight: 700, color }}>ODS {sdg.sdg}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-primary)', marginTop: '0.2rem', lineHeight: 1.2 }}>
-                        {sdg.name}
+                    {/* Imagen Oficial del ODS */}
+                    <img
+                      src={`/img/ods/ods_${odsId}.png`}
+                      alt={`ODS ${odsId}: ${sdg.name}`}
+                      loading="lazy"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        display: 'block'
+                      }}
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = `https://open-sdg.org/sdg-translations/assets/img/goals/es/${odsId}.png`;
+                      }}
+                    />
+
+                    {/* Indicador de Selección Activa */}
+                    {isSelected && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '6px',
+                          right: '6px',
+                          background: 'var(--accent-cyan)',
+                          color: '#000',
+                          borderRadius: '50%',
+                          width: '22px',
+                          height: '22px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.4)',
+                          zIndex: 3
+                        }}
+                      >
+                        <CheckCircle2 size={16} />
                       </div>
-                    </div>
-                    <div style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '0.5rem', color: sdg.count > 0 ? color : 'var(--text-muted)' }}>
-                      {sdg.count}
+                    )}
+
+                    {/* Overlay Inferior con Estadísticas */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        background: 'linear-gradient(to top, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.65) 70%, transparent 100%)',
+                        padding: '0.45rem 0.3rem 0.25rem',
+                        textAlign: 'center',
+                        color: '#ffffff',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        pointerEvents: 'none',
+                        zIndex: 2
+                      }}
+                    >
+                      <span style={{ fontSize: '0.88rem', fontWeight: 800, textShadow: '0 1px 3px rgba(0,0,0,0.9)', letterSpacing: '-0.02em', color: '#ffffff' }}>
+                        {pct}%
+                      </span>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 600, opacity: 0.9, textShadow: '0 1px 2px rgba(0,0,0,0.9)', color: '#e2e8f0' }}>
+                        {count.toLocaleString()} {count === 1 ? 'obra' : 'obras'}
+                      </span>
                     </div>
                   </div>
                 );

@@ -538,11 +538,15 @@ def get_academic_profile(
                             if 1 <= n <= 17:
                                 sdg_counts[n] += 1
 
+                total_prof_papers = len(df_p) if not df_p.empty else 1
                 for sdg_num in range(1, 18):
+                    cnt = sdg_counts[sdg_num]
                     sdg_matrix.append({
                         "sdg": sdg_num,
+                        "id": sdg_num,
                         "name": SDG_NAMES.get(sdg_num, f"ODS {sdg_num}"),
-                        "count": sdg_counts[sdg_num]
+                        "count": cnt,
+                        "pct": round((cnt / max(1, total_prof_papers)) * 100, 1)
                     })
         except Exception as e:
             print(f"[get_academic_profile] Error leyendo papers_profesor.parquet: {e}")
@@ -624,6 +628,7 @@ def get_academic_works(
     offset: int = Query(0, ge=0),
     year: Optional[int] = Query(None),
     oa_status: Optional[str] = Query(None),
+    ods: Optional[str] = Query(None),
     search: Optional[str] = Query(None)
 ) -> Dict[str, Any]:
     """
@@ -750,6 +755,20 @@ def get_academic_works(
         filtered = [w for w in filtered if w.get("year") == year]
     if oa_status and oa_status.lower() != "all":
         filtered = [w for w in filtered if oa_status.lower() in str(w.get("oa_status", "")).lower()]
+    if ods and ods.lower() != "all" and ods.lower() != "todos":
+        m = re.search(r'\d+', str(ods))
+        target_num = int(m.group()) if m else None
+        if target_num is not None:
+            def matches_ods(w):
+                val = str(w.get("ods_name") or "")
+                if not val:
+                    return False
+                found = re.findall(r'(?:sdg/|ODS\s*|^\s*)(\d{1,2})', val)
+                return any(int(x) == target_num for x in found if x.isdigit())
+            filtered = [w for w in filtered if matches_ods(w)]
+        else:
+            s_ods = ods.lower().strip()
+            filtered = [w for w in filtered if w.get("ods_name") and (s_ods in str(w.get("ods_name")).lower())]
     if search:
         s_term = search.lower().strip()
         filtered = [w for w in filtered if s_term in str(w.get("title", "")).lower() or s_term in str(w.get("journal", "")).lower()]

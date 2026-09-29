@@ -574,14 +574,29 @@ def get_hierarchy_metrics(
     # 8. Impacto Global en Sostenibilidad (ODS 1 al 17)
     sdg_matrix = []
     ods_counts = {}
-    if df_papers is not None and not df_papers.empty and 'ODS_Nombre' in df_papers.columns:
+    if is_mexico:
+        try:
+            ch = get_clickhouse_client()
+            sdg_rows = ch.query("""
+                SELECT arrayJoin(sdg_ids) as sdg, count() as count
+                FROM works_seed_mexico
+                WHERE notEmpty(sdg_ids)
+                GROUP BY sdg
+            """).result_rows
+            for s_url, s_cnt in sdg_rows:
+                s_num = s_url.split('/')[-1]
+                if s_num.isdigit():
+                    ods_counts[int(s_num)] = int(s_cnt)
+        except Exception as e:
+            print(f"Error cargando ODS de México desde ClickHouse: {e}")
+    elif df_papers is not None and not df_papers.empty and 'ODS_Nombre' in df_papers.columns:
         for val in df_papers['ODS_Nombre'].dropna():
             match = re.search(r'\d+', str(val))
             if match:
                 num = int(match.group())
                 ods_counts[num] = ods_counts.get(num, 0) + 1
 
-    total_papers_count = len(df_papers) if df_papers is not None and not df_papers.empty else 1
+    total_papers_count = (indexed_docs if is_mexico else len(df_papers)) if (indexed_docs or (df_papers is not None and not df_papers.empty)) else 1
     for ods_num in range(1, 18):
         c = ods_counts.get(ods_num, 0)
         sdg_matrix.append({
