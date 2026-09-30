@@ -73,8 +73,17 @@ export function NationalPanorama() {
     }
   };
 
-  // Estados locales
-  const [viewMode, setViewMode] = useState('capacidad_instalada'); // 'capacidad_instalada' vs 'produccion_institucional'
+  // Estados locales: Por defecto 'produccion_institucional' (Producción Consolidada), respetando permalinks
+  const [viewMode, setViewMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlMode = params.get('view_mode');
+      if (urlMode === 'capacidad_instalada' || urlMode === 'produccion_institucional') {
+        return urlMode;
+      }
+    }
+    return 'produccion_institucional';
+  });
   const [metricsData, setMetricsData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showGlossary, setShowGlossary] = useState(true);
