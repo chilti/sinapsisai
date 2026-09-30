@@ -96,6 +96,90 @@ export function App() {
     }
   }, [setUserSession, setNotification]);
 
+  // 1. Inicialización de Permalinks al cargar la aplicación (?academic=..., ?orcid=..., ?institution=..., ?tab=...)
+  React.useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      if (code) return; // Permitir que el flujo OAuth se procese primero
+
+      const academicParam = params.get('academic');
+      const orcidParam = params.get('orcid');
+      const institutionParam = params.get('institution');
+      const dependencyParam = params.get('dependency');
+      const subdependencyParam = params.get('subdependency');
+      const tabParam = params.get('tab');
+
+      if (academicParam || orcidParam || tabParam === 'researchers') {
+        useAppStore.getState().setActiveTab('researchers');
+        if (academicParam || orcidParam) {
+          useAppStore.getState().setSelectedResearcher(academicParam || '', orcidParam || '');
+        }
+        if (institutionParam) useAppStore.getState().setSelectedInstitution(institutionParam);
+        if (dependencyParam) useAppStore.getState().setSelectedDependency(dependencyParam);
+        if (subdependencyParam) useAppStore.getState().setSelectedSubdependency(subdependencyParam);
+      } else if (institutionParam || tabParam === 'panorama') {
+        useAppStore.getState().setActiveTab('panorama');
+        if (institutionParam) useAppStore.getState().setSelectedInstitution(institutionParam);
+        if (dependencyParam) useAppStore.getState().setSelectedDependency(dependencyParam);
+        if (subdependencyParam) useAppStore.getState().setSelectedSubdependency(subdependencyParam);
+      } else if (tabParam) {
+        const validTabs = ['home', 'national', 'panorama', 'researchers', 'maps', 'mySpace', 'governance', 'assistant', 'about'];
+        if (validTabs.includes(tabParam)) {
+          useAppStore.getState().setActiveTab(tabParam);
+        }
+      }
+    } catch (err) {
+      console.error('Error inicializando permalink:', err);
+    }
+  }, []);
+
+  // 2. Sincronización reactiva del estado actual en la URL del navegador (Permalink)
+  const selectedInstitution = useAppStore((state) => state.selectedInstitution);
+  const selectedDependency = useAppStore((state) => state.selectedDependency);
+  const selectedSubdependency = useAppStore((state) => state.selectedSubdependency);
+  const selectedResearcherName = useAppStore((state) => state.selectedResearcherName);
+  const selectedResearcherOrcid = useAppStore((state) => state.selectedResearcherOrcid);
+
+  React.useEffect(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      if (searchParams.get('code')) return; // No sobreescribir callback OAuth
+
+      const newParams = new URLSearchParams();
+      if (activeTab === 'researchers') {
+        newParams.set('tab', 'researchers');
+        if (selectedResearcherName) newParams.set('academic', selectedResearcherName);
+        if (selectedResearcherOrcid) newParams.set('orcid', selectedResearcherOrcid);
+      } else if (activeTab === 'panorama') {
+        newParams.set('tab', 'panorama');
+        if (selectedInstitution) newParams.set('institution', selectedInstitution);
+        if (selectedDependency) newParams.set('dependency', selectedDependency);
+        if (selectedSubdependency) newParams.set('subdependency', selectedSubdependency);
+      } else if (activeTab === 'national') {
+        newParams.set('tab', 'national');
+      } else {
+        newParams.set('tab', activeTab);
+      }
+
+      const newQuery = newParams.toString();
+      const currentQuery = window.location.search.replace(/^\?/, '');
+      if (newQuery !== currentQuery) {
+        const cleanUrl = `${window.location.pathname}?${newQuery}`;
+        window.history.replaceState({}, '', cleanUrl);
+      }
+    } catch (err) {
+      console.error('Error sincronizando URL permalink:', err);
+    }
+  }, [
+    activeTab,
+    selectedResearcherName,
+    selectedResearcherOrcid,
+    selectedInstitution,
+    selectedDependency,
+    selectedSubdependency
+  ]);
+
   return (
     <div className="app-root">
       {/* Luz Ambiental de Fondo */}

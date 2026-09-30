@@ -4,10 +4,11 @@ api/main.py - Servidor FastAPI Principal para SinapsisAI / SNII Info TlachIA
 import os
 import sys
 from pathlib import Path
+import re
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 # Asegurar carga del paquete api y dependencias locales
@@ -107,11 +108,56 @@ if FRONTEND_DIST.exists() and (FRONTEND_DIST / "index.html").exists():
     app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="static")
 
     @app.get("/{full_path:path}")
-    def serve_frontend(full_path: str):
+    def serve_frontend(request: Request, full_path: str = ""):
         file_path = FRONTEND_DIST / full_path
         if full_path and file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
-        return FileResponse(FRONTEND_DIST / "index.html")
+
+        index_file = FRONTEND_DIST / "index.html"
+        try:
+            html_content = index_file.read_text(encoding="utf-8")
+        except Exception:
+            return FileResponse(index_file)
+
+        # Inyección dinámica de metadatos Open Graph / Twitter Cards según parámetros de permalink
+        academic = request.query_params.get("academic")
+        institution = request.query_params.get("institution")
+        dependency = request.query_params.get("dependency")
+        tab = request.query_params.get("tab")
+
+        og_title = "Info TlachIA SNII | Inteligencia Científica y Producción Académica"
+        og_desc = "Plataforma analítica avanzada para trayectoria de investigadores, métricas de citación zero-join y cartografía cienciométrica."
+
+        if academic:
+            og_title = f"Perfil de {academic} | Info TlachIA SNII"
+            og_desc = f"Trayectoria cienciométrica, producción científica e impacto de citas en el Sistema Nacional de Investigadoras e Investigadores (SNII)."
+        elif institution:
+            entity_lbl = f"{dependency} ({institution})" if dependency else institution
+            og_title = f"Panorama Institucional: {entity_lbl} | Info TlachIA SNII"
+            og_desc = f"Capacidad instalada, producción científica y cartografía analítica de {entity_lbl} registrada en OpenAlex y SNII."
+        elif tab == "national":
+            og_title = "Panorama Nacional de la Ciencia Mexicana | Info TlachIA SNII"
+            og_desc = "Cartografía cienciométrica y producción de la República Mexicana registrada en OpenAlex y miembros vigentes del SNII."
+
+        escaped_title = og_title.replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;')
+        escaped_desc = og_desc.replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;')
+        req_url = str(request.url)
+
+        html_content = re.sub(r'<title>.*?</title>', f'<title>{escaped_title}</title>', html_content, flags=re.DOTALL)
+        html_content = re.sub(r'<meta name="description" content=".*?"\s*/?>', f'<meta name="description" content="{escaped_desc}" />', html_content, flags=re.DOTALL)
+
+        og_tags = f"""    <!-- Metadatos Dinámicos Open Graph / Twitter Cards (Permalink Compartido) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="{escaped_title}" />
+    <meta property="og:description" content="{escaped_desc}" />
+    <meta property="og:url" content="{req_url}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="{escaped_title}" />
+    <meta name="twitter:description" content="{escaped_desc}" />
+  </head>"""
+
+        html_content = html_content.replace('</head>', og_tags)
+        return HTMLResponse(content=html_content, media_type="text/html")
 else:
     @app.get("/")
     def root():

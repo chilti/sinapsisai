@@ -28,7 +28,9 @@ import {
   Layers,
   Sparkles,
   HelpCircle,
-  X
+  X,
+  Share2,
+  Check
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore.js';
 import { apiClient } from '../../api/client.js';
@@ -63,7 +65,40 @@ export function ResearcherProfiles() {
   const researcherName = useAppStore((state) => state.selectedResearcherName);
   const researcherOrcid = useAppStore((state) => state.selectedResearcherOrcid);
   const setSelectedResearcher = useAppStore((state) => state.setSelectedResearcher);
+  const setNotification = useAppStore((state) => state.setNotification);
   const theme = useAppStore((state) => state.theme);
+
+  const [copiedShare, setCopiedShare] = useState(false);
+
+  const handleShareUrl = () => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', 'researchers');
+      if (researcherName) url.searchParams.set('academic', researcherName);
+      if (researcherOrcid) url.searchParams.set('orcid', researcherOrcid);
+      if (selectedInstitution) url.searchParams.set('institution', selectedInstitution);
+      if (selectedDependency) url.searchParams.set('dependency', selectedDependency);
+      if (selectedSubdependency) url.searchParams.set('subdependency', selectedSubdependency);
+
+      const finalUrl = url.toString();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(finalUrl).then(() => {
+          setCopiedShare(true);
+          setTimeout(() => setCopiedShare(false), 2500);
+          setNotification({
+            type: 'success',
+            message: `¡Enlace del perfil de ${researcherName} copiado al portapapeles!`
+          });
+        }).catch(() => {
+          prompt('Copia el siguiente enlace:', finalUrl);
+        });
+      } else {
+        prompt('Copia el siguiente enlace:', finalUrl);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // Estados locales para jerarquía y combobox de académicos
   const [institutions, setInstitutions] = useState([]);
@@ -736,8 +771,24 @@ export function ResearcherProfiles() {
               </div>
             </div>
 
-            {/* Botones de Descarga */}
+            {/* Botones de Acción: Descargas y Compartir URL */}
             <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <button
+                id="CTL-M02-SHARE"
+                className={`btn btn-sm ${copiedShare ? 'btn-success' : 'btn-secondary'}`}
+                onClick={handleShareUrl}
+                title="Copiar enlace permanente de este perfil de investigador"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  borderColor: copiedShare ? '#10b981' : undefined,
+                  color: copiedShare ? '#10b981' : undefined
+                }}
+              >
+                {copiedShare ? <Check size={14} /> : <Share2 size={14} />}
+                <span>{copiedShare ? '¡Enlace Copiado!' : 'Compartir Perfil'}</span>
+              </button>
               <button id="CTL-M02-022" className="btn btn-secondary btn-sm" onClick={handleDownloadMarkdown}>
                 <FileText size={14} />
                 <span>Descargar Reporte (Markdown)</span>

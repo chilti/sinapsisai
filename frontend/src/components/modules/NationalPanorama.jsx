@@ -29,7 +29,9 @@ import {
   ShieldCheck,
   DollarSign,
   Flag,
-  Loader2
+  Loader2,
+  Share2,
+  Check
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore.js';
 import { apiClient } from '../../api/client.js';
@@ -40,8 +42,36 @@ import AIReportViewer from '../analytics/AIReportViewer.jsx';
 import WordCloudInteractive from '../analytics/WordCloudInteractive.jsx';
 
 export function NationalPanorama() {
-  const t = useAppStore((state) => state.t)();
+  const setNotification = useAppStore((state) => state.setNotification);
   const theme = useAppStore((state) => state.theme);
+
+  const [copiedShare, setCopiedShare] = useState(false);
+
+  const handleShareUrl = () => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', 'national');
+      if (viewMode) url.searchParams.set('view_mode', viewMode);
+
+      const finalUrl = url.toString();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(finalUrl).then(() => {
+          setCopiedShare(true);
+          setTimeout(() => setCopiedShare(false), 2500);
+          setNotification({
+            type: 'success',
+            message: '¡Enlace del Panorama Nacional copiado al portapapeles!'
+          });
+        }).catch(() => {
+          prompt('Copia el siguiente enlace:', finalUrl);
+        });
+      } else {
+        prompt('Copia el siguiente enlace:', finalUrl);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // Estados locales
   const [viewMode, setViewMode] = useState('capacidad_instalada'); // 'capacidad_instalada' vs 'produccion_institucional'
@@ -315,6 +345,24 @@ export function NationalPanorama() {
                 Producción Consolidada
               </button>
             </div>
+
+            {/* Botón Compartir */}
+            <button
+              id="CTL-M01-SHARE-NAT"
+              className={`btn btn-sm ${copiedShare ? 'btn-success' : 'btn-secondary'}`}
+              onClick={handleShareUrl}
+              title="Copiar enlace permanente del Panorama Nacional"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                borderColor: copiedShare ? '#10b981' : undefined,
+                color: copiedShare ? '#10b981' : undefined
+              }}
+            >
+              {copiedShare ? <Check size={14} /> : <Share2 size={14} />}
+              <span>{copiedShare ? '¡Enlace Copiado!' : 'Compartir'}</span>
+            </button>
 
             {/* Botón Exportar */}
             <button id="CTL-M01-018-NAT" className="btn btn-secondary btn-sm">
