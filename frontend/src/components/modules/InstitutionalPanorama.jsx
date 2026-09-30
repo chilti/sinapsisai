@@ -32,6 +32,11 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore.js';
 import { apiClient } from '../../api/client.js';
+import ThematicEvolutionTable from '../analytics/ThematicEvolutionTable.jsx';
+import CollaborationWorldMap from '../analytics/CollaborationWorldMap.jsx';
+import SemanticProductionMap from '../analytics/SemanticProductionMap.jsx';
+import AIReportViewer from '../analytics/AIReportViewer.jsx';
+import WordCloudInteractive from '../analytics/WordCloudInteractive.jsx';
 
 export function InstitutionalPanorama() {
   const t = useAppStore((state) => state.t)();
@@ -144,7 +149,7 @@ export function InstitutionalPanorama() {
   // 5. Cargar publicaciones dinámicas al cambiar filtros de tabla
   useEffect(() => {
     if (!selectedInstitution || loading) return;
-    
+
     // Si no hay filtros adicionales y coincide con el año inicial y página 0, usamos la muestra precargada
     const isInitialDefault = String(selectedYear) === String(metricsData?.default_year || currentYear) && selectedOds === 'Todos' && !searchPaper && papersPage === 0;
     if (isInitialDefault) {
@@ -446,544 +451,7 @@ export function InstitutionalPanorama() {
         </div>
       </div>
 
-      {/* ── 2. GRUPO 1: Identificadores de Académicos (4 Métricas) ──────────── */}
-      <div style={{ marginBottom: '1.25rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.6rem' }}>
-          <ShieldCheck size={17} style={{ color: 'var(--accent-cyan)' }} />
-          <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Identificadores de Académicos</h3>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
-          <div className="glass-card kpi-metric-card">
-            <span className="kpi-metric-label">% Académicos con ORCID</span>
-            <span className="kpi-metric-val">{kpiIds.pct_academic_orcid}%</span>
-            <span className="badge badge-cyan" style={{ width: 'fit-content', fontSize: '0.7rem' }}>ORCID Registrado</span>
-          </div>
-          <div className="glass-card kpi-metric-card">
-            <span className="kpi-metric-label">% Académicos con algún ID</span>
-            <span className="kpi-metric-val">{kpiIds.pct_academic_any_id}%</span>
-            <span className="badge badge-purple" style={{ width: 'fit-content', fontSize: '0.7rem' }}>ORCID, OA o CVU</span>
-          </div>
-          <div className="glass-card kpi-metric-card">
-            <span className="kpi-metric-label">% con ORCID</span>
-            <span className="kpi-metric-val">{kpiIds.pct_snii_orcid}%</span>
-            <span className="badge badge-emerald" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Padrón Oficial</span>
-          </div>
-          <div className="glass-card kpi-metric-card">
-            <span className="kpi-metric-label">% con algún ID</span>
-            <span className="kpi-metric-val">{kpiIds.pct_snii_any_id}%</span>
-            <span className="badge badge-amber" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Multicatálogo</span>
-          </div>
-        </div>
-      </div>
-
-      {/* ── 3. GRUPO 2: Métricas Generales (7 Métricas) ─────────────────────── */}
-      <div style={{ marginBottom: '1.25rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.6rem' }}>
-          <Layers size={17} style={{ color: 'var(--accent-purple)' }} />
-          <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Métricas Generales de Producción e Impacto</h3>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
-          <div className="glass-card kpi-metric-card">
-            <span className="kpi-metric-label">Producción Total</span>
-            <span className="kpi-metric-val">{kpiGen.total_census.toLocaleString()}</span>
-            <span className="badge badge-cyan" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Censo Neo4j</span>
-          </div>
-          <div className="glass-card kpi-metric-card">
-            <span className="kpi-metric-label">Indizada en OpenAlex</span>
-            <span className="kpi-metric-val">{kpiGen.indexed_works.toLocaleString()}</span>
-            <span className="badge badge-purple" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Metadatos Completos</span>
-          </div>
-          <div className="glass-card kpi-metric-card">
-            <span className="kpi-metric-label">No. de Investigadores</span>
-            <span className="kpi-metric-val">{kpiGen.official_snii_count.toLocaleString()}</span>
-            <span className="badge badge-emerald" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Padrón Oficial</span>
-          </div>
-          <div className="glass-card kpi-metric-card">
-            <span className="kpi-metric-label">Citas Acumuladas</span>
-            <span className="kpi-metric-val">{kpiGen.total_citations.toLocaleString()}</span>
-            <span className="badge badge-amber" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Total Directo</span>
-          </div>
-          <div className="glass-card kpi-metric-card">
-            <span className="kpi-metric-label">Citas/artículo</span>
-            <span className="kpi-metric-val">{kpiGen.citations_per_paper}</span>
-            <span className="badge badge-cyan" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Promedio</span>
-          </div>
-          <div className="glass-card kpi-metric-card">
-            <span className="kpi-metric-label">FWCI Promedio</span>
-            <span className="kpi-metric-val">{kpiGen.fwci_mean}</span>
-            <span className="badge badge-emerald" style={{ width: 'fit-content', fontSize: '0.7rem' }}>
-              {kpiGen.fwci_mean > 1 ? `+${Math.round((kpiGen.fwci_mean - 1) * 100)}% s/ Mundo` : 'Normalizado'}
-            </span>
-          </div>
-          <div className="glass-card kpi-metric-card">
-            <span className="kpi-metric-label">% Open Access</span>
-            <span className="kpi-metric-val">{kpiGen.pct_open_access}%</span>
-            <span className="badge badge-purple" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Acceso Abierto</span>
-          </div>
-        </div>
-      </div>
-
-      {/* ── 4. GRUPO 3: Métricas de Excelencia (4 Métricas) ─────────────────── */}
-      <div style={{ marginBottom: '1.25rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.6rem' }}>
-          <Award size={17} style={{ color: 'var(--accent-amber)' }} />
-          <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Métricas de Excelencia Científica</h3>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
-          <div className="glass-card kpi-metric-card">
-            <span className="kpi-metric-label">Percentil Promedio</span>
-            <span className="kpi-metric-val">{kpiExcel.percentile_avg}</span>
-            <span className="badge badge-cyan" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Impacto Relativo</span>
-          </div>
-          <div className="glass-card kpi-metric-card">
-            <span className="kpi-metric-label">% Top 10%</span>
-            <span className="kpi-metric-val">{kpiExcel.pct_top_10}%</span>
-            <span className="badge badge-purple" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Decil Superior Mundial</span>
-          </div>
-          <div className="glass-card kpi-metric-card">
-            <span className="kpi-metric-label">% Top 1%</span>
-            <span className="kpi-metric-val">{kpiExcel.pct_top_1}%</span>
-            <span className="badge badge-emerald" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Élite Mundial</span>
-          </div>
-          <div className="glass-card kpi-metric-card">
-            <span className="kpi-metric-label">Índice H</span>
-            <span className="kpi-metric-val">{kpiExcel.h_index}</span>
-            <span className="badge badge-amber" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Índice de Hirsch</span>
-          </div>
-        </div>
-
-        {/* Distribución por Tramos de Impacto Observado (Tiers T1–T4) */}
-        {tiersInst && (
-          <div className="glass-card" style={{ marginTop: '0.75rem', padding: '0.85rem 1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.6rem' }}>
-              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                Distribución por Tramos de Impacto Observado (Tiers T1–T4):
-              </span>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                Normalizado por disciplina y año (DORA / Leiden)
-              </span>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
-              <div style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', borderLeft: '3px solid #8b5cf6', background: 'rgba(139, 92, 246, 0.05)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#a78bfa' }}>Tier 1 (T1)</span>
-                  <span className="badge badge-purple" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Alto</span>
-                </div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
-                  {tiersInst.t1Pct ?? 0}%
-                </div>
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                  {tiersInst.T1 ? `${tiersInst.T1.toLocaleString()} obras` : 'Top 25% mundial'}
-                </div>
-              </div>
-              <div style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', borderLeft: '3px solid #3b82f6', background: 'rgba(59, 130, 246, 0.05)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#60a5fa' }}>Tier 2 (T2)</span>
-                  <span className="badge badge-blue" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Medio-Alto</span>
-                </div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
-                  {tiersInst.t2Pct ?? 0}%
-                </div>
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                  {tiersInst.T2 ? `${tiersInst.T2.toLocaleString()} obras` : 'Percentil 50–74%'}
-                </div>
-              </div>
-              <div style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', borderLeft: '3px solid #10b981', background: 'rgba(16, 185, 129, 0.05)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#34d399' }}>Tier 3 (T3)</span>
-                  <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Medio-Bajo</span>
-                </div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
-                  {tiersInst.t3Pct ?? 0}%
-                </div>
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                  {tiersInst.T3 ? `${tiersInst.T3.toLocaleString()} obras` : 'Percentil 25–49%'}
-                </div>
-              </div>
-              <div style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', borderLeft: '3px solid #f59e0b', background: 'rgba(245, 158, 11, 0.05)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#fbbf24' }}>Tier 4 (T4)</span>
-                  <span className="badge badge-amber" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Base</span>
-                </div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
-                  {tiersInst.t4Pct ?? 0}%
-                </div>
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                  {tiersInst.T4 ? `${tiersInst.T4.toLocaleString()} obras` : 'Percentil 0–24%'}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ── 5. GRUPO 4 & 5: Velocidad, Colaboración y Costos APC ────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-        {/* Velocidad y Colaboración */}
-        <div className="glass-card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem' }}>
-            <TrendingUp size={17} style={{ color: 'var(--accent-cyan)' }} />
-            <h3 style={{ fontSize: '0.95rem', fontWeight: 600 }}>Velocidad de Citas y Colaboración</h3>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.6rem' }}>
-            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Citas/año (avg)</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{kpiVel.velocity_avg}</div>
-            </div>
-            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Citas últ. 3 años</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{kpiVel.recent_cites_3yr.toLocaleString()}</div>
-            </div>
-            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>% Colab. Internacional</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--accent-purple)' }}>{kpiVel.pct_international}%</div>
-            </div>
-            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Países/paper (avg)</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{kpiVel.avg_countries}</div>
-            </div>
-            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Autores/paper (avg)</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{kpiVel.avg_author_count}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Acceso Abierto y Costos APC */}
-        <div className="glass-card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem' }}>
-            <DollarSign size={17} style={{ color: 'var(--accent-emerald)' }} />
-            <h3 style={{ fontSize: '0.95rem', fontWeight: 600 }}>Acceso Abierto y Costos Estimados (APC)</h3>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.6rem' }}>
-            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>APC Total Estimado</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--accent-emerald)' }}>${kpiCosts.apc_paid_usd.toLocaleString()} USD</div>
-            </div>
-            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>% Papers con APC</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{kpiCosts.pct_apc}%</div>
-            </div>
-            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Vida Media Citas</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{kpiCosts.half_life_avg} años</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── 6. Distribución OA, Perfil Temático (Gini) y Tipos de Documentos ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
-        {/* Donut OA */}
-        <div className="glass-card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-            <PieIcon size={18} style={{ color: 'var(--accent-cyan)' }} />
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Distribución Open Access</h3>
-          </div>
-          <Plot
-            data={oaChartData}
-            layout={{
-              paper_bgcolor: 'transparent',
-              plot_bgcolor: 'transparent',
-              font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
-              margin: { l: 20, r: 20, t: 20, b: 20 },
-              height: 250,
-              showlegend: false
-            }}
-            config={{ responsive: true, displayModeBar: false }}
-            style={{ width: '100%' }}
-          />
-        </div>
-
-        {/* Perfil Temático (Gini) */}
-        <div className="glass-card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <Layers size={18} style={{ color: 'var(--accent-purple)' }} />
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Perfil Temático y Concentración</h3>
-          </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
-              <tbody>
-                <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '0.5rem 0', color: 'var(--text-secondary)' }}>Índice de Gini temático</td>
-                  <td style={{ padding: '0.5rem 0', textAlign: 'right', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-                    {thematic.gini_topics !== null ? thematic.gini_topics : 'N/A'}
-                  </td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '0.5rem 0', color: 'var(--text-secondary)' }}>Dominios de investigación</td>
-                  <td style={{ padding: '0.5rem 0', textAlign: 'right', fontWeight: 700 }}>{thematic.domain_diversity}</td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '0.5rem 0', color: 'var(--text-secondary)' }}>Tópicos únicos detectados</td>
-                  <td style={{ padding: '0.5rem 0', textAlign: 'right', fontWeight: 700 }}>{thematic.unique_topics.toLocaleString()}</td>
-                </tr>
-                <tr>
-                  <td style={{ padding: '0.5rem 0', color: 'var(--text-secondary)' }}>Dominio principal</td>
-                  <td style={{ padding: '0.5rem 0', textAlign: 'right', fontWeight: 700, color: 'var(--accent-blue)' }}>
-                    {thematic.top_domain}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
-            * Gini temático: 0 = producción concentrada en un tema, 1 = producción completamente diversificada.
-          </div>
-        </div>
-
-        {/* Tipos de Documentos */}
-        <div className="glass-card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-            <BookOpen size={18} style={{ color: 'var(--accent-emerald)' }} />
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Tipos de Documentos</h3>
-          </div>
-          {docTypes.length > 0 ? (
-            <Plot
-              data={docTypesChartData}
-              layout={{
-                paper_bgcolor: 'transparent',
-                plot_bgcolor: 'transparent',
-                font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
-                margin: { l: 20, r: 20, t: 20, b: 20 },
-                height: 250,
-                showlegend: false
-              }}
-              config={{ responsive: true, displayModeBar: false }}
-              style={{ width: '100%' }}
-            />
-          ) : (
-            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '3rem 0' }}>Sin datos de tipos de documento</p>
-          )}
-        </div>
-      </div>
-
-      {/* ── 7. Glosario Metodológico Interactivo (Accordion) ───────────────── */}
-      <div className="glass-card" style={{ marginBottom: '1.5rem', padding: '0.85rem 1.25rem' }}>
-        <button
-          onClick={() => setShowGlossary(!showGlossary)}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)' }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <HelpCircle size={18} style={{ color: 'var(--accent-cyan)' }} />
-            <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>¿Qué significan estos indicadores metodológicos?</span>
-          </div>
-          {showGlossary ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-        </button>
-
-        {showGlossary && (
-          <div style={{ marginTop: '0.85rem', paddingTop: '0.85rem', borderTop: '1px solid var(--border-subtle)', fontSize: '0.85rem', lineHeight: '1.6', color: 'var(--text-secondary)' }}>
-            <ul style={{ paddingLeft: '1.25rem', margin: 0 }}>
-              <li><b>FWCI (Field-Weighted Citation Impact):</b> Relación entre las citas recibidas y el promedio esperado para la misma disciplina y año (Promedio Mundial = 1.0).</li>
-              <li><b>Percentil Promedio:</b> Posición promedio mundial de los artículos respecto a sus citas (menor número indica mayor impacto; Top 10% son percentiles ≤ 10).</li>
-              <li><b>% Top 10% / Top 1%:</b> Porcentaje de la producción científica ubicada en el 10% o 1% más citado a nivel internacional.</li>
-              <li><b>% Open Access:</b> Proporción de artículos disponibles en acceso abierto (vías Gold, Green, Hybrid, Bronze).</li>
-              <li><b>Citas/año (avg):</b> Velocidad promedio de citación anual desde la fecha de publicación del artículo.</li>
-              <li><b>Citas últ. 3 años:</b> Impacto fresco acumulado en los últimos 36 meses.</li>
-              <li><b>% Colaboración Internacional:</b> Porcentaje de artículos donde participa al menos una institución extranjera.</li>
-              <li><b>Países/paper (avg):</b> Número promedio de países representados en las firmas de cada publicación.</li>
-              <li><b>Autores/paper (avg):</b> Número promedio de coautores firmantes por artículo.</li>
-              <li><b>APC Total:</b> Costo referencial acumulado en USD por cargos de procesamiento de artículos (Article Processing Charges).</li>
-              <li><b>Vida Media Citas:</b> Años transcurridos hasta que los artículos acumulan el 50% de sus citas totales históricas.</li>
-              <li><b>Gini temático:</b> Grado de concentración de la producción científica (0 = mono-temático, 1 = completamente disperso).</li>
-            </ul>
-          </div>
-        )}
-      </div>
-
-      {/* ── 8. Evolución Histórica de Producción e Impacto (2 Gráficos) ───── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
-        {/* Documentos Anuales */}
-        <div className="glass-card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <BookOpen size={18} style={{ color: '#f59e0b' }} />
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Documentos Publicados por Año (1980–2026)</h3>
-          </div>
-          <Plot
-            data={annualDocsChartData}
-            layout={{
-              paper_bgcolor: 'transparent',
-              plot_bgcolor: 'transparent',
-              font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
-              margin: { l: 50, r: 20, t: 20, b: 35 },
-              height: 280,
-              autosize: true,
-              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
-              yaxis: { gridcolor: gridColor, title: 'Documentos' }
-            }}
-            config={{ responsive: true, displayModeBar: false }}
-            style={{ width: '100%' }}
-          />
-        </div>
-
-        {/* FWCI Anual */}
-        <div className="glass-card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <TrendingUp size={18} style={{ color: 'var(--accent-blue)' }} />
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Evolución FWCI Promedio Institucional (1980–2026)</h3>
-          </div>
-          <Plot
-            data={annualFwciChartData}
-            layout={{
-              paper_bgcolor: 'transparent',
-              plot_bgcolor: 'transparent',
-              font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
-              margin: { l: 50, r: 20, t: 20, b: 35 },
-              height: 280,
-              autosize: true,
-              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
-              yaxis: { gridcolor: gridColor, title: 'FWCI' },
-              shapes: [
-                {
-                  type: 'line',
-                  xref: 'paper',
-                  x0: 0,
-                  x1: 1,
-                  y0: 1.0,
-                  y1: 1.0,
-                  line: { color: '#ef4444', width: 2, dash: 'dash' }
-                }
-              ],
-              annotations: [
-                {
-                  xref: 'paper',
-                  yref: 'y',
-                  x: 0.98,
-                  y: 1.05,
-                  text: 'Base Mundial (1.0)',
-                  showarrow: false,
-                  font: { color: '#ef4444', size: 10 }
-                }
-              ]
-            }}
-            config={{ responsive: true, displayModeBar: false }}
-            style={{ width: '100%' }}
-          />
-        </div>
-      </div>
-
-      {/* ── 9. Temáticas de Investigación Institucional (Sunburst 4 Niveles) ── */}
-      {sunburstTrace && sunburstTrace.labels.length > 0 && (
-        <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Layers size={18} style={{ color: 'var(--accent-cyan)' }} />
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Temáticas de Investigación Institucional (Sunburst Jerárquico)</h3>
-            </div>
-            <span className="badge badge-cyan">4 Niveles: Dominio ➔ Campo ➔ Subcampo ➔ Tópico</span>
-          </div>
-          <Plot
-            data={[
-              {
-                type: 'sunburst',
-                ids: sunburstTrace.ids,
-                labels: sunburstTrace.labels,
-                parents: sunburstTrace.parents,
-                values: sunburstTrace.values,
-                branchvalues: 'total',
-                marker: {
-                  colorscale: 'Blues',
-                  colorbar: { title: 'Obras' }
-                },
-                hoverinfo: 'label+value+percent parent',
-                insidetextorientation: 'radial'
-              }
-            ]}
-            layout={{
-              paper_bgcolor: 'transparent',
-              plot_bgcolor: 'transparent',
-              font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
-              margin: { l: 10, r: 10, t: 10, b: 10 },
-              height: 540,
-              autosize: true
-            }}
-            config={{ responsive: true, displayModeBar: true }}
-            style={{ width: '100%' }}
-          />
-        </div>
-      )}
-
-      {/* ── 10. Vocabulario Científico Institucional (Keywords) ─────────────── */}
-      {keywords.length > 0 && (
-        <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <Sparkles size={18} style={{ color: 'var(--accent-purple)' }} />
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Vocabulario Científico Institucional (Keywords Frecuentes)</h3>
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-            {keywords.map((kw, idx) => (
-              <span
-                key={idx}
-                className="badge"
-                style={{
-                  background: isLight ? 'rgba(2, 132, 199, 0.08)' : 'rgba(2, 132, 199, 0.15)',
-                  color: isLight ? '#0284c7' : '#38bdf8',
-                  border: '1px solid rgba(2, 132, 199, 0.2)',
-                  padding: '0.35rem 0.65rem',
-                  fontSize: '0.8rem',
-                  borderRadius: '20px'
-                }}
-              >
-                {kw.keyword} <b style={{ marginLeft: '4px', opacity: 0.8 }}>({kw.freq.toLocaleString()})</b>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── 11. Colaboración Internacional y Stacked Bar OA Anual ───────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
-        {/* % Colaboración Internacional */}
-        <div className="glass-card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <Globe2 size={18} style={{ color: 'var(--accent-purple)' }} />
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Evolución de Colaboración Internacional (%) (1980–2026)</h3>
-          </div>
-          <Plot
-            data={annualIntlChartData}
-            layout={{
-              paper_bgcolor: 'transparent',
-              plot_bgcolor: 'transparent',
-              font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
-              margin: { l: 50, r: 20, t: 20, b: 35 },
-              height: 280,
-              autosize: true,
-              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
-              yaxis: { gridcolor: gridColor, title: '%', range: [0, 100] }
-            }}
-            config={{ responsive: true, displayModeBar: false }}
-            style={{ width: '100%' }}
-          />
-        </div>
-
-        {/* Stacked Bar OA por Año */}
-        <div className="glass-card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <Layers size={18} style={{ color: 'var(--accent-emerald)' }} />
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Evolución del Acceso Abierto por Año (%) (1980–2026)</h3>
-          </div>
-          <Plot
-            data={annualOaStackedData}
-            layout={{
-              barmode: 'stack',
-              paper_bgcolor: 'transparent',
-              plot_bgcolor: 'transparent',
-              font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
-              margin: { l: 50, r: 20, t: 20, b: 35 },
-              height: 280,
-              autosize: true,
-              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
-              yaxis: { gridcolor: gridColor, title: '%' },
-              showlegend: true,
-              legend: { orientation: 'h', y: 1.15, x: 0 }
-            }}
-            config={{ responsive: true, displayModeBar: false }}
-            style={{ width: '100%' }}
-          />
-        </div>
-      </div>
-
-      {/* ── 12. Impacto Global en Sostenibilidad (ODS 1–17) ──────────────────── */}
+      {/* ── 2. Impacto Global en Sostenibilidad (ODS 1–17) ──────────────────── */}
       <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -1131,6 +599,557 @@ export function InstitutionalPanorama() {
           })}
         </div>
       </div>
+
+      {/* ── 3. Vocabulario Científico Institucional (Keywords Word Cloud) ──── */}
+      <WordCloudInteractive
+        keywords={keywords}
+        title="Vocabulario Científico Institucional (Word Cloud)"
+        subtitle="Nube interactiva con eventos de cursor para explorar frecuencias y conceptos dominantes."
+      />
+
+      {/* ── 4. Temáticas de Investigación Institucional (Sunburst 4 Niveles) ── */}
+      {sunburstTrace && sunburstTrace.labels.length > 0 && (
+        <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Layers size={18} style={{ color: 'var(--accent-cyan)' }} />
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Temáticas de Investigación Institucional (Sunburst Jerárquico)</h3>
+            </div>
+            <span className="badge badge-cyan">4 Niveles: Dominio ➔ Campo ➔ Subcampo ➔ Tópico</span>
+          </div>
+          <Plot
+            data={[
+              {
+                type: 'sunburst',
+                ids: sunburstTrace.ids,
+                labels: sunburstTrace.labels,
+                parents: sunburstTrace.parents,
+                values: sunburstTrace.values,
+                branchvalues: 'total',
+                marker: {
+                  colors: sunburstTrace.colors || sunburstTrace.values,
+                  colorscale: 'Blues',
+                  showscale: true,
+                  colorbar: {
+                    title: { text: 'value' },
+                    len: 0.85,
+                    thickness: 16
+                  }
+                },
+                hoverinfo: 'label+value+percent parent',
+                insidetextorientation: 'radial'
+              }
+            ]}
+            layout={{
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent',
+              font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
+              margin: { l: 10, r: 10, t: 10, b: 10 },
+              height: 540,
+              autosize: true
+            }}
+            config={{ responsive: true, displayModeBar: true }}
+            style={{ width: '100%' }}
+          />
+        </div>
+      )}
+
+      {/* ── 4b. Evolución Histórica de Perfiles de Conocimiento ─────────────── */}
+      <ThematicEvolutionTable
+        data={metricsData?.thematic_evolution}
+        title="Evolución Histórica de Perfiles de Conocimiento"
+      />
+
+      {/* ── 4c. Mapa Semántico de Producción (WebGL) ────────────────────────── */}
+      <SemanticProductionMap
+        targetName={selectedSubdependency || selectedDependency || selectedInstitution || "Entidad"}
+        type="institution"
+        dois={metricsData?.dois_list}
+        oaIds={metricsData?.oa_list}
+        totalWorks={kpiGen.indexed_works || totalPapers || 0}
+      />
+
+      {/* ── 4d. Mapa Mundi de Países Colaboradores ─────────────────────────── */}
+      <CollaborationWorldMap
+        countries={metricsData?.collaboration_countries}
+        title="Países Colaboradores"
+      />
+
+      {/* ── 5. Distribución OA, Perfil Temático (Gini) y Tipos de Documentos ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem', marginBottom: '1.5rem' }}>
+        {/* Donut OA */}
+        <div className="glass-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <PieIcon size={18} style={{ color: 'var(--accent-cyan)' }} />
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Distribución Open Access</h3>
+          </div>
+          <Plot
+            data={oaChartData}
+            layout={{
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent',
+              font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
+              margin: { l: 20, r: 20, t: 20, b: 20 },
+              height: 250,
+              showlegend: false
+            }}
+            config={{ responsive: true, displayModeBar: false }}
+            style={{ width: '100%' }}
+          />
+        </div>
+
+        {/* Perfil Temático (Gini) */}
+        <div className="glass-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <Layers size={18} style={{ color: 'var(--accent-purple)' }} />
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Perfil Temático y Concentración</h3>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+              <tbody>
+                <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <td style={{ padding: '0.5rem 0', color: 'var(--text-secondary)' }}>Índice de Gini temático</td>
+                  <td style={{ padding: '0.5rem 0', textAlign: 'right', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
+                    {thematic.gini_topics !== null ? thematic.gini_topics : 'N/A'}
+                  </td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <td style={{ padding: '0.5rem 0', color: 'var(--text-secondary)' }}>Dominios de investigación</td>
+                  <td style={{ padding: '0.5rem 0', textAlign: 'right', fontWeight: 700 }}>{thematic.domain_diversity}</td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <td style={{ padding: '0.5rem 0', color: 'var(--text-secondary)' }}>Tópicos únicos detectados</td>
+                  <td style={{ padding: '0.5rem 0', textAlign: 'right', fontWeight: 700 }}>{thematic.unique_topics.toLocaleString()}</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '0.5rem 0', color: 'var(--text-secondary)' }}>Dominio principal</td>
+                  <td style={{ padding: '0.5rem 0', textAlign: 'right', fontWeight: 700, color: 'var(--accent-blue)' }}>
+                    {thematic.top_domain}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
+            * Gini temático: 0 = producción concentrada en un tema, 1 = producción completamente diversificada.
+          </div>
+        </div>
+
+        {/* Tipos de Documentos */}
+        <div className="glass-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <BookOpen size={18} style={{ color: 'var(--accent-emerald)' }} />
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Tipos de Documentos</h3>
+          </div>
+          {docTypes.length > 0 ? (
+            <Plot
+              data={docTypesChartData}
+              layout={{
+                paper_bgcolor: 'transparent',
+                plot_bgcolor: 'transparent',
+                font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
+                margin: { l: 20, r: 20, t: 20, b: 20 },
+                height: 250,
+                showlegend: false
+              }}
+              config={{ responsive: true, displayModeBar: false }}
+              style={{ width: '100%' }}
+            />
+          ) : (
+            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '3rem 0' }}>Sin datos de tipos de documento</p>
+          )}
+        </div>
+      </div>
+
+      {/* ── 6. Colaboración Internacional y Stacked Bar OA Anual ───────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+        {/* % Colaboración Internacional */}
+        <div className="glass-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <Globe2 size={18} style={{ color: 'var(--accent-purple)' }} />
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Evolución de Colaboración Internacional (%) (1980–2026)</h3>
+          </div>
+          <Plot
+            data={annualIntlChartData}
+            layout={{
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent',
+              font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
+              margin: { l: 50, r: 20, t: 20, b: 35 },
+              height: 280,
+              autosize: true,
+              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
+              yaxis: { gridcolor: gridColor, title: '%', range: [0, 100] }
+            }}
+            config={{ responsive: true, displayModeBar: false }}
+            style={{ width: '100%' }}
+          />
+        </div>
+
+        {/* Stacked Bar OA por Año */}
+        <div className="glass-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <Layers size={18} style={{ color: 'var(--accent-emerald)' }} />
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Evolución del Acceso Abierto por Año (%) (1980–2026)</h3>
+          </div>
+          <Plot
+            data={annualOaStackedData}
+            layout={{
+              barmode: 'stack',
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent',
+              font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
+              margin: { l: 50, r: 20, t: 20, b: 35 },
+              height: 280,
+              autosize: true,
+              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
+              yaxis: { gridcolor: gridColor, title: '%' },
+              showlegend: true,
+              legend: { orientation: 'h', y: 1.15, x: 0 }
+            }}
+            config={{ responsive: true, displayModeBar: false }}
+            style={{ width: '100%' }}
+          />
+        </div>
+      </div>
+
+      {/* ── 7. Evolución Histórica de Producción e Impacto (2 Gráficos) ───── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+        {/* Documentos Anuales */}
+        <div className="glass-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <BookOpen size={18} style={{ color: '#f59e0b' }} />
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Documentos Publicados por Año (1980–2026)</h3>
+          </div>
+          <Plot
+            data={annualDocsChartData}
+            layout={{
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent',
+              font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
+              margin: { l: 50, r: 20, t: 20, b: 35 },
+              height: 280,
+              autosize: true,
+              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
+              yaxis: { gridcolor: gridColor, title: 'Documentos' }
+            }}
+            config={{ responsive: true, displayModeBar: false }}
+            style={{ width: '100%' }}
+          />
+        </div>
+
+        {/* FWCI Anual */}
+        <div className="glass-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <TrendingUp size={18} style={{ color: 'var(--accent-blue)' }} />
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Evolución FWCI Promedio Institucional (1980–2026)</h3>
+          </div>
+          <Plot
+            data={annualFwciChartData}
+            layout={{
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent',
+              font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
+              margin: { l: 50, r: 20, t: 20, b: 35 },
+              height: 280,
+              autosize: true,
+              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
+              yaxis: { gridcolor: gridColor, title: 'FWCI' },
+              shapes: [
+                {
+                  type: 'line',
+                  xref: 'paper',
+                  x0: 0,
+                  x1: 1,
+                  y0: 1.0,
+                  y1: 1.0,
+                  line: { color: '#ef4444', width: 2, dash: 'dash' }
+                }
+              ],
+              annotations: [
+                {
+                  xref: 'paper',
+                  yref: 'y',
+                  x: 0.98,
+                  y: 1.05,
+                  text: 'Base Mundial (1.0)',
+                  showarrow: false,
+                  font: { color: '#ef4444', size: 10 }
+                }
+              ]
+            }}
+            config={{ responsive: true, displayModeBar: false }}
+            style={{ width: '100%' }}
+          />
+        </div>
+      </div>
+
+      {/* ── 8. GRUPO 1: Identificadores de Académicos (4 Métricas) ──────────── */}
+      <div style={{ marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.6rem' }}>
+          <ShieldCheck size={17} style={{ color: 'var(--accent-cyan)' }} />
+          <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Identificadores de Académicos</h3>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">% Académicos con ORCID</span>
+            <span className="kpi-metric-val">{kpiIds.pct_academic_orcid}%</span>
+            <span className="badge badge-cyan" style={{ width: 'fit-content', fontSize: '0.7rem' }}>ORCID Registrado</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">% Académicos con algún ID</span>
+            <span className="kpi-metric-val">{kpiIds.pct_academic_any_id}%</span>
+            <span className="badge badge-purple" style={{ width: 'fit-content', fontSize: '0.7rem' }}>ORCID, OA o CVU</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">% con ORCID</span>
+            <span className="kpi-metric-val">{kpiIds.pct_snii_orcid}%</span>
+            <span className="badge badge-emerald" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Padrón Oficial</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">% con algún ID</span>
+            <span className="kpi-metric-val">{kpiIds.pct_snii_any_id}%</span>
+            <span className="badge badge-amber" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Multicatálogo</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 9. GRUPO 2: Métricas Generales (7 Métricas) ─────────────────────── */}
+      <div style={{ marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.6rem' }}>
+          <Layers size={17} style={{ color: 'var(--accent-purple)' }} />
+          <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Métricas Generales de Producción e Impacto</h3>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">Producción Total</span>
+            <span className="kpi-metric-val">{kpiGen.total_census.toLocaleString()}</span>
+            <span className="badge badge-cyan" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Censo Neo4j</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">Indizada en OpenAlex</span>
+            <span className="kpi-metric-val">{kpiGen.indexed_works.toLocaleString()}</span>
+            <span className="badge badge-purple" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Metadatos Completos</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">No. de Investigadoras e Investigadores</span>
+            <span className="kpi-metric-val">{kpiGen.official_snii_count.toLocaleString()}</span>
+            <span className="badge badge-emerald" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Padrón Oficial</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">Citas Acumuladas</span>
+            <span className="kpi-metric-val">{kpiGen.total_citations.toLocaleString()}</span>
+            <span className="badge badge-amber" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Total Directo</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">Citas/artículo</span>
+            <span className="kpi-metric-val">{kpiGen.citations_per_paper}</span>
+            <span className="badge badge-cyan" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Promedio</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">FWCI Promedio</span>
+            <span className="kpi-metric-val">{kpiGen.fwci_mean}</span>
+            <span className="badge badge-emerald" style={{ width: 'fit-content', fontSize: '0.7rem' }}>
+              {kpiGen.fwci_mean > 1 ? `+${Math.round((kpiGen.fwci_mean - 1) * 100)}% s/ Mundo` : 'Normalizado'}
+            </span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">% Open Access</span>
+            <span className="kpi-metric-val">{kpiGen.pct_open_access}%</span>
+            <span className="badge badge-purple" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Acceso Abierto</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 10. GRUPO 3: Métricas de Excelencia (4 Métricas) ─────────────────── */}
+      <div style={{ marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.6rem' }}>
+          <Award size={17} style={{ color: 'var(--accent-amber)' }} />
+          <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Métricas de Excelencia Científica</h3>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">Percentil Promedio</span>
+            <span className="kpi-metric-val">{kpiExcel.percentile_avg}</span>
+            <span className="badge badge-cyan" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Impacto Relativo</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">% Top 10%</span>
+            <span className="kpi-metric-val">{kpiExcel.pct_top_10}%</span>
+            <span className="badge badge-purple" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Decil Superior Mundial</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">% Top 1%</span>
+            <span className="kpi-metric-val">{kpiExcel.pct_top_1}%</span>
+            <span className="badge badge-emerald" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Élite Mundial</span>
+          </div>
+          <div className="glass-card kpi-metric-card">
+            <span className="kpi-metric-label">Índice H</span>
+            <span className="kpi-metric-val">{kpiExcel.h_index}</span>
+            <span className="badge badge-amber" style={{ width: 'fit-content', fontSize: '0.7rem' }}>Índice de Hirsch</span>
+          </div>
+        </div>
+
+        {/* Distribución por Tramos de Impacto Observado (Tiers T1–T4) */}
+        {tiersInst && (
+          <div className="glass-card" style={{ marginTop: '0.75rem', padding: '0.85rem 1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.6rem' }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                Distribución por Tramos de Impacto Observado (Tiers T1–T4):
+              </span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                Normalizado por disciplina y año (DORA / Leiden)
+              </span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
+              <div style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', borderLeft: '3px solid #8b5cf6', background: 'rgba(139, 92, 246, 0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#a78bfa' }}>Tier 1 (T1)</span>
+                  <span className="badge badge-purple" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Alto</span>
+                </div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
+                  {tiersInst.t1Pct ?? 0}%
+                </div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  {tiersInst.T1 ? `${tiersInst.T1.toLocaleString()} obras` : 'Top 25% mundial'}
+                </div>
+              </div>
+              <div style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', borderLeft: '3px solid #3b82f6', background: 'rgba(59, 130, 246, 0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#60a5fa' }}>Tier 2 (T2)</span>
+                  <span className="badge badge-blue" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Medio-Alto</span>
+                </div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
+                  {tiersInst.t2Pct ?? 0}%
+                </div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  {tiersInst.T2 ? `${tiersInst.T2.toLocaleString()} obras` : 'Percentil 50–74%'}
+                </div>
+              </div>
+              <div style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', borderLeft: '3px solid #10b981', background: 'rgba(16, 185, 129, 0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#34d399' }}>Tier 3 (T3)</span>
+                  <span className="badge badge-emerald" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Medio-Bajo</span>
+                </div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
+                  {tiersInst.t3Pct ?? 0}%
+                </div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  {tiersInst.T3 ? `${tiersInst.T3.toLocaleString()} obras` : 'Percentil 25–49%'}
+                </div>
+              </div>
+              <div style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', borderLeft: '3px solid #f59e0b', background: 'rgba(245, 158, 11, 0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#fbbf24' }}>Tier 4 (T4)</span>
+                  <span className="badge badge-amber" style={{ fontSize: '0.68rem', padding: '0.15rem 0.4rem' }}>Base</span>
+                </div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, marginTop: '0.2rem', color: 'var(--text-primary)' }}>
+                  {tiersInst.t4Pct ?? 0}%
+                </div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  {tiersInst.T4 ? `${tiersInst.T4.toLocaleString()} obras` : 'Percentil 0–24%'}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── 11. GRUPO 4 & 5: Velocidad, Colaboración y Costos APC ────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+        {/* Velocidad y Colaboración */}
+        <div className="glass-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem' }}>
+            <TrendingUp size={17} style={{ color: 'var(--accent-cyan)' }} />
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 600 }}>Velocidad de Citas y Colaboración</h3>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.6rem' }}>
+            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Citas/año (avg)</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{kpiVel.velocity_avg}</div>
+            </div>
+            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Citas últ. 3 años</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{kpiVel.recent_cites_3yr.toLocaleString()}</div>
+            </div>
+            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>% Colab. Internacional</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--accent-purple)' }}>{kpiVel.pct_international}%</div>
+            </div>
+            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Países/paper (avg)</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{kpiVel.avg_countries}</div>
+            </div>
+            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Autores/paper (avg)</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{kpiVel.avg_author_count}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Acceso Abierto y Costos APC */}
+        <div className="glass-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem' }}>
+            <DollarSign size={17} style={{ color: 'var(--accent-emerald)' }} />
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 600 }}>Acceso Abierto y Costos Estimados (APC)</h3>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.6rem' }}>
+            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>APC Total Estimado</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--accent-emerald)' }}>${kpiCosts.apc_paid_usd.toLocaleString()} USD</div>
+            </div>
+            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>% Papers con APC</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{kpiCosts.pct_apc}%</div>
+            </div>
+            <div style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Vida Media Citas</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{kpiCosts.half_life_avg} años</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 12. Glosario Metodológico Interactivo (Accordion) ───────────────── */}
+      <div className="glass-card" style={{ marginBottom: '1.5rem', padding: '0.85rem 1.25rem' }}>
+        <button
+          onClick={() => setShowGlossary(!showGlossary)}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)' }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <HelpCircle size={18} style={{ color: 'var(--accent-cyan)' }} />
+            <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>¿Qué significan estos indicadores metodológicos?</span>
+          </div>
+          {showGlossary ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </button>
+
+        {showGlossary && (
+          <div style={{ marginTop: '0.85rem', paddingTop: '0.85rem', borderTop: '1px solid var(--border-subtle)', fontSize: '0.85rem', lineHeight: '1.6', color: 'var(--text-secondary)' }}>
+            <ul style={{ paddingLeft: '1.25rem', margin: 0 }}>
+              <li><b>FWCI (Field-Weighted Citation Impact):</b> Relación entre las citas recibidas y el promedio esperado para la misma disciplina y año (Promedio Mundial = 1.0).</li>
+              <li><b>Percentil Promedio:</b> Posición promedio mundial de los artículos respecto a sus citas (menor número indica mayor impacto; Top 10% son percentiles ≤ 10).</li>
+              <li><b>% Top 10% / Top 1%:</b> Porcentaje de la producción científica ubicada en el 10% o 1% más citado a nivel internacional.</li>
+              <li><b>% Open Access:</b> Proporción de artículos disponibles en acceso abierto (vías Gold, Green, Hybrid, Bronze).</li>
+              <li><b>Citas/año (avg):</b> Velocidad promedio de citación anual desde la fecha de publicación del artículo.</li>
+              <li><b>Citas últ. 3 años:</b> Impacto fresco acumulado en los últimos 36 meses.</li>
+              <li><b>% Colaboración Internacional:</b> Porcentaje de artículos donde participa al menos una institución extranjera.</li>
+              <li><b>Países/paper (avg):</b> Número promedio de países representados en las firmas de cada publicación.</li>
+              <li><b>Autores/paper (avg):</b> Número promedio de coautores firmantes por artículo.</li>
+              <li><b>APC Total:</b> Costo referencial acumulado en USD por cargos de procesamiento de artículos (Article Processing Charges).</li>
+              <li><b>Vida Media Citas:</b> Años transcurridos hasta que los artículos acumulan el 50% de sus citas totales históricas.</li>
+              <li><b>Gini temático:</b> Grado de concentración de la producción científica (0 = mono-temático, 1 = completamente disperso).</li>
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {/* ── 12b. Reporte Bibliométrico con Inteligencia Artificial ───────────── */}
+      <AIReportViewer
+        type="inst"
+        targetName={selectedSubdependency || selectedDependency || selectedInstitution || "Entidad"}
+        viewMode={viewMode}
+        hasReport={metricsData?.has_ai_report}
+      />
 
       {/* ── 13. Tabla Completa de Publicaciones Institucionales ─────────────── */}
       <div className="glass-card">

@@ -18,14 +18,19 @@
 
 .tlachia-suite-container {
   width: 100%;
-  background: var(--tlachia-bar-glass);
+  height: 42px;
+  min-height: 42px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  background: var(--tlachia-bar-glass) !important;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid var(--tlachia-bar-border);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+  border-bottom: 1px solid var(--tlachia-bar-border) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45) !important;
   position: relative;
   z-index: 9999;
   font-family: var(--tlachia-font-body);
+  color: var(--tlachia-text-primary) !important;
   user-select: none;
 }
 
@@ -238,53 +243,66 @@
   }
 }
 
-/* Soporte para Tema Claro */
-[data-theme="claro"] .tlachia-suite-container {
-  background: rgba(255, 255, 255, 0.94);
-  border-bottom: 1px solid #e2e8f0;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+/* Invarianza Obsidian Glass: Preservar estilo oscuro permanente sin importar el tema claro/oscuro del host */
+.tlachia-suite-container,
+[data-theme="claro"] .tlachia-suite-container,
+[data-theme="light"] .tlachia-suite-container,
+.light .tlachia-suite-container {
+  background: var(--tlachia-bar-glass) !important;
+  border-bottom: 1px solid var(--tlachia-bar-border) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45) !important;
+  color: var(--tlachia-text-primary) !important;
 }
 
-[data-theme="claro"] .tlachia-suite-brand-title {
-  background: linear-gradient(135deg, #0f172a 30%, #0284c7 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+[data-theme="claro"] .tlachia-suite-brand-title,
+[data-theme="light"] .tlachia-suite-brand-title,
+.light .tlachia-suite-brand-title {
+  background: linear-gradient(135deg, #ffffff 30%, #94a3b8 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
 }
 
-[data-theme="claro"] .tlachia-suite-badge-version {
-  background: #f1f5f9;
-  color: #64748b;
-  border-color: #e2e8f0;
+[data-theme="claro"] .tlachia-suite-item,
+[data-theme="light"] .tlachia-suite-item,
+.light .tlachia-suite-item {
+  color: var(--tlachia-text-muted) !important;
 }
 
-[data-theme="claro"] .tlachia-suite-item {
-  color: #64748b;
+[data-theme="claro"] .tlachia-suite-item:hover,
+[data-theme="light"] .tlachia-suite-item:hover,
+.light .tlachia-suite-item:hover {
+  color: var(--tlachia-text-primary) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
 }
 
-[data-theme="claro"] .tlachia-suite-item:hover {
-  color: #0f172a;
-  background: rgba(0, 0, 0, 0.04);
+[data-theme="claro"] .tlachia-suite-item-active,
+[data-theme="light"] .tlachia-suite-item-active,
+.light .tlachia-suite-item-active {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  box-shadow: 0 0 14px rgba(0, 242, 254, 0.15) !important;
 }
 
-[data-theme="claro"] .tlachia-suite-item-active {
-  background: rgba(2, 132, 199, 0.08);
-  border-color: rgba(2, 132, 199, 0.25);
-  color: #0284c7;
+[data-theme="claro"] .tlachia-suite-item-active .tlachia-suite-item-name,
+[data-theme="light"] .tlachia-suite-item-active .tlachia-suite-item-name,
+.light .tlachia-suite-item-active .tlachia-suite-item-name {
+  color: #ffffff !important;
 }
 
-[data-theme="claro"] .tlachia-suite-item-active .tlachia-suite-item-name {
-  color: #0f172a;
-  font-weight: 700;
+[data-theme="claro"] .tlachia-suite-item-active .tlachia-suite-tagline,
+[data-theme="light"] .tlachia-suite-item-active .tlachia-suite-tagline,
+.light .tlachia-suite-item-active .tlachia-suite-tagline {
+  color: #00f2fe !important;
 }
 
-[data-theme="claro"] .tlachia-suite-item-active .tlachia-suite-tagline {
-  color: #0284c7;
-  font-weight: 600;
+[data-theme="claro"] .tlachia-suite-badge-version,
+[data-theme="light"] .tlachia-suite-badge-version,
+.light .tlachia-suite-badge-version {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #38bdf8 !important;
 }
 
-[data-theme="claro"] .tlachia-suite-status-pill {
-  background: rgba(16, 185, 129, 0.08);
-  border-color: rgba(16, 185, 129, 0.25);
-  color: #059669;
-}
 

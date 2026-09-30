@@ -90,7 +90,23 @@ def fig_to_html(fig) -> str:
     return "<div class='chart'>" + pio.to_html(fig, full_html=False, include_plotlyjs='cdn') + "</div>"
 
 
-def generate_html_report(entity_type: str, entity_name: str, entity_context: str = None, institution_name: str = None, view_mode: str = "capacidad_instalada") -> str:
+def _notify_step(callback, step: int, total: int, msg: str):
+    if callback:
+        try:
+            callback(step, total, msg)
+        except Exception:
+            pass
+
+
+def generate_html_report(
+    entity_type: str, 
+    entity_name: str, 
+    entity_context: str = None, 
+    institution_name: str = None, 
+    view_mode: str = "capacidad_instalada",
+    save_to_disk: bool = True,
+    progress_callback = None
+) -> str:
     """Genera un reporte analítico exhaustivo y sobrio en formato HTML para institución o investigador."""
     file_path, safe_name = get_report_path(entity_type, entity_name, view_mode)
     print(f"Iniciando generación de reporte para {entity_name} ({entity_type})...")
@@ -142,6 +158,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     # SECCIÓN 1: Resumen Ejecutivo y Diagnóstico Global
     # -------------------------------------------------------------------------
     print("Generando SubReporte 1/11: Resumen Ejecutivo...")
+    _notify_step(progress_callback, 1, 11, "Redactando Resumen Ejecutivo y Diagnóstico Global")
     
     p_exec = f"""
     Redacta un Resumen Ejecutivo analítico y sobrio para {entity_name} ({'Institución / Dependencia' if entity_type == 'inst' else 'Investigador'}), basado en los siguientes indicadores cuantitativos consolidados:
@@ -181,6 +198,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     # SECCIÓN 2: Trayectoria Temporal y Tipología Documental
     # -------------------------------------------------------------------------
     print("Generando SubReporte 2/11: Trayectoria y Tipología...")
+    _notify_step(progress_callback, 2, 11, "Analizando Trayectoria Temporal y Tipología Documental")
     html_hist_fig = ""
     top_prod_years_str = "No disponible"
     docs_last_5 = 0
@@ -272,6 +290,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     # SECCIÓN 3: Excelencia e Impacto Normalizado
     # -------------------------------------------------------------------------
     print("Generando SubReporte 3/11: Excelencia e Impacto...")
+    _notify_step(progress_callback, 3, 11, "Evaluando Excelencia e Impacto Normalizado (FWCI)")
     html_fwci_fig = ""
     if not df_ann_ent.empty and 'fwci_avg' in df_ann_ent.columns:
         _x_min_f = max(1960, yr_min)
@@ -316,6 +335,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     # SECCIÓN 4: Ecosistema Editorial y Principales Revistas
     # -------------------------------------------------------------------------
     print("Generando SubReporte 4/11: Ecosistema Editorial...")
+    _notify_step(progress_callback, 4, 11, "Analizando Ecosistema Editorial y Principales Revistas")
     html_journals_fig = ""
     top_journals_list = []
 
@@ -359,6 +379,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     # SECCIÓN 5: Dinámica y Velocidad de Citación
     # -------------------------------------------------------------------------
     print("Generando SubReporte 5/11: Dinámica de Citación...")
+    _notify_step(progress_callback, 5, 11, "Calculando Dinámica y Velocidad de Citación")
     html_vel_fig = ""
     if not df_pap_ent.empty and 'citations' in df_pap_ent.columns and 'year' in df_pap_ent.columns:
         try:
@@ -412,6 +433,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     # SECCIÓN 6: Acceso Abierto y Modelo Editorial
     # -------------------------------------------------------------------------
     print("Generando SubReporte 6/11: Acceso Abierto...")
+    _notify_step(progress_callback, 6, 11, "Examinando Vías de Acceso Abierto y Costos APC")
     html_oa_figs = ""
     
     pct_gold = data.get('pct_oa_gold', 0.0)
@@ -475,6 +497,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     # SECCIÓN 7: Identidad Temática y Concentración Disciplinar
     # -------------------------------------------------------------------------
     print("Generando SubReporte 7/11: Identidad Temática...")
+    _notify_step(progress_callback, 7, 11, "Mapeando Identidad Temática y Concentración Disciplinar")
     html_top_figs = ""
 
     if df_top is not None and not df_top.empty:
@@ -541,6 +564,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     # SECCIÓN 8: Visibilidad e Indización en Índices Internacionales
     # -------------------------------------------------------------------------
     print("Generando SubReporte 8/11: Visibilidad e Indización...")
+    _notify_step(progress_callback, 8, 11, "Verificando Visibilidad e Indización Internacional")
     html_rad = ""
     m_pub = data.get('pct_pubmed', 0.0)
     m_doaj = data.get('pct_doaj_indexed', 0.0)
@@ -596,6 +620,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     # SECCIÓN 9: Contribución al Desarrollo Sostenible (ODS)
     # -------------------------------------------------------------------------
     print("Generando SubReporte 9/11: ODS...")
+    _notify_step(progress_callback, 9, 11, "Alineando con Objetivos de Desarrollo Sostenible (ODS)")
     html_ods = ""
     if not df_pap_ent.empty:
         try:
@@ -622,6 +647,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     # -------------------------------------------------------------------------
     if entity_type == 'inv':
         print("Generando SubReporte 10/11: Posicionamiento UMAP y Coautores...")
+        _notify_step(progress_callback, 10, 11, "Proyectando Topología y Redes de Coautoría")
         html_inv_extra = ""
         
         # 10.1 UMAP Scatter
@@ -747,6 +773,7 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
     # SECCIÓN 11: Redes de Colaboración Internacional
     # -------------------------------------------------------------------------
     print("Generando SubReporte 11/11: Colaboración Internacional...")
+    _notify_step(progress_callback, 11, 11, "Sintetizando Redes de Colaboración Internacional")
     html_collab_figs = ""
     top_countries = []
 
@@ -1084,11 +1111,14 @@ def generate_html_report(entity_type: str, entity_name: str, entity_context: str
 </body>
 </html>"""
     
-    with open(file_path, 'w', encoding='utf-8') as f:
-        f.write(html_content)
-        
-    print(f"Reporte generado exitosamente en: {file_path}")
-    return file_path
+    if save_to_disk:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        print(f"Reporte generado exitosamente en: {file_path}")
+        return file_path
+    else:
+        print(f"Reporte efímero generado en memoria para {entity_name}")
+        return html_content
 
 
 if __name__ == "__main__":

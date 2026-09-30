@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore.js';
 import apiClient from '../../api/client.js';
+import AIReportViewer from '../analytics/AIReportViewer.jsx';
 
 export function MyResearcherSpace() {
   const t = useAppStore((state) => state.t)();
@@ -29,9 +30,9 @@ export function MyResearcherSpace() {
   // Subpestañas (CTL-M04-007)
   const [activeSubTab, setActiveSubTab] = useState('identity'); // 'identity', 'accreditation', 'citations', 'dossier', 'curation'
 
-  // Simulación o sesión activa (por defecto preconfigurado con investigador representativo si no se ha hecho login manual)
-  const activeOrcid = userSession.orcid || '0000-0003-3659-6769';
-  const activeName = userSession.name || 'CARRILLO CALVET HUMBERTO';
+  // Simulación o sesión activa (vacío por defecto si el usuario no ha iniciado sesión con ORCID)
+  const activeOrcid = userSession.orcid || '';
+  const activeName = userSession.name || '';
 
   // Estados de Acreditación (CTL-M04-012 a 016)
   const lowestUnit = selectedSubdependency || selectedDependency || selectedInstitution || 'FACULTAD DE CIENCIAS';
@@ -66,11 +67,12 @@ export function MyResearcherSpace() {
 
   // Modal Login ORCID Sandbox
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const [loginOrcidInput, setLoginOrcidInput] = useState('0000-0003-3659-6769');
-  const [loginNameInput, setLoginNameInput] = useState('CARRILLO CALVET HUMBERTO');
+  const [loginOrcidInput, setLoginOrcidInput] = useState('');
+  const [loginNameInput, setLoginNameInput] = useState('');
 
-  // Cargar datos al cambiar de subtab
+  // Cargar datos al cambiar de subtab solo si está autenticado
   useEffect(() => {
+    if (!userSession.isAuthenticated || !activeOrcid) return;
     if (activeSubTab === 'citations') {
       loadCitations();
     } else if (activeSubTab === 'curation') {
@@ -81,7 +83,7 @@ export function MyResearcherSpace() {
         loadWorksAndExcluded();
       }
     }
-  }, [activeSubTab, activeOrcid, activeName]);
+  }, [activeSubTab, activeOrcid, activeName, userSession.isAuthenticated]);
 
   const loadCitations = async () => {
     setLoadingCitations(true);
@@ -339,7 +341,11 @@ export function MyResearcherSpace() {
   // Iniciar flujo OAuth oficial de ORCID
   const handleInitiateOrcidLogin = async () => {
     try {
-      const res = await apiClient.getOrcidLoginUrl();
+      const basePath = window.location.pathname.startsWith('/sinapsisai_dev')
+        ? '/sinapsisai_dev/'
+        : (window.location.pathname.startsWith('/infotlachia') ? '/infotlachia/' : '/sinapsisai/');
+      const redirectUri = `${window.location.origin}${basePath}`;
+      const res = await apiClient.getOrcidLoginUrl(redirectUri);
       if (res && res.login_url) {
         window.location.href = res.login_url;
       } else {
@@ -416,31 +422,181 @@ export function MyResearcherSpace() {
           </div>
         </div>
 
-        {/* Barra de Subpestañas (CTL-M04-007) */}
-        <div className="subtabs-bar" style={{ display: 'flex', gap: '0.5rem', marginTop: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', overflowX: 'auto' }}>
-          {[
-            { id: 'identity', label: t.mySpace.subtabs.identity, icon: UserCheck },
-            { id: 'accreditation', label: t.mySpace.subtabs.accreditation, icon: Shield },
-            { id: 'citations', label: t.mySpace.subtabs.citations, icon: PieChart },
-            { id: 'dossier', label: t.mySpace.subtabs.dossier, icon: FileText },
-            { id: 'curation', label: t.mySpace.subtabs.curation, icon: BookOpen }
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const active = activeSubTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                className={`btn btn-sm ${active ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ borderRadius: '6px', whiteSpace: 'nowrap' }}
-                onClick={() => setActiveSubTab(tab.id)}
-              >
-                <Icon size={14} />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
+        {/* Barra de Subpestañas (solo visible para usuarios autenticados) */}
+        {userSession.isAuthenticated && (
+          <div className="subtabs-bar" style={{ display: 'flex', gap: '0.5rem', marginTop: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', overflowX: 'auto' }}>
+            {[
+              { id: 'identity', label: t.mySpace.subtabs.identity, icon: UserCheck },
+              { id: 'accreditation', label: t.mySpace.subtabs.accreditation, icon: Shield },
+              { id: 'citations', label: t.mySpace.subtabs.citations, icon: PieChart },
+              { id: 'dossier', label: t.mySpace.subtabs.dossier, icon: FileText },
+              { id: 'curation', label: t.mySpace.subtabs.curation, icon: BookOpen }
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const active = activeSubTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  className={`btn btn-sm ${active ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ borderRadius: '6px', whiteSpace: 'nowrap' }}
+                  onClick={() => setActiveSubTab(tab.id)}
+                >
+                  <Icon size={14} />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      {/* Pantalla de Bienvenida / Llamada a la acción cuando NO está autenticado */}
+      {!userSession.isAuthenticated ? (
+        <div
+          className="glass-card"
+          style={{
+            padding: '3rem 2rem',
+            textAlign: 'center',
+            border: '1px solid rgba(166, 206, 57, 0.4)',
+            background: 'linear-gradient(180deg, rgba(166, 206, 57, 0.06) 0%, rgba(255, 255, 255, 0.01) 100%)',
+            borderRadius: '16px',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.06)'
+          }}
+        >
+          <div style={{ maxWidth: '820px', margin: '0 auto' }}>
+            <div
+              style={{
+                width: '72px',
+                height: '72px',
+                borderRadius: '50%',
+                background: 'rgba(166, 206, 57, 0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 1.25rem',
+                border: '2px solid rgba(166, 206, 57, 0.45)'
+              }}
+            >
+              <UserCheck size={36} style={{ color: '#A6CE39' }} />
+            </div>
+
+            <div style={{ marginBottom: '0.75rem' }}>
+              <span
+                className="badge"
+                style={{
+                  background: 'rgba(166, 206, 57, 0.2)',
+                  color: '#A6CE39',
+                  border: '1px solid rgba(166, 206, 57, 0.4)',
+                  padding: '0.4rem 0.9rem',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.05em'
+                }}
+              >
+                ESPACIO EXCLUSIVO DE AUTOGESTIÓN ACADÉMICA
+              </span>
+            </div>
+
+            <h2 style={{ fontSize: '2rem', fontWeight: 800, margin: '0.75rem 0', color: 'var(--text-primary)' }}>
+              Vincula tu Identidad Científica con ORCID iD
+            </h2>
+
+            <p style={{ fontSize: '1.05rem', lineHeight: '1.65', color: 'var(--text-secondary)', marginBottom: '2rem' }}>
+              <strong>Mi Espacio</strong> es el portal personalizado para investigadoras e investigadores de las instituciones participantes.
+              Inicia sesión o regístrate con tu identificador digital persistente <strong>ORCID</strong> para tomar el control de tu producción científica, validar tu adscripción institucional y auditar tu impacto académico en un solo lugar.
+            </p>
+
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '2.75rem' }}>
+              <button
+                id="CTL-M04-001"
+                className="btn btn-primary btn-lg"
+                style={{
+                  background: '#A6CE39',
+                  borderColor: '#95be30',
+                  color: '#111827',
+                  fontWeight: 700,
+                  padding: '0.9rem 2.25rem',
+                  fontSize: '1.05rem',
+                  boxShadow: '0 4px 20px rgba(166, 206, 57, 0.35)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  borderRadius: '10px'
+                }}
+                onClick={handleInitiateOrcidLogin}
+              >
+                <LogIn size={20} />
+                <span>Iniciar Sesión / Registrarse con ORCID</span>
+              </button>
+
+              <button
+                className="btn btn-secondary btn-lg"
+                style={{ padding: '0.9rem 1.6rem', fontSize: '0.95rem', borderRadius: '10px' }}
+                onClick={() => setShowLoginModal(true)}
+              >
+                <span>Acceso Manual / Sandbox Institucional</span>
+              </button>
+            </div>
+
+            {/* Grid de 4 Beneficios de Registrarse */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '1.25rem', textAlign: 'left' }}>
+              <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem', color: '#00f2fe', fontWeight: 700 }}>
+                  <BookOpen size={18} />
+                  <span>Curación de Autorías</span>
+                </div>
+                <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.5' }}>
+                  Desvincula homónimos, corrige atribuciones erróneas y reporta productos científicos omitidos en el censo oficial.
+                </p>
+              </div>
+
+              <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem', color: '#a855f7', fontWeight: 700 }}>
+                  <Shield size={18} />
+                  <span>Acreditación Institucional</span>
+                </div>
+                <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.5' }}>
+                  Solicita y valida formalmente tu adscripción y entidad académica ante los administradores universitarios.
+                </p>
+              </div>
+
+              <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem', color: '#3b82f6', fontWeight: 700 }}>
+                  <PieChart size={18} />
+                  <span>Citas & Autocitas</span>
+                </div>
+                <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.5' }}>
+                  Auditoría cienciométrica transparente: monitorea citas directas, netas y de coautor a lo largo de toda tu carrera.
+                </p>
+              </div>
+
+              <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem', color: '#10b981', fontWeight: 700 }}>
+                  <FileText size={18} />
+                  <span>Dossier de Trayectoria</span>
+                </div>
+                <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.5' }}>
+                  Genera tu reporte curricular estructurado en PDF o Markdown con indicadores de calidad y los cuatro tramos de impacto.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '2.5rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border-color)', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              ¿Aún no tienes identificador ORCID?{' '}
+              <a
+                href="https://orcid.org/register"
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: '#A6CE39', fontWeight: 700, textDecoration: 'underline' }}
+              >
+                Crea tu ORCID iD gratuito en orcid.org
+              </a>{' '}
+              para unificar tu producción científica global.
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
 
       {/* SUBPESTAÑA 1: RESUMEN DE IDENTIDAD (CTL-M04-003 a 010) */}
       {activeSubTab === 'identity' && (
@@ -448,7 +604,7 @@ export function MyResearcherSpace() {
           <div className="glass-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
               <div>
-                <span className="badge badge-purple" style={{ marginBottom: '0.5rem' }}>Padrón Oficial de Investigadores</span>
+                <span className="badge badge-purple" style={{ marginBottom: '0.5rem' }}>Padrón Oficial de Investigadoras e Investigadores</span>
                 <h3 style={{ fontSize: '1.25rem', color: 'var(--text-primary)' }}>{activeName}</h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
                   <span id="CTL-M04-010" className="badge badge-cyan" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
@@ -557,7 +713,7 @@ export function MyResearcherSpace() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <div style={{ padding: '0.85rem', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Censo de Investigadores 2026</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Censo de Investigadoras e Investigadores 2026</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Vigente y ratificado oficialmente</div>
                 </div>
                 <span className="badge badge-cyan">Confirmado</span>
@@ -693,7 +849,7 @@ export function MyResearcherSpace() {
           {loadingCitations ? (
             <div className="glass-card" style={{ textAlign: 'center', padding: '3rem' }}>
               <div className="spinner" />
-              <p style={{ marginTop: '1rem', color: 'var(--text-secondary)' }}>Calculando análisis Zero-Join de citas del investigador...</p>
+              <p style={{ marginTop: '1rem', color: 'var(--text-secondary)' }}>Calculando análisis Zero-Join de citas de la investigadora o investigador...</p>
             </div>
           ) : citationsData ? (
             <div>
@@ -907,6 +1063,16 @@ export function MyResearcherSpace() {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Reporte Bibliométrico con Inteligencia Artificial Bajo Demanda */}
+          <div style={{ gridColumn: '1 / -1', marginTop: '0.5rem' }}>
+            <AIReportViewer
+              type="inv"
+              targetName={activeName}
+              viewMode="capacidad_instalada"
+              hasReport={false}
+            />
           </div>
         </div>
       )}
@@ -1147,6 +1313,8 @@ export function MyResearcherSpace() {
             </form>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

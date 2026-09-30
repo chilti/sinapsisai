@@ -12,6 +12,18 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore.js';
 import apiClient from '../../api/client.js';
+import MarkdownRenderer from '../common/MarkdownRenderer.jsx';
+
+// Reutilizar el mismo detector de base URL que usa apiClient/axios
+const getApiBase = () => {
+  if (typeof window !== 'undefined') {
+    const path = window.location.pathname;
+    if (path.includes('/sinapsisai_dev')) return '/sinapsisai_dev/api';
+    if (path.includes('/sinapsisai')) return '/sinapsisai/api';
+    if (path.includes('/infotlachia')) return '/infotlachia/api';
+  }
+  return '/api';
+};
 
 export function AIAssistant() {
   const t = useAppStore((state) => state.t)();
@@ -34,8 +46,8 @@ export function AIAssistant() {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: '¡Hola! Soy el Asistente de Inteligencia Científica de Info TlachIA. Puedo responder preguntas sobre la producción académica de investigadores, indicadores de impacto, redes de coautoría o cartografía temática.',
-      thoughts: 'Inicialización de memoria conversacional y registro de herramientas cienciométricas (ClickHouse, Neo4j, Padrón de Investigadores).'
+      content: '¡Hola! Soy el Asistente de Inteligencia Científica de Info TlachIA. Puedo responder preguntas sobre la producción académica de investigadoras e investigadores, indicadores de impacto, redes de coautoría o cartografía temática.',
+      thoughts: 'Inicialización de memoria conversacional y registro de herramientas cienciométricas (ClickHouse, Neo4j, Padrón de Investigadoras e Investigadores).'
     }
   ]);
 
@@ -73,7 +85,7 @@ export function AIAssistant() {
 
     const activeSkillsList = Object.keys(skills).filter((k) => skills[k]).join(', ');
     const simThoughts = `Modo: ${assistantMode.toUpperCase()} | Modelo: ${selectedModel.toUpperCase()} | Habilidades: [${activeSkillsList}]\n` +
-      `Consultando Padrón de Investigadores 2026 y motor Zero-Join para la petición: "${q.slice(0, 60)}..."`;
+      `Consultando Padrón de Investigadoras e Investigadores 2026 y motor Zero-Join para la petición: "${q.slice(0, 60)}..."`;
 
     setMessages((prev) => [
       ...prev,
@@ -81,7 +93,7 @@ export function AIAssistant() {
     ]);
 
     try {
-      const response = await fetch('/api/assistant/ask', {
+      const response = await fetch(`${getApiBase()}/assistant/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -92,45 +104,65 @@ export function AIAssistant() {
         })
       });
 
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
       if (!response.body) throw new Error('No stream body');
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let aiText = '';
+      let isDone = false;
+      let buffer = '';
 
-      while (true) {
+      while (!isDone) {
         const { value, done } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
+        buffer += decoder.decode(value, { stream: true });
 
-        const lines = chunk.split('\n');
+        const lines = buffer.split('\n');
+        // Preservar la última línea si está incompleta para el siguiente chunk
+        buffer = lines.pop() || '';
+
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const dataStr = line.replace('data: ', '').trim();
-            if (dataStr === '[DONE]') break;
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data: ')) {
+            const dataStr = trimmed.slice(6).trim();
+            if (dataStr === '[DONE]') {
+              isDone = true;
+              break;
+            }
             try {
               const parsed = JSON.parse(dataStr);
-              if (parsed.chunk || parsed.token) {
-                aiText += (parsed.chunk || parsed.token);
+              const tokenText = parsed.chunk || parsed.token || '';
+              if (tokenText) {
+                aiText += tokenText;
+                // Crear nuevo objeto para garantizar re-render de React
                 setMessages((prev) => {
                   const updated = [...prev];
-                  const last = updated[updated.length - 1];
-                  if (last && last.role === 'assistant') {
-                    last.content = aiText;
+                  const lastIdx = updated.length - 1;
+                  if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
+                    updated[lastIdx] = { ...updated[lastIdx], content: aiText };
                   }
                   return updated;
                 });
               }
+              if (parsed.error) {
+                throw new Error(parsed.error);
+              }
             } catch (e) {
-              aiText += dataStr;
-              setMessages((prev) => {
-                const updated = [...prev];
-                const last = updated[updated.length - 1];
-                if (last && last.role === 'assistant') {
-                  last.content = aiText;
-                }
-                return updated;
-              });
+              // Si no es JSON válido (ej. texto puro no serializado que no sea fragmento roto)
+              if (dataStr && !dataStr.startsWith('{') && dataStr !== '[DONE]') {
+                aiText += dataStr;
+                setMessages((prev) => {
+                  const updated = [...prev];
+                  const lastIdx = updated.length - 1;
+                  if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
+                    updated[lastIdx] = { ...updated[lastIdx], content: aiText };
+                  }
+                  return updated;
+                });
+              }
             }
           }
         }
@@ -139,9 +171,12 @@ export function AIAssistant() {
       console.error('Error streaming assistant:', err);
       setMessages((prev) => {
         const updated = [...prev];
-        const last = updated[updated.length - 1];
-        if (last && last.role === 'assistant') {
-          last.content = 'Disculpa, ha ocurrido un error al conectar con el motor LLM. Asegúrate de que el servidor LM Studio local esté activo o verifica tu conexión.';
+        const lastIdx = updated.length - 1;
+        if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
+          updated[lastIdx] = {
+            ...updated[lastIdx],
+            content: `⚠️ Error al conectar con el Asistente de Inteligencia Científica: ${err.message}. Verifica que el servidor LLM esté activo.`
+          };
         }
         return updated;
       });
@@ -149,6 +184,7 @@ export function AIAssistant() {
       setLoading(false);
     }
   };
+
 
   // 6. Limpiar Conversación (CTL-M06-006)
   const handleClear = async () => {
@@ -210,7 +246,7 @@ export function AIAssistant() {
             <div>
               <h1 style={{ fontSize: '1.5rem', margin: 0 }}>{t.assistant.title}</h1>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: '0.2rem' }}>
-                RAG Híbrido sobre Grafo de Conocimiento Neo4j, Padrón de Investigadores 2026 y OLAP ClickHouse
+                RAG Híbrido sobre Grafo de Conocimiento Neo4j, Padrón de Investigadoras e Investigadores 2026 y OLAP ClickHouse
               </p>
             </div>
           </div>
@@ -328,11 +364,14 @@ export function AIAssistant() {
                     color: 'var(--text-primary)',
                     fontSize: '0.9rem',
                     lineHeight: 1.6,
-                    whiteSpace: 'pre-wrap',
                     wordBreak: 'break-word'
                   }}
                 >
-                  {m.content}
+                  {isUser ? (
+                    <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
+                  ) : (
+                    <MarkdownRenderer content={m.content} />
+                  )}
                 </div>
 
                 {/* Acordeón de Razonamiento y Herramientas (CTL-M06-008) */}

@@ -106,12 +106,15 @@ export const apiClient = {
   },
 
   // Curación, Acreditación & Auth
-  getOrcidLoginUrl: async () => {
-    const res = await api.get('/auth/orcid/login-url');
+  getOrcidLoginUrl: async (redirectUri) => {
+    const params = redirectUri ? { redirect_uri: redirectUri } : {};
+    const res = await api.get('/auth/orcid/login-url', { params });
     return res.data;
   },
-  exchangeOrcidToken: async (code) => {
-    const res = await api.post('/auth/orcid/token', { code });
+  exchangeOrcidToken: async (code, redirectUri) => {
+    const payload = { code };
+    if (redirectUri) payload.redirect_uri = redirectUri;
+    const res = await api.post('/auth/orcid/token', payload);
     return res.data;
   },
   submitAccreditation: async (payload) => {
@@ -183,6 +186,26 @@ export const apiClient = {
   downloadDossierPdf: async (academic_name, orcid) => {
     const res = await api.post('/reports/dossier/pdf', { academic_name, orcid }, { responseType: 'blob' });
     return res.data;
+  },
+  getSniiRorStats: async () => {
+    const res = await api.get('/reports/snii-ror-stats');
+    return res.data;
+  },
+  getSniiAuditReportUrl: (download = false) => {
+    const base = getBaseApiUrl();
+    return `${base}/reports/snii-audit${download ? '?download=true' : ''}`;
+  },
+  requestAIReportJob: async (payload) => {
+    const res = await api.post('/reports/ai-report/request-job', payload);
+    return res.data;
+  },
+  getAIReportJobStatus: async (jobId) => {
+    const res = await api.get(`/reports/ai-report/job-status/${jobId}`);
+    return res.data;
+  },
+  getAIReportJobResultUrl: (jobId, download = false) => {
+    const base = getBaseApiUrl();
+    return `${base}/reports/ai-report/job-result/${jobId}${download ? '?download=true' : ''}`;
   },
 
   // Asistente IA

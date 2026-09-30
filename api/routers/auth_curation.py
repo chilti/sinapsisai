@@ -12,6 +12,7 @@ router = APIRouter(prefix="/api/auth", tags=["Autenticación & Curación"])
 
 class TokenExchangeRequest(BaseModel):
     code: str
+    redirect_uri: Optional[str] = None
 
 class AccreditationRequest(BaseModel):
     user_orcid: str
@@ -51,15 +52,15 @@ class WorkCurationRequest(BaseModel):
     reason: Optional[str] = ""
 
 @router.get("/orcid/login-url")
-def get_login_url() -> Dict[str, Any]:
+def get_login_url(redirect_uri: Optional[str] = None) -> Dict[str, Any]:
     """Genera la URL de autorización OAuth de ORCID."""
-    url = get_orcid_login_url()
-    return {"login_url": url}
+    url = get_orcid_login_url(redirect_uri=redirect_uri)
+    return {"login_url": url, "redirect_uri": redirect_uri}
 
 @router.post("/orcid/token")
 def exchange_orcid_token(req: TokenExchangeRequest) -> Dict[str, Any]:
     """Intercambia el código OAuth de ORCID por los datos de perfil del usuario."""
-    token_data = exchange_code_for_token(req.code)
+    token_data = exchange_code_for_token(req.code, redirect_uri=req.redirect_uri)
     if not token_data or "orcid" not in token_data:
         raise HTTPException(status_code=400, detail="Error intercambiando el código de autorización de ORCID")
 

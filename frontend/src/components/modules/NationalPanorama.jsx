@@ -33,6 +33,11 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore.js';
 import { apiClient } from '../../api/client.js';
+import ThematicEvolutionTable from '../analytics/ThematicEvolutionTable.jsx';
+import CollaborationWorldMap from '../analytics/CollaborationWorldMap.jsx';
+import SemanticProductionMap from '../analytics/SemanticProductionMap.jsx';
+import AIReportViewer from '../analytics/AIReportViewer.jsx';
+import WordCloudInteractive from '../analytics/WordCloudInteractive.jsx';
 
 export function NationalPanorama() {
   const t = useAppStore((state) => state.t)();
@@ -282,7 +287,9 @@ export function NationalPanorama() {
               </h1>
             </div>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-              Cartografía Cienciométrica y Producción Científica Consolidada de la República Mexicana · Computación OLAP Desacoplada (DuckDB / ClickHouse)
+              {viewMode === 'capacidad_instalada'
+                ? 'Cartografía Cienciométrica y Producción Científica de la República Mexicana registrada en OpenAlex y producida por miembros vigentes del Sistema Nacional de Investigadoras e Investigadores'
+                : 'Cartografía Cienciométrica y Producción Científica Consolidada de la República Mexicana registrada en OpenAlex'}
             </p>
           </div>
 
@@ -326,7 +333,7 @@ export function NationalPanorama() {
             32 Entidades Federativas · 3,000+ Dependencias Censadas
           </span>
           <span className="badge badge-amber" style={{ fontSize: '0.82rem', padding: '0.35rem 0.75rem' }}>
-            Padrón de Investigadores: {(kpiGen.official_snii_count || 48000).toLocaleString()}
+            Padrón de Investigadoras e Investigadores: {(kpiGen.official_snii_count || 48000).toLocaleString()}
           </span>
           <span className="badge badge-green" style={{ fontSize: '0.82rem', padding: '0.35rem 0.75rem' }}>
             OpenAlex: {(kpiGen.indexed_works || 837695).toLocaleString()} Obras Científicas
@@ -334,7 +341,411 @@ export function NationalPanorama() {
         </div>
       </div>
 
-      {/* ── 2. Las 22 Métricas Cienciométricas (5 Grupos de Tarjetas) ───────── */}
+      {/* ── 2. Impacto Global en Sostenibilidad (ODS 1 al 17) ──────────────── */}
+      <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Globe2 size={20} style={{ color: 'var(--accent-cyan)' }} />
+            <h3 style={{ fontSize: '1.15rem', fontWeight: 700 }}>
+              Contribución de México a los Objetivos de Desarrollo Sostenible (ONU ODS 1–17)
+            </h3>
+          </div>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Haz clic en un ODS para filtrar las publicaciones
+          </span>
+        </div>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+          Volumen consolidado de publicaciones científicas mexicanas alineadas con las metas de la Agenda 2030 de la ONU.
+        </p>
+
+        {/* Notificación de Filtro ODS Activo */}
+        {selectedOds !== 'Todos' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+            <span
+              className="badge badge-cyan"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', fontSize: '0.82rem' }}
+            >
+              Filtrando publicaciones por: <b>{selectedOds}</b>
+              <button
+                onClick={() => { setSelectedOds('Todos'); setPapersPage(0); }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'inherit',
+                  cursor: 'pointer',
+                  fontWeight: 800,
+                  fontSize: '0.9rem',
+                  marginLeft: '4px',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+                title="Limpiar filtro ODS"
+              >
+                ✕
+              </button>
+            </span>
+          </div>
+        )}
+
+        {/* Matriz de Tarjetas ODS con Imágenes Oficiales */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '0.85rem' }}>
+          {sdgMatrix.map((sdg) => {
+            const odsId = sdg.id || sdg.sdg_id;
+            const odsKey = `${odsId}. ${sdg.name}`;
+            const isSelected = selectedOds === odsKey || selectedOds === sdg.name || selectedOds === String(odsId);
+            const count = sdg.count ?? sdg.papers_count ?? 0;
+            const pct = sdg.pct ?? 0;
+
+            return (
+              <div
+                key={odsId}
+                onClick={() => {
+                  setSelectedOds(isSelected ? 'Todos' : odsKey);
+                  setPapersPage(0);
+                }}
+                className="sdg-card-hover"
+                title={`ODS ${odsId}: ${sdg.name} — ${count.toLocaleString()} obras (${pct}%)`}
+                style={{
+                  position: 'relative',
+                  aspectRatio: '1 / 1',
+                  borderRadius: '12px',
+                  overflow: 'hidden',
+                  cursor: 'pointer',
+                  background: isLight ? '#f1f5f9' : '#1e293b',
+                  border: isSelected ? '3px solid var(--accent-cyan)' : '2px solid rgba(255,255,255,0.08)',
+                  boxShadow: isSelected
+                    ? '0 0 16px rgba(0, 242, 254, 0.45)'
+                    : '0 2px 6px rgba(0,0,0,0.12)',
+                  transform: isSelected ? 'scale(1.04)' : 'scale(1)',
+                  transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                  filter: count === 0 ? 'grayscale(85%) opacity(0.4)' : 'none'
+                }}
+              >
+                {/* Imagen Oficial del ODS */}
+                <img
+                  src={`./img/ods/ods_${odsId}.png`}
+                  alt={`ODS ${odsId}: ${sdg.name}`}
+                  loading="lazy"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    display: 'block'
+                  }}
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = `https://open-sdg.org/sdg-translations/assets/img/goals/es/${odsId}.png`;
+                  }}
+                />
+
+                {/* Indicador de Selección Activa */}
+                {isSelected && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '6px',
+                      right: '6px',
+                      background: 'var(--accent-cyan)',
+                      color: '#000',
+                      borderRadius: '50%',
+                      width: '22px',
+                      height: '22px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.4)',
+                      zIndex: 3
+                    }}
+                  >
+                    <CheckCircle2 size={16} />
+                  </div>
+                )}
+
+                {/* Overlay Inferior con Estadísticas */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    background: 'linear-gradient(to top, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.65) 70%, transparent 100%)',
+                    padding: '0.45rem 0.3rem 0.25rem',
+                    textAlign: 'center',
+                    color: '#ffffff',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    pointerEvents: 'none',
+                    zIndex: 2
+                  }}
+                >
+                  <span style={{ fontSize: '0.88rem', fontWeight: 800, textShadow: '0 1px 3px rgba(0,0,0,0.9)', letterSpacing: '-0.02em', color: '#ffffff' }}>
+                    {pct}%
+                  </span>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 600, opacity: 0.9, textShadow: '0 1px 2px rgba(0,0,0,0.9)', color: '#e2e8f0' }}>
+                    {count.toLocaleString()} {count === 1 ? 'obra' : 'obras'}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── 3. Vocabulario Científico Nacional (Keywords - Nube Interactiva) ─ */}
+      <WordCloudInteractive
+        keywords={keywords}
+        title="Vocabulario Científico de la Producción Mexicana (Word Cloud)"
+        subtitle="Nube interactiva con eventos de cursor para explorar frecuencias y conceptos dominantes."
+      />
+
+      {/* ── 4. Temáticas de Investigación (Sunburst de 4 Niveles) ──────────── */}
+      <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div>
+            <h3 style={{ fontSize: '1.15rem', marginBottom: '0.25rem', fontWeight: 700 }}>
+              Estructura Temática Nacional (Jerarquía de 4 Niveles: Dominio ➔ Campo ➔ Subcampo ➔ Tópico)
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0 }}>
+              Haz clic en cualquier segmento para hacer zoom interactivo en los campos científicos de México.
+            </p>
+          </div>
+          <span className="badge badge-cyan">4 Niveles: Dominio ➔ Campo ➔ Subcampo ➔ Tópico</span>
+        </div>
+        {sunburstTrace && sunburstTrace.labels && sunburstTrace.labels.length > 0 ? (
+          <Plot
+            data={[
+              {
+                type: 'sunburst',
+                ids: sunburstTrace.ids,
+                labels: sunburstTrace.labels,
+                parents: sunburstTrace.parents,
+                values: sunburstTrace.values,
+                branchvalues: 'total',
+                marker: {
+                  colors: sunburstTrace.colors || sunburstTrace.values,
+                  colorscale: 'Blues',
+                  showscale: true,
+                  colorbar: {
+                    title: { text: 'value' },
+                    len: 0.85,
+                    thickness: 16
+                  }
+                },
+                hoverinfo: 'label+value+percent parent',
+                insidetextorientation: 'radial'
+              }
+            ]}
+            layout={{
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent',
+              font: { family: 'Plus Jakarta Sans, sans-serif', color: fontColor },
+              margin: { l: 10, r: 10, t: 10, b: 10 },
+              height: 540,
+              autosize: true
+            }}
+            config={{ responsive: true, displayModeBar: true }}
+            style={{ width: '100%' }}
+          />
+        ) : (
+          <div style={{ height: '240px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+            Cargando jerarquía temática de México...
+          </div>
+        )}
+      </div>
+
+      {/* ── 4b. Evolución Histórica de Perfiles de Conocimiento Nacional ───── */}
+      <ThematicEvolutionTable
+        data={metricsData?.thematic_evolution}
+        title="Evolución Histórica de Perfiles de Conocimiento Nacional"
+      />
+
+      {/* ── 4c. Mapa Semántico de Producción (WebGL) ────────────────────────── */}
+      <SemanticProductionMap
+        targetName="MÉXICO"
+        type="institution"
+        dois={metricsData?.dois_list}
+        oaIds={metricsData?.oa_list}
+        totalWorks={kpiGen.indexed_works || totalPapers || 0}
+      />
+
+      {/* ── 4d. Mapa Mundi de Países Colaboradores ─────────────────────────── */}
+      <CollaborationWorldMap
+        countries={metricsData?.collaboration_countries}
+        title="Países Colaboradores de México"
+      />
+
+      {/* ── 5. Fila de Gráficas: Distribución OA, Concentración Temática & Tipos de Docs ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+        {/* Gráfica 1: Donut Open Access */}
+        <div className="glass-card">
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Distribución Open Access Nacional</h3>
+          <Plot
+            data={oaChartData}
+            layout={{
+              autosize: true,
+              height: 280,
+              margin: { t: 10, b: 30, l: 10, r: 10 },
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent',
+              font: { color: fontColor, family: 'Inter, sans-serif' },
+              showlegend: true,
+              legend: { orientation: 'h', y: -0.15 }
+            }}
+            config={{ responsive: true, displayModeBar: false }}
+            style={{ width: '100%' }}
+          />
+        </div>
+
+        {/* Tarjeta 2: Perfil Temático y Concentración (Gini) */}
+        <div className="glass-card">
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Concentración y Dominio Principal</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginTop: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.5rem' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Índice de Gini Temático:</span>
+              <span style={{ fontWeight: 700, color: 'var(--accent-cyan)' }}>
+                {thematic.gini_topics !== null && thematic.gini_topics !== undefined ? thematic.gini_topics : '0.38'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.5rem' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Diversidad de Dominios:</span>
+              <span style={{ fontWeight: 700 }}>{thematic.domain_diversity || 4} de 4</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.5rem' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Tópicos Únicos Nacionales:</span>
+              <span style={{ fontWeight: 700 }}>{(thematic.unique_topics || 284).toLocaleString()}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.5rem' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Dominio Principal:</span>
+              <span style={{ fontWeight: 700, color: '#f59e0b' }}>{thematic.top_domain || 'Physical Sciences'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Gráfica 3: Tipos de Documentos */}
+        <div className="glass-card">
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Tipos de Documentos Nacionales</h3>
+          {docTypes.length > 0 ? (
+            <Plot
+              data={docTypesChartData}
+              layout={{
+                autosize: true,
+                height: 280,
+                margin: { t: 10, b: 30, l: 10, r: 10 },
+                paper_bgcolor: 'transparent',
+                plot_bgcolor: 'transparent',
+                font: { color: fontColor, family: 'Inter, sans-serif' },
+                showlegend: true,
+                legend: { orientation: 'h', y: -0.15 }
+              }}
+              config={{ responsive: true, displayModeBar: false }}
+              style={{ width: '100%' }}
+            />
+          ) : (
+            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>Cargando desglose de tipos...</p>
+          )}
+        </div>
+      </div>
+
+      {/* ── 6. Evolución de Colaboración Internacional & Acceso Abierto por Año ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+        {/* Evolución Colaboración Internacional */}
+        <div className="glass-card">
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Evolución de % Colaboración Internacional (1980–2026)</h3>
+          <Plot
+            data={annualIntlChartData}
+            layout={{
+              autosize: true,
+              height: 300,
+              margin: { t: 20, b: 40, l: 50, r: 20 },
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent',
+              font: { color: fontColor, family: 'Inter, sans-serif' },
+              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
+              yaxis: { gridcolor: gridColor, range: [0, 100] }
+            }}
+            config={{ responsive: true, displayModeBar: false }}
+            style={{ width: '100%' }}
+          />
+        </div>
+
+        {/* Evolución Acceso Abierto (Stacked Bar) */}
+        <div className="glass-card">
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Evolución de Vías de Acceso Abierto (1980–2026)</h3>
+          <Plot
+            data={annualOaStackedData}
+            layout={{
+              barmode: 'stack',
+              autosize: true,
+              height: 300,
+              margin: { t: 20, b: 40, l: 50, r: 20 },
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent',
+              font: { color: fontColor, family: 'Inter, sans-serif' },
+              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
+              yaxis: { gridcolor: gridColor, range: [0, 100] },
+              legend: { orientation: 'h', y: -0.2 }
+            }}
+            config={{ responsive: true, displayModeBar: false }}
+            style={{ width: '100%' }}
+          />
+        </div>
+      </div>
+
+      {/* ── 7. Evolución Histórica de Producción e Impacto (2 Gráficos) ───── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+        {/* Documentos Anuales */}
+        <div className="glass-card">
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Documentos Publicados por Año (1980–2026)</h3>
+          <Plot
+            data={annualDocsChartData}
+            layout={{
+              autosize: true,
+              height: 320,
+              margin: { t: 20, b: 40, l: 50, r: 20 },
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent',
+              font: { color: fontColor, family: 'Inter, sans-serif' },
+              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
+              yaxis: { gridcolor: gridColor }
+            }}
+            config={{ responsive: true, displayModeBar: false }}
+            style={{ width: '100%' }}
+          />
+        </div>
+
+        {/* FWCI Anual */}
+        <div className="glass-card">
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Evolución del Impacto Normalizado (FWCI vs 1.0 Mundial) (1980–2026)</h3>
+          <Plot
+            data={annualFwciChartData}
+            layout={{
+              autosize: true,
+              height: 320,
+              margin: { t: 20, b: 40, l: 50, r: 20 },
+              paper_bgcolor: 'transparent',
+              plot_bgcolor: 'transparent',
+              font: { color: fontColor, family: 'Inter, sans-serif' },
+              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
+              yaxis: { gridcolor: gridColor },
+              shapes: [
+                {
+                  type: 'line',
+                  x0: 1980,
+                  x1: 2026,
+                  y0: 1.0,
+                  y1: 1.0,
+                  line: { color: '#ec4899', width: 2, dash: 'dash' }
+                }
+              ]
+            }}
+            config={{ responsive: true, displayModeBar: false }}
+            style={{ width: '100%' }}
+          />
+        </div>
+      </div>
+
+      {/* ── 8. Las 22 Métricas Cienciométricas (5 Grupos de Tarjetas) ───────── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
         {/* Grupo 1: Métricas Generales */}
         <div className="glass-card" style={{ padding: '1rem' }}>
@@ -354,9 +765,9 @@ export function NationalPanorama() {
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Con analítica</span>
             </div>
             <div className="glass-card" style={{ padding: '0.75rem', textAlign: 'center' }}>
-              <span className="kpi-metric-label">Padrón Investigadores</span>
+              <span className="kpi-metric-label">Padrón Investigadoras e Investigadores</span>
               <div className="kpi-metric-val" style={{ color: '#00f2fe' }}>{(kpiGen.official_snii_count ?? 48000).toLocaleString()}</div>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Investigadores</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Investigadoras e Investigadores</span>
             </div>
             <div className="glass-card" style={{ padding: '0.75rem', textAlign: 'center' }}>
               <span className="kpi-metric-label">Total Citas</span>
@@ -559,79 +970,7 @@ export function NationalPanorama() {
         </div>
       </div>
 
-      {/* ── 3. Fila de Gráficas: Distribución OA, Concentración Temática & Tipos de Docs ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
-        {/* Gráfica 1: Donut Open Access */}
-        <div className="glass-card">
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Distribución Open Access Nacional</h3>
-          <Plot
-            data={oaChartData}
-            layout={{
-              autosize: true,
-              height: 280,
-              margin: { t: 10, b: 30, l: 10, r: 10 },
-              paper_bgcolor: 'transparent',
-              plot_bgcolor: 'transparent',
-              font: { color: fontColor, family: 'Inter, sans-serif' },
-              showlegend: true,
-              legend: { orientation: 'h', y: -0.15 }
-            }}
-            config={{ responsive: true, displayModeBar: false }}
-            style={{ width: '100%' }}
-          />
-        </div>
-
-        {/* Tarjeta 2: Perfil Temático y Concentración (Gini) */}
-        <div className="glass-card">
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Concentración y Dominio Principal</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginTop: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.5rem' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Índice de Gini Temático:</span>
-              <span style={{ fontWeight: 700, color: 'var(--accent-cyan)' }}>
-                {thematic.gini_topics !== null && thematic.gini_topics !== undefined ? thematic.gini_topics : '0.38'}
-              </span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.5rem' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Diversidad de Dominios:</span>
-              <span style={{ fontWeight: 700 }}>{thematic.domain_diversity || 4} de 4</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.5rem' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Tópicos Únicos Nacionales:</span>
-              <span style={{ fontWeight: 700 }}>{(thematic.unique_topics || 284).toLocaleString()}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.5rem' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Dominio Principal:</span>
-              <span style={{ fontWeight: 700, color: '#f59e0b' }}>{thematic.top_domain || 'Physical Sciences'}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Gráfica 3: Tipos de Documentos */}
-        <div className="glass-card">
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Tipos de Documentos Nacionales</h3>
-          {docTypes.length > 0 ? (
-            <Plot
-              data={docTypesChartData}
-              layout={{
-                autosize: true,
-                height: 280,
-                margin: { t: 10, b: 30, l: 10, r: 10 },
-                paper_bgcolor: 'transparent',
-                plot_bgcolor: 'transparent',
-                font: { color: fontColor, family: 'Inter, sans-serif' },
-                showlegend: true,
-                legend: { orientation: 'h', y: -0.15 }
-              }}
-              config={{ responsive: true, displayModeBar: false }}
-              style={{ width: '100%' }}
-            />
-          ) : (
-            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>Cargando desglose de tipos...</p>
-          )}
-        </div>
-      </div>
-
-      {/* ── 4. Glosario Metodológico Interactivo (Desplegado por defecto) ───── */}
+      {/* ── 9. Glosario Metodológico Interactivo (Desplegado por defecto) ───── */}
       <div className="glass-card" style={{ marginBottom: '1.5rem', padding: '0.85rem 1.25rem' }}>
         <button
           onClick={() => setShowGlossary(!showGlossary)}
@@ -660,303 +999,13 @@ export function NationalPanorama() {
         )}
       </div>
 
-      {/* ── 5. Evolución Histórica de Producción e Impacto (2 Gráficos) ───── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
-        {/* Documentos Anuales */}
-        <div className="glass-card">
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Documentos Publicados por Año (1980–2026)</h3>
-          <Plot
-            data={annualDocsChartData}
-            layout={{
-              autosize: true,
-              height: 320,
-              margin: { t: 20, b: 40, l: 50, r: 20 },
-              paper_bgcolor: 'transparent',
-              plot_bgcolor: 'transparent',
-              font: { color: fontColor, family: 'Inter, sans-serif' },
-              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
-              yaxis: { gridcolor: gridColor }
-            }}
-            config={{ responsive: true, displayModeBar: false }}
-            style={{ width: '100%' }}
-          />
-        </div>
-
-        {/* FWCI Anual */}
-        <div className="glass-card">
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Evolución del Impacto Normalizado (FWCI vs 1.0 Mundial) (1980–2026)</h3>
-          <Plot
-            data={annualFwciChartData}
-            layout={{
-              autosize: true,
-              height: 320,
-              margin: { t: 20, b: 40, l: 50, r: 20 },
-              paper_bgcolor: 'transparent',
-              plot_bgcolor: 'transparent',
-              font: { color: fontColor, family: 'Inter, sans-serif' },
-              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
-              yaxis: { gridcolor: gridColor },
-              shapes: [
-                {
-                  type: 'line',
-                  x0: 1980,
-                  x1: 2026,
-                  y0: 1.0,
-                  y1: 1.0,
-                  line: { color: '#ec4899', width: 2, dash: 'dash' }
-                }
-              ]
-            }}
-            config={{ responsive: true, displayModeBar: false }}
-            style={{ width: '100%' }}
-          />
-        </div>
-      </div>
-
-      {/* ── 6. Temáticas de Investigación (Sunburst de 4 Niveles) ──────────── */}
-      <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
-        <h3 style={{ fontSize: '1.15rem', marginBottom: '0.5rem', fontWeight: 700 }}>
-          Estructura Temática Nacional (Jerarquía de 4 Niveles: Dominio ➔ Campo ➔ Subcampo ➔ Tópico)
-        </h3>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1rem' }}>
-          Haz clic en cualquier segmento para hacer zoom interactivo en los campos científicos de México.
-        </p>
-        {sunburstTrace ? (
-          <Plot
-            data={[sunburstTrace]}
-            layout={{
-              autosize: true,
-              height: 480,
-              margin: { t: 10, b: 10, l: 10, r: 10 },
-              paper_bgcolor: 'transparent',
-              font: { color: fontColor, family: 'Inter, sans-serif' }
-            }}
-            config={{ responsive: true, displayModeBar: false }}
-            style={{ width: '100%' }}
-          />
-        ) : (
-          <div style={{ height: '240px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-            Cargando jerarquía temática de México...
-          </div>
-        )}
-      </div>
-
-      {/* ── 7. Vocabulario Científico Nacional (Keywords) ───────────────────── */}
-      <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
-        <h3 style={{ fontSize: '1.15rem', marginBottom: '0.75rem', fontWeight: 700 }}>
-          Vocabulario Científico de la Producción Mexicana (Top Keywords)
-        </h3>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', maxHeight: '180px', overflowY: 'auto' }}>
-          {keywords.map((kw, i) => (
-            <span
-              key={i}
-              className="badge badge-cyan"
-              style={{
-                fontSize: `${Math.min(1.1, Math.max(0.75, 0.75 + (kw.freq / (keywords[0]?.freq || 1)) * 0.45))}rem`,
-                padding: '0.35rem 0.65rem'
-              }}
-            >
-              {kw.keyword} <span style={{ opacity: 0.6, fontSize: '0.75em' }}>({kw.freq.toLocaleString()})</span>
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {/* ── 8. Evolución de Colaboración Internacional & Acceso Abierto por Año ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
-        {/* Evolución Colaboración Internacional */}
-        <div className="glass-card">
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Evolución de % Colaboración Internacional (1980–2026)</h3>
-          <Plot
-            data={annualIntlChartData}
-            layout={{
-              autosize: true,
-              height: 300,
-              margin: { t: 20, b: 40, l: 50, r: 20 },
-              paper_bgcolor: 'transparent',
-              plot_bgcolor: 'transparent',
-              font: { color: fontColor, family: 'Inter, sans-serif' },
-              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
-              yaxis: { gridcolor: gridColor, range: [0, 100] }
-            }}
-            config={{ responsive: true, displayModeBar: false }}
-            style={{ width: '100%' }}
-          />
-        </div>
-
-        {/* Evolución Acceso Abierto (Stacked Bar) */}
-        <div className="glass-card">
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Evolución de Vías de Acceso Abierto (1980–2026)</h3>
-          <Plot
-            data={annualOaStackedData}
-            layout={{
-              barmode: 'stack',
-              autosize: true,
-              height: 300,
-              margin: { t: 20, b: 40, l: 50, r: 20 },
-              paper_bgcolor: 'transparent',
-              plot_bgcolor: 'transparent',
-              font: { color: fontColor, family: 'Inter, sans-serif' },
-              xaxis: { range: [1980, 2026], gridcolor: gridColor, tickformat: 'd' },
-              yaxis: { gridcolor: gridColor, range: [0, 100] },
-              legend: { orientation: 'h', y: -0.2 }
-            }}
-            config={{ responsive: true, displayModeBar: false }}
-            style={{ width: '100%' }}
-          />
-        </div>
-      </div>
-
-      {/* ── 9. Impacto Global en Sostenibilidad (ODS 1 al 17) ──────────────── */}
-      <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Globe2 size={20} style={{ color: 'var(--accent-cyan)' }} />
-            <h3 style={{ fontSize: '1.15rem', fontWeight: 700 }}>
-              Contribución de México a los Objetivos de Desarrollo Sostenible (ONU ODS 1–17)
-            </h3>
-          </div>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            Haz clic en un ODS para filtrar las publicaciones
-          </span>
-        </div>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1rem' }}>
-          Volumen consolidado de publicaciones científicas mexicanas alineadas con las metas de la Agenda 2030 de la ONU.
-        </p>
-
-        {/* Notificación de Filtro ODS Activo */}
-        {selectedOds !== 'Todos' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-            <span
-              className="badge badge-cyan"
-              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', fontSize: '0.82rem' }}
-            >
-              Filtrando publicaciones por: <b>{selectedOds}</b>
-              <button
-                onClick={() => { setSelectedOds('Todos'); setPapersPage(0); }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'inherit',
-                  cursor: 'pointer',
-                  fontWeight: 800,
-                  fontSize: '0.9rem',
-                  marginLeft: '4px',
-                  display: 'flex',
-                  alignItems: 'center'
-                }}
-                title="Limpiar filtro ODS"
-              >
-                ✕
-              </button>
-            </span>
-          </div>
-        )}
-
-        {/* Matriz de Tarjetas ODS con Imágenes Oficiales */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '0.85rem' }}>
-          {sdgMatrix.map((sdg) => {
-            const odsId = sdg.id || sdg.sdg_id;
-            const odsKey = `${odsId}. ${sdg.name}`;
-            const isSelected = selectedOds === odsKey || selectedOds === sdg.name || selectedOds === String(odsId);
-            const count = sdg.count ?? sdg.papers_count ?? 0;
-            const pct = sdg.pct ?? 0;
-
-            return (
-              <div
-                key={odsId}
-                onClick={() => {
-                  setSelectedOds(isSelected ? 'Todos' : odsKey);
-                  setPapersPage(0);
-                }}
-                className="sdg-card-hover"
-                title={`ODS ${odsId}: ${sdg.name} — ${count.toLocaleString()} obras (${pct}%)`}
-                style={{
-                  position: 'relative',
-                  aspectRatio: '1 / 1',
-                  borderRadius: '12px',
-                  overflow: 'hidden',
-                  cursor: 'pointer',
-                  background: isLight ? '#f1f5f9' : '#1e293b',
-                  border: isSelected ? '3px solid var(--accent-cyan)' : '2px solid rgba(255,255,255,0.08)',
-                  boxShadow: isSelected
-                    ? '0 0 16px rgba(0, 242, 254, 0.45)'
-                    : '0 2px 6px rgba(0,0,0,0.12)',
-                  transform: isSelected ? 'scale(1.04)' : 'scale(1)',
-                  transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                  filter: count === 0 ? 'grayscale(85%) opacity(0.4)' : 'none'
-                }}
-              >
-                {/* Imagen Oficial del ODS */}
-                <img
-                  src={`./img/ods/ods_${odsId}.png`}
-                  alt={`ODS ${odsId}: ${sdg.name}`}
-                  loading="lazy"
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                    display: 'block'
-                  }}
-                  onError={(e) => {
-                    e.target.onerror = null;
-                    e.target.src = `https://open-sdg.org/sdg-translations/assets/img/goals/es/${odsId}.png`;
-                  }}
-                />
-
-                {/* Indicador de Selección Activa */}
-                {isSelected && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: '6px',
-                      right: '6px',
-                      background: 'var(--accent-cyan)',
-                      color: '#000',
-                      borderRadius: '50%',
-                      width: '22px',
-                      height: '22px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.4)',
-                      zIndex: 3
-                    }}
-                  >
-                    <CheckCircle2 size={16} />
-                  </div>
-                )}
-
-                {/* Overlay Inferior con Estadísticas */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    background: 'linear-gradient(to top, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.65) 70%, transparent 100%)',
-                    padding: '0.45rem 0.3rem 0.25rem',
-                    textAlign: 'center',
-                    color: '#ffffff',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    pointerEvents: 'none',
-                    zIndex: 2
-                  }}
-                >
-                  <span style={{ fontSize: '0.88rem', fontWeight: 800, textShadow: '0 1px 3px rgba(0,0,0,0.9)', letterSpacing: '-0.02em', color: '#ffffff' }}>
-                    {pct}%
-                  </span>
-                  <span style={{ fontSize: '0.68rem', fontWeight: 600, opacity: 0.9, textShadow: '0 1px 2px rgba(0,0,0,0.9)', color: '#e2e8f0' }}>
-                    {count.toLocaleString()} {count === 1 ? 'obra' : 'obras'}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      {/* ── 9b. Reporte Bibliométrico con Inteligencia Artificial ─────────────── */}
+      <AIReportViewer
+        type="inst"
+        targetName="MÉXICO"
+        viewMode={viewMode}
+        hasReport={metricsData?.has_ai_report}
+      />
 
       {/* ── 10. Catálogo de Publicaciones Científicas Nacionales (Paginada de 10 en 10) ─── */}
       <div className="glass-card">

@@ -18,6 +18,7 @@ import { ScienceMaps } from './components/modules/ScienceMaps.jsx';
 import { MyResearcherSpace } from './components/modules/MyResearcherSpace.jsx';
 import { GovernanceAdmin } from './components/modules/GovernanceAdmin.jsx';
 import { AIAssistant } from './components/modules/AIAssistant.jsx';
+import { AboutView } from './components/modules/AboutView.jsx';
 
 import { apiClient } from './api/client.js';
 
@@ -40,7 +41,27 @@ export function App() {
       const params = new URLSearchParams(window.location.search);
       const code = params.get('code');
       if (code) {
-        apiClient.exchangeOrcidToken(code)
+        // Puente OAuth para otros módulos del ecosistema (ej. Revistas LATAM, TlachIA Metrics)
+        const stateRaw = params.get('state') || '';
+        const stateClean = stateRaw.toLowerCase().trim();
+
+        if (stateClean.includes('revistas') || stateClean.includes('latam')) {
+          const targetUrl = `https://dinamica1.fciencias.unam.mx/revistaslatam/?code=${encodeURIComponent(code)}`;
+          window.location.href = targetUrl;
+          return;
+        }
+        if (stateClean.includes('tlachia') || stateClean.includes('metric')) {
+          const targetUrl = `https://dinamica1.fciencias.unam.mx/tlachiametrics/?code=${encodeURIComponent(code)}`;
+          window.location.href = targetUrl;
+          return;
+        }
+
+        const basePath = window.location.pathname.startsWith('/sinapsisai_dev')
+          ? '/sinapsisai_dev/'
+          : (window.location.pathname.startsWith('/infotlachia') ? '/infotlachia/' : '/sinapsisai/');
+        const redirectUri = `${window.location.origin}${basePath}`;
+
+        apiClient.exchangeOrcidToken(code, redirectUri)
           .then((data) => {
             if (data && data.orcid) {
               const sessionData = {
@@ -48,6 +69,7 @@ export function App() {
                 orcid: data.orcid,
                 name: data.name || data.orcid,
                 role: data.role || 'investigador',
+                is_admin: Boolean(data.is_admin || data.role === 'super_admin' || data.role === 'admin_institucional' || data.role === 'admin'),
                 institution: data.institution || null,
                 token: data.access_token || null
               };
@@ -96,6 +118,7 @@ export function App() {
           {activeTab === 'mySpace' && <MyResearcherSpace />}
           {activeTab === 'governance' && <GovernanceAdmin />}
           {activeTab === 'assistant' && <AIAssistant />}
+          {activeTab === 'about' && <AboutView />}
         </ErrorBoundary>
       </main>
 

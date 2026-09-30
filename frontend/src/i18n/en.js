@@ -5,7 +5,7 @@
 
 export const en = {
   // Bar & Navigation
-  appName: "Info TlachIA",
+  appName: "Info TlachIA SNII",
   appSubtitle: "Scientific Intelligence & Academic Output",
   tabs: {
     home: "Home",
@@ -15,7 +15,8 @@ export const en = {
     maps: "Science Maps",
     mySpace: "My Space",
     governance: "Administration",
-    assistant: "AI Assistant"
+    assistant: "AI Assistant",
+    about: "About"
   },
   
   // Module 1: Institutional Overview

@@ -5,17 +5,18 @@
 
 export const es = {
   // Franja & Navegación
-  appName: "Info TlachIA",
+  appName: "Info TlachIA SNII",
   appSubtitle: "Inteligencia Científica y Producción Académica",
   tabs: {
     home: "Inicio",
     national: "Panorama Nacional",
     panorama: "Panorama Institucional",
-    researchers: "Investigadores",
+    researchers: "Investigadoras e Investigadores",
     maps: "Mapas de la Ciencia",
     mySpace: "Mi Espacio",
     governance: "Administración",
-    assistant: "Asistente IA"
+    assistant: "Asistente IA",
+    about: "Acerca de"
   },
   
   // Módulo 1: Panorama Institucional
@@ -33,7 +34,7 @@ export const es = {
     allAreas: "Todas las Áreas",
     allLevels: "Todos los Niveles",
     metrics: {
-      totalResearchers: "Investigadores Activos",
+      totalResearchers: "Investigadoras e Investigadores Activos",
       totalWorks: "Publicaciones Indexadas",
       totalCitations: "Citas Recibidas",
       fwciMean: "FWCI Promedio",
@@ -51,11 +52,11 @@ export const es = {
 
   // Módulo 2: Perfiles de Investigadores
   researchers: {
-    searchPlaceholder: "Buscar por nombre de investigador o identificador ORCID...",
-    searching: "Buscando investigadores...",
-    noResults: "No se encontraron investigadores que coincidan con la búsqueda.",
+    searchPlaceholder: "Buscar por nombre de investigadora o investigador, o identificador ORCID...",
+    searching: "Buscando investigadoras e investigadores...",
+    noResults: "No se encontraron investigadoras e investigadores que coincidan con la búsqueda.",
     profile: {
-      sniiBadge: "Investigador",
+      sniiBadge: "Investigadora / Investigador",
       active2026: "Padrón 2026 Confirmado",
       area: "Área Científica",
       subdiscipline: "Subdisciplina",
@@ -110,7 +111,7 @@ export const es = {
 
   // Módulo 4: Mi Espacio
   mySpace: {
-    title: "Mi Espacio de Investigador",
+    title: "Mi Espacio de Investigadoras e Investigadores",
     loginWithOrcid: "Iniciar Sesión con ORCID",
     connectedAs: "Sesión activa como",
     logout: "Cerrar Sesión",
@@ -148,7 +149,7 @@ export const es = {
     btn_submit_accreditation: "Enviar Solicitud de Acreditación",
     kpi_net_citations: "Citas Netas (Sin Autocitas)",
     kpi_self_rate: "% Autocitas Directas",
-    table_citing_works: "Artículos Citantes del Investigador",
+    table_citing_works: "Artículos Citantes de la Investigadora o Investigador",
     dossier_period: "Periodo a Evaluar para el Dossier",
     dossier_preview: "Vista Previa de Trayectoria Académica",
     btn_download_pdf: "Descargar Reporte en PDF",
@@ -210,7 +211,7 @@ export const es = {
   assistant: {
     title: "Asistente de Inteligencia Científica",
     modelSelect: "Modelo de Lenguaje (LLM)",
-    inputPlaceholder: "Escribe tu consulta sobre investigadores, indicadores o publicaciones...",
+    inputPlaceholder: "Escribe tu consulta sobre investigadoras e investigadores, indicadores o publicaciones...",
     send: "Enviar Consulta",
     streaming: "Generando respuesta analítica...",
     clearHistory: "Limpiar Conversación",
@@ -232,7 +233,7 @@ export const es = {
     copied_alert: "¡Copiado al portapapeles!",
     suggestions: [
       "¿Cuáles son las líneas de investigación más citadas de la Facultad de Ciencias?",
-      "Compara el desempeño e índice H de investigadores de Física y Matemáticas.",
+      "Compara el desempeño e índice H de investigadoras e investigadores de Física y Matemáticas.",
       "Identifica los artículos con mayor impacto en ODS 13 (Acción por el Clima).",
       "Calcula la tasa de autocitas promedio de la dependencia seleccionada."
     ]

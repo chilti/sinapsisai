@@ -329,8 +329,8 @@ class RAGOrchestrator:
         # 1. Sanitizar entrada
         query = LLMConfig.sanitize_input(query, max_chars=1500)
         
-        # 2. Verificar Caché para evitar consultas duplicadas
-        cache_key = hashlib.md5(f"{query}:{ui_context}".encode('utf-8')).hexdigest()
+        # 2. Verificar Caché para evitar consultas duplicadas (caché por sesión)
+        cache_key = hashlib.md5(f"{session_id}:{query}:{ui_context}".encode('utf-8')).hexdigest()
         now = time.time()
         if cache_key in self._response_cache:
             ts, cached_resp = self._response_cache[cache_key]
@@ -339,6 +339,7 @@ class RAGOrchestrator:
                 self.memory_manager.add_message(session_id, "assistant", cached_resp)
                 yield cached_resp
                 return
+
 
         history = self.memory_manager.get_history(session_id, limit=6)
 

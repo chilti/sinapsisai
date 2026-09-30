@@ -16,6 +16,12 @@ import apiClient from '../../api/client.js';
 export function GovernanceAdmin() {
   const t = useAppStore((state) => state.t)();
   const selectedInstitution = useAppStore((state) => state.selectedInstitution);
+  const userSession = useAppStore((state) => state.userSession);
+
+  const isAdmin = Boolean(
+    userSession?.isAuthenticated &&
+    (userSession?.is_admin || userSession?.role === 'super_admin' || userSession?.role === 'admin_institucional' || userSession?.role === 'admin')
+  );
 
   // Subpestañas (CTL-M05-001 a 004)
   const [activeTab, setActiveTab] = useState('requests'); // 'requests', 'admins', 'aliases', 'pipelines'
@@ -49,12 +55,13 @@ export function GovernanceAdmin() {
     'Sistema listo para operaciones de curación y sincronización masiva.'
   ]);
 
-  // Carga inicial
+  // Carga inicial solo si es administrador
   useEffect(() => {
+    if (!isAdmin) return;
     loadPendingRequests();
     loadActiveAdmins();
     loadAliases();
-  }, []);
+  }, [isAdmin]);
 
   const loadPendingRequests = async () => {
     setLoadingRequests(true);
@@ -211,6 +218,22 @@ export function GovernanceAdmin() {
     return (a.canonical_entity || '').toLowerCase().includes(q) || (a.alias || '').toLowerCase().includes(q);
   });
 
+  if (!isAdmin) {
+    return (
+      <div className="module-container" id="MODULO-05-ADMIN" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
+        <div className="glass-card" style={{ maxWidth: '540px', width: '100%', textAlign: 'center', padding: '2.5rem 2rem' }}>
+          <div style={{ display: 'inline-flex', padding: '1rem', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', marginBottom: '1.25rem' }}>
+            <ShieldAlert size={40} />
+          </div>
+          <h2 style={{ fontSize: '1.35rem', fontWeight: 600, marginBottom: '0.5rem' }}>Acceso Restringido a Administración</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: '1.5', margin: 0 }}>
+            Este módulo de gobernanza y administración institucional está reservado exclusivamente para administradores acreditados.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="module-container" id="MODULO-05-ADMIN">
       {/* Header del Módulo */}
@@ -308,7 +331,7 @@ export function GovernanceAdmin() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Investigador / Usuario</th>
+                    <th>Investigadora/Investigador / Usuario</th>
                     <th>ORCID iD</th>
                     <th>Correo Institucional</th>
                     <th>Entidad Solicitada</th>

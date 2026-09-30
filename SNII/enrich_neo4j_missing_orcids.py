@@ -685,6 +685,8 @@ def main():
                         help="Tamaño de lote para consultas y persistencia (default: 20)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Ejecutar en modo de prueba sin escribir cambios en Neo4j")
+    parser.add_argument("--resume", action="store_true", default=True,
+                        help="Reanudar desde el checkpoint de checkpoints previos (activo por defecto)")
     parser.add_argument("--no-resume", action="store_true",
                         help="No reanudar desde el checkpoint y reiniciar")
 

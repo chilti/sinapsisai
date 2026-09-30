@@ -1,0 +1,181 @@
+/**
+ * frontend/src/components/common/MarkdownRenderer.css
+ * Estilos para contenido Markdown (tablas, encabezados, listas, bloques de código)
+ */
+
+.markdown-body {
+  color: var(--text-primary, #f8fafc);
+  font-size: 0.9rem;
+  line-height: 1.65;
+  word-break: break-word;
+}
+
+/* Encabezados */
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  color: var(--text-primary, #ffffff);
+  font-weight: 700;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.3;
+}
+
+.markdown-body h1:first-child,
+.markdown-body h2:first-child,
+.markdown-body h3:first-child {
+  margin-top: 0;
+}
+
+.markdown-body h1 { font-size: 1.35rem; border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1)); padding-bottom: 0.3rem; }
+.markdown-body h2 { font-size: 1.2rem; }
+.markdown-body h3 { font-size: 1.05rem; }
+.markdown-body h4 { font-size: 0.95rem; }
+
+/* Párrafos */
+.markdown-body p {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+}
+
+.markdown-body p:last-child {
+  margin-bottom: 0;
+}
+
+/* Negritas y Énfasis */
+.markdown-body strong {
+  font-weight: 700;
+  color: var(--text-primary, #ffffff);
+}
+
+.markdown-body em {
+  font-style: italic;
+  color: var(--text-secondary, #cbd5e1);
+}
+
+/* Listas */
+.markdown-body ul,
+.markdown-body ol {
+  margin-top: 0.25rem;
+  margin-bottom: 0.75rem;
+  padding-left: 1.4rem;
+}
+
+.markdown-body ul {
+  list-style-type: disc;
+}
+
+.markdown-body ol {
+  list-style-type: decimal;
+}
+
+.markdown-body li {
+  margin-bottom: 0.35rem;
+  line-height: 1.55;
+}
+
+.markdown-body li:last-child {
+  margin-bottom: 0;
+}
+
+/* Tablas */
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.85rem;
+  margin-bottom: 0.85rem;
+  font-size: 0.85rem;
+  display: block;
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+}
+
+.markdown-body thead {
+  background: rgba(0, 242, 254, 0.08);
+  border-bottom: 2px solid var(--border-subtle, rgba(255, 255, 255, 0.2));
+}
+
+.markdown-body th {
+  padding: 0.6rem 0.85rem;
+  font-weight: 700;
+  text-align: left;
+  color: var(--accent-cyan, #00f2fe);
+  white-space: nowrap;
+}
+
+.markdown-body td {
+  padding: 0.5rem 0.85rem;
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  color: var(--text-primary, #e2e8f0);
+}
+
+.markdown-body tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.markdown-body tbody tr:hover {
+  background: rgba(0, 242, 254, 0.04);
+}
+
+/* Código en línea */
+.markdown-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.82em;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.3);
+  color: #38bdf8;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Bloques de código */
+.markdown-body pre {
+  margin-top: 0.5rem;
+  margin-bottom: 0.85rem;
+  padding: 0.85rem 1rem;
+  background: #0b0f17;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.markdown-body pre code {
+  background: transparent;
+  padding: 0;
+  border: none;
+  color: #e2e8f0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+/* Citas / Blockquotes */
+.markdown-body blockquote {
+  margin: 0.75rem 0;
+  padding-left: 0.85rem;
+  border-left: 3px solid var(--accent-cyan, #00f2fe);
+  color: var(--text-muted, #94a3b8);
+  font-style: italic;
+}
+
+/* Enlaces */
+.markdown-body a {
+  color: var(--accent-cyan, #00f2fe);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: opacity 0.2s ease;
+}
+
+.markdown-body a:hover {
+  opacity: 0.85;
+}
+
+/* Línea divisoria horizontal */
+.markdown-body hr {
+  margin: 1rem 0;
+  border: none;
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+}

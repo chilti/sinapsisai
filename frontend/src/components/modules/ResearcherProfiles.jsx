@@ -32,6 +32,14 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore.js';
 import { apiClient } from '../../api/client.js';
+import ThematicEvolutionTable from '../analytics/ThematicEvolutionTable.jsx';
+import CollaborationWorldMap from '../analytics/CollaborationWorldMap.jsx';
+import SemanticProductionMap from '../analytics/SemanticProductionMap.jsx';
+import AIReportViewer from '../analytics/AIReportViewer.jsx';
+import FeaturedPublications from '../analytics/FeaturedPublications.jsx';
+import UmapPerformanceMap from '../analytics/UmapPerformanceMap.jsx';
+import CoAuthraNetwork from '../analytics/CoAuthraNetwork.jsx';
+import WordCloudInteractive from '../analytics/WordCloudInteractive.jsx';
 
 // Colores oficiales de los 17 ODS de la ONU
 const SDG_COLORS = {
@@ -109,12 +117,20 @@ export function ResearcherProfiles() {
     loadProfile();
   }, [researcherName, researcherOrcid]);
 
-  // 2. Cargar Años Disponibles y Obras Iniciales
+  // 2. Cargar Años Disponibles (sin filtrar por año actual para no ocultar publicaciones históricas)
   useEffect(() => {
+    // Resetear filtros al cambiar de investigador
+    setYearFilter('all');
+    setOaFilter('all');
+    setOdsFilter('all');
+    setSearchPaper('');
+    setPapersPage(0);
+
     async function loadYears() {
       if (!researcherName && !researcherOrcid) return;
       try {
-        const res = await apiClient.getAcademicWorks(researcherOrcid, researcherName, { limit: 200, offset: 0 });
+        // Usar limit alto para capturar todos los años posibles del investigador
+        const res = await apiClient.getAcademicWorks(researcherOrcid, researcherName, { limit: 500, offset: 0 });
         if (res && res.works) {
           const yrs = new Set();
           res.works.forEach((w) => {
@@ -124,13 +140,8 @@ export function ResearcherProfiles() {
           });
           const sortedYrs = Array.from(yrs).sort().reverse();
           setAvailableYears(sortedYrs);
-
-          // Si el año actual tiene publicaciones, seleccionarlo por defecto; si no, 'all'
-          if (sortedYrs.includes(String(currentYear))) {
-            setYearFilter(String(currentYear));
-          } else {
-            setYearFilter('all');
-          }
+          // Siempre mostrar 'Todos los Años' por defecto para no ocultar producción histórica
+          setYearFilter('all');
         }
       } catch (err) {
         console.error('Error cargando años de publicaciones:', err);
@@ -373,8 +384,50 @@ export function ResearcherProfiles() {
 
   // 5. Sunburst Temático de 4 Niveles
   const sunburstData = useMemo(() => {
+    // Si el backend ya calculó el trace oficial con px.sunburst
+    if (profile?.sunburst_trace && profile.sunburst_trace.labels?.length) {
+      const tr = profile.sunburst_trace;
+      return [{
+        type: 'sunburst',
+        ids: tr.ids,
+        labels: tr.labels,
+        parents: tr.parents,
+        values: tr.values,
+        branchvalues: 'total',
+        hoverinfo: 'label+value+percent parent',
+        insidetextorientation: 'radial',
+        marker: {
+          colors: tr.colors || tr.values,
+          colorscale: 'Blues',
+          showscale: true,
+          colorbar: {
+            title: { text: 'value' },
+            len: 0.85,
+            thickness: 16
+          }
+        }
+      }];
+    }
+
     const list = profile?.sunburst_data || [];
     if (!list.length) return [];
+
+    // Calcular sumas acumuladas de obras para que los padres tengan el valor real de sus hijos
+    const domainSums = {};
+    const fieldSums = {};
+    const subfieldSums = {};
+
+    list.forEach((item) => {
+      const v = Number(item.value) || 1;
+      const d = item.domain;
+      const f = `${d} / ${item.field}`;
+      const s = `${f} / ${item.subfield}`;
+
+      if (d) domainSums[d] = (domainSums[d] || 0) + v;
+      if (f) fieldSums[f] = (fieldSums[f] || 0) + v;
+      if (s) subfieldSums[s] = (subfieldSums[s] || 0) + v;
+    });
+
     const labels = [];
     const parents = [];
     const values = [];
@@ -388,13 +441,13 @@ export function ResearcherProfiles() {
       const t = `${s} / ${item.topic}`;
 
       if (d && !added.has(d)) {
-        ids.push(d); labels.push(item.domain); parents.push(''); values.push(0); added.add(d);
+        ids.push(d); labels.push(item.domain); parents.push(''); values.push(domainSums[d] || 0); added.add(d);
       }
       if (f && !added.has(f)) {
-        ids.push(f); labels.push(item.field); parents.push(d); values.push(0); added.add(f);
+        ids.push(f); labels.push(item.field); parents.push(d); values.push(fieldSums[f] || 0); added.add(f);
       }
       if (s && !added.has(s)) {
-        ids.push(s); labels.push(item.subfield); parents.push(f); values.push(0); added.add(s);
+        ids.push(s); labels.push(item.subfield); parents.push(f); values.push(subfieldSums[s] || 0); added.add(s);
       }
       if (t && !added.has(t)) {
         ids.push(t); labels.push(item.topic); parents.push(s); values.push(item.value || 1); added.add(t);
@@ -409,9 +462,19 @@ export function ResearcherProfiles() {
       values,
       branchvalues: 'total',
       hoverinfo: 'label+value+percent parent',
-      marker: { colorscale: 'Blues' }
+      insidetextorientation: 'radial',
+      marker: {
+        colors: values,
+        colorscale: 'Blues',
+        showscale: true,
+        colorbar: {
+          title: { text: 'value' },
+          len: 0.85,
+          thickness: 16
+        }
+      }
     }];
-  }, [profile?.sunburst_data]);
+  }, [profile?.sunburst_data, profile?.sunburst_trace]);
 
   // 6. Citas Netas vs Autocitas (Zero-Join)
   const citationsDonutData = useMemo(() => {
@@ -709,6 +772,287 @@ export function ResearcherProfiles() {
       {/* 4. Vista de Producción Académica */}
       {activeSubTab === 'production' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {/* Panorama General de Sostenibilidad (ODS 1 a 17) */}
+          <div className="glass-card">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Globe size={20} style={{ color: 'var(--accent-cyan)' }} />
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Impacto en Sostenibilidad (ODS 1 a 17)</h3>
+              </div>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Haz clic en un ODS para filtrar las publicaciones
+              </span>
+            </div>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+              Distribución de la producción científica de la investigadora o investigador alineada a los 17 Objetivos de Desarrollo Sostenible (ONU).
+            </p>
+
+            {/* Notificación de Filtro ODS Activo */}
+            {odsFilter !== 'all' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                <span
+                  className="badge badge-cyan"
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', fontSize: '0.82rem' }}
+                >
+                  Filtrando por: <b>ODS {odsFilter}</b>
+                  <button
+                    onClick={() => { setOdsFilter('all'); setPapersPage(0); }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'inherit',
+                      cursor: 'pointer',
+                      fontWeight: 800,
+                      fontSize: '0.9rem',
+                      marginLeft: '4px',
+                      display: 'flex',
+                      alignItems: 'center'
+                    }}
+                    title="Limpiar filtro ODS"
+                  >
+                    ✕
+                  </button>
+                </span>
+              </div>
+            )}
+
+            {/* Matriz de Tarjetas ODS con Imágenes Oficiales */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.85rem' }}>
+              {profile?.sdg_matrix?.map((sdg) => {
+                const odsId = sdg.sdg || sdg.id;
+                const isSelected = odsFilter === String(odsId);
+                const count = sdg.count || 0;
+                const totalWorksCount = profile?.kpis?.indexed_works || totalPapers || 1;
+                const pct = sdg.pct !== undefined ? sdg.pct : (totalWorksCount > 0 ? ((count / totalWorksCount) * 100).toFixed(1) : 0);
+
+                return (
+                  <div
+                    key={odsId}
+                    onClick={() => {
+                      setOdsFilter(isSelected ? 'all' : String(odsId));
+                      setPapersPage(0);
+                    }}
+                    className="sdg-card-hover"
+                    title={`ODS ${odsId}: ${sdg.name} — ${count.toLocaleString()} obras (${pct}%)`}
+                    style={{
+                      position: 'relative',
+                      aspectRatio: '1 / 1',
+                      borderRadius: '12px',
+                      overflow: 'hidden',
+                      cursor: 'pointer',
+                      background: isLight ? '#f1f5f9' : '#1e293b',
+                      border: isSelected ? '3px solid var(--accent-cyan)' : '2px solid rgba(255,255,255,0.08)',
+                      boxShadow: isSelected
+                        ? '0 0 16px rgba(0, 242, 254, 0.45)'
+                        : '0 2px 6px rgba(0,0,0,0.12)',
+                      transform: isSelected ? 'scale(1.04)' : 'scale(1)',
+                      transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                      filter: count === 0 ? 'grayscale(85%) opacity(0.4)' : 'none'
+                    }}
+                  >
+                    {/* Imagen Oficial del ODS */}
+                    <img
+                      src={`./img/ods/ods_${odsId}.png`}
+                      alt={`ODS ${odsId}: ${sdg.name}`}
+                      loading="lazy"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        display: 'block'
+                      }}
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = `https://open-sdg.org/sdg-translations/assets/img/goals/es/${odsId}.png`;
+                      }}
+                    />
+
+                    {/* Indicador de Selección Activa */}
+                    {isSelected && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '6px',
+                          right: '6px',
+                          background: 'var(--accent-cyan)',
+                          color: '#000',
+                          borderRadius: '50%',
+                          width: '22px',
+                          height: '22px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.4)',
+                          zIndex: 3
+                        }}
+                      >
+                        <CheckCircle2 size={16} />
+                      </div>
+                    )}
+
+                    {/* Overlay Inferior con Estadísticas */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        background: 'linear-gradient(to top, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.65) 70%, transparent 100%)',
+                        padding: '0.45rem 0.3rem 0.25rem',
+                        textAlign: 'center',
+                        color: '#ffffff',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        pointerEvents: 'none',
+                        zIndex: 2
+                      }}
+                    >
+                      <span style={{ fontSize: '0.88rem', fontWeight: 800, textShadow: '0 1px 3px rgba(0,0,0,0.9)', letterSpacing: '-0.02em', color: '#ffffff' }}>
+                        {pct}%
+                      </span>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 600, opacity: 0.9, textShadow: '0 1px 2px rgba(0,0,0,0.9)', color: '#e2e8f0' }}>
+                        {count.toLocaleString()} {count === 1 ? 'obra' : 'obras'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Vocabulario Científico (Keywords Word Cloud) */}
+          <WordCloudInteractive
+            keywords={profile?.keywords}
+            title={profile?.name ? `Vocabulario Científico · ${profile.name}` : "Vocabulario Científico (Word Cloud)"}
+            subtitle="Nube interactiva con eventos de cursor para explorar frecuencias y conceptos de producción."
+          />
+
+          {/* Concentración Temática (Sunburst 4-Niveles) */}
+          <div className="glass-card">
+            <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Concentración Temática (Sunburst 4 Niveles)</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+              Jerarquía taxonómica de la producción: <strong>Dominio</strong> ➔ <strong>Campo</strong> ➔ <strong>Subcampo</strong> ➔ <strong>Tópico</strong>.
+            </p>
+            {sunburstData.length > 0 ? (
+              <Plot
+                data={sunburstData}
+                layout={{ ...defaultPlotLayout, height: 520, margin: { l: 10, r: 10, t: 10, b: 10 } }}
+                config={{ responsive: true, displayModeBar: false }}
+                style={{ width: '100%' }}
+              />
+            ) : (
+              <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>Sin datos de árbol temático</p>
+            )}
+          </div>
+
+          {/* 3b. Evolución Histórica de Perfiles de Conocimiento */}
+          <ThematicEvolutionTable
+            data={profile?.thematic_evolution}
+            title="Evolución Histórica de Perfiles de Conocimiento"
+          />
+
+          {/* 3c. Red de Colaboración Científica (CoAuthra) */}
+          <CoAuthraNetwork
+            academicName={profile?.name}
+            authorId={profile?.openalex_ids?.[0] || profile?.orcid}
+          />
+
+          {/* 3d. Mapa Semántico de Producción (WebGL) */}
+          <SemanticProductionMap
+            targetName={profile?.name || "Investigador"}
+            type="author"
+            dois={profile?.dois_list}
+            oaIds={profile?.oa_list}
+            totalWorks={gen.indexed_count}
+          />
+
+          {/* 3e. Mapas de Desempeño (UMAP) */}
+          <UmapPerformanceMap
+            academicName={profile?.name}
+            entityName={profile?.subdependency || profile?.dependency}
+            institutionName={profile?.institution}
+            viewMode="capacidad_instalada"
+          />
+
+          {/* 3f. Publicaciones Destacadas (Más citadas y Más recientes) */}
+          <FeaturedPublications
+            featuredWorks={profile?.featured_works}
+          />
+
+          {/* 3g. Países Colaboradores (Choropleth) */}
+          <CollaborationWorldMap
+            countries={profile?.collaboration_countries}
+            title={profile?.name ? `Países Colaboradores · ${profile.name}` : "Países Colaboradores"}
+          />
+
+          {/* Fila: Trayectoria Histórica (Docs por Año) & Foco Temático (Top 10 Topics) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem' }}>
+            <div className="glass-card">
+              <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Trayectoria Histórica (Docs)</h3>
+              <Plot
+                data={trajectoryData}
+                layout={{ ...defaultPlotLayout, height: 320 }}
+                config={{ responsive: true, displayModeBar: false }}
+                style={{ width: '100%' }}
+              />
+            </div>
+
+            <div className="glass-card">
+              <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Foco Temático (Top 10 Topics)</h3>
+              <Plot
+                data={topTopicsData}
+                layout={{
+                  ...defaultPlotLayout,
+                  height: 320,
+                  margin: { l: 180, r: 20, t: 20, b: 35 },
+                  yaxis: { ...defaultPlotLayout.yaxis, automargin: true }
+                }}
+                config={{ responsive: true, displayModeBar: false }}
+                style={{ width: '100%' }}
+              />
+            </div>
+          </div>
+
+          {/* Fila: Distribución Open Access (Donut) & Perfil Temático (Gini) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem' }}>
+            <div className="glass-card">
+              <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Distribución Open Access</h3>
+              <Plot
+                data={oaDonutData}
+                layout={{ ...defaultPlotLayout, height: 280, showlegend: true, legend: { orientation: 'h', y: -0.15 } }}
+                config={{ responsive: true, displayModeBar: false }}
+                style={{ width: '100%' }}
+              />
+            </div>
+
+            <div className="glass-card">
+              <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Perfil Temático (Gini)</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Índice de Gini Temático:</span>
+                  <strong style={{ color: 'var(--accent-cyan)' }}>{them.gini_topics ? Number(them.gini_topics).toFixed(3) : '0.337'}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Dominios de Investigación Cubiertos:</span>
+                  <strong style={{ color: 'var(--text-primary)' }}>{them.domain_diversity || 4}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Tópicos Únicos Desarrollados:</span>
+                  <strong style={{ color: '#10b981' }}>{them.unique_topics || 51}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Dominio Principal:</span>
+                  <strong style={{ color: '#f59e0b' }}>{them.top_domain || 'Physical Sciences'}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Tópico Principal:</span>
+                  <strong style={{ color: '#8b5cf6' }}>{them.top_topic || 'Artificial Intelligence'}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Grupo 1: Métricas Generales (5 KPIs) */}
           <div className="glass-card" style={{ padding: '1.25rem' }}>
             <h4 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.85rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -939,45 +1283,6 @@ export function ResearcherProfiles() {
             </div>
           </div>
 
-          {/* Fila: Distribución Open Access (Donut) & Perfil Temático (Gini) */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem' }}>
-            <div className="glass-card">
-              <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Distribución Open Access</h3>
-              <Plot
-                data={oaDonutData}
-                layout={{ ...defaultPlotLayout, height: 280, showlegend: true, legend: { orientation: 'h', y: -0.15 } }}
-                config={{ responsive: true, displayModeBar: false }}
-                style={{ width: '100%' }}
-              />
-            </div>
-
-            <div className="glass-card">
-              <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Perfil Temático (Gini)</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Índice de Gini Temático:</span>
-                  <strong style={{ color: 'var(--accent-cyan)' }}>{them.gini_topics ? Number(them.gini_topics).toFixed(3) : '0.337'}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Dominios de Investigación Cubiertos:</span>
-                  <strong style={{ color: 'var(--text-primary)' }}>{them.domain_diversity || 4}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Tópicos Únicos Desarrollados:</span>
-                  <strong style={{ color: '#10b981' }}>{them.unique_topics || 51}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Dominio Principal:</span>
-                  <strong style={{ color: '#f59e0b' }}>{them.top_domain || 'Physical Sciences'}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Tópico Principal:</span>
-                  <strong style={{ color: '#8b5cf6' }}>{them.top_topic || 'Artificial Intelligence'}</strong>
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* Fila: Tipos de Documentos & Glosario Metodológico Interactivo */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem' }}>
             <div className="glass-card">
@@ -1022,7 +1327,7 @@ export function ResearcherProfiles() {
                       <strong>Citas últ. 3 años:</strong> Sumatoria total de citas recientes recibidas en los últimos 36 meses.
                     </p>
                     <p>
-                      <strong>% Colaboración Internacional:</strong> Proporción de artículos en coautoría con investigadores extranjeros.
+                      <strong>% Colaboración Internacional:</strong> Proporción de artículos en coautoría con investigadoras e investigadores extranjeros.
                     </p>
                     <p>
                       <strong>APC Total:</strong> Costo estimado de lista de las cuotas de procesamiento de artículos en revistas de acceso abierto.
@@ -1039,217 +1344,13 @@ export function ResearcherProfiles() {
             </div>
           </div>
 
-          {/* Fila: Trayectoria Histórica (Docs por Año) & Foco Temático (Top 10 Topics) */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem' }}>
-            <div className="glass-card">
-              <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Trayectoria Histórica (Docs)</h3>
-              <Plot
-                data={trajectoryData}
-                layout={{ ...defaultPlotLayout, height: 320 }}
-                config={{ responsive: true, displayModeBar: false }}
-                style={{ width: '100%' }}
-              />
-            </div>
-
-            <div className="glass-card">
-              <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Foco Temático (Top 10 Topics)</h3>
-              <Plot
-                data={topTopicsData}
-                layout={{
-                  ...defaultPlotLayout,
-                  height: 320,
-                  margin: { l: 180, r: 20, t: 20, b: 35 },
-                  yaxis: { ...defaultPlotLayout.yaxis, automargin: true }
-                }}
-                config={{ responsive: true, displayModeBar: false }}
-                style={{ width: '100%' }}
-              />
-            </div>
-          </div>
-
-          {/* Concentración Temática (Sunburst 4-Niveles) */}
-          <div className="glass-card">
-            <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>Concentración Temática (Sunburst 4 Niveles)</h3>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-              Jerarquía taxonómica de la producción: <strong>Dominio</strong> ➔ <strong>Campo</strong> ➔ <strong>Subcampo</strong> ➔ <strong>Tópico</strong>.
-            </p>
-            {sunburstData.length > 0 ? (
-              <Plot
-                data={sunburstData}
-                layout={{ ...defaultPlotLayout, height: 520, margin: { l: 10, r: 10, t: 10, b: 10 } }}
-                config={{ responsive: true, displayModeBar: false }}
-                style={{ width: '100%' }}
-              />
-            ) : (
-              <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>Sin datos de árbol temático</p>
-            )}
-          </div>
-
-          {/* Vocabulario Científico (Keywords) */}
-          <div className="glass-card">
-            <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem', fontWeight: 700 }}>🔑 Vocabulario Científico (Keywords)</h3>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.75rem' }}>
-              {profile?.keywords?.map((kw, idx) => (
-                <span
-                  key={idx}
-                  className="badge badge-cyan"
-                  style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-                >
-                  <span>{kw.keyword}</span>
-                  <strong style={{ opacity: 0.75 }}>({kw.freq})</strong>
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* Panorama General de Sostenibilidad (ODS 1 a 17) */}
-          <div className="glass-card">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Globe size={20} style={{ color: 'var(--accent-cyan)' }} />
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Impacto en Sostenibilidad (ODS 1 a 17)</h3>
-              </div>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Haz clic en un ODS para filtrar las publicaciones
-              </span>
-            </div>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-              Distribución de la producción científica del investigador alineada a los 17 Objetivos de Desarrollo Sostenible (ONU).
-            </p>
-
-            {/* Notificación de Filtro ODS Activo */}
-            {odsFilter !== 'all' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                <span
-                  className="badge badge-cyan"
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', fontSize: '0.82rem' }}
-                >
-                  Filtrando por: <b>ODS {odsFilter}</b>
-                  <button
-                    onClick={() => { setOdsFilter('all'); setPapersPage(0); }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'inherit',
-                      cursor: 'pointer',
-                      fontWeight: 800,
-                      fontSize: '0.9rem',
-                      marginLeft: '4px',
-                      display: 'flex',
-                      alignItems: 'center'
-                    }}
-                    title="Limpiar filtro ODS"
-                  >
-                    ✕
-                  </button>
-                </span>
-              </div>
-            )}
-
-            {/* Matriz de Tarjetas ODS con Imágenes Oficiales */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.85rem' }}>
-              {profile?.sdg_matrix?.map((sdg) => {
-                const odsId = sdg.sdg || sdg.id;
-                const isSelected = odsFilter === String(odsId);
-                const count = sdg.count || 0;
-                const totalWorksCount = profile?.kpis?.indexed_works || totalPapers || 1;
-                const pct = sdg.pct !== undefined ? sdg.pct : (totalWorksCount > 0 ? ((count / totalWorksCount) * 100).toFixed(1) : 0);
-
-                return (
-                  <div
-                    key={odsId}
-                    onClick={() => {
-                      setOdsFilter(isSelected ? 'all' : String(odsId));
-                      setPapersPage(0);
-                    }}
-                    className="sdg-card-hover"
-                    title={`ODS ${odsId}: ${sdg.name} — ${count.toLocaleString()} obras (${pct}%)`}
-                    style={{
-                      position: 'relative',
-                      aspectRatio: '1 / 1',
-                      borderRadius: '12px',
-                      overflow: 'hidden',
-                      cursor: 'pointer',
-                      background: isLight ? '#f1f5f9' : '#1e293b',
-                      border: isSelected ? '3px solid var(--accent-cyan)' : '2px solid rgba(255,255,255,0.08)',
-                      boxShadow: isSelected
-                        ? '0 0 16px rgba(0, 242, 254, 0.45)'
-                        : '0 2px 6px rgba(0,0,0,0.12)',
-                      transform: isSelected ? 'scale(1.04)' : 'scale(1)',
-                      transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                      filter: count === 0 ? 'grayscale(85%) opacity(0.4)' : 'none'
-                    }}
-                  >
-                    {/* Imagen Oficial del ODS */}
-                    <img
-                      src={`./img/ods/ods_${odsId}.png`}
-                      alt={`ODS ${odsId}: ${sdg.name}`}
-                      loading="lazy"
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        display: 'block'
-                      }}
-                      onError={(e) => {
-                        e.target.onerror = null;
-                        e.target.src = `https://open-sdg.org/sdg-translations/assets/img/goals/es/${odsId}.png`;
-                      }}
-                    />
-
-                    {/* Indicador de Selección Activa */}
-                    {isSelected && (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          top: '6px',
-                          right: '6px',
-                          background: 'var(--accent-cyan)',
-                          color: '#000',
-                          borderRadius: '50%',
-                          width: '22px',
-                          height: '22px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          boxShadow: '0 2px 4px rgba(0,0,0,0.4)',
-                          zIndex: 3
-                        }}
-                      >
-                        <CheckCircle2 size={16} />
-                      </div>
-                    )}
-
-                    {/* Overlay Inferior con Estadísticas */}
-                    <div
-                      style={{
-                        position: 'absolute',
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        background: 'linear-gradient(to top, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.65) 70%, transparent 100%)',
-                        padding: '0.45rem 0.3rem 0.25rem',
-                        textAlign: 'center',
-                        color: '#ffffff',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        pointerEvents: 'none',
-                        zIndex: 2
-                      }}
-                    >
-                      <span style={{ fontSize: '0.88rem', fontWeight: 800, textShadow: '0 1px 3px rgba(0,0,0,0.9)', letterSpacing: '-0.02em', color: '#ffffff' }}>
-                        {pct}%
-                      </span>
-                      <span style={{ fontSize: '0.68rem', fontWeight: 600, opacity: 0.9, textShadow: '0 1px 2px rgba(0,0,0,0.9)', color: '#e2e8f0' }}>
-                        {count.toLocaleString()} {count === 1 ? 'obra' : 'obras'}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          {/* 7b. Reporte Bibliométrico con Inteligencia Artificial */}
+          <AIReportViewer
+            type="inv"
+            targetName={profile?.name || "Investigador"}
+            viewMode="capacidad_instalada"
+            hasReport={profile?.has_ai_report}
+          />
 
           {/* Catálogo Interactivo de Publicaciones Científicas */}
           <div className="glass-card">
@@ -1486,7 +1587,7 @@ export function ResearcherProfiles() {
               lineHeight: 1.5,
               color: 'var(--text-secondary)'
             }}>
-              📌 <strong>Nota sobre autocitas:</strong> Se contabilizan exclusivamente las <strong>autocitas directas (del autor)</strong>, es decir, aquellas publicaciones donde el investigador evaluado figura expresamente como coautor en la obra citante. El cálculo de citas netas y autocitas abarca la totalidad de las <strong>{(cSummary.total_citations || gen.total_citations || 0).toLocaleString()} citas acumuladas</strong> a lo largo de su carrera académica.
+              📌 <strong>Nota sobre autocitas:</strong> Se contabilizan exclusivamente las <strong>autocitas directas (del autor)</strong>, es decir, aquellas publicaciones donde la investigadora o investigador evaluado figura expresamente como coautor/a en la obra citante. El cálculo de citas netas y autocitas abarca la totalidad de las <strong>{(cSummary.total_citations || gen.total_citations || 0).toLocaleString()} citas acumuladas</strong> a lo largo de su carrera académica.
             </div>
           </div>
 

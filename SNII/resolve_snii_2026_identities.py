@@ -135,13 +135,20 @@ SPANISH_PARTICLES = {'de', 'del', 'la', 'las', 'los', 'san', 'santa', 'y', 'e', 
 def get_search_keys(name: str):
     """Extrae combinaciones de apellidos y nombres para búsqueda exhaustiva en ClickHouse ignorando partículas nobiliarias/preposiciones."""
     raw_clean = normalize_text(name).replace('‐', ' ').replace('-', ' ')
+    parts = [p for p in raw_clean.replace(',', ' ').split() if p not in SPANISH_PARTICLES and len(p) >= 2]
+    if not parts:
+        parts = [p for p in raw_clean.replace(',', ' ').split() if p]
+
     if ',' in raw_clean:
         ap_part = raw_clean.split(',')[0]
         nom_part = raw_clean.split(',')[1]
-        apellidos = [p for p in ap_part.split() if p not in SPANISH_PARTICLES and len(p) > 2]
-        nombres = [p for p in nom_part.split() if p not in SPANISH_PARTICLES and len(p) > 2]
+        apellidos = [p for p in ap_part.split() if p not in SPANISH_PARTICLES and len(p) >= 2]
+        if not apellidos:
+            apellidos = [p for p in ap_part.split() if p]
+        nombres = [p for p in nom_part.split() if p not in SPANISH_PARTICLES and len(p) >= 2]
+        if not nombres:
+            nombres = [p for p in nom_part.split() if p]
     else:
-        parts = [p for p in raw_clean.split() if p not in SPANISH_PARTICLES and len(p) > 2]
         apellidos = parts[:1]
         nombres = parts[1:]
 
@@ -156,7 +163,9 @@ def get_search_keys(name: str):
     elif len(nombres) > 1:
         pairs.append((paterno, nombres[1]))
 
-    all_keys = list(set([p for p in raw_clean.replace(',', ' ').split() if p not in SPANISH_PARTICLES and len(p) > 2]))
+    all_keys = list(set([p for p in raw_clean.replace(',', ' ').split() if p not in SPANISH_PARTICLES and len(p) >= 2]))
+    if not all_keys:
+        all_keys = [paterno, nombre1]
     return paterno, nombre1, pairs, all_keys
 
 

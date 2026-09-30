@@ -5,7 +5,7 @@
 
 export const pt = {
   // Franja & Navegação
-  appName: "Info TlachIA",
+  appName: "Info TlachIA SNII",
   appSubtitle: "Inteligência Científica e Produção Acadêmica",
   tabs: {
     home: "Início",
@@ -15,7 +15,8 @@ export const pt = {
     maps: "Mapas da Ciência",
     mySpace: "Meu Espaço",
     governance: "Administração",
-    assistant: "Assistente IA"
+    assistant: "Assistente IA",
+    about: "Sobre"
   },
   
   // Módulo 1: Panorama Institucional

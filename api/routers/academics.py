@@ -18,6 +18,7 @@ from lib.citations_explorer import (
     get_citing_works_data
 )
 from lib.dossier_generator import _determine_tier
+from dashboard_analytics import load_cached_data, ISO2_TO_ISO3
 
 router = APIRouter(prefix="/api/academics", tags=["Investigadores"])
 
@@ -214,6 +215,55 @@ def search_academics(
     }
 
 
+def _get_academics_from_padron(entity_name: str, inst_name: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Recupera los académicos adscritos a una entidad (departamento o subdependencia) directamente del padrón SNII."""
+    if not entity_name:
+        return []
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    excel_path = os.path.join(base_dir, "data", "Investigadores_vigentes_2025.xlsx")
+    if not os.path.exists(excel_path):
+        excel_path = os.path.join(base_dir, "SNII", "Investigadores_vigentes_2025.xlsx")
+    if not os.path.exists(excel_path):
+        return []
+
+    try:
+        clean_ent = str(entity_name).split(' — ')[-1].strip().upper()
+        df = pd.read_excel(excel_path, sheet_name='4T_2025 (44,794)')
+        col_depto = 'DEPARTAMENTO DE ACREDITACIÓN'
+        col_sub = 'SUBDEPENDENCIA DE ACREDITACIÓN'
+        col_nom = 'NOMBRE DEL INVESTIGADOR'
+        col_niv = 'NIVEL'
+        col_area = 'ÁREA DE CONOCIMIENTO'
+
+        mask = (df[col_depto].astype(str).str.strip().str.upper() == clean_ent)
+        if not mask.any():
+            mask = (df[col_sub].astype(str).str.strip().str.upper() == clean_ent)
+
+        if not mask.any():
+            return []
+
+        subset = df[mask]
+        if inst_name and str(inst_name).upper() not in ["MEXICO", "MÉXICO"]:
+            clean_inst = str(inst_name).split('(')[0].strip().upper()
+            inst_mask = subset['INSTITUCION DE ACREDITACION'].astype(str).str.upper().str.contains(clean_inst[:15])
+            if inst_mask.any():
+                subset = subset[inst_mask]
+
+        res = []
+        for _, r in subset.iterrows():
+            nom = str(r.get(col_nom, '')).strip()
+            if nom:
+                res.append({
+                    "name": nom,
+                    "level": str(r.get(col_niv, '')).strip(),
+                    "area": str(r.get(col_area, '')).strip()
+                })
+        return res
+    except Exception as e:
+        print(f"[_get_academics_from_padron] Error: {e}")
+        return []
+
+
 @router.get("/list")
 def list_academics(
     institution: Optional[str] = Query("UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", description="Institución"),
@@ -264,6 +314,12 @@ def list_academics(
                     academics.append({"name": name})
                 if academics:
                     break
+
+    # Fallback al Padrón SNII (para entidades promovidas de 4º nivel como C3 o unidades foráneas)
+    if not academics:
+        padron_inv = _get_academics_from_padron(target_entity, inst)
+        if padron_inv:
+            academics.extend(padron_inv)
 
     # Deduplicación y ordenamiento alfabético por nombre
     dedup_map = {}
@@ -528,6 +584,23 @@ def get_academic_profile(
                 # Datos para Sunburst de 4 niveles
                 sun_clean = df_top.replace('', pd.NA).dropna(subset=['domain', 'field', 'subfield', 'topic'])
                 sun_top = sun_clean.sort_values('value', ascending=False).head(80)
+                sunburst_trace = None
+                try:
+                    import plotly.express as px
+                    fig_sb = px.sunburst(sun_top, path=['domain', 'field', 'subfield', 'topic'], values='value', color='value', color_continuous_scale='Blues')
+                    tr = fig_sb.data[0]
+                    colors_list = [float(c) for c in tr.marker.colors] if (hasattr(tr, "marker") and hasattr(tr.marker, "colors") and tr.marker.colors is not None) else [int(v) for v in tr.values]
+                    sunburst_trace = {
+                        "type": "sunburst",
+                        "branchvalues": "total",
+                        "ids": [str(x) for x in tr.ids] if tr.ids is not None else [],
+                        "labels": [str(x) for x in tr.labels] if tr.labels is not None else [],
+                        "parents": [str(x) for x in tr.parents] if tr.parents is not None else [],
+                        "values": [int(v) for v in tr.values] if tr.values is not None else [],
+                        "colors": colors_list
+                    }
+                except Exception as _e_sb:
+                    pass
                 for _, row in sun_top.iterrows():
                     sunburst_data.append({
                         "domain": str(row.get("domain", "")),
@@ -545,7 +618,7 @@ def get_academic_profile(
         try:
             df_kw = pd.read_parquet(os.path.join(pdir, "keywords_investigador.parquet"))
             if not df_kw.empty and "keyword" in df_kw.columns and "freq" in df_kw.columns:
-                df_kw_sorted = df_kw.sort_values("freq", ascending=False).head(40)
+                df_kw_sorted = df_kw.sort_values("freq", ascending=False).head(150)
                 for _, row in df_kw_sorted.iterrows():
                     keywords.append({
                         "keyword": str(row["keyword"]),
@@ -594,8 +667,103 @@ def get_academic_profile(
                         "count": cnt,
                         "pct": round((cnt / max(1, total_prof_papers)) * 100, 1)
                     })
+
+                # --- 5b. Publicaciones Destacadas (Más citadas y Más recientes) ---
+                title_col = next((c for c in df_p.columns if str(c).lower() == "title"), None)
+                doi_col = next((c for c in df_p.columns if str(c).lower() == "doi"), None)
+                year_col = next((c for c in df_p.columns if str(c).lower() == "year"), None)
+                cite_col = next((c for c in df_p.columns if str(c).lower() in ["citations", "cited_by_count"]), None)
+
+                featured_works = {"most_cited": [], "most_recent": []}
+                if title_col and cite_col:
+                    df_mc = df_p.sort_values(by=cite_col, ascending=False).head(10)
+                    for _, r in df_mc.iterrows():
+                        doi_raw = str(r[doi_col]).strip() if doi_col and pd.notna(r[doi_col]) else ""
+                        doi_clean = doi_raw.replace("https://doi.org/", "").strip() if doi_raw and "orcid-work" not in doi_raw else None
+                        featured_works["most_cited"].append({
+                            "title": str(r[title_col]),
+                            "citations": int(r[cite_col]) if pd.notna(r[cite_col]) else 0,
+                            "year": int(r[year_col]) if year_col and pd.notna(r[year_col]) else None,
+                            "doi": doi_clean,
+                            "doi_url": f"https://doi.org/{doi_clean}" if doi_clean else None
+                        })
+
+                if title_col and year_col:
+                    df_mr = df_p.sort_values(by=year_col, ascending=False).head(10)
+                    for _, r in df_mr.iterrows():
+                        doi_raw = str(r[doi_col]).strip() if doi_col and pd.notna(r[doi_col]) else ""
+                        doi_clean = doi_raw.replace("https://doi.org/", "").strip() if doi_raw and "orcid-work" not in doi_raw else None
+                        featured_works["most_recent"].append({
+                            "title": str(r[title_col]),
+                            "citations": int(r[cite_col]) if cite_col and pd.notna(r[cite_col]) else 0,
+                            "year": int(r[year_col]) if pd.notna(r[year_col]) else None,
+                            "doi": doi_clean,
+                            "doi_url": f"https://doi.org/{doi_clean}" if doi_clean else None
+                        })
+
+                # --- 5c. Países Colaboradores (Choropleth) ---
+                collaboration_countries = []
+                if "countries" in df_p.columns:
+                    cnt_map = {}
+                    for val in df_p["countries"].dropna():
+                        items = val if isinstance(val, (list, np.ndarray)) else [val]
+                        for c in items:
+                            c_str = str(c).strip().upper()
+                            if c_str and c_str not in ["MX", "MEX", "NONE", "NAN", ""]:
+                                cnt_map[c_str] = cnt_map.get(c_str, 0) + 1
+                    sorted_cnt = sorted(cnt_map.items(), key=lambda x: x[1], reverse=True)[:60]
+                    for iso2, p_count in sorted_cnt:
+                        iso3 = ISO2_TO_ISO3.get(iso2, iso2)
+                        collaboration_countries.append({
+                            "iso_a2": iso2,
+                            "iso_a3": iso3,
+                            "name": iso2,
+                            "papers": p_count
+                        })
+
+                # --- 5d. DOIs y OpenAlex IDs para Mapa Semántico WebGL ---
+                dois_list = []
+                oa_list = []
+                if doi_col:
+                    dois_list = [
+                        d.replace("https://doi.org/", "").strip()
+                        for d in df_p[doi_col].dropna().astype(str).tolist()
+                        if d and "orcid-work" not in str(d)
+                    ][:5000]
+                if "paper_id" in df_p.columns:
+                    oa_list = [str(d).strip() for d in df_p["paper_id"].dropna().tolist() if d][:5000]
+
         except Exception as e:
             print(f"[get_academic_profile] Error leyendo papers_profesor.parquet: {e}")
+
+    # 5e. Evolución Histórica de Perfiles de Conocimiento (thematic_evolution_investigador.parquet)
+    thematic_evolution = []
+    if pdir and os.path.exists(os.path.join(pdir, "thematic_evolution_investigador.parquet")):
+        try:
+            df_te = pd.read_parquet(os.path.join(pdir, "thematic_evolution_investigador.parquet"))
+            if not df_te.empty:
+                for _, r in df_te.iterrows():
+                    thematic_evolution.append({
+                        "year": int(r.get("year", 0)),
+                        "domain": str(r.get("domain", "") or ""),
+                        "field": str(r.get("field", "") or ""),
+                        "subfield": str(r.get("subfield", "") or ""),
+                        "topic": str(r.get("topic", "") or ""),
+                        "value": int(r.get("value", 1) or 1)
+                    })
+        except Exception as e:
+            print(f"[get_academic_profile] Error leyendo thematic_evolution_investigador: {e}")
+
+    # Verificar si existe reporte IA para este autor
+    base_dir_app = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    reports_dir_app = os.path.join(base_dir_app, "reports")
+    safe_name_inv = "".join([c if c.isalnum() else "_" for c in final_name])
+    has_ai_report = False
+    if os.path.exists(reports_dir_app):
+        has_ai_report = any(
+            f.startswith("report_inv_") and (safe_name_inv[:15].lower() in f.lower()) and f.endswith(".html")
+            for f in os.listdir(reports_dir_app)
+        )
 
     # 6. Resumen Zero-Join de Citas & Autocitas
     citations_summary = {
@@ -661,9 +829,16 @@ def get_academic_profile(
         "annual_trajectory": annual_trajectory,
         "top_topics": top_topics,
         "sunburst_data": sunburst_data,
+        "sunburst_trace": locals().get("sunburst_trace"),
         "keywords": keywords,
         "sdg_matrix": sdg_matrix,
-        "citations_summary": citations_summary
+        "citations_summary": citations_summary,
+        "featured_works": locals().get("featured_works", {"most_cited": [], "most_recent": []}),
+        "collaboration_countries": locals().get("collaboration_countries", []),
+        "dois_list": locals().get("dois_list", []),
+        "oa_list": locals().get("oa_list", []),
+        "thematic_evolution": locals().get("thematic_evolution", []),
+        "has_ai_report": has_ai_report
     })
 
     return {
@@ -672,11 +847,75 @@ def get_academic_profile(
     }
 
 
+@router.get("/umap")
+def get_academic_umap(
+    name: Optional[str] = Query(None, description="Nombre del investigador a destacar"),
+    entity: Optional[str] = Query(None, description="Nombre de la facultad o dependencia"),
+    institution: Optional[str] = Query("UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", description="Institución"),
+    view_mode: Optional[str] = Query("capacidad_instalada")
+) -> Dict[str, Any]:
+    """
+    Retorna las coordenadas UMAP y métricas relacionales para comparar al investigador:
+    1. Frente a sus pares en su Entidad / Facultad (ej: Facultad de Ciencias)
+    2. Frente a sus pares en su Institución completa (ej: UNAM)
+    """
+    selected_name = str(name).strip().upper() if name else ""
+
+    def _format_umap_df(df):
+        if df is None or df.empty:
+            return []
+        df_c = df.copy()
+        # Normalización de métricas
+        points = []
+        for _, r in df_c.iterrows():
+            ac_name = str(r.get("academic_name", "")).strip().upper()
+            is_sel = bool(selected_name and (selected_name == ac_name or selected_name in ac_name or ac_name in selected_name))
+            points.append({
+                "name": str(r.get("academic_name", "")),
+                "x": round(float(r.get("umap_x", 0.0)), 4),
+                "y": round(float(r.get("umap_y", 0.0)), 4),
+                "num_documents": int(r.get("num_documents", 0) or 0),
+                "fwci_avg": round(float(r.get("fwci_avg", 1.0) or 1.0), 2),
+                "pct_top_10": round(float(r.get("pct_top_10", 0.0) or 0.0), 1),
+                "pct_1": round(float(r.get("pct_1", 0.0) or 0.0), 1),
+                "percentile_avg": round(float(r.get("percentile_avg", 50.0) or 50.0), 1),
+                "citations": int(r.get("citations", 0) or 0),
+                "is_selected": is_sel
+            })
+        return points
+
+    # 1. Dependencia / Facultad
+    entity_points = []
+    if entity:
+        df_ent = load_cached_data("umap_investigadores.parquet", entity_name=entity, institution_name=institution, view_mode=view_mode)
+        entity_points = _format_umap_df(df_ent)
+
+    # 2. Institución completa
+    inst_points = []
+    df_inst = load_cached_data("umap_investigadores.parquet", institution_name=institution, view_mode=view_mode)
+    inst_points = _format_umap_df(df_inst)
+
+    return {
+        "status": "success",
+        "entity": {
+            "name": entity or "Facultad / Entidad",
+            "count": len(entity_points),
+            "points": entity_points
+        },
+        "institution": {
+            "name": institution or "Institución",
+            "count": len(inst_points),
+            "points": inst_points
+        }
+    }
+
+
+
 @router.get("/works")
 def get_academic_works(
     name: Optional[str] = Query(None),
     orcid: Optional[str] = Query(None),
-    limit: int = Query(10, ge=1, le=200),
+    limit: int = Query(10, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     year: Optional[int] = Query(None),
     oa_status: Optional[str] = Query(None),

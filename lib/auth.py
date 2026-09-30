@@ -14,30 +14,34 @@ ORCID_REDIRECT_URI = os.getenv("ORCID_REDIRECT_URI")
 ORCID_AUTH_URL = "https://orcid.org/oauth/authorize"
 ORCID_TOKEN_URL = "https://orcid.org/oauth/token"
 
-def get_orcid_login_url():
+def get_orcid_login_url(redirect_uri=None, state=None):
     """Genera la URL de redireccionamiento para iniciar el flujo OAuth con ORCID."""
-    if not ORCID_CLIENT_ID or not ORCID_REDIRECT_URI:
+    if not ORCID_CLIENT_ID:
         return None
         
+    final_redirect = redirect_uri or ORCID_REDIRECT_URI or "https://dinamica1.fciencias.unam.mx/infotlachia/"
     params = {
         "client_id": ORCID_CLIENT_ID,
         "response_type": "code",
         "scope": "/authenticate",
-        "redirect_uri": ORCID_REDIRECT_URI
+        "redirect_uri": final_redirect
     }
+    if state:
+        params["state"] = state
     return f"{ORCID_AUTH_URL}?{urllib.parse.urlencode(params)}"
 
-def exchange_code_for_token(code):
+def exchange_code_for_token(code, redirect_uri=None):
     """Intercambia el código de autorización por un token de acceso y el ORCID ID del usuario."""
     if not code:
         return None
         
+    final_redirect = redirect_uri or ORCID_REDIRECT_URI or "https://dinamica1.fciencias.unam.mx/infotlachia/"
     payload = {
         "client_id": ORCID_CLIENT_ID,
         "client_secret": ORCID_CLIENT_SECRET,
         "grant_type": "authorization_code",
         "code": code,
-        "redirect_uri": ORCID_REDIRECT_URI
+        "redirect_uri": final_redirect
     }
     
     headers = {"Accept": "application/json"}
@@ -161,12 +165,13 @@ def init_auth_session():
     if "authenticated_user" not in st.session_state:
         st.session_state.authenticated_user = None
 
-def handle_orcid_callback():
+def handle_orcid_callback(redirect_uri=None):
     """
     Procesa el callback de ORCID si detecta el parámetro 'code' en la URL.
     Debe llamarse al inicio del script de Streamlit.
     """
     import streamlit.components.v1 as components
+    final_redirect = redirect_uri or ORCID_REDIRECT_URI or "https://dinamica1.fciencias.unam.mx/infotlachia/"
     query_params = st.query_params
     if "code" in query_params:
         # Extraer code y state limpiamente (soportando tanto str como list)
@@ -223,7 +228,7 @@ def handle_orcid_callback():
 
         # Evitar procesar el mismo código varias veces si se refresca la página
         if not st.session_state.authenticated_user:
-            token_data = exchange_code_for_token(code)
+            token_data = exchange_code_for_token(code, redirect_uri=final_redirect)
             if token_data:
                 orcid_val = token_data.get("orcid")
                 name_val = token_data.get("name") or ""

@@ -17,7 +17,8 @@ import {
   Sparkles,
   ChevronDown,
   Sun,
-  Moon
+  Moon,
+  Info
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore.js';
 import { LANGUAGES } from '../../i18n/index.js';
@@ -35,6 +36,11 @@ export function Navbar() {
 
   const [langMenuOpen, setLangMenuOpen] = useState(false);
 
+  const isAdmin = Boolean(
+    userSession?.isAuthenticated &&
+    (userSession?.is_admin || userSession?.role === 'super_admin' || userSession?.role === 'admin_institucional' || userSession?.role === 'admin')
+  );
+
   const navItems = [
     // Pestaña Inicio desactivada/oculta a solicitud
     // { id: 'home', label: t.tabs?.home || 'Inicio', icon: Sparkles, controlId: 'CTL-M07-004' },
@@ -42,9 +48,10 @@ export function Navbar() {
     { id: 'panorama', label: t.tabs.panorama, icon: Building2, controlId: 'CTL-M07-005' },
     { id: 'researchers', label: t.tabs.researchers, icon: Users, controlId: 'CTL-M07-006' },
     { id: 'maps', label: t.tabs.maps, icon: Compass, controlId: 'CTL-M07-007' },
+    { id: 'assistant', label: t.tabs.assistant, icon: Bot, isAi: true, controlId: 'CTL-M07-010' },
     { id: 'mySpace', label: t.tabs.mySpace, icon: UserCheck, controlId: 'CTL-M07-008' },
-    { id: 'governance', label: t.tabs.governance, icon: ShieldCheck, controlId: 'CTL-M07-009' },
-    { id: 'assistant', label: t.tabs.assistant, icon: Bot, isAi: true, controlId: 'CTL-M07-010' }
+    ...(isAdmin ? [{ id: 'governance', label: t.tabs.governance, icon: ShieldCheck, controlId: 'CTL-M07-009' }] : []),
+    { id: 'about', label: t.tabs?.about || 'Acerca de', icon: Info, controlId: 'CTL-M07-011' }
   ];
 
   const currentLangObj = LANGUAGES.find((l) => l.code === language) || LANGUAGES[0];

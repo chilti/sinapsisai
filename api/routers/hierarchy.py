@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from fastapi import APIRouter, Query, HTTPException
 from api.db import get_cached_hierarchy, get_neo4j_store, get_clickhouse_client
+from dashboard_analytics import load_cached_data, ISO2_TO_ISO3
 
 router = APIRouter(prefix="/api/hierarchy", tags=["Jerarquía Institucional"])
 
@@ -275,7 +276,7 @@ def get_hierarchy_metrics(
                 WHERE notEmpty(topic)
                 GROUP BY topic
                 ORDER BY freq DESC
-                LIMIT 35
+                LIMIT 150
             """).result_rows
             keywords_list = [{"keyword": str(t[0]), "freq": int(t[1])} for t in topic_rows]
             
@@ -390,13 +391,16 @@ def get_hierarchy_metrics(
                 top_t = clean_t.sort_values('value', ascending=False).head(70)
                 try:
                     import plotly.express as px
-                    fig_sb = px.sunburst(top_t, path=['domain', 'field', 'subfield', 'topic'], values='value')
+                    fig_sb = px.sunburst(top_t, path=['domain', 'field', 'subfield', 'topic'], values='value', color='value', color_continuous_scale='Blues')
                     tr = fig_sb.data[0]
+                    colors_list = [float(c) for c in tr.marker.colors] if (hasattr(tr, "marker") and hasattr(tr.marker, "colors") and tr.marker.colors is not None) else [int(v) for v in tr.values]
                     sunburst_trace = {
                         "type": "sunburst",
+                        "branchvalues": "total",
                         "labels": tr.labels.tolist() if hasattr(tr.labels, "tolist") else list(tr.labels),
                         "parents": tr.parents.tolist() if hasattr(tr.parents, "tolist") else list(tr.parents),
                         "values": [int(v) for v in tr.values],
+                        "colors": colors_list,
                         "ids": tr.ids.tolist() if hasattr(tr.ids, "tolist") else list(tr.ids)
                     }
                 except Exception:
@@ -461,6 +465,89 @@ def get_hierarchy_metrics(
     df_kw = load_cached_data('keywords_institucion.parquet', entity_name=target_entity, institution_name=institution, view_mode=view_mode)
     df_papers = None if is_mexico else load_cached_data('papers_institucion.parquet', entity_name=target_entity, institution_name=institution, view_mode=view_mode)
 
+    # Fallback para entidades de 4º nivel (C3, unidades foráneas) sin parquet precomputado
+    if (df_tot is None or df_tot.empty) and not is_mexico:
+        try:
+            from api.routers.academics import _get_academics_from_padron
+            inv_list = _get_academics_from_padron(target_entity, institution)
+            if inv_list:
+                inv_names = [a["name"] for a in inv_list]
+                base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                duck_path = os.path.join(base_dir, "data", "analytics_cache.duckdb")
+                if os.path.exists(duck_path):
+                    import duckdb
+                    con_duck = duckdb.connect(duck_path, read_only=True)
+                    placeholders = ",".join(["?"] * len(inv_names))
+                    
+                    # 1. Total sintetizado
+                    agg_df = con_duck.execute(f"""
+                        SELECT 
+                            count(DISTINCT db_academic_name) as official_snii_count,
+                            sum(num_documents) as num_documents,
+                            sum(citations) as citations,
+                            round(avg(fwci_avg), 2) as fwci_avg,
+                            round(avg(percentile_avg), 1) as percentile_avg,
+                            round(avg(pct_top_10), 1) as pct_top_10,
+                            round(avg(pct_1), 1) as pct_1,
+                            round(avg(pct_open_access), 1) as pct_open_access,
+                            round(avg(pct_oa_gold), 1) as pct_oa_gold,
+                            round(avg(pct_oa_green), 1) as pct_oa_green,
+                            round(avg(pct_oa_hybrid), 1) as pct_oa_hybrid,
+                            round(avg(pct_oa_bronze), 1) as pct_oa_bronze,
+                            round(avg(pct_oa_closed), 1) as pct_oa_closed,
+                            max(h_index) as h_index,
+                            round(avg(velocity_avg), 2) as velocity_avg,
+                            sum(recent_cites_3yr) as recent_cites_3yr,
+                            round(avg(pct_international), 1) as pct_international,
+                            sum(apc_paid_usd) as apc_paid_usd,
+                            sum(apc_list_usd) as apc_list_usd,
+                            round(avg(gini_topics), 3) as gini_topics,
+                            max(domain_diversity) as domain_diversity,
+                            sum(unique_topics) as unique_topics,
+                            'Physical Sciences' as top_domain,
+                            'Interdisciplinary Science' as top_topic
+                        FROM investigador_total
+                        WHERE db_academic_name IN ({placeholders})
+                    """, inv_names).df()
+                    
+                    if not agg_df.empty and agg_df.iloc[0]["num_documents"] is not None:
+                        df_tot = agg_df
+
+                    # 2. Anual sintetizado
+                    if df_ann is None or df_ann.empty:
+                        ann_df = con_duck.execute(f"""
+                            SELECT 
+                                year,
+                                sum(num_documents) as num_documents,
+                                sum(citations) as citations,
+                                round(avg(fwci_avg), 2) as fwci_avg,
+                                round(avg(pct_open_access), 1) as pct_open_access
+                            FROM investigador_annual
+                            WHERE db_academic_name IN ({placeholders})
+                            GROUP BY year
+                            ORDER BY year ASC
+                        """, inv_names).df()
+                        if not ann_df.empty:
+                            df_ann = ann_df
+
+                    # 3. Papers sintetizados
+                    if df_papers is None or df_papers.empty:
+                        papers_df = con_duck.execute(f"""
+                            SELECT 
+                                Title, year, citations, fwci, doi, openalex_url, topic, author_names,
+                                is_in_top_10_percent, is_in_top_1_percent, oa_status
+                            FROM papers_profesor
+                            WHERE db_academic_name IN ({placeholders})
+                            ORDER BY citations DESC
+                            LIMIT 500
+                        """, inv_names).df()
+                        if not papers_df.empty:
+                            df_papers = papers_df
+
+                    con_duck.close()
+        except Exception as e:
+            print(f"[get_hierarchy_metrics] Error sintetizando métricas de 4º nivel: {e}")
+
     # 2. Conteo oficial SNII
     official_counts = load_official_snii_counts()
     count = (
@@ -494,7 +581,7 @@ def get_hierarchy_metrics(
     indexed_docs = clean_val(row.get("num_documents"), 0)
     total_cits = clean_val(row.get("citations"), 0)
     cits_per_paper = clean_val(row.get("citations_per_paper")) or (round(total_cits / max(1, indexed_docs), 2) if indexed_docs > 0 else 0.0)
-    official_snii = count or clean_val(row.get("official_snii_count")) or clean_val(row.get("total_academicos"), 0)
+    official_snii = clean_val(row.get("official_snii_count")) or count or clean_val(row.get("total_academicos"), 0)
 
     kpis_academic_ids = {
         "pct_academic_orcid": round(clean_val(row.get("pct_academic_orcid"), 0.0), 1),
@@ -704,13 +791,17 @@ def get_hierarchy_metrics(
         top_t = clean_t.sort_values('value', ascending=False).head(70)
         try:
             import plotly.express as px
-            fig_sb = px.sunburst(top_t, path=['domain', 'field', 'subfield', 'topic'], values='value')
+            fig_sb = px.sunburst(top_t, path=['domain', 'field', 'subfield', 'topic'], values='value', color='value', color_continuous_scale='Blues')
             tr = fig_sb.data[0]
+            colors_list = [float(c) for c in tr.marker.colors] if (hasattr(tr, "marker") and hasattr(tr.marker, "colors") and tr.marker.colors is not None) else [int(clean_val(v, 1)) for v in tr.values]
             sunburst_trace = {
+                "type": "sunburst",
+                "branchvalues": "total",
                 "ids": [str(x) for x in tr.ids] if tr.ids is not None else [],
                 "labels": [str(x) for x in tr.labels] if tr.labels is not None else [],
                 "parents": [str(x) for x in tr.parents] if tr.parents is not None else [],
-                "values": [int(clean_val(v, 1)) for v in tr.values] if tr.values is not None else []
+                "values": [int(clean_val(v, 1)) for v in tr.values] if tr.values is not None else [],
+                "colors": colors_list
             }
         except Exception:
             pass
@@ -726,7 +817,7 @@ def get_hierarchy_metrics(
     # 11. Vocabulario Científico (Keywords)
     keywords_list = []
     if df_kw is not None and not df_kw.empty:
-        top_kw = df_kw.sort_values('freq', ascending=False).head(35)
+        top_kw = df_kw.sort_values('freq', ascending=False).head(150)
         for _, r in top_kw.iterrows():
             keywords_list.append({
                 "keyword": str(r.get("keyword")),
@@ -837,6 +928,94 @@ def get_hierarchy_metrics(
         "Emérito": round(official_snii * 0.02) if official_snii else 8
     }
 
+    # 14. Países Colaboradores (Choropleth)
+    collaboration_countries = []
+    if is_mexico:
+        try:
+            ch = get_clickhouse_client()
+            c_rows = ch.query("""
+                SELECT arrayJoin(all_country_codes) as c_code, count() as cnt
+                FROM works_seed_mexico
+                WHERE length(all_country_codes) > 1
+                GROUP BY c_code
+                HAVING c_code != 'MX' AND c_code != ''
+                ORDER BY cnt DESC
+                LIMIT 60
+            """).result_rows
+            for r in c_rows:
+                iso2 = str(r[0]).upper()
+                iso3 = ISO2_TO_ISO3.get(iso2, iso2)
+                collaboration_countries.append({
+                    "iso_a2": iso2,
+                    "iso_a3": iso3,
+                    "name": iso2,
+                    "papers": int(r[1])
+                })
+        except Exception as e:
+            print(f"[get_hierarchy_metrics] Error en países colaboradores México: {e}")
+    else:
+        if df_papers is not None and not df_papers.empty:
+            c_col = "countries" if "countries" in df_papers.columns else ("all_country_codes" if "all_country_codes" in df_papers.columns else None)
+            if c_col:
+                cnt_map = {}
+                for val in df_papers[c_col].dropna():
+                    items = val if isinstance(val, (list, np.ndarray)) else [val]
+                    for c in items:
+                        c_str = str(c).strip().upper()
+                        if c_str and c_str not in ["MX", "MEX", "NONE", "NAN", ""]:
+                            cnt_map[c_str] = cnt_map.get(c_str, 0) + 1
+                sorted_cnt = sorted(cnt_map.items(), key=lambda x: x[1], reverse=True)[:60]
+                for iso2, p_count in sorted_cnt:
+                    iso3 = ISO2_TO_ISO3.get(iso2, iso2)
+                    collaboration_countries.append({
+                        "iso_a2": iso2,
+                        "iso_a3": iso3,
+                        "name": iso2,
+                        "papers": p_count
+                    })
+
+    # 15. Evolución Histórica de Perfiles de Conocimiento (thematic_evolution_institucion.parquet)
+    thematic_evolution = []
+    df_evol_inst = load_cached_data("thematic_evolution_institucion.parquet", entity_name=target_entity, institution_name=institution, view_mode=view_mode)
+    if df_evol_inst is not None and not df_evol_inst.empty:
+        try:
+            for _, r in df_evol_inst.iterrows():
+                thematic_evolution.append({
+                    "year": int(r.get("year", 0)),
+                    "domain": str(r.get("domain", "") or ""),
+                    "field": str(r.get("field", "") or ""),
+                    "subfield": str(r.get("subfield", "") or ""),
+                    "topic": str(r.get("topic", "") or ""),
+                    "value": int(r.get("value", 1) or 1)
+                })
+        except Exception as e:
+            print(f"[get_hierarchy_metrics] Error leyendo thematic_evolution_institucion: {e}")
+
+    # 16. DOIs y OpenAlex IDs para Mapa Semántico WebGL
+    dois_list = []
+    oa_list = []
+    if df_papers is not None and not df_papers.empty:
+        doi_c = "doi" if "doi" in df_papers.columns else ("DOI" if "DOI" in df_papers.columns else None)
+        if doi_c:
+            dois_list = [
+                d.replace("https://doi.org/", "").strip()
+                for d in df_papers[doi_c].dropna().astype(str).tolist()
+                if d and "orcid-work" not in str(d)
+            ][:5000]
+        if "paper_id" in df_papers.columns:
+            oa_list = [str(d).strip() for d in df_papers["paper_id"].dropna().tolist() if d][:5000]
+
+    # 17. Verificar existencia de Reporte IA en disco
+    base_dir_app = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    reports_dir_app = os.path.join(base_dir_app, "reports")
+    safe_target = "".join([c if c.isalnum() else "_" for c in target_entity])
+    has_ai_report = False
+    if os.path.exists(reports_dir_app):
+        has_ai_report = any(
+            f.startswith("report_inst_") and (safe_target[:14].lower() in f.lower()) and f.endswith(".html")
+            for f in os.listdir(reports_dir_app)
+        )
+
     return {
         "institution": institution,
         "dependency": dependency,
@@ -857,7 +1036,12 @@ def get_hierarchy_metrics(
         "default_year": default_year,
         "available_years": available_years,
         "available_ods": available_ods,
-        "snii_distribution": snii_dist
+        "snii_distribution": snii_dist,
+        "collaboration_countries": collaboration_countries,
+        "thematic_evolution": thematic_evolution,
+        "dois_list": dois_list,
+        "oa_list": oa_list,
+        "has_ai_report": has_ai_report
     }
 
 @router.get("/papers")

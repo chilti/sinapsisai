@@ -96,6 +96,11 @@ def api_info():
         ]
     }
 
+# Montar directorio de estáticos (CoAuthra, mapas, etc.)
+STATIC_DIR = BASE_DIR / "static"
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static_dir")
+
 # Servir producción de React (frontend/dist) si está disponible
 FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
 if FRONTEND_DIST.exists() and (FRONTEND_DIST / "index.html").exists():

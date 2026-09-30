@@ -327,15 +327,29 @@ def _fix_enc(s: str) -> str:
 @st.cache_data(show_spinner=False, ttl=86400)
 def load_hierarchy():
     """Carga jerarquía instituciones -> dependencias -> subdependencias
-    exclusivamente desde el Padrón SNII 2025 (hoja 4T_2025).
+    exclusivamente desde el Padrón SNII 2025 (hoja 4T_2025), resolviendo
+    limpiamente el 4º nivel (Departamento/Centro) mediante promoción canónica.
     Esta fuente contiene únicamente instituciones mexicanas.
     """
+    json_path = os.path.join(CACHE_DIR, 'hierarchy.json')
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                unam = data.get("UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)", {})
+                cic_subs = unam.get("COORDINACION DE LA INVESTIGACION CIENTIFICA", [])
+                if data and "CENTRO DE CIENCIAS DE LA COMPLEJIDAD" in cic_subs:
+                    return data
+        except Exception as e:
+            print(f"[load_hierarchy] Error leyendo hierarchy.json: {e}")
+
     # Ruta al Excel del padrón 2025 (fuente de verdad)
     excel_paths = [
         os.path.join(BASE_PATH, 'data', 'Investigadores_vigentes_2025.xlsx'),
     ]
     sheet_name = '4T_2025 (44,794)'
     hierarchy = {}
+    INVALID_VALS = {'', 'NAN', 'NO APLICA', 'SIN INFORMACIÓN', 'SIN INFORMACION', 'NINGUNO', 'CIUDAD UNIVERSITARIA', 'SIN INFORMACIÓN COMISIÓN', 'SIN INFORMACION COMISION'}
 
     for excel_path in excel_paths:
         if not os.path.exists(excel_path):
@@ -346,11 +360,13 @@ def load_hierarchy():
             inst_col = 'INSTITUCION DE ACREDITACION'
             dep_col  = 'DEPENDENCIA DE ACREDITACIÓN'
             sub_col  = 'SUBDEPENDENCIA DE ACREDITACIÓN'
+            depto_col = 'DEPARTAMENTO DE ACREDITACIÓN'
 
             for _, row in df.iterrows():
                 inst = _fix_enc(str(row.get(inst_col, '') or '').strip())
                 dep  = _fix_enc(str(row.get(dep_col,  '') or '').strip())
                 sub  = _fix_enc(str(row.get(sub_col,  '') or '').strip())
+                depto = _fix_enc(str(row.get(depto_col, '') or '').strip()) if depto_col in df.columns else ''
 
                 # Omitir filas sin institución real
                 if not inst or inst.upper() in ('SIN INSTITUCION', 'NAN', ''):
@@ -359,12 +375,27 @@ def load_hierarchy():
                 if inst not in hierarchy:
                     hierarchy[inst] = {}
 
-                dep_key = dep if dep and dep.upper() not in ('NAN', '', 'NO APLICA', 'SIN INFORMACIÓN', 'SIN INFORMACION') else inst
+                dep_key = dep if dep and dep.upper() not in INVALID_VALS else inst
                 if dep_key not in hierarchy[inst]:
                     hierarchy[inst][dep_key] = set()
 
-                if sub and sub.upper() not in ('NAN', '', 'NO APLICA', 'SIN INFORMACIÓN', 'SIN INFORMACION'):
-                    hierarchy[inst][dep_key].add(sub)
+                sub_valid = bool(sub and sub.upper() not in INVALID_VALS)
+                depto_valid = bool(depto and depto.upper() not in INVALID_VALS)
+
+                if depto_valid:
+                    if (not sub_valid) or (sub.upper() == dep_key.upper()):
+                        # Promoción canónica directa al 3er nivel (ej. CENTRO DE CIENCIAS DE LA COMPLEJIDAD)
+                        hierarchy[inst][dep_key].add(depto)
+                    else:
+                        # Subdependencia válida distinta de dependencia (ej. Instituto de Ingeniería)
+                        hierarchy[inst][dep_key].add(sub)
+                        if depto.upper() != sub.upper() and len(depto) > 3:
+                            hierarchy[inst][dep_key].add(f"{sub} — {depto}")
+                elif sub_valid:
+                    if sub.upper() == dep_key.upper():
+                        hierarchy[inst][dep_key].add(f"{sub} (Sede Central)")
+                    else:
+                        hierarchy[inst][dep_key].add(sub)
 
             # Convertir sets a listas ordenadas
             for inst in hierarchy:
@@ -373,15 +404,23 @@ def load_hierarchy():
 
             # Agregador Nacional
             hierarchy["MÉXICO"] = {inst: [] for inst in hierarchy.keys() if inst != "MÉXICO"}
-            print(f"[load_hierarchy] Jerarquía cargada desde padrón 2025: {len(hierarchy)-1} instituciones mexicanas.")
+            print(f"[load_hierarchy] Jerarquía cargada y enriquecida con 4º nivel desde padrón 2025: {len(hierarchy)-1} instituciones.")
+
+            # Guardar cache rápido en disco
+            try:
+                os.makedirs(CACHE_DIR, exist_ok=True)
+                with open(json_path, 'w', encoding='utf-8') as f:
+                    json.dump(hierarchy, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                print(f"[load_hierarchy] Error guardando hierarchy.json: {e}")
+
             return hierarchy
 
         except Exception as e:
             print(f"[load_hierarchy] Error procesando {excel_path}: {e}")
             continue
 
-    # Fallback a hierarchy.json en cache si el Excel no está disponible
-    json_path = os.path.join(CACHE_DIR, 'hierarchy.json')
+    # Fallback si el Excel no está disponible
     if os.path.exists(json_path):
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
