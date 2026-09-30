@@ -35,16 +35,27 @@ SDG_INFO = {
 }
 
 def clean_val(val, default=0):
-    """Sanitiza números flotantes o enteros para JSON serializable."""
+    """Sanitiza números flotantes o enteros para JSON serializable, manejando pd.NA y NaN."""
     if val is None:
         return default
+    try:
+        if pd.isna(val):
+            return default
+    except Exception:
+        pass
     if isinstance(val, (float, np.floating)):
         if np.isnan(val) or np.isinf(val):
             return default
         return float(val)
     if isinstance(val, (int, np.integer)):
         return int(val)
-    return val
+    try:
+        f = float(val)
+        if np.isnan(f) or np.isinf(f):
+            return default
+        return int(f) if f.is_integer() else f
+    except (ValueError, TypeError):
+        return default
 
 def extract_and_format_authors(p) -> str:
     """Extrae y formatea lista de autores de manera segura sin evaluar verdad booleana en numpy arrays."""
@@ -160,7 +171,10 @@ def get_hierarchy_metrics(
     """
     from dashboard_analytics import load_cached_data, load_official_snii_counts
     
-    target_entity = subdependency or dependency or institution
+    dep_val = dependency if (isinstance(dependency, str) and dependency.strip()) else None
+    sub_val = subdependency if (isinstance(subdependency, str) and subdependency.strip()) else None
+    inst_val = institution if (isinstance(institution, str) and institution.strip()) else "MÉXICO"
+    target_entity = sub_val or dep_val or inst_val
     
     is_mexico = str(institution).upper() in ["MEXICO", "MÉXICO"] or str(target_entity).upper() in ["MEXICO", "MÉXICO"]
     
@@ -1008,7 +1022,7 @@ def get_hierarchy_metrics(
     # 17. Verificar existencia de Reporte IA en disco
     base_dir_app = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     reports_dir_app = os.path.join(base_dir_app, "reports")
-    safe_target = "".join([c if c.isalnum() else "_" for c in target_entity])
+    safe_target = "".join([c if c.isalnum() else "_" for c in str(target_entity or "")])
     has_ai_report = False
     if os.path.exists(reports_dir_app):
         has_ai_report = any(
@@ -1059,28 +1073,37 @@ def get_hierarchy_papers(
     """Endpoint paginado y filtrable para explorar las publicaciones de la entidad."""
     from dashboard_analytics import load_cached_data
     
-    target_entity = subdependency or dependency or institution
+    dep_val = dependency if (isinstance(dependency, str) and dependency.strip()) else None
+    sub_val = subdependency if (isinstance(subdependency, str) and subdependency.strip()) else None
+    inst_val = institution if (isinstance(institution, str) and institution.strip()) else "MÉXICO"
+    target_entity = sub_val or dep_val or inst_val
     is_mexico = str(institution).upper() in ["MEXICO", "MÉXICO"] or str(target_entity).upper() in ["MEXICO", "MÉXICO"]
     
+    limit_val = int(limit) if (isinstance(limit, (int, float)) and not isinstance(limit, bool) and limit > 0) else 50
+    offset_val = int(offset) if (isinstance(offset, (int, float)) and not isinstance(offset, bool) and offset >= 0) else 0
+    year_val = int(year) if (isinstance(year, (int, float)) and not isinstance(year, bool) and int(year) > 0) else None
+    ods_val = str(ods).strip() if (isinstance(ods, str) and ods.strip() and ods.strip() != "Todos") else None
+    search_val = str(search).strip() if (isinstance(search, str) and search.strip()) else None
+
     if is_mexico:
         try:
             ch = get_clickhouse_client()
             where_clauses = ["1=1"]
-            params: Dict[str, Any] = {"limit": limit, "offset": offset}
+            params: Dict[str, Any] = {"limit": limit_val, "offset": offset_val}
             
-            if year is not None and year > 0:
+            if year_val is not None:
                 where_clauses.append("publication_year = %(year)s")
-                params["year"] = int(year)
+                params["year"] = year_val
                 
-            if ods and ods != "Todos":
-                m = re.search(r'\d+', str(ods))
+            if ods_val:
+                m = re.search(r'\d+', ods_val)
                 if m:
                     sdg_num = int(m.group())
                     params["sdg_url"] = f"https://metadata.un.org/sdg/{sdg_num}"
                     where_clauses.append("has(sdg_ids, %(sdg_url)s)")
                     
-            if search and search.strip():
-                params["search"] = f"%{search.strip()}%"
+            if search_val:
+                params["search"] = f"%{search_val}%"
                 where_clauses.append("(ilike(title, %(search)s) OR ilike(topic, %(search)s))")
                 
             where_sql = " AND ".join(where_clauses)
@@ -1144,21 +1167,21 @@ def get_hierarchy_papers(
         
     df = df_papers.copy()
     
-    if year is not None:
-        df = df[df['year'] == year]
+    if year_val is not None:
+        df = df[df['year'] == year_val]
         
-    if ods and ods != "Todos":
+    if ods_val:
         if 'ODS_Nombre' in df.columns:
-            df = df[df['ODS_Nombre'].str.contains(re.escape(ods), case=False, na=False)]
+            df = df[df['ODS_Nombre'].str.contains(re.escape(ods_val), case=False, na=False)]
             
-    if search:
-        s = search.lower()
+    if search_val:
+        s = search_val.lower()
         title_mask = df['Title'].str.lower().str.contains(s, na=False) if 'Title' in df.columns else False
         source_mask = df['Source'].str.lower().str.contains(s, na=False) if 'Source' in df.columns else False
         df = df[title_mask | source_mask]
         
     total_matches = len(df)
-    df_page = df.sort_values(by=['citations', 'year'], ascending=[False, False]).iloc[offset:offset+limit]
+    df_page = df.sort_values(by=['citations', 'year'], ascending=[False, False]).iloc[offset_val:offset_val+limit_val]
     
     results = []
     for _, p in df_page.iterrows():
