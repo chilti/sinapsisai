@@ -77,6 +77,13 @@ export const apiClient = {
     const res = await api.get('/academics/works', { params });
     return res.data;
   },
+  getAcademicUmap: async (name, entity, institution, viewMode = 'capacidad_instalada') => {
+    const params = { name, view_mode: viewMode };
+    if (entity) params.entity = entity;
+    if (institution) params.institution = institution;
+    const res = await api.get('/academics/umap', { params });
+    return res.data;
+  },
 
   // Citas Zero-Join
   getCitationsSummary: async (orcid, name) => {

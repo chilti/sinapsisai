@@ -859,7 +859,19 @@ def get_academic_umap(
     1. Frente a sus pares en su Entidad / Facultad (ej: Facultad de Ciencias)
     2. Frente a sus pares en su Institución completa (ej: UNAM)
     """
+    import unicodedata
+    import re
+    from api.constants import CACHE_DIR
+    import pandas as pd
+
+    def _normalize_tokens(s: str) -> set:
+        if not s:
+            return set()
+        s_clean = ''.join(c for c in unicodedata.normalize('NFD', str(s)) if unicodedata.category(c) != 'Mn')
+        return set(re.findall(r'\b[A-Z0-9]{2,}\b', s_clean.upper()))
+
     selected_name = str(name).strip().upper() if name else ""
+    selected_tokens = _normalize_tokens(name)
 
     def _format_umap_df(df):
         if df is None or df.empty:
@@ -868,8 +880,18 @@ def get_academic_umap(
         # Normalización de métricas
         points = []
         for _, r in df_c.iterrows():
-            ac_name = str(r.get("academic_name", "")).strip().upper()
-            is_sel = bool(selected_name and (selected_name == ac_name or selected_name in ac_name or ac_name in selected_name))
+            ac_raw = str(r.get("academic_name", "")).strip().upper()
+            is_sel = False
+            if selected_name and ac_raw:
+                if selected_name == ac_raw or selected_name in ac_raw or ac_raw in selected_name:
+                    is_sel = True
+                elif selected_tokens:
+                    row_tokens = _normalize_tokens(ac_raw)
+                    if row_tokens:
+                        common = selected_tokens & row_tokens
+                        if len(common) >= min(len(selected_tokens), len(row_tokens)) or len(common) >= 2:
+                            is_sel = True
+
             points.append({
                 "name": str(r.get("academic_name", "")),
                 "x": round(float(r.get("umap_x", 0.0)), 4),
@@ -884,16 +906,35 @@ def get_academic_umap(
             })
         return points
 
-    # 1. Dependencia / Facultad
+    # 1. Institución completa
+    inst_points = []
+    df_inst = None
+    if institution:
+        df_inst = load_cached_data("umap_investigadores.parquet", institution_name=institution, view_mode=view_mode)
+
+    if df_inst is None or df_inst.empty:
+        # Fallback a leer parquet nacional
+        umap_path = CACHE_DIR / "umap_investigadores.parquet"
+        if umap_path.exists():
+            try:
+                df_all = pd.read_parquet(umap_path)
+                if institution:
+                    df_inst = df_all[df_all['institutions'].astype(str).str.contains(institution, case=False, na=False)]
+                if df_inst is None or df_inst.empty:
+                    df_inst = df_all.head(3000)
+            except Exception as e:
+                logger.warning(f"Error cargando fallback parquet para institución: {e}")
+
+    inst_points = _format_umap_df(df_inst)
+
+    # 2. Dependencia / Facultad
     entity_points = []
     if entity:
         df_ent = load_cached_data("umap_investigadores.parquet", entity_name=entity, institution_name=institution, view_mode=view_mode)
+        if (df_ent is None or df_ent.empty) and df_inst is not None and not df_inst.empty and 'entities' in df_inst.columns:
+            # Fallback a filtrar dentro del universo institucional por coincidencia de subcadena
+            df_ent = df_inst[df_inst['entities'].astype(str).str.contains(entity, case=False, na=False)]
         entity_points = _format_umap_df(df_ent)
-
-    # 2. Institución completa
-    inst_points = []
-    df_inst = load_cached_data("umap_investigadores.parquet", institution_name=institution, view_mode=view_mode)
-    inst_points = _format_umap_df(df_inst)
 
     return {
         "status": "success",

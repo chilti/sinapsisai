@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Plot from 'react-plotly.js';
 import { Target, Sparkles, Filter } from 'lucide-react';
+import { apiClient } from '../../api/client';
 
 const METRIC_OPTIONS = [
   { label: 'Impacto (FWCI)', key: 'fwci_avg', defaultScale: 2.0 },
@@ -23,17 +24,10 @@ export default function UmapPerformanceMap({
     let isMounted = true;
     setLoading(true);
 
-    const params = new URLSearchParams({
-      name: academicName,
-      institution: institutionName,
-      view_mode: viewMode
-    });
-    if (entityName) params.append('entity', entityName);
-
-    fetch(`/api/academics/umap?${params.toString()}`)
-      .then(res => res.json())
+    const effectiveInstitution = institutionName || "UNIVERSIDAD NACIONAL AUTONOMA DE MEXICO (UNAM)";
+    apiClient.getAcademicUmap(academicName, entityName, effectiveInstitution, viewMode)
       .then(json => {
-        if (isMounted && json.status === 'success') {
+        if (isMounted && json?.status === 'success') {
           setData(json);
         }
       })
