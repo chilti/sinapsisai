@@ -5,11 +5,26 @@ export default function CoAuthraNetwork({
   academicName = "",
   authorId = "", // OpenAlex ID (ej: A5012345678) o ORCID
 }) {
-  const [isOpen, setIsOpen] = useState(false);
+  // Embebido activo por defecto como en el dashboard original
+  const [isOpen, setIsOpen] = useState(true);
 
-  // Limpiar el ID si viene con URL
-  const cleanId = String(authorId || "").replace("https://openalex.org/", "").replace("https://orcid.org/", "").trim();
-  const iframeSrc = cleanId ? `/static/coauthra.html?author=${encodeURIComponent(cleanId)}` : `/static/coauthra.html`;
+  // Obtener la ruta base dinámica según el entorno (/sinapsisai_dev o /infotlachia)
+  const getBasePath = () => {
+    if (typeof window === 'undefined') return '';
+    const p = window.location.pathname;
+    if (p.includes('/sinapsisai_dev')) return '/sinapsisai_dev';
+    if (p.includes('/infotlachia')) return '/infotlachia';
+    if (p.includes('/sinapsisai')) return '/sinapsisai';
+    return '';
+  };
+
+  // Limpiar el ID si viene con URL o en lista separada por comas
+  const rawId = String(authorId || "").split(',')[0].trim();
+  const cleanId = rawId.replace("https://openalex.org/", "").replace("https://orcid.org/", "").trim();
+  const basePath = getBasePath();
+  const iframeSrc = cleanId 
+    ? `${basePath}/static/coauthra.html?author=${encodeURIComponent(cleanId)}` 
+    : `${basePath}/static/coauthra.html`;
 
   return (
     <div className="glass-card" style={{ padding: '1.25rem' }}>

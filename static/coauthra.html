@@ -883,7 +883,7 @@ async function loadAuthor(rec){
   document.getElementById('export-btn').disabled=false;
   // Update URL so current author is permalinkable without pushing a new history entry
   const aid=authorRec.id.replace('https://openalex.org/','');
-  history.replaceState(null,'',`?author=${aid}`);
+  try { history.replaceState(null,'',`?author=${aid}`); } catch(e) { console.warn('History API blocked in iframe:', e); }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -2381,12 +2381,20 @@ document.addEventListener('DOMContentLoaded',()=>{
   if(cl){const u='joebarnier1',d='gmail.com';cl.innerHTML=`Contact <a href="mailto:${u}@${d}" style="color:var(--accent);text-decoration:none;">${u}@${d}</a>`;}
 
   // ── Permalink auto-load ──
-  // If URL contains ?author=A12345678, auto-load that author silently
+  // If URL contains ?author=A12345678 or ORCID, auto-load that author silently
   const params=new URLSearchParams(window.location.search);
   const authorParam=params.get('author');
   if(authorParam){
     // Suppress welcome modal when arriving via permalink
-    const url=`https://api.openalex.org/authors/${authorParam}`;
+    let cleanParam = authorParam.trim();
+    let url;
+    if (cleanParam.startsWith('A') && /^[A-Z]?\d+/.test(cleanParam)) {
+      url = `https://api.openalex.org/authors/${cleanParam}`;
+    } else if (cleanParam.includes('0000-') || /^\d{4}-\d{4}-\d{4}-[\dX]{4}$/.test(cleanParam)) {
+      url = `https://api.openalex.org/authors/https://orcid.org/${cleanParam.replace('https://orcid.org/', '')}`;
+    } else {
+      url = `https://api.openalex.org/authors/${cleanParam}`;
+    }
     fetch(url).then(r=>r.json()).then(async d=>{
       if(d?.id){
         document.getElementById('share-btn').disabled=true;
