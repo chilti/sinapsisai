@@ -1399,6 +1399,8 @@ export function ResearcherProfiles() {
           <AIReportViewer
             type="inv"
             targetName={profile?.name || "Investigador"}
+            entityName={profile?.subdependency || profile?.dependency}
+            institutionName={profile?.institution}
             viewMode="capacidad_instalada"
             hasReport={profile?.has_ai_report}
           />

@@ -5,7 +5,7 @@
 
 import axios from 'axios';
 
-const getBaseApiUrl = () => {
+export const getBaseApiUrl = () => {
   if (typeof window !== 'undefined') {
     const path = window.location.pathname;
     if (path.includes('/sinapsisai_dev')) return '/sinapsisai_dev/api';

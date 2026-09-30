@@ -4,11 +4,13 @@ import {
   Loader2, CheckCircle, RefreshCw, ShieldAlert
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore.js';
-import apiClient from '../../api/client.js';
+import apiClient, { getBaseApiUrl } from '../../api/client.js';
 
 export default function AIReportViewer({
   type = "inst", // "inst" o "inv"
   targetName = "",
+  entityName = "",
+  institutionName = "",
   viewMode = "capacidad_instalada",
   hasReport = true
 }) {
@@ -114,8 +116,8 @@ export default function AIReportViewer({
       const payload = {
         type,
         name: targetName,
-        entity: targetName,
-        institution: targetName,
+        entity: entityName || targetName,
+        institution: institutionName || targetName,
         view_mode: viewMode,
         save_to_disk: type === 'inst' // solo instituciones se guardan permanentemente en disco
       };
@@ -133,7 +135,8 @@ export default function AIReportViewer({
     }
   };
 
-  const defaultReportUrl = `/api/reports/ai-report?type=${type}&name=${encodeURIComponent(targetName)}&view_mode=${encodeURIComponent(viewMode)}`;
+  const base = typeof getBaseApiUrl === 'function' ? getBaseApiUrl() : '/api';
+  const defaultReportUrl = `${base}/reports/ai-report?type=${type}&name=${encodeURIComponent(targetName)}&view_mode=${encodeURIComponent(viewMode)}`;
   const effectiveReportUrl = customReportUrl || defaultReportUrl;
   const effectiveDownloadUrl = customReportUrl
     ? `${customReportUrl}?download=true`
@@ -156,32 +159,64 @@ export default function AIReportViewer({
 
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
           {isAuthenticated ? (
-            <button
-              onClick={() => setShowInScreen(!showInScreen)}
-              disabled={isGenerating}
-              className={`btn ${showInScreen ? 'btn-outline' : 'btn-primary'}`}
-              style={{ fontSize: '0.82rem', padding: '0.45rem 0.95rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700 }}
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 size={15} className="spin-slow" />
-                  <span>Compilando ({jobProgress.step}/11)...</span>
-                </>
-              ) : showInScreen ? (
-                <>
-                  <EyeOff size={15} /> Ocultar Reporte
-                </>
-              ) : (
-                <>
-                  <Eye size={15} /> 👁️ Ver Reporte en Pantalla
-                </>
+            <>
+              {/* Botón Ver Reporte en Pantalla */}
+              <button
+                onClick={() => setShowInScreen(!showInScreen)}
+                disabled={isGenerating}
+                className={`btn ${showInScreen ? 'btn-outline' : 'btn-secondary'}`}
+                style={{ fontSize: '0.82rem', padding: '0.45rem 0.95rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600 }}
+              >
+                {showInScreen ? (
+                  <>
+                    <EyeOff size={15} /> Ocultar Reporte
+                  </>
+                ) : (
+                  <>
+                    <Eye size={15} /> 👁️ Ver Reporte en Pantalla
+                  </>
+                )}
+              </button>
+
+              {/* Botón Generar Reporte con IA (Siempre accesible para investigador o admin) */}
+              {(type === 'inv' || isAdmin) && (
+                <button
+                  onClick={handleRequestReport}
+                  disabled={isGenerating}
+                  className="btn btn-primary"
+                  style={{
+                    fontSize: '0.82rem',
+                    padding: '0.45rem 0.95rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    fontWeight: 700,
+                    background: 'linear-gradient(135deg, #06b6d4, #8b5cf6)',
+                    border: 'none',
+                    color: '#ffffff',
+                    boxShadow: '0 2px 8px rgba(139, 92, 246, 0.25)'
+                  }}
+                  title={type === 'inv' ? "Generar reporte bibliométrico con IA bajo demanda" : "Compilar y publicar reporte institucional"}
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 size={15} className="spin-slow" />
+                      <span>Compilando ({jobProgress.step}/11)...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={15} />
+                      <span>✨ Generar Reporte con IA</span>
+                    </>
+                  )}
+                </button>
               )}
-            </button>
+            </>
           ) : (
             <button
               onClick={() => setActiveTab('mySpace')}
               className="btn btn-secondary"
-              title="Inicia sesión con ORCID para visualizar el informe analítico completo"
+              title="Inicia sesión con ORCID para generar y visualizar el informe analítico completo"
               style={{ fontSize: '0.82rem', padding: '0.45rem 0.95rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600 }}
             >
               <LogIn size={15} style={{ color: 'var(--accent-cyan)' }} />
