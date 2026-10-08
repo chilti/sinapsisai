@@ -315,8 +315,79 @@ class RAGOrchestrator:
                 except Exception as e2:
                     return f"Error tras conmutar a {fallback_model}: {e2}"
             print(f"Error en ask_lightweight: {e}")
-            return f"Error: {e}"
-             
+    async def ask_stream(self, session_id: str, query: str, ui_context: str = None):
+        """
+        Transmite en tiempo real el proceso de razonamiento del agente ReAct (Tier 1):
+        - Emite eventos de herramientas (tool_start, tool_end) con sus parámetros y resultados.
+        - Emite tokens de texto de la respuesta final.
+        - Mantiene la memoria de sesión limpia y sin contaminación de herramientas.
+        """
+        query = LLMConfig.sanitize_input(query, max_chars=1500)
+        
+        # Historial limpio (últimos 6 mensajes = 3 turnos)
+        history = self.memory_manager.get_history(session_id, limit=6)
+        messages = []
+        for msg in history:
+            role = "human" if msg["role"] == "user" else "assistant"
+            messages.append({"role": role, "content": msg["content"]})
+            
+        current_query = query
+        if ui_context:
+            current_query = f"[Contexto de Interfaz Actual:\n{ui_context}]\n\nPregunta del usuario: {query}"
+        messages.append({"role": "human", "content": current_query})
+        
+        self.memory_manager.add_message(session_id, "user", query)
+        config = {"configurable": {"thread_id": session_id}}
+        
+        full_response = ""
+        try:
+            async for event in self.agent_executor.astream_events(
+                {"messages": messages}, 
+                config=config, 
+                version="v2"
+            ):
+                kind = event.get("event")
+                name = event.get("name", "")
+                
+                if kind == "on_tool_start":
+                    tool_input = event.get("data", {}).get("input", {})
+                    yield {
+                        "type": "tool_start",
+                        "tool": name,
+                        "input": tool_input
+                    }
+                elif kind == "on_tool_end":
+                    tool_output = event.get("data", {}).get("output", "")
+                    out_str = str(tool_output)
+                    snippet = out_str[:800] + ("..." if len(out_str) > 800 else "")
+                    yield {
+                        "type": "tool_end",
+                        "tool": name,
+                        "output": snippet
+                    }
+                elif kind == "on_chat_model_stream":
+                    chunk = event.get("data", {}).get("chunk", None)
+                    if chunk and hasattr(chunk, "content") and chunk.content:
+                        # Si contiene fragmentos de llamada a herramientas, no emitir como texto
+                        if getattr(chunk, "tool_call_chunks", None):
+                            continue
+                        full_response += chunk.content
+                        yield {
+                            "type": "token",
+                            "token": chunk.content,
+                            "chunk": chunk.content
+                        }
+                        
+            if full_response:
+                self.memory_manager.add_message(session_id, "assistant", full_response)
+        except Exception as e:
+            err_str = str(e)
+            print(f"Error en ask_stream: {err_str}")
+            yield {
+                "type": "error",
+                "error": err_str
+            }
+
     def clear_session(self, session_id: str):
         self.memory_manager.clear_session(session_id)
         print(f"Sesión {session_id} limpiada.")

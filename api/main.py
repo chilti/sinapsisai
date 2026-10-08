@@ -26,7 +26,8 @@ from api.routers import (
     auth_curation,
     reports,
     maps,
-    assistant
+    assistant,
+    graph_explorer
 )
 
 app = FastAPI(
@@ -68,6 +69,7 @@ app.include_router(auth_curation.router)
 app.include_router(reports.router)
 app.include_router(maps.router)
 app.include_router(assistant.router)
+app.include_router(graph_explorer.router)
 
 @app.get("/api/health")
 def health_check():
@@ -80,11 +82,21 @@ def health_check():
 
 @app.get("/api/info")
 def api_info():
-    """Información general de endpoints y documentación de la API."""
+    """Información general de endpoints, snapshot y documentación de la API."""
+    metadata_path = BASE_DIR / "data" / "pipeline_metadata.json"
+    meta = {}
+    if metadata_path.exists():
+        try:
+            import json
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+        except Exception:
+            pass
+
     return {
         "status": "online",
         "app": "SNII Info TlachIA - Scientific Intelligence API",
-        "version": "2.0.0",
+        "version": meta.get("pipeline_version", "2.0.0"),
         "docs": "/docs",
         "endpoints": [
             "/api/hierarchy",
@@ -93,8 +105,10 @@ def api_info():
             "/api/auth",
             "/api/reports",
             "/api/maps",
-            "/api/assistant"
-        ]
+            "/api/assistant",
+            "/api/graph"
+        ],
+        **meta
     }
 
 # Montar directorio de estáticos (CoAuthra, mapas, etc.)

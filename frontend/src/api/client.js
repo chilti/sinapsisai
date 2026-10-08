@@ -56,6 +56,10 @@ export const apiClient = {
     const res = await api.get('/hierarchy/papers', { params });
     return res.data;
   },
+  searchGlobal: async (q, limit = 15) => {
+    const res = await api.get('/hierarchy/search', { params: { q, limit } });
+    return res.data;
+  },
 
   // Académicos & Producción
   searchAcademics: async (q) => {
@@ -124,6 +128,22 @@ export const apiClient = {
     const res = await api.post('/auth/orcid/token', payload);
     return res.data;
   },
+  getProfileStatus: async (orcid) => {
+    const res = await api.get('/auth/profile-status', { params: { orcid } });
+    return res.data;
+  },
+  searchPadron: async (query) => {
+    const res = await api.get('/auth/search-padron', { params: { query } });
+    return res.data;
+  },
+  linkProfile: async (payload) => {
+    const res = await api.post('/auth/link-profile', payload);
+    return res.data;
+  },
+  registerIndependentAcademic: async (payload) => {
+    const res = await api.post('/auth/register-independent', payload);
+    return res.data;
+  },
   submitAccreditation: async (payload) => {
     const res = await api.post('/auth/accreditation/request', payload);
     return res.data;
@@ -180,6 +200,17 @@ export const apiClient = {
     const res = await api.post('/auth/pipeline/trigger', payload);
     return res.data;
   },
+  getPipelineStatus: async (taskId = null, sinceIndex = 0) => {
+    const params = {};
+    if (taskId) params.task_id = taskId;
+    if (sinceIndex) params.since_index = sinceIndex;
+    const res = await api.get('/auth/pipeline/status', { params });
+    return res.data;
+  },
+  cancelPipeline: async (taskId = null) => {
+    const res = await api.post('/auth/pipeline/cancel', { task_id: taskId });
+    return res.data;
+  },
 
   // Reportes y Descargas
   getDossierData: async (academic_name, orcid) => {
@@ -198,6 +229,10 @@ export const apiClient = {
     const res = await api.get('/reports/snii-ror-stats');
     return res.data;
   },
+  getSystemInfo: async () => {
+    const res = await api.get('/info');
+    return res.data;
+  },
   getSniiAuditReportUrl: (download = false) => {
     const base = getBaseApiUrl();
     return `${base}/reports/snii-audit${download ? '?download=true' : ''}`;
@@ -214,10 +249,52 @@ export const apiClient = {
     const base = getBaseApiUrl();
     return `${base}/reports/ai-report/job-result/${jobId}${download ? '?download=true' : ''}`;
   },
+  checkAIReportStatus: async (type, name, viewMode = 'capacidad_instalada') => {
+    try {
+      const res = await api.get('/reports/ai-report/status', {
+        params: { type, name, view_mode: viewMode }
+      });
+      return res.data;
+    } catch (e) {
+      return { status: 'error', exists: false, filename: null };
+    }
+  },
 
-  // Asistente IA
+  // Asistente IA & Modelos LLM
   clearChatSession: async (session_id = 'default_session') => {
     const res = await api.post('/assistant/clear', null, { params: { session_id } });
+    return res.data;
+  },
+  getAvailableModels: async () => {
+    const res = await api.get('/assistant/models');
+    return res.data;
+  },
+  testModelConnection: async (model = 'gpt-oss-120b') => {
+    const res = await api.post('/assistant/test-model', { model });
+    return res.data;
+  },
+
+  // Explorador de Grafos y Redes (SECIHTI Ejes 1 y 2)
+  getGraphPresets: async () => {
+    const res = await api.get('/graph/presets');
+    return res.data;
+  },
+  getGraphPreset: async (presetId, limit = 80, threshold = 1, stateFilter = null) => {
+    const res = await api.get(`/graph/preset/${presetId}`, {
+      params: { limit, threshold, state_filter: stateFilter }
+    });
+    return res.data;
+  },
+  generateSubgraph: async (query) => {
+    const res = await api.post('/graph/subgraph', query);
+    return res.data;
+  },
+  searchGraphEntities: async (q, limit = 15) => {
+    const res = await api.get('/graph/search-entities', { params: { q, limit } });
+    return res.data;
+  },
+  getNodeDetails: async (nodeId) => {
+    const res = await api.get(`/graph/node-details/${nodeId}`);
     return res.data;
   }
 };

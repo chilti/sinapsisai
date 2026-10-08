@@ -39,6 +39,7 @@ import CollaborationWorldMap from '../analytics/CollaborationWorldMap.jsx';
 import SemanticProductionMap from '../analytics/SemanticProductionMap.jsx';
 import AIReportViewer from '../analytics/AIReportViewer.jsx';
 import WordCloudInteractive from '../analytics/WordCloudInteractive.jsx';
+import LoadingOverlay from '../common/LoadingOverlay.jsx';
 
 export function InstitutionalPanorama() {
   const t = useAppStore((state) => state.t)();
@@ -464,7 +465,10 @@ export function InstitutionalPanorama() {
             <select
               className="form-select"
               value={selectedInstitution}
-              onChange={(e) => setSelectedInstitution(e.target.value)}
+              onChange={(e) => {
+                setLoading(true);
+                setSelectedInstitution(e.target.value);
+              }}
             >
               {institutions.map((inst) => (
                 <option key={inst} value={inst}>{inst}</option>
@@ -477,7 +481,10 @@ export function InstitutionalPanorama() {
             <select
               className="form-select"
               value={selectedDependency}
-              onChange={(e) => setSelectedDependency(e.target.value)}
+              onChange={(e) => {
+                setLoading(true);
+                setSelectedDependency(e.target.value);
+              }}
             >
               <option value="">{t.panorama.allDependencies}</option>
               {dependencies.map((dep) => (
@@ -491,7 +498,10 @@ export function InstitutionalPanorama() {
             <select
               className="form-select"
               value={selectedSubdependency}
-              onChange={(e) => setSelectedSubdependency(e.target.value)}
+              onChange={(e) => {
+                setLoading(true);
+                setSelectedSubdependency(e.target.value);
+              }}
               disabled={subdependencies.length === 0}
             >
               <option value="">{t.panorama.allSubdependencies}</option>
@@ -503,8 +513,13 @@ export function InstitutionalPanorama() {
         </div>
       </div>
 
-      {/* ── 2. Impacto Global en Sostenibilidad (ODS 1–17) ──────────────────── */}
-      <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
+      {/* ── 2. Impacto Global en Sostenibilidad (ODS 1–17) y Analítica ──────────────────── */}
+      <LoadingOverlay
+        loading={loading}
+        message={t.common?.loading_institution || 'Cargando panorama e indicadores institucionales...'}
+        subtitle={selectedSubdependency || selectedDependency || selectedInstitution || ''}
+      >
+        <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Globe2 size={20} style={{ color: 'var(--accent-cyan)' }} />
@@ -1199,6 +1214,8 @@ export function InstitutionalPanorama() {
       <AIReportViewer
         type="inst"
         targetName={selectedSubdependency || selectedDependency || selectedInstitution || "Entidad"}
+        institutionName={selectedInstitution}
+        entityName={selectedSubdependency || selectedDependency || selectedInstitution}
         viewMode={viewMode}
         hasReport={metricsData?.has_ai_report}
       />
@@ -1380,6 +1397,7 @@ export function InstitutionalPanorama() {
           </div>
         )}
       </div>
+      </LoadingOverlay>
     </div>
   );
 }

@@ -9,11 +9,24 @@ import {
   UserCheck, Shield, FileText, CheckCircle, AlertCircle, LogIn,
   LogOut, Send, Search, RefreshCw, Download, ExternalLink,
   ChevronRight, Trash2, RotateCcw, UploadCloud, BookOpen,
-  PieChart, Award, Building, Sparkles
+  PieChart, Award, Building, Sparkles, Globe, UserPlus
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore.js';
 import apiClient from '../../api/client.js';
 import AIReportViewer from '../analytics/AIReportViewer.jsx';
+
+const KNOWLEDGE_AREAS = [
+  "I. FÍSICO-MATEMÁTICAS Y CIENCIAS DE LA TIERRA",
+  "II. BIOLOGÍA Y QUÍMICA",
+  "III. MEDICINA Y CIENCIAS DE LA SALUD",
+  "IV. CIENCIAS DE LA CONDUCTA Y LA EDUCACIÓN",
+  "V. HUMANIDADES",
+  "VI. CIENCIAS SOCIALES",
+  "VII. CIENCIAS DE LA AGRICULTURA, AGROPECUARIAS, FORESTALES Y DE ECOSISTEMAS",
+  "VIII. INGENIERÍAS Y DESARROLLO TECNOLÓGICO",
+  "INTERDISCIPLINARIA",
+  "OTRA / SIN INFORMACIÓN"
+];
 
 export function MyResearcherSpace() {
   const t = useAppStore((state) => state.t)();
@@ -41,11 +54,57 @@ export function MyResearcherSpace() {
   const [notes, setNotes] = useState('');
   const [accreditationStatus, setAccreditationStatus] = useState(null);
 
-  // Estados de Identidad y Padrón (CTL-M04-003 a 006)
+  // Estados de Identidad, Padrón y Registro Independiente (CTL-M04-003 a 006)
+  const [profileStatus, setProfileStatus] = useState(null);
+  const [loadingProfileStatus, setLoadingProfileStatus] = useState(false);
   const [identityConfirmed, setIdentityConfirmed] = useState('yes');
+  const [identityMode, setIdentityMode] = useState('status'); // 'status', 'confirm_auto', 'search', 'independent'
   const [padronSearchQuery, setPadronSearchQuery] = useState('');
+  const [padronResults, setPadronResults] = useState([]);
+  const [isSearchingPadron, setIsSearchingPadron] = useState(false);
+  const [independentName, setIndependentName] = useState(activeName || '');
+  const [independentArea, setIndependentArea] = useState(KNOWLEDGE_AREAS[0]);
+  const [isRegisteringIndependent, setIsRegisteringIndependent] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncAlert, setSyncAlert] = useState(null);
+
+  useEffect(() => {
+    if (activeName && !independentName) {
+      setIndependentName(activeName);
+    }
+  }, [activeName]);
+
+  const loadProfileStatus = async () => {
+    if (!activeOrcid) return;
+    setLoadingProfileStatus(true);
+    try {
+      const res = await apiClient.getProfileStatus(activeOrcid);
+      if (res && res.status === 'success') {
+        setProfileStatus(res);
+        if (res.is_linked) {
+          setIdentityConfirmed('yes');
+          setIdentityMode('status');
+          if (res.academic_name && res.academic_name !== activeName) {
+            setUserSession({ name: res.academic_name, institution: res.institution, is_independent: res.is_independent });
+          }
+        } else if (res.suggested_match) {
+          setIdentityMode('confirm_auto');
+        } else {
+          setIdentityMode('independent');
+        }
+      }
+    } catch (err) {
+      console.warn('Error consultando estado de perfil:', err);
+    } finally {
+      setLoadingProfileStatus(false);
+    }
+  };
+
+  useEffect(() => {
+    if (userSession.isAuthenticated && activeOrcid) {
+      loadProfileStatus();
+    }
+  }, [activeOrcid, userSession.isAuthenticated]);
 
   // Estados de Citas y Autocitas (CTL-M04-017 a 019)
   const [citationsData, setCitationsData] = useState(null);
@@ -282,6 +341,68 @@ export function MyResearcherSpace() {
       }
     };
     reader.readAsText(file);
+  };
+
+  // Búsqueda en padrón institucional
+  const handleSearchPadron = async (e) => {
+    if (e) e.preventDefault();
+    if (!padronSearchQuery || padronSearchQuery.trim().length < 2) return;
+    setIsSearchingPadron(true);
+    try {
+      const res = await apiClient.searchPadron(padronSearchQuery.trim());
+      setPadronResults(res.results || []);
+    } catch (err) {
+      console.error('Error buscando en padrón:', err);
+    } finally {
+      setIsSearchingPadron(false);
+    }
+  };
+
+  // Vincular a perfil del padrón
+  const handleLinkProfile = async (academicId, academicName) => {
+    try {
+      await apiClient.linkProfile({
+        orcid: activeOrcid,
+        user_name: academicName || activeName,
+        academic_id: academicId
+      });
+      setUserSession({
+        name: academicName || activeName,
+        is_independent: false
+      });
+      setSyncAlert(`🎉 Perfil vinculado exitosamente con "${academicName}". Iniciamos la cosecha de producción en segundo plano.`);
+      await loadProfileStatus();
+    } catch (err) {
+      alert('Error vinculando perfil: ' + (err.response?.data?.detail || err.message));
+    }
+  };
+
+  // Registro de Investigador Independiente / No-SNII / Internacional
+  const handleRegisterIndependent = async (e) => {
+    if (e) e.preventDefault();
+    if (!independentName.trim()) {
+      alert('Por favor introduce tu nombre completo.');
+      return;
+    }
+    setIsRegisteringIndependent(true);
+    try {
+      const res = await apiClient.registerIndependentAcademic({
+        orcid: activeOrcid,
+        full_name: independentName.trim(),
+        area_name: independentArea
+      });
+      setUserSession({
+        name: independentName.trim(),
+        institution: 'INDEPENDIENTE',
+        is_independent: true
+      });
+      setSyncAlert(res.message || `🎉 ¡Perfil de investigador independiente registrado con éxito para ${independentName.trim()}!`);
+      await loadProfileStatus();
+    } catch (err) {
+      alert('Error registrando perfil independiente: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setIsRegisteringIndependent(false);
+    }
   };
 
   // Sincronizar en background (CTL-M04-009)
@@ -602,10 +723,25 @@ export function MyResearcherSpace() {
       {activeSubTab === 'identity' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '1.25rem' }}>
           <div className="glass-card">
+            {/* Header del Perfil */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
               <div>
-                <span className="badge badge-purple" style={{ marginBottom: '0.5rem' }}>Padrón Oficial de Investigadoras e Investigadores</span>
-                <h3 style={{ fontSize: '1.25rem', color: 'var(--text-primary)' }}>{activeName}</h3>
+                <span
+                  className={`badge ${profileStatus?.is_independent ? 'badge-cyan' : 'badge-purple'}`}
+                  style={{ marginBottom: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                >
+                  {profileStatus?.is_independent ? <Globe size={13} /> : <Award size={13} />}
+                  <span>
+                    {profileStatus?.is_independent
+                      ? 'Investigador Independiente / Internacional (No-SNII)'
+                      : (profileStatus?.is_linked
+                          ? 'Padrón Oficial de Investigadoras e Investigadores'
+                          : 'Identidad Pendiente de Vinculación')}
+                  </span>
+                </span>
+                <h3 style={{ fontSize: '1.25rem', color: 'var(--text-primary)', margin: '0.2rem 0' }}>
+                  {profileStatus?.academic_name || activeName || 'Investigador'}
+                </h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
                   <span id="CTL-M04-010" className="badge badge-cyan" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                     <CheckCircle size={12} />
@@ -624,60 +760,227 @@ export function MyResearcherSpace() {
               </div>
             </div>
 
-            <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1rem', marginBottom: '1.25rem' }}>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-                <strong>{t.mySpace.radio_identity_match}</strong>
+            {/* Selector de Modos / Opciones de Vinculación e Identidad */}
+            {profileStatus?.is_linked ? (
+              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1rem', marginBottom: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <CheckCircle size={16} style={{ color: '#10b981' }} />
+                  <strong style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                    {profileStatus.is_independent
+                      ? 'Perfil de Investigador Independiente Activo'
+                      : 'Perfil Vinculado al Padrón Oficial'}
+                  </strong>
+                </div>
+                <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                  {profileStatus.is_independent
+                    ? 'Tu producción científica y métricas de impacto se calculan de manera personalizada sin vincularse ni alterar los agregados de ninguna institución en los censos nacionales.'
+                    : `Tu cuenta está asociada al registro institucional ${profileStatus.academic_id} (${profileStatus.institution || 'UNAM'}).`}
+                </p>
+                <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setIdentityMode(identityMode === 'search' ? 'status' : 'search')}
+                    style={{ fontSize: '0.75rem' }}
+                  >
+                    {identityMode === 'search' ? 'Ocultar búsqueda manual' : '¿Cambiar o buscar otra vinculación en el padrón?'}
+                  </button>
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.85rem' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', cursor: 'pointer' }}>
-                  <input
-                    id="CTL-M04-003"
-                    type="radio"
-                    name="identityMatch"
-                    value="yes"
-                    checked={identityConfirmed === 'yes'}
-                    onChange={() => setIdentityConfirmed('yes')}
-                  />
-                  <span>Sí, soy yo (Confirmar)</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', cursor: 'pointer' }}>
-                  <input
-                    type="radio"
-                    name="identityMatch"
-                    value="no"
-                    checked={identityConfirmed === 'no'}
-                    onChange={() => setIdentityConfirmed('no')}
-                  />
-                  <span>Buscar mi nombre en el padrón</span>
-                </label>
-              </div>
+            ) : (
+              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1rem', marginBottom: '1.25rem' }}>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                  <strong>Selecciona una opción para activar tu espacio de investigación:</strong>
+                </div>
 
-              {identityConfirmed === 'no' && (
-                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                  {profileStatus?.suggested_match && (
+                    <button
+                      className={`btn btn-sm ${identityMode === 'confirm_auto' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setIdentityMode('confirm_auto')}
+                      style={{ borderRadius: '6px' }}
+                    >
+                      <Sparkles size={13} />
+                      <span>Coincidencia Automática</span>
+                    </button>
+                  )}
+                  <button
+                    className={`btn btn-sm ${identityMode === 'independent' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setIdentityMode('independent')}
+                    style={{ borderRadius: '6px' }}
+                  >
+                    <UserPlus size={13} />
+                    <span>Registro Independiente / No-SNII</span>
+                  </button>
+                  <button
+                    className={`btn btn-sm ${identityMode === 'search' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setIdentityMode('search')}
+                    style={{ borderRadius: '6px' }}
+                  >
+                    <Search size={13} />
+                    <span>Buscar en el Padrón</span>
+                  </button>
+                </div>
+
+                {/* Sub-bloque 1: Coincidencia Automática */}
+                {identityMode === 'confirm_auto' && profileStatus?.suggested_match && (
+                  <div style={{ background: 'rgba(0, 242, 254, 0.05)', border: '1px solid rgba(0, 242, 254, 0.25)', borderRadius: '8px', padding: '0.85rem' }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--accent-cyan)', marginBottom: '0.25rem' }}>
+                      ✨ ¡Te hemos identificado!
+                    </div>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 0.75rem 0' }}>
+                      Encontramos un perfil en el padrón institucional que coincide con tu ORCID iD:
+                    </p>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                          {profileStatus.suggested_match.name}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          ID: {profileStatus.suggested_match.id} | {profileStatus.suggested_match.institution || 'Padrón Institucional'}
+                        </div>
+                      </div>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => handleLinkProfile(profileStatus.suggested_match.id, profileStatus.suggested_match.name)}
+                      >
+                        <CheckCircle size={14} />
+                        <span>Sí, soy yo (Confirmar)</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sub-bloque 2: Registro Independiente / No-SNII / Internacional */}
+                {identityMode === 'independent' && (
+                  <div style={{ background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '8px', padding: '0.85rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.35rem' }}>
+                      <Globe size={15} style={{ color: '#10b981' }} />
+                      <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
+                        Registro de Investigador Independiente / No-SNII / Internacional
+                      </strong>
+                    </div>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0 0 0.85rem 0', lineHeight: 1.4 }}>
+                      Si no perteneces al padrón institucional precargado o eres un investigador independiente / internacional, puedes dar de alta tu perfil verificado. Tu producción científica y métricas de impacto se calcularán de manera personalizada sin vincularse a la estructura de ninguna institución en los censos nacionales.
+                    </p>
+                    <form onSubmit={handleRegisterIndependent} style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.2rem' }}>
+                          Nombre Completo:
+                        </label>
+                        <input
+                          type="text"
+                          className="form-input form-input-sm"
+                          value={independentName}
+                          onChange={(e) => setIndependentName(e.target.value)}
+                          placeholder="Ej: Dr. Juan Pérez García"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.2rem' }}>
+                          ORCID iD (Verificado):
+                        </label>
+                        <input
+                          type="text"
+                          className="form-input form-input-sm"
+                          value={activeOrcid}
+                          disabled
+                          style={{ opacity: 0.7, cursor: 'not-allowed' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.2rem' }}>
+                          Área de Conocimiento Principal (Opcional):
+                        </label>
+                        <select
+                          className="form-input form-input-sm"
+                          value={independentArea}
+                          onChange={(e) => setIndependentArea(e.target.value)}
+                          style={{ background: 'var(--card-bg)' }}
+                        >
+                          {KNOWLEDGE_AREAS.map((a) => (
+                            <option key={a} value={a}>{a}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <button
+                        type="submit"
+                        className="btn btn-primary btn-sm"
+                        disabled={isRegisteringIndependent}
+                        style={{ marginTop: '0.35rem', justifyContent: 'center' }}
+                      >
+                        <Sparkles size={14} className={isRegisteringIndependent ? 'spin' : ''} />
+                        <span>{isRegisteringIndependent ? 'Registrando y Sincronizando...' : '✨ Registrar y Sincronizar mi Perfil'}</span>
+                      </button>
+                    </form>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Búsqueda Manual en Padrón (disponible en modo search o si el usuario quiere cambiar) */}
+            {identityMode === 'search' && (
+              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1rem', marginBottom: '1.25rem' }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+                  🔍 Buscar mi nombre en el padrón institucional
+                </div>
+                <form onSubmit={handleSearchPadron} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
                   <input
                     id="CTL-M04-004"
                     type="text"
                     className="form-input form-input-sm"
-                    placeholder={t.mySpace.search_padron_placeholder}
+                    placeholder="Ej. Carrillo Calvet, Pardo Cemo..."
                     value={padronSearchQuery}
                     onChange={(e) => setPadronSearchQuery(e.target.value)}
                   />
                   <button
                     id="CTL-M04-005"
+                    type="submit"
                     className="btn btn-secondary btn-sm"
-                    onClick={() => {
-                      if (padronSearchQuery) {
-                        setUserSession({ name: padronSearchQuery.toUpperCase() });
-                        setIdentityConfirmed('yes');
-                      }
-                    }}
+                    disabled={isSearchingPadron || !padronSearchQuery.trim()}
                   >
-                    <span>{t.mySpace.btn_confirm_profile}</span>
+                    <Search size={14} className={isSearchingPadron ? 'spin' : ''} />
+                    <span>Buscar</span>
                   </button>
-                </div>
-              )}
-            </div>
+                </form>
 
+                {padronResults.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '220px', overflowY: 'auto' }}>
+                    {padronResults.map((item) => (
+                      <div
+                        key={item.id}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '0.5rem 0.75rem',
+                          background: 'rgba(255, 255, 255, 0.03)',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border-color)',
+                          fontSize: '0.8rem'
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.name}</div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            ID: {item.id} | {item.institution || 'Padrón'} | ORCID: {item.existing_orcid || 'Ninguno'}
+                          </div>
+                        </div>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                          onClick={() => handleLinkProfile(item.id, item.name)}
+                        >
+                          Este soy yo
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Botones de Acción */}
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
               <button
                 id="CTL-M04-008"
@@ -706,6 +1009,7 @@ export function MyResearcherSpace() {
             )}
           </div>
 
+          {/* Expediente Científico Dinámico */}
           <div className="glass-card">
             <h3 style={{ fontSize: '1.15rem', marginBottom: '0.75rem', color: 'var(--text-primary)' }}>
               Estado del Expediente Científico
@@ -713,26 +1017,50 @@ export function MyResearcherSpace() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <div style={{ padding: '0.85rem', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Censo de Investigadoras e Investigadores 2026</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Vigente y ratificado oficialmente</div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                    {profileStatus?.is_independent
+                      ? 'Registro Independiente / Internacional'
+                      : 'Censo de Investigadoras e Investigadores 2026'}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    {profileStatus?.is_independent
+                      ? 'Producción científica personalizada (No-SNII)'
+                      : (profileStatus?.is_linked ? 'Vigente y ratificado oficialmente' : 'Pendiente de vinculación')}
+                  </div>
                 </div>
-                <span className="badge badge-cyan">Confirmado</span>
+                <span className={`badge ${profileStatus?.is_linked ? 'badge-cyan' : 'badge-purple'}`}>
+                  {profileStatus?.is_independent
+                    ? 'Independiente'
+                    : (profileStatus?.is_linked ? 'Confirmado' : 'Pendiente')}
+                </span>
               </div>
 
               <div style={{ padding: '0.85rem', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Entidad de Adscripción</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{lowestUnit}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    {profileStatus?.is_independent
+                      ? 'Independiente / No adscrito a censos nacionales'
+                      : lowestUnit}
+                  </div>
                 </div>
-                <span className="badge badge-purple">UNAM</span>
+                <span className={`badge ${profileStatus?.is_independent ? 'badge-cyan' : 'badge-purple'}`}>
+                  {profileStatus?.is_independent ? 'GLOBAL' : 'UNAM'}
+                </span>
               </div>
 
               <div style={{ padding: '0.85rem', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Integración y Cobertura Académica</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Cosecha continua activa</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    {profileStatus?.is_linked
+                      ? 'Cosecha continua activa (ORCID + OpenAlex + Scopus)'
+                      : 'A la espera de activación de perfil'}
+                  </div>
                 </div>
-                <span className="badge badge-cyan">Sincronizado</span>
+                <span className={`badge ${profileStatus?.is_linked ? 'badge-cyan' : 'badge-purple'}`}>
+                  {profileStatus?.is_linked ? 'Sincronizado' : 'En espera'}
+                </span>
               </div>
             </div>
           </div>

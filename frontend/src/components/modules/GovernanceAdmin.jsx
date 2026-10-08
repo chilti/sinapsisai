@@ -4,13 +4,13 @@
  * Cumple con los 29 controles del inventario QA (CTL-M05-001 a CTL-M05-029)
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ShieldCheck, Check, X, Users, Link2, Terminal, AlertTriangle,
   Play, StopCircle, RefreshCw, Trash2, Cpu, Globe, Database,
   Search, Plus, ShieldAlert, Award, Building, Activity
 } from 'lucide-react';
-import { useAppStore } from '../../store/useAppStore.js';
+import { useAppStore, isUserAdmin } from '../../store/useAppStore.js';
 import apiClient from '../../api/client.js';
 
 export function GovernanceAdmin() {
@@ -19,8 +19,7 @@ export function GovernanceAdmin() {
   const userSession = useAppStore((state) => state.userSession);
 
   const isAdmin = Boolean(
-    userSession?.isAuthenticated &&
-    (userSession?.is_admin || userSession?.role === 'super_admin' || userSession?.role === 'admin_institucional' || userSession?.role === 'admin')
+    userSession?.isAuthenticated && isUserAdmin(userSession)
   );
 
   // Subpestañas (CTL-M05-001 a 004)
@@ -50,10 +49,79 @@ export function GovernanceAdmin() {
   const [syncClickhouse, setSyncClickhouse] = useState(false);
   const [syncPhase, setSyncPhase] = useState('all');
 
+  // 5. Configuración de Modelos LLM (Servidor C3 UNAM)
+  const selectedLlmModel = useAppStore((state) => state.selectedLlmModel);
+  const setSelectedLlmModel = useAppStore((state) => state.setSelectedLlmModel);
+  const [testingModel, setTestingModel] = useState(false);
+  const [modelTestResult, setModelTestResult] = useState(null);
+
+  const handleTestModel = async (targetModel = null) => {
+    const modelToTest = targetModel || selectedLlmModel || 'gpt-oss-120b';
+    setTestingModel(true);
+    setModelTestResult(null);
+    try {
+      const res = await apiClient.testModelConnection(modelToTest);
+      setModelTestResult(res);
+      if (res.status === 'success') {
+        setActionMsg({
+          type: 'success',
+          text: `¡Conexión exitosa con ${res.resolved_model || modelToTest}! Latencia: ${res.latency_ms} ms. Respuesta de prueba: "${res.reply}"`
+        });
+      } else {
+        setActionMsg({
+          type: 'error',
+          text: `Fallo al probar ${modelToTest}: ${res.error || 'Sin respuesta del servidor vLLM'}`
+        });
+      }
+    } catch (err) {
+      const errMsg = err?.response?.data?.detail || err.message;
+      setModelTestResult({ status: 'error', error: errMsg });
+      setActionMsg({
+        type: 'error',
+        text: `Error de red probando ${modelToTest}: ${errMsg}`
+      });
+    } finally {
+      setTestingModel(false);
+    }
+  };
+
   const [runningTask, setRunningTask] = useState(null);
   const [taskLogs, setTaskLogs] = useState([
     'Sistema listo para operaciones de curación y sincronización masiva.'
   ]);
+
+  const pollingIntervalRef = useRef(null);
+  const logOffsetRef = useRef(0);
+
+  // Limpiar temporizador al desmontar
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, []);
+
+  // Consultar si ya existe una tarea en ejecución (o pipeline activo en terminal)
+  const checkInitialStatus = async () => {
+    try {
+      const status = await apiClient.getPipelineStatus();
+      if (status.status === 'system_running' || status.task_status === 'running') {
+        setRunningTask({
+          id: status.task_id || 'system_terminal',
+          label: status.label || 'Pipeline en ejecución',
+          progress: status.progress || 35
+        });
+        if (status.logs && status.logs.length > 0) {
+          setTaskLogs(status.logs.slice().reverse());
+          logOffsetRef.current = status.total_logs || status.logs.length;
+        }
+        startPolling(status.task_id, status.label || 'Pipeline');
+      }
+    } catch (e) {
+      console.warn('No se pudo consultar el estado del pipeline:', e);
+    }
+  };
 
   // Carga inicial solo si es administrador
   useEffect(() => {
@@ -61,6 +129,7 @@ export function GovernanceAdmin() {
     loadPendingRequests();
     loadActiveAdmins();
     loadAliases();
+    checkInitialStatus();
   }, [isAdmin]);
 
   const loadPendingRequests = async () => {
@@ -149,17 +218,63 @@ export function GovernanceAdmin() {
     }
   };
 
+  // Sondeo en tiempo real de logs y progreso (CTL-M05-013 a 029)
+  const startPolling = (taskId, label) => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+
+    pollingIntervalRef.current = setInterval(async () => {
+      try {
+        const res = await apiClient.getPipelineStatus(taskId, logOffsetRef.current);
+        if (res.status === 'success' || res.status === 'system_running') {
+          if (res.logs && res.logs.length > 0) {
+            setTaskLogs((prev) => [
+              ...res.logs.slice().reverse(),
+              ...prev
+            ]);
+            logOffsetRef.current += res.logs.length;
+          }
+
+          setRunningTask((prev) => prev ? {
+            ...prev,
+            progress: res.progress !== undefined ? res.progress : prev.progress,
+            label: res.label || prev.label
+          } : null);
+
+          if (res.task_status === 'completed' || res.task_status === 'failed' || res.task_status === 'cancelled') {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+            setRunningTask(null);
+            const icon = res.task_status === 'completed' ? '✅' : '🛑';
+            setTaskLogs((prev) => [
+              `[${new Date().toLocaleTimeString()}] ${icon} Tarea '${label}' finalizada con estado: ${res.task_status}.`,
+              ...prev
+            ]);
+          }
+        }
+      } catch (err) {
+        console.error('Error sondeando bitácora de pipeline:', err);
+      }
+    }, 1500);
+  };
+
   // Ejecutar tarea de pipeline (CTL-M05-019 a 029)
   const triggerTask = async (action, label) => {
-    const taskId = `${action}_${Date.now()}`;
-    setRunningTask({ id: taskId, label, progress: 10 });
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+    logOffsetRef.current = 0;
+
+    setRunningTask({ id: `pending_${action}`, label, progress: 5 });
     setTaskLogs((prev) => [
-      `[${new Date().toLocaleTimeString()}] Iniciando tarea: ${label}...`,
+      `[${new Date().toLocaleTimeString()}] 🚀 Solicitando inicio de: ${label}...`,
       ...prev
     ]);
 
     try {
-      await apiClient.triggerPipeline({
+      const res = await apiClient.triggerPipeline({
         action,
         academic_filter: e2eAcademic,
         institution_filter: e2eInstitution,
@@ -168,47 +283,76 @@ export function GovernanceAdmin() {
         sync_phase: syncPhase
       });
 
-      // Simular progreso de ejecución fluida
-      let prog = 25;
-      const interval = setInterval(() => {
-        prog += 25;
-        if (prog >= 100) {
-          clearInterval(interval);
-          setRunningTask(null);
-          setTaskLogs((prev) => [
-            `[${new Date().toLocaleTimeString()}] ✅ ${label} completada exitosamente.`,
-            ...prev
-          ]);
-        } else {
-          setRunningTask((prev) => prev ? { ...prev, progress: prog } : null);
-          setTaskLogs((prev) => [
-            `[${new Date().toLocaleTimeString()}] Procesando ${label}... (${prog}%)`,
-            ...prev
-          ]);
-        }
-      }, 700);
+      const actualTaskId = res.task_id;
+      setRunningTask({ id: actualTaskId, label, progress: 10 });
+      setTaskLogs((prev) => [
+        `[${new Date().toLocaleTimeString()}] 📡 Tarea confirmada en el servidor (ID: ${actualTaskId}).`,
+        ...prev
+      ]);
+
+      startPolling(actualTaskId, label);
     } catch (err) {
       setRunningTask(null);
+      const errMsg = err?.response?.data?.detail || err.message;
       setTaskLogs((prev) => [
-        `[${new Date().toLocaleTimeString()}] ❌ Error ejecutando ${label}`,
+        `[${new Date().toLocaleTimeString()}] ❌ Error ejecutando ${label}: ${errMsg}`,
         ...prev
       ]);
     }
   };
 
   // Cancelar tarea (CTL-M05-013)
-  const handleStopTask = () => {
-    if (runningTask) {
+  const handleStopTask = async () => {
+    if (!runningTask) return;
+    const taskToCancel = runningTask;
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+    setRunningTask(null);
+
+    try {
+      await apiClient.cancelPipeline(taskToCancel.id);
       setTaskLogs((prev) => [
-        `[${new Date().toLocaleTimeString()}] 🛑 Tarea '${runningTask.label}' cancelada por el usuario.`,
+        `[${new Date().toLocaleTimeString()}] 🛑 Tarea '${taskToCancel.label}' cancelada por el usuario.`,
         ...prev
       ]);
-      setRunningTask(null);
+    } catch (err) {
+      const errMsg = err?.response?.data?.detail || err.message;
+      setTaskLogs((prev) => [
+        `[${new Date().toLocaleTimeString()}] ⚠️ Cancelación: ${errMsg}`,
+        ...prev
+      ]);
+    }
+  };
+
+  // Sincronizar logs bajo demanda (CTL-M05-014)
+  const handleRefreshLogs = async () => {
+    try {
+      const targetId = runningTask ? runningTask.id : null;
+      const res = await apiClient.getPipelineStatus(targetId, logOffsetRef.current);
+      if (res.logs && res.logs.length > 0) {
+        setTaskLogs((prev) => [
+          ...res.logs.slice().reverse(),
+          ...prev
+        ]);
+        logOffsetRef.current += res.logs.length;
+      }
+      setTaskLogs((prev) => [
+        `[${new Date().toLocaleTimeString()}] 🔄 Bitácora sincronizada.`,
+        ...prev
+      ]);
+    } catch (e) {
+      setTaskLogs((prev) => [
+        `[${new Date().toLocaleTimeString()}] ⚠️ No se pudo sincronizar la bitácora.`,
+        ...prev
+      ]);
     }
   };
 
   // Limpiar historial de logs (CTL-M05-015)
   const handleClearLogs = () => {
+    logOffsetRef.current = 0;
     setTaskLogs(['Bitácora reiniciada.']);
   };
 
@@ -303,6 +447,20 @@ export function GovernanceAdmin() {
           >
             <Terminal size={14} />
             <span>{t.governance.tab_pipelines}</span>
+          </button>
+
+          <button
+            id="CTL-M05-LLM-TAB"
+            className={`btn btn-sm ${activeTab === 'llm_models' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setActiveTab('llm_models')}
+          >
+            <Cpu size={14} />
+            <span>Modelos LLM & C3</span>
+            {selectedLlmModel === 'gpt-oss-120b' && (
+              <span style={{ background: '#10b981', color: '#fff', fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '10px', marginLeft: '0.3rem' }}>
+                120B
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -584,6 +742,38 @@ export function GovernanceAdmin() {
                 />
               </div>
 
+              {/* Selector de Modelo LLM para Pipelines */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', background: 'rgba(255, 255, 255, 0.03)', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                <label className="form-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem' }}>
+                  <Cpu size={13} style={{ color: 'var(--accent-cyan)' }} />
+                  <span>Modelo de Lenguaje (LLM) para Pipelines</span>
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <select
+                    className="form-select form-input-sm"
+                    value={selectedLlmModel}
+                    onChange={(e) => setSelectedLlmModel(e.target.value)}
+                    style={{ flex: 1, fontSize: '0.82rem' }}
+                  >
+                    <option value="gpt-oss-120b">🚀 C3 UNAM GPT-OSS 120B (Cluster vLLM 120B)</option>
+                    <option value="Kimi-K2.6">🧠 C3 UNAM Kimi K2.6</option>
+                    <option value="openai/default">💻 LM Studio Local (gpt-oss-20b)</option>
+                    <option value="gemini-3.5-flash-lite">✨ Google Gemini 3.5 Flash</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleTestModel(selectedLlmModel)}
+                    disabled={testingModel}
+                    title="Probar conexión con este modelo"
+                    style={{ padding: '0.25rem 0.6rem' }}
+                  >
+                    {testingModel ? <RefreshCw size={12} className="spin" /> : <Play size={12} />}
+                    <span style={{ fontSize: '0.78rem' }}>Probar</span>
+                  </button>
+                </div>
+              </div>
+
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', cursor: 'pointer' }}>
                   <input
@@ -743,7 +933,7 @@ export function GovernanceAdmin() {
                 <button
                   id="CTL-M05-014"
                   className="btn btn-secondary btn-sm"
-                  onClick={() => setTaskLogs((prev) => [`[${new Date().toLocaleTimeString()}] Sincronizado.`, ...prev])}
+                  onClick={handleRefreshLogs}
                   title={t.governance.btn_refresh_log}
                 >
                   <RefreshCw size={13} />
@@ -784,6 +974,323 @@ export function GovernanceAdmin() {
                   {log}
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. GESTIÓN DE MODELOS LLM & C3 UNAM */}
+      {activeTab === 'llm_models' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Card Principal: Servidor vLLM C3 UNAM Activo */}
+          <div className="glass-card" style={{
+            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(59, 130, 246, 0.08) 100%)',
+            border: '1px solid rgba(16, 185, 129, 0.3)',
+            padding: '1.5rem'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
+                  <div style={{ padding: '0.4rem', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.2)', color: '#34d399' }}>
+                    <Cpu size={24} />
+                  </div>
+                  <div>
+                    <h2 style={{ fontSize: '1.3rem', margin: 0, fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Servidor vLLM C3 UNAM — GPT-OSS 120B
+                    </h2>
+                    <span style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 600 }}>
+                      ● Cluster de Inferencia de Alta Capacidad Disponible
+                    </span>
+                  </div>
+                </div>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', margin: '0.5rem 0 0 0', maxWidth: '750px', lineHeight: 1.5 }}>
+                  Modelo de lenguaje masivo de <b>120 Billones de parámetros</b> (OpenAI Open Weights) con soporte nativo para <b>131,072 tokens de contexto</b> y tokens de razonamiento profundo (Chain-of-Thought). Conexión cifrada a través de la VPN institucional de C3 UNAM.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => handleTestModel('gpt-oss-120b')}
+                  disabled={testingModel}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1.2rem', fontWeight: 600 }}
+                >
+                  {testingModel ? <RefreshCw size={16} className="spin" /> : <Play size={16} />}
+                  <span>{testingModel ? 'Verificando...' : 'Probar Inferencia en Vivo'}</span>
+                </button>
+                {modelTestResult && (
+                  <span style={{
+                    fontSize: '0.78rem',
+                    color: modelTestResult.status === 'success' ? '#34d399' : '#f87171',
+                    background: modelTestResult.status === 'success' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                    padding: '0.2rem 0.5rem',
+                    borderRadius: '4px'
+                  }}>
+                    {modelTestResult.status === 'success'
+                      ? `🟢 Activo (${modelTestResult.latency_ms} ms)`
+                      : `🔴 Error (${modelTestResult.error?.slice(0, 30)}...)`}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Metadatos Técnicos de Conexión */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '0.75rem',
+              marginTop: '1.25rem',
+              paddingTop: '1rem',
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)'
+            }}>
+              <div style={{ background: 'rgba(0,0,0,0.2)', padding: '0.6rem 0.8rem', borderRadius: '6px' }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block' }}>URL Base (VPN C3)</span>
+                <code style={{ fontSize: '0.8rem', color: 'var(--accent-cyan)' }}>https://gptoss.c3.unam.mx/v1</code>
+              </div>
+              <div style={{ background: 'rgba(0,0,0,0.2)', padding: '0.6rem 0.8rem', borderRadius: '6px' }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block' }}>IP / Proxy Interno</span>
+                <code style={{ fontSize: '0.8rem', color: 'var(--text-primary)' }}>10.90.0.114 (ppp0)</code>
+              </div>
+              <div style={{ background: 'rgba(0,0,0,0.2)', padding: '0.6rem 0.8rem', borderRadius: '6px' }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block' }}>Model ID en vLLM</span>
+                <code style={{ fontSize: '0.8rem', color: '#10b981' }}>gpt-oss-120b</code>
+              </div>
+              <div style={{ background: 'rgba(0,0,0,0.2)', padding: '0.6rem 0.8rem', borderRadius: '6px' }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block' }}>Ventana de Contexto</span>
+                <code style={{ fontSize: '0.8rem', color: 'var(--text-primary)' }}>131,072 tokens</code>
+              </div>
+            </div>
+          </div>
+
+          {/* Selector de Modelos Disponibles */}
+          <div className="glass-card">
+            <h3 style={{ fontSize: '1.15rem', marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
+              Selección de Modelo de Lenguaje del Sistema
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
+              El modelo seleccionado será utilizado para el Asistente Científico, la generación de Reportes con IA y los procesos de curación institucional.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+              {/* Opción 1: GPT-OSS 120B C3 */}
+              <div style={{
+                background: selectedLlmModel === 'gpt-oss-120b' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+                border: `2px solid ${selectedLlmModel === 'gpt-oss-120b' ? '#10b981' : 'var(--border-color)'}`,
+                borderRadius: '10px',
+                padding: '1.25rem',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                transition: 'all 0.2s ease'
+              }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{
+                      background: '#10b981', color: '#fff', fontSize: '0.7rem', fontWeight: 700,
+                      padding: '0.15rem 0.5rem', borderRadius: '12px'
+                    }}>
+                      RECOMENDADO · 120B
+                    </span>
+                    {selectedLlmModel === 'gpt-oss-120b' && (
+                      <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 600 }}>
+                        <Check size={14} /> Activo
+                      </span>
+                    )}
+                  </div>
+                  <h4 style={{ margin: '0.4rem 0', fontSize: '1.05rem', color: 'var(--text-primary)' }}>
+                    C3 UNAM - GPT-OSS 120B
+                  </h4>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: 0, lineHeight: 1.45 }}>
+                    Modelo de mayor capacidad y razonamiento analítico. Desplegado en el cluster vLLM del C3 UNAM. Ideal para análisis cienciométricos exhaustivos.
+                  </p>
+                </div>
+
+                <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    className={`btn btn-sm ${selectedLlmModel === 'gpt-oss-120b' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ flex: 1, justifyContent: 'center' }}
+                    onClick={() => {
+                      setSelectedLlmModel('gpt-oss-120b');
+                      setActionMsg({ type: 'success', text: 'Modelo activo cambiado a C3 UNAM GPT-OSS 120B.' });
+                    }}
+                  >
+                    {selectedLlmModel === 'gpt-oss-120b' ? 'Modelo Activo' : 'Seleccionar'}
+                  </button>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleTestModel('gpt-oss-120b')}
+                    disabled={testingModel}
+                    title="Probar este modelo"
+                  >
+                    <Play size={12} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Opción 2: Kimi K2.6 C3 */}
+              <div style={{
+                background: selectedLlmModel === 'Kimi-K2.6' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+                border: `2px solid ${selectedLlmModel === 'Kimi-K2.6' ? '#3b82f6' : 'var(--border-color)'}`,
+                borderRadius: '10px',
+                padding: '1.25rem',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                transition: 'all 0.2s ease'
+              }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{
+                      background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', fontSize: '0.7rem', fontWeight: 600,
+                      padding: '0.15rem 0.5rem', borderRadius: '12px', border: '1px solid rgba(59, 130, 246, 0.4)'
+                    }}>
+                      C3 vLLM
+                    </span>
+                    {selectedLlmModel === 'Kimi-K2.6' && (
+                      <span style={{ color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 600 }}>
+                        <Check size={14} /> Activo
+                      </span>
+                    )}
+                  </div>
+                  <h4 style={{ margin: '0.4rem 0', fontSize: '1.05rem', color: 'var(--text-primary)' }}>
+                    C3 UNAM - Kimi K2.6
+                  </h4>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: 0, lineHeight: 1.45 }}>
+                    Servidor vLLM de Kimi en el C3 UNAM. Especializado en procesamiento largo de contexto en español.
+                  </p>
+                </div>
+
+                <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    className={`btn btn-sm ${selectedLlmModel === 'Kimi-K2.6' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ flex: 1, justifyContent: 'center' }}
+                    onClick={() => {
+                      setSelectedLlmModel('Kimi-K2.6');
+                      setActionMsg({ type: 'success', text: 'Modelo activo cambiado a C3 UNAM Kimi K2.6.' });
+                    }}
+                  >
+                    {selectedLlmModel === 'Kimi-K2.6' ? 'Modelo Activo' : 'Seleccionar'}
+                  </button>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleTestModel('Kimi-K2.6')}
+                    disabled={testingModel}
+                    title="Probar este modelo"
+                  >
+                    <Play size={12} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Opción 3: LM Studio Local */}
+              <div style={{
+                background: selectedLlmModel === 'openai/default' ? 'rgba(168, 85, 247, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+                border: `2px solid ${selectedLlmModel === 'openai/default' ? '#a855f7' : 'var(--border-color)'}`,
+                borderRadius: '10px',
+                padding: '1.25rem',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                transition: 'all 0.2s ease'
+              }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{
+                      background: 'rgba(168, 85, 247, 0.2)', color: '#c084fc', fontSize: '0.7rem', fontWeight: 600,
+                      padding: '0.15rem 0.5rem', borderRadius: '12px', border: '1px solid rgba(168, 85, 247, 0.4)'
+                    }}>
+                      LOCAL · 20B
+                    </span>
+                    {selectedLlmModel === 'openai/default' && (
+                      <span style={{ color: '#a855f7', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 600 }}>
+                        <Check size={14} /> Activo
+                      </span>
+                    )}
+                  </div>
+                  <h4 style={{ margin: '0.4rem 0', fontSize: '1.05rem', color: 'var(--text-primary)' }}>
+                    LM Studio Local (gpt-oss-20b)
+                  </h4>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: 0, lineHeight: 1.45 }}>
+                    Instancia local en servidor (localhost:1234). Utiliza el modelo GPT-OSS 20B cargado en LM Studio CLI.
+                  </p>
+                </div>
+
+                <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    className={`btn btn-sm ${selectedLlmModel === 'openai/default' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ flex: 1, justifyContent: 'center' }}
+                    onClick={() => {
+                      setSelectedLlmModel('openai/default');
+                      setActionMsg({ type: 'success', text: 'Modelo activo cambiado a LM Studio Local.' });
+                    }}
+                  >
+                    {selectedLlmModel === 'openai/default' ? 'Modelo Activo' : 'Seleccionar'}
+                  </button>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleTestModel('openai/default')}
+                    disabled={testingModel}
+                    title="Probar este modelo"
+                  >
+                    <Play size={12} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Opción 4: Google Gemini */}
+              <div style={{
+                background: selectedLlmModel === 'gemini-3.5-flash-lite' ? 'rgba(236, 72, 153, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+                border: `2px solid ${selectedLlmModel === 'gemini-3.5-flash-lite' ? '#ec4899' : 'var(--border-color)'}`,
+                borderRadius: '10px',
+                padding: '1.25rem',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                transition: 'all 0.2s ease'
+              }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{
+                      background: 'rgba(236, 72, 153, 0.2)', color: '#f472b6', fontSize: '0.7rem', fontWeight: 600,
+                      padding: '0.15rem 0.5rem', borderRadius: '12px', border: '1px solid rgba(236, 72, 153, 0.4)'
+                    }}>
+                      GOOGLE CLOUD
+                    </span>
+                    {selectedLlmModel === 'gemini-3.5-flash-lite' && (
+                      <span style={{ color: '#ec4899', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 600 }}>
+                        <Check size={14} /> Activo
+                      </span>
+                    )}
+                  </div>
+                  <h4 style={{ margin: '0.4rem 0', fontSize: '1.05rem', color: 'var(--text-primary)' }}>
+                    Google Gemini 3.5 Flash
+                  </h4>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: 0, lineHeight: 1.45 }}>
+                    Inferencia rápida y multimodal en la infraestructura de Google Cloud usando la API oficial de Gemini.
+                  </p>
+                </div>
+
+                <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    className={`btn btn-sm ${selectedLlmModel === 'gemini-3.5-flash-lite' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ flex: 1, justifyContent: 'center' }}
+                    onClick={() => {
+                      setSelectedLlmModel('gemini-3.5-flash-lite');
+                      setActionMsg({ type: 'success', text: 'Modelo activo cambiado a Google Gemini.' });
+                    }}
+                  >
+                    {selectedLlmModel === 'gemini-3.5-flash-lite' ? 'Modelo Activo' : 'Seleccionar'}
+                  </button>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleTestModel('gemini-3.5-flash-lite')}
+                    disabled={testingModel}
+                    title="Probar este modelo"
+                  >
+                    <Play size={12} />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

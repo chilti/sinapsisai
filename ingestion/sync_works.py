@@ -49,20 +49,6 @@ graph_store = Neo4jGraphStore()
 def get_embeddings(texts: list, batch_size: int = 32, force_local: bool = False) -> list:
     if not texts: return []
     all_embeddings = []
-    if force_local:
-        try:
-            import lmstudio as lms
-            _local_model_name = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
-            model = lms.embedding_model(_local_model_name)
-            for text in texts:
-                clean_t = str(text) if text else " "
-                emb = model.embed(clean_t)
-                val = emb.embedding if hasattr(emb, "embedding") else emb.tolist() if hasattr(emb, "tolist") else list(emb)
-                all_embeddings.append(val)
-            return all_embeddings
-        except Exception as e:
-            print(f"⚠️ Error con lmstudio: {e}. Cayendo a LangChain...")
-
     for i in range(0, len(texts), batch_size):
         batch = [str(t) if t else " " for t in texts[i:i+batch_size]]
         embs = embeddings_model.embed_documents(batch)
@@ -84,7 +70,7 @@ def deconstruct_abstract(inverted_abstract):
 # Reutilizamos las funciones de ingest_snii_apis.py
 from SNII.ingest_snii_apis import obtener_metadatos_de_scopus, obtener_metadatos_de_orcid, obtener_scopus_ids_de_orcid, obtener_metadatos_de_openalex_autor
 
-def sync_academics(limit=None, target_name=None, force_local=False, save_to_ch=False, resolve_oa=True, skip=0):
+def sync_academics(limit=None, target_name=None, force_local=False, save_to_ch=False, resolve_oa=True, skip=0, workers=4):
     query = """
     MATCH (p:Person)
     """
@@ -110,23 +96,65 @@ def sync_academics(limit=None, target_name=None, force_local=False, save_to_ch=F
     
     count = skip
     total_to_process = skip + len(academics)
-    for acad in academics:
-        count += 1
-        # Convertir al formato que espera ingest_researcher_data
-        data = {
-            'snii_author': acad['fullname'],
-            'snii_cvu': acad['id'] if acad['id'] and acad['id'].isdigit() else None,
-            'orcid': acad['orcids'][0] if acad['orcids'] else None,
-            'scopus_ids': acad['scopus_ids'],
-            'openalex_ids': acad['openalex_ids'],
-            'match': True,
-            # No sobreescribir la afiliación existente
-            'already_in_db': False 
-        }
-        
-        print(f"\n[{count}/{total_to_process}] Procesando a {acad['fullname']}")
-        # Llamar a la lógica probada (se salta si no hay IDs válidos)
-        ingest_researcher_data(data, force=True, force_local=force_local, current_idx=count, total=total_to_process, save_to_ch=save_to_ch, resolve_oa=resolve_oa)
+    if workers <= 1:
+        count = skip
+        for acad in academics:
+            count += 1
+            data = {
+                'snii_author': acad['fullname'],
+                'snii_cvu': acad['id'] if acad['id'] and acad['id'].isdigit() else None,
+                'orcid': acad['orcids'][0] if acad['orcids'] else None,
+                'scopus_ids': acad['scopus_ids'],
+                'openalex_ids': acad['openalex_ids'],
+                'match': True,
+                'already_in_db': False 
+            }
+            print(f"\n[{count}/{total_to_process}] Procesando a {acad['fullname']}")
+            ingest_researcher_data(data, force=True, force_local=force_local, current_idx=count, total=total_to_process, save_to_ch=save_to_ch, resolve_oa=resolve_oa)
+    else:
+        import threading
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        print(f"⚡ Ejecutando ingesta de académicos con {workers} hilos concurrentes...")
+        counter_lock = threading.Lock()
+        counter = [skip]
+
+        def _process_one(acad_record):
+            with counter_lock:
+                counter[0] += 1
+                current_idx = counter[0]
+
+            data = {
+                'snii_author': acad_record['fullname'],
+                'snii_cvu': acad_record['id'] if acad_record['id'] and acad_record['id'].isdigit() else None,
+                'orcid': acad_record['orcids'][0] if acad_record['orcids'] else None,
+                'scopus_ids': acad_record['scopus_ids'],
+                'openalex_ids': acad_record['openalex_ids'],
+                'match': True,
+                'already_in_db': False 
+            }
+            print(f"\n[{current_idx}/{total_to_process}] Procesando a {acad_record['fullname']}")
+            try:
+                ingest_researcher_data(
+                    data, 
+                    force=True, 
+                    force_local=force_local, 
+                    current_idx=current_idx, 
+                    total=total_to_process, 
+                    save_to_ch=save_to_ch, 
+                    resolve_oa=resolve_oa
+                )
+            except Exception as e:
+                print(f"❌ Error procesando a {acad_record.get('fullname')}: {e}")
+
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [executor.submit(_process_one, acad) for acad in academics]
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    print(f"⚠️ Excepción en hilo: {e}")
+
 
 # ----- LÓGICA PARA ENTIDADES (Instituciones, Dependencias) -----
 def get_entities_with_ror(target_name=None, limit=None):
@@ -211,6 +239,7 @@ if __name__ == "__main__":
     parser.add_argument("--name", type=str, help="Filtrar por nombre (Académico o Entidad)")
     parser.add_argument("--local", action="store_true", help="Usar API local de OpenAlex y SDK nativa de LM Studio")
     parser.add_argument("--ch", action="store_true", help="Guardar mapeos secundarios en ClickHouse")
+    parser.add_argument("--workers", type=int, default=4, help="Número de hilos concurrentes para procesar académicos (por defecto: 4)")
     parser.add_argument("--no-resolve-oa", action="store_true", help="No intentar resolver activamente los IDs de OpenAlex si no existen")
     parser.add_argument("--recompute-metrics", action="store_true", help="Recalcular automáticamente métricas y parquets al finalizar la ingesta")
     
@@ -224,7 +253,7 @@ if __name__ == "__main__":
             print("\n" + "="*50)
             print("🚀 INICIANDO SINCRONIZACIÓN DE ACADÉMICOS")
             print("="*50)
-            sync_academics(limit=args.limit, target_name=args.name, force_local=args.local, save_to_ch=args.ch, resolve_oa=not args.no_resolve_oa, skip=args.skip)
+            sync_academics(limit=args.limit, target_name=args.name, force_local=args.local, save_to_ch=args.ch, resolve_oa=not args.no_resolve_oa, skip=args.skip, workers=args.workers)
             
         if args.sync_entities or args.all:
             print("\n" + "="*50)

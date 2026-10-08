@@ -1060,6 +1060,7 @@ export function NationalPanorama() {
       <AIReportViewer
         type="inst"
         targetName="MÉXICO"
+        institutionName="MEXICO"
         viewMode={viewMode}
         hasReport={metricsData?.has_ai_report}
       />

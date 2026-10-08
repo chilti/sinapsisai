@@ -74,6 +74,8 @@ def update_neo4j():
     dep_col = next((c for c in df.columns if "DEPENDENCIA" in c and "SUB" not in c), None)
     sub_col = next((c for c in df.columns if "SUBDEPENDENCIA" in c), None)
     vig_fin_col = next((c for c in df.columns if "FIN DE VIGENCIA" in c or "FIN" in c), None)
+    cpi_col = next((c for c in df.columns if "CPI" in c or "CENTRO PUBLICO" in c), None)
+    ent_col = next((c for c in df.columns if "ENTIDAD FINAL" in c), None)
 
     # 2. Desactivar investigadores dados de baja en 2026
     if AUDIT_JSON.exists():
@@ -116,7 +118,9 @@ def update_neo4j():
             "institucion": clean_str(r[inst_col]),
             "dependencia": clean_str(r[dep_col]) if dep_col else None,
             "subdependencia": clean_str(r[sub_col]) if sub_col else None,
-            "vigencia_fin": str(r[vig_fin_col]) if vig_fin_col and pd.notna(r[vig_fin_col]) else None
+            "vigencia_fin": str(r[vig_fin_col]) if vig_fin_col and pd.notna(r[vig_fin_col]) else None,
+            "is_cpi": bool(cpi_col and pd.notna(r[cpi_col]) and ("CPI-S" in str(r[cpi_col]).upper() or "CENTRO PUBLICO" in str(r[cpi_col]).upper())),
+            "entidad_final": clean_str(r[ent_col]) if ent_col else None
         })
 
     total_batches = (len(rows) + batch_size - 1) // batch_size
@@ -142,7 +146,10 @@ def update_neo4j():
                     p.snii_institution = r.institucion,
                     p.snii_dependency = r.dependencia,
                     p.snii_subdependency = r.subdependencia,
-                    p.snii_vigencia_fin = r.vigencia_fin
+                    p.snii_vigencia_fin = r.vigencia_fin,
+                    p.is_cpi_secihti = r.is_cpi,
+                    p.cpi_secihti = CASE WHEN r.is_cpi THEN 'CPI-S' ELSE null END,
+                    p.entidad_final = r.entidad_final
                 ON MATCH SET
                     p.fullname = r.fullname,
                     p.is_snii = true,
@@ -155,6 +162,9 @@ def update_neo4j():
                     p.snii_dependency = r.dependencia,
                     p.snii_subdependency = r.subdependencia,
                     p.snii_vigencia_fin = r.vigencia_fin,
+                    p.is_cpi_secihti = r.is_cpi,
+                    p.cpi_secihti = CASE WHEN r.is_cpi THEN 'CPI-S' ELSE null END,
+                    p.entidad_final = r.entidad_final,
                     p.snii_max_level = CASE 
                         WHEN r.nivel = 'E' THEN 'E'
                         WHEN r.nivel = '3' AND p.snii_max_level <> 'E' THEN '3'

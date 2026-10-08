@@ -7,6 +7,7 @@ import json
 import uuid
 import threading
 import time
+import unicodedata
 from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -75,9 +76,45 @@ def download_dossier_pdf(req: DossierRequest):
     )
 
 
-# Diccionario en memoria para rastrear tareas de generación de reportes IA en background
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+REPORTS_DIR = os.path.join(BASE_DIR, "reports")
+JOBS_DIR = os.path.join(REPORTS_DIR, ".jobs")
+os.makedirs(JOBS_DIR, exist_ok=True)
+
+# Diccionario en memoria y sincronización en disco para multi-worker uvicorn
 AI_REPORT_JOBS: Dict[str, Dict[str, Any]] = {}
 AI_REPORT_LOCK = threading.Lock()
+
+def _get_job_file(job_id: str) -> str:
+    clean_id = re.sub(r'[^a-zA-Z0-9_-]', '', job_id)
+    return os.path.join(JOBS_DIR, f"{clean_id}.json")
+
+def _save_job_state(job_id: str, data: dict):
+    with AI_REPORT_LOCK:
+        AI_REPORT_JOBS[job_id] = data
+    try:
+        j_file = _get_job_file(job_id)
+        temp_file = f"{j_file}.tmp.{os.getpid()}"
+        save_data = {k: v for k, v in data.items() if k != "html_content"}
+        with open(temp_file, "w", encoding="utf-8") as f:
+            json.dump(save_data, f, ensure_ascii=False)
+        os.replace(temp_file, j_file)
+    except Exception as e:
+        print(f"Error persistiendo estado de job {job_id}: {e}")
+
+def _read_job_state(job_id: str) -> Optional[dict]:
+    # En entorno multi-worker de uvicorn, el archivo en disco compartido es la fuente canónica
+    j_file = _get_job_file(job_id)
+    if os.path.exists(j_file):
+        try:
+            with open(j_file, "r", encoding="utf-8") as f:
+                disk_job = json.load(f)
+            return disk_job
+        except Exception as e:
+            print(f"Error leyendo job file {j_file}: {e}")
+    # Fallback a memoria local del worker
+    with AI_REPORT_LOCK:
+        return AI_REPORT_JOBS.get(job_id)
 
 class AIReportJobRequest(BaseModel):
     type: str = "inv"  # "inv" o "inst"
@@ -85,22 +122,24 @@ class AIReportJobRequest(BaseModel):
     entity: Optional[str] = None
     institution: Optional[str] = None
     view_mode: Optional[str] = "capacidad_instalada"
-    save_to_disk: bool = False
+    save_to_disk: bool = True
+    model: Optional[str] = None
 
 def _run_ai_report_worker(job_id: str, req_data: dict):
     from report_generator import generate_html_report
     
     def on_progress(step, total, msg):
-        with AI_REPORT_LOCK:
-            if job_id in AI_REPORT_JOBS:
-                AI_REPORT_JOBS[job_id]["step"] = step
-                AI_REPORT_JOBS[job_id]["total_steps"] = total
-                AI_REPORT_JOBS[job_id]["progress_msg"] = f"Paso {step}/{total}: {msg}"
+        job = _read_job_state(job_id) or {}
+        job["step"] = step
+        job["total_steps"] = total
+        job["progress_msg"] = f"Paso {step}/{total}: {msg}"
+        _save_job_state(job_id, job)
 
     try:
-        with AI_REPORT_LOCK:
-            AI_REPORT_JOBS[job_id]["status"] = "processing"
-            AI_REPORT_JOBS[job_id]["progress_msg"] = "Extrayendo métricas consolidadas y consultando modelo LLM..."
+        job = _read_job_state(job_id) or {}
+        job["status"] = "processing"
+        job["progress_msg"] = "Extrayendo métricas consolidadas y consultando modelo LLM..."
+        _save_job_state(job_id, job)
 
         res = generate_html_report(
             entity_type=req_data["type"],
@@ -108,118 +147,113 @@ def _run_ai_report_worker(job_id: str, req_data: dict):
             entity_context=req_data.get("entity"),
             institution_name=req_data.get("institution"),
             view_mode=req_data.get("view_mode", "capacidad_instalada"),
-            save_to_disk=req_data.get("save_to_disk", False),
-            progress_callback=on_progress
+            save_to_disk=True,
+            progress_callback=on_progress,
+            model=req_data.get("model")
         )
 
-        with AI_REPORT_LOCK:
-            AI_REPORT_JOBS[job_id]["status"] = "completed"
-            AI_REPORT_JOBS[job_id]["progress_msg"] = "Reporte generado exitosamente."
-            if req_data.get("save_to_disk", False):
-                AI_REPORT_JOBS[job_id]["file_path"] = res
-            else:
-                AI_REPORT_JOBS[job_id]["html_content"] = res
-            AI_REPORT_JOBS[job_id]["completed_at"] = time.time()
+        job = _read_job_state(job_id) or {}
+        job["status"] = "completed"
+        job["progress_msg"] = "Reporte generado exitosamente."
+        job["file_path"] = res
+        job["completed_at"] = time.time()
+        _save_job_state(job_id, job)
     except Exception as e:
-        with AI_REPORT_LOCK:
-            AI_REPORT_JOBS[job_id]["status"] = "error"
-            AI_REPORT_JOBS[job_id]["error"] = str(e)
-            AI_REPORT_JOBS[job_id]["progress_msg"] = f"Error al generar reporte: {str(e)}"
+        job = _read_job_state(job_id) or {}
+        job["status"] = "error"
+        job["error"] = str(e)
+        job["progress_msg"] = f"Error al generar reporte: {str(e)}"
+        _save_job_state(job_id, job)
 
 
 @router.post("/ai-report/request-job")
 def request_ai_report_job(req: AIReportJobRequest):
     """
     Inicia la generación en segundo plano de un reporte bibliométrico con IA.
-    Para investigadores (type='inv') se genera en memoria de forma efímera (save_to_disk=False).
-    Para instituciones/dependencias (type='inst') se guarda permanentemente en disco.
+    Persiste el estado en disco compartido (.jobs/) para compatibilidad con uvicorn multi-worker.
     """
-    import uuid
     job_id = uuid.uuid4().hex[:12]
-    save_disk = True if req.type == "inst" else req.save_to_disk
-
-    with AI_REPORT_LOCK:
-        AI_REPORT_JOBS[job_id] = {
-            "job_id": job_id,
-            "type": req.type,
-            "name": req.name,
-            "entity": req.entity,
-            "institution": req.institution,
-            "view_mode": req.view_mode,
-            "save_to_disk": save_disk,
-            "status": "pending",
-            "step": 0,
-            "total_steps": 11,
-            "progress_msg": "En cola de procesamiento...",
-            "html_content": None,
-            "file_path": None,
-            "error": None,
-            "created_at": time.time()
-        }
-
-    # Limpiar jobs antiguos (> 3 horas)
-    now = time.time()
-    with AI_REPORT_LOCK:
-        keys_to_del = [k for k, v in AI_REPORT_JOBS.items() if now - v.get("created_at", 0) > 10800]
-        for k in keys_to_del:
-            del AI_REPORT_JOBS[k]
+    
+    init_data = {
+        "job_id": job_id,
+        "type": req.type,
+        "name": req.name,
+        "entity": req.entity,
+        "institution": req.institution,
+        "view_mode": req.view_mode,
+        "save_to_disk": True,
+        "model": req.model,
+        "status": "pending",
+        "step": 0,
+        "total_steps": 12,
+        "progress_msg": "En cola de procesamiento...",
+        "file_path": None,
+        "error": None,
+        "created_at": time.time()
+    }
+    _save_job_state(job_id, init_data)
 
     req_dict = req.dict()
-    req_dict["save_to_disk"] = save_disk
+    req_dict["save_to_disk"] = True
     t = threading.Thread(target=_run_ai_report_worker, args=(job_id, req_dict), daemon=True)
     t.start()
 
     return {
         "status": "success",
         "job_id": job_id,
+        "model": req.model,
         "message": "Generación de reporte iniciada en segundo plano"
     }
 
 
 @router.get("/ai-report/job-status/{job_id}")
 def get_ai_report_job_status(job_id: str):
-    """Consulta el estado y progreso en tiempo real de una tarea de reporte IA."""
-    with AI_REPORT_LOCK:
-        job = AI_REPORT_JOBS.get(job_id)
-        if not job:
-            raise HTTPException(status_code=404, detail="Tarea de reporte no encontrada")
-        return {
-            "job_id": job["job_id"],
-            "type": job["type"],
-            "name": job["name"],
-            "status": job["status"],
-            "step": job["step"],
-            "total_steps": job["total_steps"],
-            "progress_msg": job["progress_msg"],
-            "save_to_disk": job["save_to_disk"],
-            "error": job["error"]
-        }
+    """Consulta el estado y progreso en tiempo real de una tarea de reporte IA compartido entre workers."""
+    job = _read_job_state(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Tarea de reporte no encontrada")
+    return {
+        "job_id": job.get("job_id", job_id),
+        "type": job.get("type"),
+        "name": job.get("name"),
+        "status": job.get("status"),
+        "step": job.get("step", 0),
+        "total_steps": job.get("total_steps", 11),
+        "progress_msg": job.get("progress_msg", ""),
+        "save_to_disk": job.get("save_to_disk", True),
+        "error": job.get("error")
+    }
 
 
 @router.get("/ai-report/job-result/{job_id}")
 def get_ai_report_job_result(job_id: str, download: bool = Query(False)):
     """Retorna el HTML generado por la tarea (en pantalla o descargable)."""
-    with AI_REPORT_LOCK:
-        job = AI_REPORT_JOBS.get(job_id)
-        if not job:
-            raise HTTPException(status_code=404, detail="Tarea de reporte no encontrada")
-        if job["status"] == "error":
-            raise HTTPException(status_code=500, detail=job.get("error") or "Error generando reporte")
-        if job["status"] != "completed":
-            raise HTTPException(status_code=400, detail="El reporte aún no ha finalizado")
-        
-        html_content = job.get("html_content")
-        file_path = job.get("file_path")
+    job = _read_job_state(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Tarea de reporte no encontrada")
+    if job.get("status") == "error":
+        raise HTTPException(status_code=500, detail=job.get("error") or "Error generando reporte")
+    if job.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="El reporte aún no ha finalizado")
+    
+    file_path = job.get("file_path")
+    html_content = None
 
-    if not html_content and file_path and os.path.exists(file_path):
+    if file_path and os.path.exists(file_path):
         with open(file_path, "r", encoding="utf-8") as f:
             html_content = f.read()
+    else:
+        # Respaldo buscando el archivo canónico generado
+        fallback_file = _find_ai_report_file(job.get("type", "inst"), job.get("name", ""), job.get("view_mode", "capacidad_instalada"))
+        if fallback_file and os.path.exists(fallback_file):
+            with open(fallback_file, "r", encoding="utf-8") as f:
+                html_content = f.read()
 
     if not html_content:
         raise HTTPException(status_code=404, detail="El contenido del reporte no está disponible")
 
     headers = {}
-    safe_name = "".join([c if c.isalnum() else "_" for c in job["name"]])
+    safe_name = "".join([c if c.isalnum() else "_" for c in job.get("name", "Reporte")])
     filename = f"Reporte_IA_{safe_name}.html"
     if download:
         headers["Content-Disposition"] = f'attachment; filename="{filename}"'
@@ -229,6 +263,80 @@ def get_ai_report_job_result(job_id: str, download: bool = Query(False)):
         media_type="text/html; charset=utf-8",
         headers=headers
     )
+
+
+def _normalize_name_for_search(s: str) -> str:
+    nfkd = unicodedata.normalize('NFKD', s)
+    return nfkd.encode('ASCII', 'ignore').decode('utf-8')
+
+
+def _find_ai_report_file(type: str, name: str, view_mode: Optional[str] = "capacidad_instalada") -> Optional[str]:
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    reports_dir = os.path.join(base_dir, "reports")
+    if not os.path.exists(reports_dir):
+        return None
+        
+    safe_name = "".join([c if c.isalnum() else "_" for c in name])
+    norm_name = "".join([c if c.isalnum() else "_" for c in _normalize_name_for_search(name)])
+    
+    candidates = []
+    
+    if type == "inst":
+        suffix = f"_{view_mode}" if view_mode else ""
+        for s_name in dict.fromkeys([safe_name, norm_name]):
+            if suffix:
+                candidates.append(f"report_inst{suffix}_{s_name}.html")
+            candidates.extend([
+                f"report_inst_{s_name}.html",
+                f"report_inst_capacidad_instalada_{s_name}.html",
+                f"report_inst_produccion_institucional_{s_name}.html"
+            ])
+    else:
+        for s_name in dict.fromkeys([safe_name, norm_name]):
+            candidates.append(f"report_inv_{s_name}.html")
+        
+    for cand in candidates:
+        full_p = os.path.join(reports_dir, cand)
+        if os.path.exists(full_p):
+            return full_p
+            
+    # Búsqueda precisa por terminación de nombre de entidad
+    prefix = f"report_{type}_"
+    clean_norm_name = norm_name.lower().strip("_")
+    for fname in os.listdir(reports_dir):
+        if fname.startswith(prefix) and fname.endswith(".html"):
+            f_base = fname[:-5]  # quitar .html
+            norm_f = _normalize_name_for_search(f_base).lower()
+            if norm_f.endswith(f"_{clean_norm_name}") or norm_f == f"{prefix}{clean_norm_name}":
+                return os.path.join(reports_dir, fname)
+
+    return None
+
+
+@router.get("/ai-report/status")
+def check_ai_report_status(
+    type: str = Query("inst", description="'inst' o 'inv'"),
+    name: str = Query(..., description="Nombre de la institución/entidad o del investigador"),
+    view_mode: Optional[str] = Query("capacidad_instalada")
+):
+    """
+    Verifica si ya existe un reporte compilado en disco para la entidad/investigador.
+    Retorna exists: true si el archivo existe y es accesible.
+    """
+    found_file = _find_ai_report_file(type, name, view_mode)
+    if found_file and os.path.exists(found_file):
+        return {
+            "status": "success",
+            "exists": True,
+            "filename": os.path.basename(found_file),
+            "size_bytes": os.path.getsize(found_file)
+        }
+    return {
+        "status": "success",
+        "exists": False,
+        "filename": None,
+        "size_bytes": 0
+    }
 
 
 @router.get("/ai-report")
@@ -242,42 +350,8 @@ def get_ai_report(
     Recupera el reporte bibliométrico generado por IA en formato HTML.
     Permite previsualización en pantalla o descarga.
     """
-    import os
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    reports_dir = os.path.join(base_dir, "reports")
-    
-    safe_name = "".join([c if c.isalnum() else "_" for c in name])
-    candidates = []
-    
-    if type == "inst":
-        suffix = f"_{view_mode}" if view_mode else ""
-        candidates.extend([
-            f"report_inst{suffix}_{safe_name}.html",
-            f"report_inst_{safe_name}.html",
-            f"report_inst_capacidad_instalada_{safe_name}.html",
-            f"report_inst_produccion_institucional_{safe_name}.html"
-        ])
-    else:
-        candidates.extend([
-            f"report_inv_{safe_name}.html"
-        ])
-        
-    found_file = None
-    for cand in candidates:
-        full_p = os.path.join(reports_dir, cand)
-        if os.path.exists(full_p):
-            found_file = full_p
-            break
-            
-    # Búsqueda difusa si no coincide exacto
-    if not found_file and os.path.exists(reports_dir):
-        prefix = f"report_{type}_"
-        for fname in os.listdir(reports_dir):
-            if fname.startswith(prefix) and safe_name[:12].lower() in fname.lower() and fname.endswith(".html"):
-                found_file = os.path.join(reports_dir, fname)
-                break
-
-    if not found_file:
+    found_file = _find_ai_report_file(type, name, view_mode)
+    if not found_file or not os.path.exists(found_file):
         raise HTTPException(status_code=404, detail="No se encontró un reporte generado por IA para esta entidad/investigador")
         
     with open(found_file, "r", encoding="utf-8") as f:

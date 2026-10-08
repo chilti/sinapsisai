@@ -206,6 +206,9 @@ def get_author_coauthors_graph(author_name: str) -> str:
 def query_knowledge_graph_cypher(cypher_query: str) -> str:
     """
     Ejecuta una consulta Cypher directa sobre el Grafo de Conocimiento (Neo4j).
+    - Investigadores / Autores: etiqueta `(a:Person)`. Atributos: `fullname`, `cvu`, `orcid`, `snii_level`, `snii_area`, `institution`, `entidad_final`, `is_cpi_secihti`.
+      * `a.entidad_final`: Estado federativo oficial del SNII (ej. 'CIUDAD DE MEXICO', 'VERACRUZ DE IGNACIO DE LA LLAVE', 'JALISCO', 'NUEVO LEON').
+      * `a.is_cpi_secihti`: Booleano (true) si el investigador pertenece a la red de Centros Públicos de Investigación SECIHTI (CPI-S: CIMAT, CICESE, INAOE, INECOL, CIAD, CIESAS, etc.).
     - Artículos: etiqueta genérica `(p:Paper)`. Atributos: `doi`, `title`, `year`, `citations`.
     - Entidades UNAM/Instituciones: etiquetas `(i:Institution)`, `(d:Dependency)`, `(s:Subdependency)`. Atributos: `id`, `name`.
     - Tópicos Temáticos: `(t:Topic)`. Atributos: `id` (slug compuesto en inglés), `name` (nombre en inglés).
@@ -218,6 +221,10 @@ def query_knowledge_graph_cypher(cypher_query: str) -> str:
     - SDGs: `(p:Paper)-[:CONTRIBUTES_TO]->(s:SDG)`.
     
     PATRONES DE CONSULTA RECOMENDADOS (SINTAXIS CORRECTA):
+    - Filtrar investigadores por estado/entidad federativa y tópico:
+      `MATCH (a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic) WHERE toLower(a.entidad_final) CONTAINS 'veracruz' AND toLower(t.name) CONTAINS 'artificial intelligence' RETURN a.fullname, a.institution, a.entidad_final, p.title ORDER BY p.year DESC LIMIT 20`
+    - Filtrar investigadores de Centros Públicos SECIHTI (CPI-S):
+      `MATCH (a:Person {is_cpi_secihti: true}) WHERE toLower(a.snii_area) CONTAINS 'sociales' RETURN a.fullname, a.institution, a.snii_level LIMIT 25`
     - Filtrar por dependencia y tópico exacto: `MATCH (d:Dependency {name: 'FACULTAD DE CIENCIAS'})<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper)-[:HAS_TOPIC]->(t:Topic) WHERE toLower(t.name) CONTAINS 'microscopy' RETURN p.title, coalesce(a.fullname, a.name) AS name, p.year ORDER BY p.year DESC LIMIT 20`
     - Filtrar papers por dependencia (sin tópico): `MATCH (d:Dependency)<-[:AFFILIATED_TO]-(a:Person)-[:AUTHOR_OF|AUTHORED]->(p:Paper) WHERE toLower(d.name) CONTAINS 'ciencias' AND p.year >= 2018 RETURN p.doi, p.title, p.year, p.citations ORDER BY p.year DESC LIMIT 20`
     - Filtrar por tópico AMPLIO (usa OR para cubrir variantes): `WHERE toLower(t.name) CONTAINS 'diabetes' OR toLower(t.name) CONTAINS 'insulin' OR toLower(t.name) CONTAINS 'metabolic'`

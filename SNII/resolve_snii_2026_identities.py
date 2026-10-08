@@ -134,6 +134,8 @@ SPANISH_PARTICLES = {'de', 'del', 'la', 'las', 'los', 'san', 'santa', 'y', 'e', 
 
 def get_search_keys(name: str):
     """Extrae combinaciones de apellidos y nombres para búsqueda exhaustiva en ClickHouse ignorando partículas nobiliarias/preposiciones."""
+    if not name or not isinstance(name, str) or not name.strip():
+        return "desconocido", "desconocido", [("desconocido", "desconocido")], ["desconocido"]
     raw_clean = normalize_text(name).replace('‐', ' ').replace('-', ' ')
     parts = [p for p in raw_clean.replace(',', ' ').split() if p not in SPANISH_PARTICLES and len(p) >= 2]
     if not parts:
@@ -171,6 +173,10 @@ def get_search_keys(name: str):
 
 def calc_cand_score(seed_str: str, cand_str: str) -> float:
     """Calcula similitud híbrida combinando Jaro-Winkler sobre cadenas ordenadas y coincidencia por tokens/iniciales con prioridad en apellido paterno."""
+    if not seed_str or not cand_str:
+        return 0.0
+    seed_str = str(seed_str)
+    cand_str = str(cand_str)
     raw_clean = seed_str.replace('‐', ' ').replace('-', ' ').lower()
     if ',' in raw_clean:
         ap = [p for p in raw_clean.split(',')[0].split() if p not in SPANISH_PARTICLES and len(p) > 2]
@@ -435,6 +441,13 @@ def search_web_orcid_candidates(snii_name: str, snii_inst: str, snii_dep: str = 
     2. Respaldo en DuckDuckGo (ddgs) para capturar perfiles orcid.org y páginas institucionales.
     Retorna lista de candidatos estructurados para evaluación del LLM.
     """
+    if not snii_name or not isinstance(snii_name, str) or not snii_name.strip():
+        return []
+    snii_name = snii_name.strip()
+    snii_inst = str(snii_inst or "")
+    snii_dep = str(snii_dep or "")
+    snii_sub = str(snii_sub or "")
+
     web_cands = []
     seen_orcids = set()
 

@@ -6,17 +6,28 @@
 export const pt = {
   // Franja & Navegação
   appName: "Info TlachIA SNII",
-  appSubtitle: "Inteligência Científica e Produção Acadêmica",
+  appSubtitle: 'Projeto piloto demonstrativo. Veja "Sobre" para mais informações.',
   tabs: {
     home: "Início",
     national: "Panorama Nacional",
+    nationalShort: "Nacional",
     panorama: "Panorama Institucional",
+    panoramaShort: "Institucional",
     researchers: "Pesquisadores",
+    researchersShort: "Pesquisadores",
     maps: "Mapas da Ciência",
+    mapsShort: "Mapas",
+    networks: "Redes e Capacidades SECIHTI",
+    networksShort: "Redes",
     mySpace: "Meu Espaço",
+    mySpaceShort: "Meu Espaço",
     governance: "Administração",
+    governanceShort: "Admin",
     assistant: "Assistente IA",
-    about: "Sobre"
+    assistantShort: "Assistente",
+    about: "Sobre",
+    aboutShort: "Sobre",
+    more: "Mais"
   },
   
   // Módulo 1: Panorama Institucional
@@ -242,6 +253,8 @@ export const pt = {
   // Comuns & Botões
   common: {
     loading: "Carregando dados...",
+    loading_profile: "Carregando perfil e indicadores do pesquisador...",
+    loading_institution: "Carregando panorama e indicadores institucionais...",
     error: "Ocorreu um erro ao processar a solicitação.",
     retry: "Tentar novamente",
     save: "Salvar",

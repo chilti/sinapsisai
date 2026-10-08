@@ -1,4 +1,5 @@
 import os
+import threading
 import clickhouse_connect
 from dotenv import load_dotenv
 
@@ -12,11 +13,12 @@ class ClickHouseClient:
         self.password = password or os.getenv('CH_PASSWORD', '')
         self.database = database or os.getenv('CH_DATABASE', 'default')
         self.timeout = int(timeout or os.getenv('CH_TIMEOUT', 1800))
-        self.client = None
+        self._local = threading.local()
 
     def get_client(self):
-        if not self.client:
-            self.client = clickhouse_connect.get_client(
+        client = getattr(self._local, 'client', None)
+        if client is None:
+            client = clickhouse_connect.get_client(
                 host=self.host,
                 port=self.port,
                 username=self.user,
@@ -26,24 +28,27 @@ class ClickHouseClient:
                 send_receive_timeout=self.timeout,
                 settings={'max_execution_time': self.timeout}
             )
-        return self.client
+            self._local.client = client
+        return client
 
     def query_df(self, query, parameters=None, settings=None):
-        client = self.get_client()
-        return client.query_df(query, parameters=parameters, settings=settings)
+        return self.get_client().query_df(query, parameters=parameters, settings=settings)
 
     def command(self, cmd, parameters=None, settings=None):
-        client = self.get_client()
-        return client.command(cmd, parameters=parameters, settings=settings)
+        return self.get_client().command(cmd, parameters=parameters, settings=settings)
 
     def query(self, query, parameters=None, settings=None):
-        client = self.get_client()
-        return client.query(query, parameters=parameters, settings=settings)
+        return self.get_client().query(query, parameters=parameters, settings=settings)
+
+    def insert_df(self, table, df, database=None, settings=None):
+        return self.get_client().insert_df(table=table, df=df, database=database, settings=settings)
 
     def close(self):
-        if self.client:
-            self.client.close()
-            self.client = None
+        client = getattr(self._local, 'client', None)
+        if client:
+            client.close()
+            self._local.client = None
 
 # Singleton instance
 ch_client = ClickHouseClient()
+

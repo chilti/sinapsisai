@@ -1991,6 +1991,13 @@ def process_and_save(entity_filter=None, academic_filter=None, institution_filte
 
     print(f"\n✅ Completado. {len(updated_files)} archivos actualizados.")
 
+    # Guardar metadatos del pipeline y snapshot
+    try:
+        from utils.pipeline_metadata import save_pipeline_metadata
+        save_pipeline_metadata()
+    except Exception as e:
+        print(f"⚠️ Error actualizando metadatos del pipeline: {e}")
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(

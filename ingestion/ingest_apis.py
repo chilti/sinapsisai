@@ -41,62 +41,14 @@ pyalex.config.email = os.getenv("EMAIL_ADDRESS", "sin_correo@ciencias.unam.mx")
 if os.getenv("OPENALEX_API_KEY"):
     pyalex.config.api_key = os.getenv("OPENALEX_API_KEY")
 
-from langchain_openai import OpenAIEmbeddings
+from lib.llm_utils import get_embeddings_model
 
 # --- Config Embeddings ---
-user = os.getenv("LLM_USER")
-password = os.getenv("LLM_PASSWORD")
-base_url = os.getenv("LLM_BASE_URL", "http://localhost:1234/v1/")
-if not base_url.endswith("/"):
-    base_url += "/"
-model_name = os.getenv("EMBEDDING_MODEL", "text-embedding-nomic-ai-nomic-embed-text-v2-moe")
-auth_url = base_url
-if user and password:
-    if "://" in base_url:
-        proto, rest = base_url.split("://", 1)
-        auth_url = f"{proto}://{user}:{password}@{rest}"
-    else:
-        auth_url = f"http://{user}:{password}@{base_url}"
+embeddings_model = get_embeddings_model()
 
-http_client = httpx.Client(verify=False, timeout=120)
-
-embeddings_model = OpenAIEmbeddings(
-    model=model_name,
-    base_url=auth_url,
-    api_key="lm-studio",
-    http_client=http_client,
-    check_embedding_ctx_length=False
-)
-
-def get_embeddings(texts: list, batch_size: int = 5, force_local: bool = False) -> list:
+def get_embeddings(texts: list, batch_size: int = 32, force_local: bool = False) -> list:
     if not texts: return []
     all_embeddings = []
-    
-    if force_local:
-        try:
-            import lmstudio as lms
-            # Tomar modelo desde env para evitar variable indefinida
-            _local_model_name = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
-            model = lms.embedding_model(_local_model_name)
-            
-            for text in texts:
-                clean_t = str(text) if text else " "
-                emb = model.embed(clean_t)
-                # Normalizar el objeto retornado por lmstudio (puede ser objeto, lista o array)
-                if hasattr(emb, "embedding"):
-                    val = emb.embedding
-                elif hasattr(emb, "tolist"):
-                    val = emb.tolist()
-                elif isinstance(emb, list):
-                    val = emb
-                else:
-                    val = list(emb)
-                all_embeddings.append(val)
-            return all_embeddings
-        except Exception as e:
-            print(f"⚠️ Error con librería 'lmstudio': {e}. Cayendo a LangChain...")
-
-    # Fallback / Modo servidor estándar (LangChain OpenAI)
     for i in range(0, len(texts), batch_size):
         batch = [str(t) if t else " " for t in texts[i:i+batch_size]]
         embs = embeddings_model.embed_documents(batch)

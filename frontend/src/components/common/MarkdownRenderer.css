@@ -121,15 +121,17 @@
   background: rgba(0, 242, 254, 0.04);
 }
 
-/* Código en línea */
+/* Código en línea - Adaptativo a temas */
 .markdown-body code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.82em;
-  padding: 0.15rem 0.35rem;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.3);
-  color: #38bdf8;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 0.85em;
+  font-weight: 600;
+  padding: 0.16rem 0.42rem;
+  border-radius: 5px;
+  background: rgba(2, 132, 199, 0.08);
+  color: #0369a1;
+  border: 1px solid rgba(2, 132, 199, 0.22);
+  word-break: break-word;
 }
 
 /* Bloques de código */
@@ -150,6 +152,135 @@
   color: #e2e8f0;
   font-size: 0.85rem;
   line-height: 1.5;
+}
+
+/* Adaptabilidad por Tema Visual */
+/* 1. Tema Claro */
+[data-theme="claro"] .markdown-body code,
+:root:not([data-theme="oscuro"]):not([data-theme="navy"]) .markdown-body code {
+  background: #f1f5f9;
+  color: #0369a1;
+  border: 1px solid #cbd5e1;
+}
+
+[data-theme="claro"] .markdown-body table,
+:root:not([data-theme="oscuro"]):not([data-theme="navy"]) .markdown-body table {
+  border-color: #e2e8f0;
+  background: #ffffff;
+}
+
+[data-theme="claro"] .markdown-body thead,
+:root:not([data-theme="oscuro"]):not([data-theme="navy"]) .markdown-body thead {
+  background: #f8fafc;
+  border-bottom: 2px solid #cbd5e1;
+}
+
+[data-theme="claro"] .markdown-body th,
+:root:not([data-theme="oscuro"]):not([data-theme="navy"]) .markdown-body th {
+  color: #0369a1;
+}
+
+[data-theme="claro"] .markdown-body td,
+:root:not([data-theme="oscuro"]):not([data-theme="navy"]) .markdown-body td {
+  border-top: 1px solid #e2e8f0;
+  color: #1e293b;
+}
+
+[data-theme="claro"] .markdown-body tbody tr:nth-child(even),
+:root:not([data-theme="oscuro"]):not([data-theme="navy"]) .markdown-body tbody tr:nth-child(even) {
+  background: #f8fafc;
+}
+
+[data-theme="claro"] .markdown-body tbody tr:hover,
+:root:not([data-theme="oscuro"]):not([data-theme="navy"]) .markdown-body tbody tr:hover {
+  background: rgba(2, 132, 199, 0.05);
+}
+
+[data-theme="claro"] .markdown-body pre,
+:root:not([data-theme="oscuro"]):not([data-theme="navy"]) .markdown-body pre {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+[data-theme="claro"] .markdown-body pre code,
+:root:not([data-theme="oscuro"]):not([data-theme="navy"]) .markdown-body pre code {
+  color: #0f172a;
+  background: transparent;
+  border: none;
+}
+
+/* 2. Tema Oscuro */
+[data-theme="oscuro"] .markdown-body code {
+  background: rgba(56, 189, 248, 0.12);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.28);
+}
+
+[data-theme="oscuro"] .markdown-body table {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(15, 23, 42, 0.4);
+}
+
+[data-theme="oscuro"] .markdown-body thead {
+  background: rgba(56, 189, 248, 0.08);
+  border-bottom: 2px solid rgba(56, 189, 248, 0.2);
+}
+
+[data-theme="oscuro"] .markdown-body th {
+  color: #38bdf8;
+}
+
+[data-theme="oscuro"] .markdown-body td {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+}
+
+[data-theme="oscuro"] .markdown-body pre {
+  background: #0b0f17;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="oscuro"] .markdown-body pre code {
+  color: #e2e8f0;
+  background: transparent;
+  border: none;
+}
+
+/* 3. Tema Navy */
+[data-theme="navy"] .markdown-body code {
+  background: rgba(56, 189, 248, 0.12);
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.28);
+}
+
+[data-theme="navy"] .markdown-body table {
+  border-color: rgba(56, 189, 248, 0.15);
+  background: rgba(7, 23, 49, 0.6);
+}
+
+[data-theme="navy"] .markdown-body thead {
+  background: rgba(56, 189, 248, 0.1);
+  border-bottom: 2px solid rgba(56, 189, 248, 0.25);
+}
+
+[data-theme="navy"] .markdown-body th {
+  color: #38bdf8;
+}
+
+[data-theme="navy"] .markdown-body td {
+  border-top: 1px solid rgba(56, 189, 248, 0.1);
+  color: #e2e8f0;
+}
+
+[data-theme="navy"] .markdown-body pre {
+  background: #071731;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+[data-theme="navy"] .markdown-body pre code {
+  color: #e2e8f0;
+  background: transparent;
+  border: none;
 }
 
 /* Citas / Blockquotes */
@@ -178,4 +309,91 @@
   margin: 1rem 0;
   border: none;
   border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+}
+
+/* ==========================================================================
+   Estilos Adaptativos para Razonamiento y Pasos de Herramientas del Asistente
+   ========================================================================== */
+
+.assistant-thoughts-box {
+  margin-top: 0.45rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 0.77rem;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  max-height: 420px;
+  overflow-y: auto;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.assistant-thoughts-btn {
+  font-size: 0.73rem;
+  padding: 0.22rem 0.65rem;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+/* 1. Tema Claro */
+[data-theme="claro"] .assistant-thoughts-box,
+:root:not([data-theme="oscuro"]):not([data-theme="navy"]) .assistant-thoughts-box {
+  background: #f8fafc;
+  color: #1e293b;
+  border: 1px solid #cbd5e1;
+}
+
+[data-theme="claro"] .assistant-thoughts-btn,
+:root:not([data-theme="oscuro"]):not([data-theme="navy"]) .assistant-thoughts-btn {
+  color: #0369a1;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+}
+
+[data-theme="claro"] .assistant-thoughts-btn:hover,
+:root:not([data-theme="oscuro"]):not([data-theme="navy"]) .assistant-thoughts-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+/* 2. Tema Oscuro */
+[data-theme="oscuro"] .assistant-thoughts-box {
+  background: #070a0f;
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+}
+
+[data-theme="oscuro"] .assistant-thoughts-btn {
+  color: #38bdf8;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(15, 23, 42, 0.6);
+}
+
+[data-theme="oscuro"] .assistant-thoughts-btn:hover {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.35);
+}
+
+/* 3. Tema Navy */
+[data-theme="navy"] .assistant-thoughts-box {
+  background: #071731;
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+[data-theme="navy"] .assistant-thoughts-btn {
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  background: rgba(7, 23, 49, 0.6);
+}
+
+[data-theme="navy"] .assistant-thoughts-btn:hover {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.4);
 }

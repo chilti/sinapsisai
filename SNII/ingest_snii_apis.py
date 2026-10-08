@@ -48,36 +48,15 @@ from lib.llm_utils import get_embeddings_model
 # Usamos la fábrica centralizada que ya maneja Auth, SSL y Timeouts
 embeddings_model = get_embeddings_model()
 
-def get_embeddings(texts: list, batch_size: int = 5, force_local: bool = False) -> list:
+def get_embeddings(texts: list, batch_size: int = 32, force_local: bool = False) -> list:
     if not texts: return []
     all_embeddings = []
-    
-    if force_local:
-        try:
-            import lmstudio as lms
-            _local_model_name = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
-            model = lms.embedding_model(_local_model_name)
-            for text in texts:
-                clean_t = str(text) if text else " "
-                emb = model.embed(clean_t)
-                if hasattr(emb, "embedding"):
-                    val = emb.embedding
-                elif hasattr(emb, "tolist"):
-                    val = emb.tolist()
-                elif isinstance(emb, list):
-                    val = emb
-                else:
-                    val = list(emb)
-                all_embeddings.append(val)
-            return all_embeddings
-        except Exception as e:
-            print(f"⚠️ Error con librería 'lmstudio': {e}. Cayendo a LangChain...")
-
     for i in range(0, len(texts), batch_size):
         batch = [str(t) if t else " " for t in texts[i:i+batch_size]]
         embs = embeddings_model.embed_documents(batch)
         all_embeddings.extend(embs)
     return all_embeddings
+
 
 # --- Bases de Datos ---
 vector_store = QdrantStore(collection_name="api_papers")
@@ -87,6 +66,34 @@ graph_store = Neo4jGraphStore()
 
 def _clean_t(t): 
     return "".join(c for c in str(t).lower() if c.isalnum())
+
+def _clean_oa_author_ids(val) -> list:
+    """Normaliza y deduplica OpenAlex Author IDs a URLs canónicas https://openalex.org/A..."""
+    if not val:
+        return []
+    if isinstance(val, str):
+        items = val.replace(';', ',').split(',')
+    elif isinstance(val, (list, tuple, set)):
+        items = []
+        for x in val:
+            if isinstance(x, str):
+                items.extend(x.replace(';', ',').split(','))
+            elif x:
+                items.append(str(x))
+    else:
+        items = [str(val)]
+
+    clean_ids = []
+    for it in items:
+        s = str(it).strip().strip("'\"[] ")
+        if not s:
+            continue
+        short = s.rstrip('/').split('/')[-1]
+        if short.startswith('A') and short[1:].isdigit():
+            canon = f"https://openalex.org/{short}"
+            if canon not in clean_ids:
+                clean_ids.append(canon)
+    return clean_ids
 
 def deconstruct_abstract(inverted_abstract):
     if not inverted_abstract: return None
@@ -288,6 +295,44 @@ def obtener_metadatos_de_openalex_autor(openalex_author_id, force_local=False):
         openalex_author_id, force_local=force_local
     )
 
+def get_crossref_batch(dois: list) -> dict:
+    """
+    Consulta múltiples DOIs en la API REST de Crossref en lotes utilizando el filtro nativo 'filter=doi:10.a,doi:10.b' y 'rows=N'.
+    Devuelve un diccionario {doi_normalizado: mensaje_crossref}.
+    """
+    if not dois:
+        return {}
+    results = {}
+    clean_dois = [
+        str(d).replace("https://doi.org/", "").strip().lower()
+        for d in dois
+        if d and not str(d).startswith("orcid-work:")
+    ]
+    if not clean_dois:
+        return {}
+
+    chunk_size = 40
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "InfoTlachIA/1.0 (mailto:cienciometria@fciencias.unam.mx)"
+    }
+    for i in range(0, len(clean_dois), chunk_size):
+        chunk = clean_dois[i:i + chunk_size]
+        doi_filter = ",".join([f"doi:{d}" for d in chunk])
+        url = "https://api.crossref.org/works"
+        params = {"filter": doi_filter, "rows": len(chunk)}
+        try:
+            resp = requests.get(url, params=params, headers=headers, timeout=12)
+            if resp.status_code == 200:
+                items = resp.json().get('message', {}).get('items', [])
+                for item in items:
+                    doi_key = (item.get('DOI') or '').strip().lower()
+                    if doi_key:
+                        results[doi_key] = item
+        except Exception:
+            pass
+    return results
+
 def ingest_researcher_data(data: dict, force: bool = False, force_local: bool = False, current_idx: int = 1, total: int = 1, save_to_ch: bool = False, **kwargs):
     """Procesa e ingesta los datos de un único investigador."""
     academic_name = data.get('snii_author')
@@ -386,28 +431,14 @@ def ingest_researcher_data(data: dict, force: bool = False, force_local: bool = 
     orcids_list = [orcid] if orcid else neo4j_ids.get('orcids', [])
     orcid = orcids_list[0] if orcids_list else None # Keep a single orcid for other external API calls for now
     
-    oa_ids = data.get('openalex_ids') or []
-    if isinstance(oa_ids, str): oa_ids = [oa_ids]
-    
+    oa_ids = _clean_oa_author_ids(data.get('openalex_ids'))
     legacy_oa_id = data.get('matched_openalex_id') or data.get('openalex_id')
-    if legacy_oa_id and legacy_oa_id not in oa_ids:
-        oa_ids.append(legacy_oa_id)
-    
-    for saved_oa in neo4j_ids.get('openalex_ids', []):
+    for lid in _clean_oa_author_ids(legacy_oa_id):
+        if lid not in oa_ids:
+            oa_ids.append(lid)
+    for saved_oa in _clean_oa_author_ids(neo4j_ids.get('openalex_ids')):
         if saved_oa not in oa_ids:
             oa_ids.append(saved_oa)
-
-    # Filtrar IDs de OBRAS (W...) que se hayan colado por error en el nodo Person
-    def _is_author_oa_id(oa_id: str) -> bool:
-        """True solo si el ID corresponde a un Author (A...), no a una obra (W...)."""
-        clean = str(oa_id).split('/')[-1]
-        return clean.startswith('A') and clean[1:].isdigit()
-
-    oa_ids_invalid = [i for i in oa_ids if not _is_author_oa_id(i)]
-    oa_ids = [i for i in oa_ids if _is_author_oa_id(i)]
-    if oa_ids_invalid:
-        print(f"  ⚠️  openalex_id(s) inválido(s) detectados y descartados: {oa_ids_invalid}")
-        print(f"     (Son IDs de obra W..., no de autor A... — se re-resolverá el ID correcto)")
 
     scopus_ids = data.get('scopus_ids')
     if isinstance(scopus_ids, str):
@@ -445,16 +476,20 @@ def ingest_researcher_data(data: dict, force: bool = False, force_local: bool = 
             force_scopus=kwargs.get('force_scopus', False)
         )
         if resolved_oa_list:
-            oa_ids.extend(resolved_oa_list)
-            # Persistir TODOS los IDs resueltos en Neo4j (append deduplicado por CSV)
+            cleaned_resolved = _clean_oa_author_ids(resolved_oa_list)
+            for roa in cleaned_resolved:
+                if roa not in oa_ids:
+                    oa_ids.append(roa)
+            oa_ids = list(dict.fromkeys(oa_ids))
+            # Persistir lista canónica y deduplicada en Neo4j
             try:
                 graph_store.update_academic_metadata(
                     academic_id=person_id,
-                    openalex_ids=resolved_oa_list
+                    openalex_ids=oa_ids
                 )
-                print(f"  ✅ OA ID(s) resueltos y guardados en Neo4j: {resolved_oa_list}")
+                print(f"  ✅ OA ID(s) resueltos y guardados en Neo4j: {oa_ids}")
             except Exception as _e:
-                print(f"  ⚠️ OA ID(s) resueltos {resolved_oa_list} pero no se guardaron en Neo4j: {_e}")
+                print(f"  ⚠️ OA ID(s) resueltos {oa_ids} pero no se guardaron en Neo4j: {_e}")
         else:
             print(f"  ⚠️ No se encontró OA Author ID para {academic_name}.")
 
@@ -514,6 +549,18 @@ def ingest_researcher_data(data: dict, force: bool = False, force_local: bool = 
     if dois_to_fetch:
         print(f"      📡 Consultando lote de {len(dois_to_fetch)} DOIs en OpenAlex...")
         batch_results = openalex_utils.get_works_batch(dois_to_fetch, local_only=openalex_blocked)
+
+    # Identificar DOIs que realmente no están en OpenAlex ni en Neo4j para consultarlos en lote en Crossref
+    missing_for_crossref = [
+        d for d in dois_to_fetch
+        if d.lower() not in batch_results 
+        and d.replace('https://doi.org/', '').lower() not in batch_results
+        and d not in existing_in_neo4j
+    ]
+    crossref_batch = {}
+    if missing_for_crossref:
+        print(f"      ⚡ Consultando lote de {len(missing_for_crossref)} DOIs faltantes en Crossref...")
+        crossref_batch = get_crossref_batch(missing_for_crossref)
     
     neo4j_batch = []
     neo4j_link_batch = []
@@ -543,7 +590,7 @@ def ingest_researcher_data(data: dict, force: bool = False, force_local: bool = 
             work = batch_results[_doi_key]
         elif not _doi_clean or _doi_key not in batch_results:
             if doi in existing_in_neo4j:
-                # print(f"      📍 Paper {doi} ya existe en el grafo. Saltando API individual...")
+                # Paper ya existe en el grafo
                 work = None
             else:
                 try:
@@ -551,33 +598,24 @@ def ingest_researcher_data(data: dict, force: bool = False, force_local: bool = 
                 except:
                     work = None
 
-        # Fallback a Crossref si OpenAlex no tiene aún el trabajo recién publicado
-        if not work and _doi_clean:
-            try:
-                cr_url = f"https://api.crossref.org/works/{_doi_clean}"
-                cr_resp = requests.get(
-                    cr_url,
-                    headers={"Accept": "application/json", "User-Agent": "InfoTlachIA/1.0 (mailto:cienciometria@fciencias.unam.mx)"},
-                    timeout=8
-                )
-                if cr_resp.status_code == 200:
-                    cr_msg = cr_resp.json().get('message', {})
-                    if not record.get('Title') or record.get('Title') == 'Sin Título':
-                        cr_titles = cr_msg.get('title', [])
-                        if cr_titles: record['Title'] = cr_titles[0]
-                    cr_issued = cr_msg.get('issued', {}).get('date-parts', [[0]])
-                    if cr_issued and cr_issued[0] and (not record.get('Year') or record.get('Year') == 0):
-                        record['Year'] = cr_issued[0][0]
-                    cr_authors = [f"{a.get('given', '')} {a.get('family', '')}".strip() for a in cr_msg.get('author', []) if a.get('family')]
-                    if cr_authors and not record.get('Authors'):
-                        record['Authors'] = "; ".join(cr_authors)
-                    cr_container = cr_msg.get('container-title', [])
-                    if cr_container:
-                        record['journal_name'] = cr_container[0]
-                    record['Source'] = (record.get('Source') or 'ORCID') + ' + Crossref'
-                    print(f"      ⚡ [Crossref Fallback] Encontrado: '{record.get('Title')}' ({record.get('Year')})")
-            except Exception as _e_cr:
-                pass
+        # Fallback a Crossref solo para artículos que NO existen en Neo4j usando el lote pre-consultado
+        if not work and _doi_clean and doi not in existing_in_neo4j:
+            cr_msg = crossref_batch.get(_doi_key) or crossref_batch.get(_doi_clean.lower())
+            if cr_msg:
+                if not record.get('Title') or record.get('Title') == 'Sin Título':
+                    cr_titles = cr_msg.get('title', [])
+                    if cr_titles: record['Title'] = cr_titles[0]
+                cr_issued = cr_msg.get('issued', {}).get('date-parts', [[0]])
+                if cr_issued and cr_issued[0] and (not record.get('Year') or record.get('Year') == 0):
+                    record['Year'] = cr_issued[0][0]
+                cr_authors = [f"{a.get('given', '')} {a.get('family', '')}".strip() for a in cr_msg.get('author', []) if a.get('family')]
+                if cr_authors and not record.get('Authors'):
+                    record['Authors'] = "; ".join(cr_authors)
+                cr_container = cr_msg.get('container-title', [])
+                if cr_container:
+                    record['journal_name'] = cr_container[0]
+                record['Source'] = (record.get('Source') or 'ORCID') + ' + Crossref'
+                print(f"      ⚡ [Crossref Fallback] Encontrado: '{record.get('Title')}' ({record.get('Year')})")
 
         if work:
             authorships = work.get('authorships', [])

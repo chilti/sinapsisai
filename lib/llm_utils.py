@@ -41,12 +41,15 @@ class LLMConfig:
     def get_provider(model_name: str = None) -> str:
         """
         Determina el proveedor según el nombre del modelo:
+        - 'c3_gpt': Si contiene '120b', 'gptoss', 'gpt-oss-120' o 'c3' y 'gpt'.
         - 'c3': Si contiene 'kimi' o 'c3'.
         - 'openrouter': Si contiene 'openrouter', ':free' o prefijo de openrouter.
         - 'gemini': Si contiene 'gemini' (excepto si viene vía openrouter).
         - 'local': LM Studio local (default/fallback).
         """
         m = (model_name or LLMConfig.get_model_name() or "").lower().strip()
+        if "120b" in m or "gptoss" in m or "gpt-oss-120" in m or ("c3" in m and "gpt" in m):
+            return "c3_gpt"
         if "kimi" in m or "c3" in m:
             return "c3"
         if "openrouter" in m or ":free" in m:
@@ -57,7 +60,11 @@ class LLMConfig:
 
     @staticmethod
     def is_c3(model_name: str = None) -> bool:
-        return LLMConfig.get_provider(model_name) == "c3"
+        return LLMConfig.get_provider(model_name) in ("c3", "c3_gpt")
+
+    @staticmethod
+    def is_c3_gpt(model_name: str = None) -> bool:
+        return LLMConfig.get_provider(model_name) == "c3_gpt"
 
     @staticmethod
     def is_gemini(model_name: str = None) -> bool:
@@ -81,6 +88,8 @@ class LLMConfig:
             m = m[len("openrouter/"):]
         if m.startswith("c3/"):
             m = m[len("c3/"):]
+        if "120b" in m.lower():
+            return "gpt-oss-120b"
         if m in ("default", "openai/default"):
             return "openai/default"
         return m
@@ -89,7 +98,16 @@ class LLMConfig:
     def get_auth_url(model: str = None):
         """Construye la URL base para LM Studio, Google Gemini, OpenRouter o C3 UNAM."""
         provider = LLMConfig.get_provider(model)
-        if provider == "c3":
+        if provider == "c3_gpt":
+            raw_url = os.getenv("C3_LLM_BASE_URL_GPT", "https://10.90.0.114/v1/")
+            if "gptoss.c3.unam.mx" in raw_url:
+                base_url = raw_url.replace("gptoss.c3.unam.mx", "10.90.0.114")
+            else:
+                base_url = raw_url
+            if not base_url.endswith("/"):
+                base_url += "/"
+            return base_url
+        elif provider == "c3":
             base_url = os.getenv("C3_LLM_BASE_URL", "https://10.90.0.114/v1/")
             if not base_url.endswith("/"):
                 base_url += "/"
@@ -121,7 +139,9 @@ class LLMConfig:
     @staticmethod
     def get_api_key(model: str = None):
         provider = LLMConfig.get_provider(model)
-        if provider == "c3":
+        if provider == "c3_gpt":
+            return os.getenv("C3_LLM_API_KEY_GPT", "")
+        elif provider == "c3":
             return os.getenv("C3_LLM_API_KEY", "")
         elif provider == "gemini":
             return os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or ""
@@ -155,6 +175,10 @@ def get_openai_client(async_mode=False, model=None):
             "HTTP-Referer": "https://sinapsisai.unam.mx",
             "X-Title": "SNII Info TlachIA"
         }
+    elif LLMConfig.is_c3_gpt(model):
+        host_hdr = os.getenv("C3_LLM_HOST_HEADER_GPT", "gptoss.c3.unam.mx")
+        if host_hdr:
+            default_headers = {"Host": host_hdr}
     elif LLMConfig.is_c3(model):
         host_hdr = os.getenv("C3_LLM_HOST_HEADER", "kimi.c3.unam.mx")
         if host_hdr:
@@ -221,6 +245,10 @@ def get_chat_model(temperature=0, model=None, **kwargs):
             "HTTP-Referer": "https://sinapsisai.unam.mx",
             "X-Title": "SNII Info TlachIA"
         })
+    elif LLMConfig.is_c3_gpt(raw_model):
+        host_hdr = os.getenv("C3_LLM_HOST_HEADER_GPT", "gptoss.c3.unam.mx")
+        if host_hdr:
+            headers.update({"Host": host_hdr})
     elif LLMConfig.is_c3(raw_model):
         host_hdr = os.getenv("C3_LLM_HOST_HEADER", "kimi.c3.unam.mx")
         if host_hdr:
@@ -277,10 +305,13 @@ def is_quota_exceeded_error(e: Exception) -> bool:
 
 def get_embeddings_model(**kwargs):
     """Retorna una instancia de OpenAIEmbeddings (LangChain) configurada."""
+    emb_model = kwargs.pop("model", None) or LLMConfig.get_embedding_model_name()
+    base_url = kwargs.pop("base_url", None) or os.getenv("EMBEDDING_BASE_URL") or LLMConfig.get_auth_url(emb_model)
+    api_key = kwargs.pop("api_key", None) or os.getenv("EMBEDDING_API_KEY") or LLMConfig.get_api_key(emb_model)
     return OpenAIEmbeddings(
-        model=LLMConfig.get_embedding_model_name(),
-        base_url=LLMConfig.get_auth_url(),
-        api_key=LLMConfig.get_api_key(),
+        model=emb_model,
+        base_url=base_url,
+        api_key=api_key,
         http_client=get_http_client(async_mode=False),
         check_embedding_ctx_length=False,
         **kwargs

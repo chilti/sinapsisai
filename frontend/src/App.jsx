@@ -15,6 +15,7 @@ import { NationalPanorama } from './components/modules/NationalPanorama.jsx';
 import { InstitutionalPanorama } from './components/modules/InstitutionalPanorama.jsx';
 import { ResearcherProfiles } from './components/modules/ResearcherProfiles.jsx';
 import { ScienceMaps } from './components/modules/ScienceMaps.jsx';
+import { GraphExplorerView } from './components/modules/GraphExplorerView.jsx';
 import { MyResearcherSpace } from './components/modules/MyResearcherSpace.jsx';
 import { GovernanceAdmin } from './components/modules/GovernanceAdmin.jsx';
 import { AIAssistant } from './components/modules/AIAssistant.jsx';
@@ -181,7 +182,7 @@ export function App() {
   ]);
 
   return (
-    <div className="app-root">
+    <div className={`app-root ${activeTab === 'networks' ? 'networks-mode' : ''}`}>
       {/* Luz Ambiental de Fondo */}
       <div className="ambient-glow" />
 
@@ -192,13 +193,14 @@ export function App() {
       <Navbar />
 
       {/* 3. Área de Contenido Dinámico */}
-      <main className="main-content-area" role="main">
+      <main className={`main-content-area ${activeTab === 'networks' ? 'networks-view-active' : ''}`} role="main">
         <ErrorBoundary>
           {activeTab === 'home' && <HomeGalaxy />}
           {activeTab === 'national' && <NationalPanorama />}
           {activeTab === 'panorama' && <InstitutionalPanorama />}
           {activeTab === 'researchers' && <ResearcherProfiles />}
           {activeTab === 'maps' && <ScienceMaps />}
+          {activeTab === 'networks' && <GraphExplorerView />}
           {activeTab === 'mySpace' && <MyResearcherSpace />}
           {activeTab === 'governance' && <GovernanceAdmin />}
           {activeTab === 'assistant' && <AIAssistant />}
@@ -206,19 +208,21 @@ export function App() {
         </ErrorBoundary>
       </main>
 
-      {/* 4. Pie de Página */}
-      <footer className="app-footer">
-        <div>
-          <span>© 2026 Ecosistema TlachIA · Universidad Nacional Autónoma de México (UNAM)</span>
-        </div>
-        <div className="footer-credits">
-          <a href="https://dinamica1.fciencias.unam.mx/revistaslatam/" className="footer-link" target="_blank" rel="noreferrer">Revistas LATAM</a>
-          <a href="https://dinamica1.fciencias.unam.mx/knomap/" className="footer-link" target="_blank" rel="noreferrer">KnoMap</a>
-          <a href="https://dinamica1.fciencias.unam.mx/tlachiametrics/" className="footer-link" target="_blank" rel="noreferrer">TlachIA Metrics</a>
-          <span style={{ color: 'var(--text-dim)' }}>|</span>
-          <span>Padrón de Investigadores 2025/2026</span>
-        </div>
-      </footer>
+      {/* 4. Pie de Página (oculto en vistas inmersivas de pantalla completa) */}
+      {activeTab !== 'networks' && (
+        <footer className="app-footer">
+          <div>
+            <span>© 2026 Ecosistema TlachIA · Universidad Nacional Autónoma de México (UNAM)</span>
+          </div>
+          <div className="footer-credits">
+            <a href="https://dinamica1.fciencias.unam.mx/revistaslatam/" className="footer-link" target="_blank" rel="noreferrer">Revistas LATAM</a>
+            <a href="https://dinamica1.fciencias.unam.mx/knomap/" className="footer-link" target="_blank" rel="noreferrer">KnoMap</a>
+            <a href="https://dinamica1.fciencias.unam.mx/tlachiametrics/" className="footer-link" target="_blank" rel="noreferrer">TlachIA Metrics</a>
+            <span style={{ color: 'var(--text-dim)' }}>|</span>
+            <span>Padrón de Investigadores 2025/2026</span>
+          </div>
+        </footer>
+      )}
     </div>
   );
 }

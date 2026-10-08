@@ -24,7 +24,9 @@ import {
   TrendingUp,
   Cpu,
   Eye,
-  BookOpen
+  BookOpen,
+  Clock,
+  Calendar
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore.js';
 import { apiClient } from '../../api/client.js';
@@ -42,6 +44,7 @@ export function AboutView() {
     ror_high_confidence: 204,
     ror_coverage_pct: 9.0
   });
+  const [systemInfo, setSystemInfo] = useState(null);
   const [showModalReport, setShowModalReport] = useState(false);
 
   useEffect(() => {
@@ -55,7 +58,18 @@ export function AboutView() {
         console.warn('Usando estadísticas pre-calculadas de SNII/ROR:', err);
       }
     }
+    async function loadSystemInfo() {
+      try {
+        const info = await apiClient.getSystemInfo();
+        if (info) {
+          setSystemInfo(info);
+        }
+      } catch (err) {
+        console.warn('No se pudieron obtener metadatos de /api/info:', err);
+      }
+    }
     loadStats();
+    loadSystemInfo();
   }, []);
 
   const reportUrl = apiClient.getSniiAuditReportUrl(false);
@@ -72,17 +86,20 @@ export function AboutView() {
           pointerEvents: 'none', borderRadius: '50%'
         }} />
 
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
               <span className="badge badge-cyan" style={{ fontSize: '0.75rem' }}>v2.0 Arquitectura Ecosistémica</span>
+              <span className="badge badge-amber" style={{ fontSize: '0.75rem', background: 'rgba(245, 158, 11, 0.12)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                Proyecto Piloto Demostrativo
+              </span>
               <span className="badge badge-purple" style={{ fontSize: '0.75rem' }}>Ciencia Abierta UNAM</span>
             </div>
             <h1 style={{ fontSize: '1.85rem', fontWeight: 800, margin: '0 0 0.4rem 0', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
               <Sparkles style={{ color: 'var(--accent-cyan)' }} size={26} />
               Acerca de Info TlachIA SNII
             </h1>
-            <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', margin: 0, maxWidth: '900px', lineHeight: 1.6 }}>
+            <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', margin: 0, maxWidth: '950px', lineHeight: 1.6 }}>
               Plataforma de Inteligencia Científica, Evaluación Cienciométrica y Mapeo Topológico del Sistema Nacional de Investigadoras e Investigadores (SNII). Un desarrollo colaborativo de la <b>Facultad de Ciencias</b> y el <b>Centro de Ciencias de la Complejidad (C3)</b> de la Universidad Nacional Autónoma de México (UNAM).
             </p>
           </div>
@@ -98,6 +115,151 @@ export function AboutView() {
             <span>github.com/chilti/sinapsisai</span>
             <ExternalLink size={13} style={{ opacity: 0.6 }} />
           </a>
+        </div>
+
+        {/* Nota Institucional del Piloto Demostrativo y Metodología */}
+        <div style={{
+          padding: '1.15rem 1.35rem',
+          borderRadius: '10px',
+          background: isLight ? 'rgba(245, 158, 11, 0.05)' : 'rgba(245, 158, 11, 0.07)',
+          borderLeft: '4px solid #f59e0b',
+          border: '1px solid rgba(245, 158, 11, 0.25)',
+          borderLeftWidth: '4px',
+          maxWidth: '100%',
+          fontSize: '0.88rem',
+          lineHeight: '1.65',
+          color: 'var(--text-secondary)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, color: isLight ? '#b45309' : '#fbbf24', marginBottom: '0.45rem', fontSize: '0.92rem' }}>
+            <Info size={17} />
+            <span>Proyecto Piloto Demostrativo en Proceso Continuo de Alimentación</span>
+          </div>
+          <p style={{ margin: '0 0 0.55rem 0' }}>
+            Esta versión de <b>Info TlachIA SNII</b> opera como un <b>proyecto piloto demostrativo</b> cuyos repositorios y bases de conocimiento se encuentran en constante proceso de alimentación, enriquecimiento y verificación.
+          </p>
+          <p style={{ margin: 0 }}>
+            Para la conformación de este corpus, la plataforma articula los metadatos globales de literatura científica de <b>OpenAlex</b> con los registros oficiales del <b>Padrón del SNII</b>. Sobre esta base, se emplean algoritmos cienciométricos avanzados y <b>modelos de lenguaje (LLMs)</b> para la búsqueda, resolución y homologación de identificadores persistentes unívocos: <b>ORCID</b> (<em>Open Researcher and Contributor ID</em>) para la desambiguación autoral de investigadoras e investigadores, y <b>ROR</b> (<em>Research Organization Registry</em>) para la estandarización institucional de dependencias y centros de investigación.
+          </p>
+        </div>
+      </div>
+
+      {/* ── 1.5. Estado de los Datos, Última Actualización y Snapshot ──────── */}
+      <div
+        className="glass-card"
+        style={{
+          padding: '1.5rem',
+          border: '1px solid rgba(0, 242, 254, 0.3)',
+          background: isLight
+            ? 'linear-gradient(135deg, rgba(0, 242, 254, 0.05) 0%, rgba(16, 185, 129, 0.04) 100%)'
+            : 'linear-gradient(135deg, rgba(0, 242, 254, 0.08) 0%, rgba(16, 185, 129, 0.05) 100%)',
+          boxShadow: '0 8px 32px rgba(0, 242, 254, 0.08)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+            <div style={{
+              width: '42px', height: '42px', borderRadius: '10px',
+              background: 'linear-gradient(135deg, #00f2fe 0%, #0284c7 100%)',
+              color: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 4px 14px rgba(0, 242, 254, 0.35)', fontWeight: 800
+            }}>
+              <Database size={22} />
+            </div>
+            <div>
+              <h2 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                Estado de los Datos y Última Actualización
+              </h2>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.2rem 0 0 0' }}>
+                Trazabilidad del pipeline de métricas, snapshot oficial de OpenAlex y cobertura nacional
+              </p>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
+            padding: '0.45rem 0.95rem', borderRadius: '20px',
+            background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.35)',
+            fontSize: '0.8rem', fontWeight: 700, color: '#10b981'
+          }}>
+            <span style={{
+              width: '8px', height: '8px', borderRadius: '50%',
+              backgroundColor: '#10b981', boxShadow: '0 0 8px #10b981'
+            }} />
+            <span>Pipeline Sincronizado</span>
+          </div>
+        </div>
+
+        {/* Grid de 4 tarjetas de métricas del estado */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+          {/* Última Actualización */}
+          <div style={{
+            padding: '1rem 1.15rem', borderRadius: '10px',
+            background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)',
+            border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '0.3rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              <Clock size={14} style={{ color: 'var(--accent-cyan)' }} />
+              <span>Última Actualización</span>
+            </div>
+            <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+              {systemInfo?.last_updated
+                ? new Date(systemInfo.last_updated).toLocaleDateString('es-MX', {
+                    year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                  })
+                : '7 de octubre de 2026, 11:20'}
+            </div>
+          </div>
+
+          {/* Snapshot de OpenAlex */}
+          <div style={{
+            padding: '1rem 1.15rem', borderRadius: '10px',
+            background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)',
+            border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '0.3rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              <Calendar size={14} style={{ color: '#10b981' }} />
+              <span>Snapshot de OpenAlex</span>
+            </div>
+            <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#10b981' }}>
+              {systemInfo?.openalex_release || (systemInfo?.snapshot_date ? `OpenAlex Snapshot ${systemInfo.snapshot_date}` : 'OpenAlex Snapshot 2026-09-23')}
+            </div>
+          </div>
+
+          {/* Obras Analizadas */}
+          <div style={{
+            padding: '1rem 1.15rem', borderRadius: '10px',
+            background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)',
+            border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '0.3rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              <Layers size={14} style={{ color: '#f59e0b' }} />
+              <span>Obras Indizadas</span>
+            </div>
+            <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+              {(systemInfo?.total_works || 1652927).toLocaleString()} artículos analizados
+            </div>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              {(systemInfo?.total_author_links || 2241792).toLocaleString()} vínculos de autoría
+            </span>
+          </div>
+
+          {/* Motor Analítico */}
+          <div style={{
+            padding: '1rem 1.15rem', borderRadius: '10px',
+            background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)',
+            border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '0.3rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              <Cpu size={14} style={{ color: 'var(--accent-purple)' }} />
+              <span>Motor Analítico y Grafo</span>
+            </div>
+            <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+              {systemInfo?.database_engine || 'ClickHouse + Neo4j + Qdrant'}
+            </div>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              Versión {systemInfo?.pipeline_version || '2.0.0'}
+            </span>
+          </div>
         </div>
       </div>
 

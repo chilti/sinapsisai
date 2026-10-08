@@ -6,6 +6,21 @@
 import { create } from 'zustand';
 import { getDictionary } from '../i18n/index.js';
 
+export const isUserAdmin = (userSession) => {
+  if (!userSession) return false;
+  if (userSession.is_admin === true) return true;
+  const role = String(userSession.role || '').toLowerCase();
+  return (
+    role === 'super_admin' ||
+    role === 'admin' ||
+    role === 'administrador' ||
+    role === 'admin_institucional' ||
+    role === 'institutional_admin' ||
+    role === 'curator' ||
+    role.includes('admin')
+  );
+};
+
 export const useAppStore = create((set, get) => ({
   // Pestaña Activa (Inicio desactivada/oculta; Panorama Nacional por defecto)
   activeTab: 'national', // 'national', 'panorama', 'researchers', 'maps', 'mySpace', 'governance', 'assistant'
@@ -63,12 +78,52 @@ export const useAppStore = create((set, get) => ({
     selectedResearcherOrcid: orcid
   }),
 
+  // Historial del Asistente Científico (Persistente entre pestañas)
+  assistantMessages: [
+    {
+      role: 'assistant',
+      content: '¡Hola! Soy el Asistente de Inteligencia Científica de Info TlachIA. Puedo responder preguntas sobre la producción académica de investigadoras e investigadores, indicadores de impacto, redes de coautoría o cartografía temática.',
+      thoughts: 'Inicialización de memoria conversacional y registro de herramientas cienciométricas (ClickHouse, Neo4j, Padrón de Investigadoras e Investigadores).'
+    }
+  ],
+  setAssistantMessages: (updaterOrMsgs) => {
+    set((state) => ({
+      assistantMessages: typeof updaterOrMsgs === 'function' ? updaterOrMsgs(state.assistantMessages) : updaterOrMsgs
+    }));
+  },
+  resetAssistantMessages: () => {
+    set({
+      assistantMessages: [
+        {
+          role: 'assistant',
+          content: '¡Hola! Soy el Asistente de Inteligencia Científica de Info TlachIA. Puedo responder preguntas sobre la producción académica de investigadoras e investigadores, indicadores de impacto, redes de coautoría o cartografía temática.',
+          thoughts: 'Inicialización de memoria conversacional y registro de herramientas cienciométricas (ClickHouse, Neo4j, Padrón de Investigadoras e Investigadores).'
+        }
+      ]
+    });
+  },
+
+  // Modelo de Lenguaje Activo (C3 GPT-OSS 120B preferido por defecto para admins)
+  selectedLlmModel: typeof window !== 'undefined' ? (localStorage.getItem('tlachia_selected_model') || 'gpt-oss-120b') : 'gpt-oss-120b',
+  setSelectedLlmModel: (model) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tlachia_selected_model', model);
+    }
+    set({ selectedLlmModel: model });
+  },
+
   // Sesión y Autenticación
   userSession: (() => {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('tlachia_user');
-        if (saved) return JSON.parse(saved);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (isUserAdmin(parsed)) {
+            parsed.is_admin = true;
+          }
+          return parsed;
+        }
       } catch (e) {}
     }
     return {
@@ -77,11 +132,15 @@ export const useAppStore = create((set, get) => ({
       name: null,
       role: 'guest',
       institution: null,
-      token: null
+      token: null,
+      is_admin: false
     };
   })(),
   setUserSession: (session) => {
     const updated = { ...get().userSession, ...session };
+    if (isUserAdmin(updated)) {
+      updated.is_admin = true;
+    }
     if (typeof window !== 'undefined') {
       localStorage.setItem('tlachia_user', JSON.stringify(updated));
       if (updated.token) {
@@ -102,7 +161,8 @@ export const useAppStore = create((set, get) => ({
         name: null,
         role: 'guest',
         institution: null,
-        token: null
+        token: null,
+        is_admin: false
       }
     });
   },

@@ -42,6 +42,7 @@ import FeaturedPublications from '../analytics/FeaturedPublications.jsx';
 import UmapPerformanceMap from '../analytics/UmapPerformanceMap.jsx';
 import CoAuthraNetwork from '../analytics/CoAuthraNetwork.jsx';
 import WordCloudInteractive from '../analytics/WordCloudInteractive.jsx';
+import LoadingOverlay from '../common/LoadingOverlay.jsx';
 
 // Colores oficiales de los 17 ODS de la ONU
 const SDG_COLORS = {
@@ -579,7 +580,10 @@ export function ResearcherProfiles() {
             <select
               className="form-select"
               value={selectedInstitution}
-              onChange={(e) => setSelectedInstitution(e.target.value)}
+              onChange={(e) => {
+                setLoadingProfile(true);
+                setSelectedInstitution(e.target.value);
+              }}
               style={{ fontSize: '0.9rem' }}
             >
               {institutions.map((inst) => (
@@ -595,7 +599,10 @@ export function ResearcherProfiles() {
             <select
               className="form-select"
               value={selectedDependency}
-              onChange={(e) => setSelectedDependency(e.target.value)}
+              onChange={(e) => {
+                setLoadingProfile(true);
+                setSelectedDependency(e.target.value);
+              }}
               style={{ fontSize: '0.9rem' }}
             >
               <option value="">{t.panorama?.allDependencies || 'Todas las dependencias'}</option>
@@ -612,7 +619,10 @@ export function ResearcherProfiles() {
             <select
               className="form-select"
               value={selectedSubdependency}
-              onChange={(e) => setSelectedSubdependency(e.target.value)}
+              onChange={(e) => {
+                setLoadingProfile(true);
+                setSelectedSubdependency(e.target.value);
+              }}
               disabled={subdependencies.length === 0}
               style={{ fontSize: '0.9rem' }}
             >
@@ -658,6 +668,7 @@ export function ResearcherProfiles() {
             onChange={(e) => {
               const chosen = e.target.value;
               const found = academicsList.find((a) => a.name === chosen);
+              setLoadingProfile(true);
               setSelectedResearcher(chosen, found?.orcid || '');
               setPapersPage(0);
             }}
@@ -689,8 +700,13 @@ export function ResearcherProfiles() {
       </div>
 
       {/* 2. Ficha de Perfil del Investigador (CTL-M02-002 a CTL-M02-007) */}
-      {profile && (
-        <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
+      <LoadingOverlay
+        loading={loadingProfile}
+        message={t.common?.loading_profile || 'Cargando perfil e indicadores del investigador...'}
+        subtitle={researcherName ? `${researcherName}${researcherOrcid ? ` · ORCID: ${researcherOrcid}` : ''}` : ''}
+      >
+        {profile && (
+          <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1.5rem' }}>
             <div style={{ flex: 1, minWidth: '320px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.4rem' }}>
@@ -1773,7 +1789,8 @@ export function ResearcherProfiles() {
             </div>
           </div>
         </div>
-      )}
+        )}
+      </LoadingOverlay>
     </div>
   );
 }

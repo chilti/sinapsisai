@@ -166,7 +166,7 @@ def fetch_target_persons(driver, target: str = "unam", limit: Optional[int] = No
          collect(DISTINCT ka.name)[0] as ka_name
     WHERE 1=1 {where_extra}
     RETURN p.id as id,
-           p.fullname as fullname,
+           coalesce(p.fullname, p.name) as fullname,
            p.is_snii as is_snii,
            p.openalex_ids as openalex_ids,
            inst_name as institution,
@@ -467,7 +467,17 @@ def run_enrichment(target: str = "unam", limit: Optional[int] = None, batch_size
                 break
 
             pid = str(p['id'])
-            pname = p.get('fullname', '')
+            pname = (p.get('fullname') or p.get('name') or '').strip()
+            if not pname and not pid.startswith('http') and not pid.startswith('EXT_') and not pid.isdigit():
+                if any(c.isalpha() for c in pid) and ' ' in pid:
+                    pname = pid.strip()
+
+            if not pname:
+                log(f"⚠️ [ID {pid}] Sin nombre disponible en Neo4j. Se omite búsqueda.")
+                stats["unmatched"] += 1
+                processed_ids[pid] = {"match": False, "reason": "Sin nombre registrado"}
+                continue
+
             snii_inst = p.get('institution') or 'SIN INFORMACION'
             snii_dep = p.get('dependency') or 'SIN INFORMACION'
             snii_area = p.get('area') or 'SIN INFORMACION'

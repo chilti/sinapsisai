@@ -583,10 +583,48 @@ class Neo4jGraphStore:
             except Exception as e:
                 print(f"Error ingesting paper row {paper_id}: {e}")
 
+    @staticmethod
+    def _clean_identifier_list(val, kind="generic"):
+        """Normaliza cadenas o listas heterogéneas a una lista de IDs limpia, canónica y deduplicada."""
+        if not val:
+            return []
+        if isinstance(val, str):
+            raw_items = val.replace(';', ',').split(',')
+        elif isinstance(val, (list, tuple, set)):
+            raw_items = []
+            for item in val:
+                if isinstance(item, str):
+                    raw_items.extend(item.replace(';', ',').split(','))
+                elif item:
+                    raw_items.append(str(item))
+        else:
+            raw_items = [str(val)]
+
+        clean_items = []
+        for it in raw_items:
+            s = str(it).strip().strip("'\"[] ")
+            if not s:
+                continue
+            if kind == "openalex":
+                short = s.rstrip('/').split('/')[-1]
+                if short.startswith('A') and short[1:].isdigit():
+                    canon = f"https://openalex.org/{short}"
+                    if canon not in clean_items:
+                        clean_items.append(canon)
+            elif kind == "orcid":
+                if "orcid.org/" in s:
+                    s = s.split("orcid.org/")[-1].strip()
+                if s and s not in clean_items:
+                    clean_items.append(s)
+            else:
+                if s and s not in clean_items:
+                    clean_items.append(s)
+        return clean_items
+
     def get_academic_ids(self, academic_name: str) -> dict:
         """
         Recupera los identificadores externos (orcids, openalex_ids, scopus_ids) de un nodo Academic.
-        Retorna dict con claves 'orcids', 'openalex_ids' y 'scopus_ids' (listas de strings, pueden estar vacías).
+        Retorna dict con claves 'orcids', 'openalex_ids' y 'scopus_ids' (listas de strings, limpias y deduplicadas).
         """
         query = """
         MATCH (a:Person)
@@ -602,9 +640,9 @@ class Neo4jGraphStore:
                 record = result.single()
                 if record:
                     return {
-                        "orcids": record["orcids"], 
-                        "openalex_ids": record["openalex_ids"],
-                        "scopus_ids": record["scopus_ids"]
+                        "orcids": self._clean_identifier_list(record["orcids"], "orcid"), 
+                        "openalex_ids": self._clean_identifier_list(record["openalex_ids"], "openalex"),
+                        "scopus_ids": self._clean_identifier_list(record["scopus_ids"], "generic")
                     }
             except Exception as e:
                 print(f"[WARN] get_academic_ids para {academic_name}: {e}")
@@ -1079,36 +1117,9 @@ class Neo4jGraphStore:
         """
         Actualiza metadatos de un académico (CVU, ORCIDs, auditoría, SNII, SIIA, Scopus IDs, OpenAlex IDs).
         """
-        import json
-        
-        # Helper interno para normalizar a lista de strings válidos
-        def _to_list(val):
-            if not val: return []
-            
-            def split_str(s):
-                s = str(s).strip()
-                if ';' in s: return [x.strip() for x in s.split(';') if x.strip()]
-                if ',' in s: return [x.strip() for x in s.split(',') if x.strip()]
-                return [s] if s else []
-                
-            raw_items = []
-            if isinstance(val, str):
-                raw_items = split_str(val)
-            elif isinstance(val, list):
-                for v in val:
-                    raw_items.extend(split_str(v))
-            
-            clean_items = []
-            for item in raw_items:
-                if "orcid.org/" in item:
-                    item = item.split("orcid.org/")[-1].strip()
-                if item and item not in clean_items:
-                    clean_items.append(item)
-            return clean_items
-
-        clean_orcids = _to_list(orcids)
-        clean_scopus = _to_list(scopus_ids)
-        clean_openalex = _to_list(openalex_ids)
+        clean_orcids = self._clean_identifier_list(orcids, "orcid")
+        clean_scopus = self._clean_identifier_list(scopus_ids, "generic")
+        clean_openalex = self._clean_identifier_list(openalex_ids, "openalex")
 
         query = """
         MERGE (a:Person {id: $academic_id})
@@ -1117,7 +1128,7 @@ class Neo4jGraphStore:
         WITH a
         CALL (a) {
             WITH a WHERE size($clean_orcids) > 0
-            SET a.orcids = apoc.coll.toSet(coalesce(a.orcids, []) + $clean_orcids)
+            SET a.orcids = $clean_orcids
         }
         CALL (a) {
             WITH a WHERE $cvu IS NOT NULL AND $cvu <> ""
@@ -1129,11 +1140,11 @@ class Neo4jGraphStore:
         }
         CALL (a) {
             WITH a WHERE size($clean_scopus) > 0
-            SET a.scopus_ids = apoc.coll.toSet(coalesce(a.scopus_ids, []) + $clean_scopus)
+            SET a.scopus_ids = $clean_scopus
         }
         CALL (a) {
             WITH a WHERE size($clean_openalex) > 0
-            SET a.openalex_ids = apoc.coll.toSet(coalesce(a.openalex_ids, []) + $clean_openalex)
+            SET a.openalex_ids = $clean_openalex
         }
         """
         params = {
@@ -1507,28 +1518,43 @@ class Neo4jGraphStore:
 
     def get_user_profile(self, orcid: str) -> dict:
         """Recupera el perfil de usuario y su académico vinculado si existe."""
+        if not orcid:
+            return None
+        orcid_id = str(orcid).rstrip('/').split('/')[-1]
+        orcid_url = f"https://orcid.org/{orcid_id}"
         query = """
-        MATCH (u:User {orcid: $orcid})
+        MATCH (u:User)
+        WHERE u.orcid = $orcid OR u.orcid = $orcid_id OR u.orcid = $orcid_url
         OPTIONAL MATCH (u)-[:REPRESENTS]->(a:Person)
         RETURN u.name as name, u.orcid as orcid, 
-               a.id as academic_id, a.fullname as academic_name
+               a.id as academic_id, a.fullname as academic_name,
+               a.institution as institution, a.entity as entity,
+               a.is_snii as is_snii, a.source as source
+        LIMIT 1
         """
         with self.driver.session() as session:
-            result = session.run(query, orcid=orcid)
+            result = session.run(query, orcid=orcid, orcid_id=orcid_id, orcid_url=orcid_url)
             record = result.single()
-            if record:
+            if record and record.get("orcid"):
                 return dict(record)
         return None
 
     def find_academic_by_orcid(self, orcid: str) -> dict:
         """Busca un nodo Person que ya tenga el ORCID proporcionado."""
+        if not orcid:
+            return None
+        orcid_id = str(orcid).rstrip('/').split('/')[-1]
+        orcid_url = f"https://orcid.org/{orcid_id}"
         query = """
-        MATCH (a:Person {orcid: $orcid})
-        RETURN a.id as id, a.fullname as name, a.orcid as orcid
+        MATCH (a:Person)
+        WHERE a.orcid = $orcid_id OR a.orcid = $orcid_url 
+           OR $orcid_id IN a.orcids OR $orcid_url IN a.orcids
+        RETURN a.id as id, a.fullname as name, a.orcid as orcid,
+               a.institution as institution, a.is_snii as is_snii
         LIMIT 1
         """
         with self.driver.session() as session:
-            result = session.run(query, orcid=orcid)
+            result = session.run(query, orcid_id=orcid_id, orcid_url=orcid_url)
             record = result.single()
             if record:
                 return dict(record)
@@ -1581,32 +1607,32 @@ class Neo4jGraphStore:
         Crea un perfil de académico independiente (no-SNII) y lo vincula al nodo User.
         NO se vincula a ninguna institución en el grafo para no alterar censos ni producción institucional.
         """
-        self.upsert_user(orcid, full_name)
-        
         # Normalizar ID y URL de ORCID
         orcid_id = str(orcid).rstrip('/').split('/')[-1]
         orcid_url = f"https://orcid.org/{orcid_id}"
         norm_name = str(full_name).upper().strip()
+
+        self.upsert_user(orcid_id, norm_name)
         
         query = """
-        MATCH (u:User {orcid: $orcid})
-        MERGE (a:Person {id: $orcid})
+        MATCH (u:User) WHERE u.orcid = $orcid OR u.orcid = $orcid_id
+        MERGE (a:Person {id: $orcid_id})
         SET a:Author,
             a.fullname = $name,
             a.is_snii = false,
             a.verified = true,
-            a.verified_orcid = $orcid,
-            a.orcid = $orcid,
-            a.orcids = apoc.coll.toSet(coalesce(a.orcids, []) + [$orcid, $orcid_url]),
+            a.verified_orcid = $orcid_id,
+            a.orcid = $orcid_id,
+            a.orcids = apoc.coll.toSet(coalesce(a.orcids, []) + [$orcid_id, $orcid_url]),
             a.institution = 'INDEPENDIENTE',
             a.entity = 'INDEPENDIENTE',
             a.source = 'ORCID_REGISTRATION_NON_SNII'
             
-        MERGE (u)-[:REPRESENTS]->(a)
+        MERGE (u)-[r:REPRESENTS]->(a)
         SET r.verification_date = datetime()
         
         WITH a
-        FOREACH (_ IN CASE WHEN $area_name IS NOT NULL AND $area_name <> "" AND $area_name <> "SIN INFORMACIÓN" THEN [1] ELSE [] END |
+        FOREACH (_ IN CASE WHEN $area_name IS NOT NULL AND $area_name <> "" AND $area_name <> "SIN INFORMACIÓN" AND $area_name <> "OTRA / SIN INFORMACIÓN" THEN [1] ELSE [] END |
             MERGE (ka:KnowledgeArea {name: $area_name})
             MERGE (a)-[:SPECIALIZED_IN]->(ka)
         )
@@ -1614,52 +1640,94 @@ class Neo4jGraphStore:
         """
         with self.driver.session() as session:
             try:
-                result = session.run(query, orcid=orcid, orcid_url=orcid_url, name=norm_name, area_name=area_name).single()
+                result = session.run(query, orcid=orcid, orcid_id=orcid_id, orcid_url=orcid_url, name=norm_name, area_name=area_name).single()
                 if result:
                     return dict(result)
             except Exception as e:
                 print(f"Error creando académico independiente {orcid}: {e}")
-        return {"academic_id": orcid, "academic_name": norm_name}
+        return {"academic_id": orcid_id, "academic_name": norm_name}
 
 
     def global_search(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         """
-        Búsqueda global optimizada usando índices Full-Text.
+        Búsqueda global optimizada usando índices Full-Text y coincidencia por ORCID.
         Busca en Académicos e Instituciones simultáneamente.
         """
-        if not query or len(query) < 3:
+        if not query or len(query.strip()) < 2:
             return []
             
-        # Limpieza básica para evitar errores de sintaxis en Lucene
+        import re
         clean_query = query.replace(':', '').replace('/', '').replace('\\', '').strip()
-        
-        cypher = """
-        CALL db.index.fulltext.queryNodes("person_name_search", $q + "~") YIELD node, score
-        OPTIONAL MATCH path = (node)-[:AFFILIATED_TO]->()-[:PART_OF*0..2]->(i:Institution)
-        // Agrupar por nodo y score, tomar el primer path si hay múltiples
-        WITH node, score, collect(path)[0] AS p
-        WITH node, score, CASE WHEN p IS NOT NULL THEN [n IN nodes(p) WHERE n <> node AND n.name IS NOT NULL | n.name] ELSE [] END AS parents
-        RETURN node.fullname as name, node.id as id, labels(node) as labels, score, "Academic" as type, parents
-        LIMIT $limit
-        UNION
-        CALL db.index.fulltext.queryNodes("institution_name_search", $q + "~") YIELD node, score
-        OPTIONAL MATCH path = (node)-[:PART_OF*1..2]->(i:Institution)
-        WITH node, score, collect(path)[0] AS p
-        WITH node, score, CASE WHEN p IS NOT NULL THEN [n IN nodes(p) WHERE n <> node AND n.name IS NOT NULL | n.name] ELSE [] END AS parents
-        RETURN node.name as name, node.id as id, labels(node) as labels, score, "Institution" as type, parents
-        LIMIT $limit
-        """
         results = []
+        seen_keys = set()
+
         with self.driver.session() as session:
+            # 1. Búsqueda directa por ORCID si parece un identificador ORCID
+            orcid_cand = clean_query.strip().lower().replace('https://orcid.org/', '')
+            is_orcid_like = bool(re.search(r'\d{4}-\d{4}-\d{4}-[\dXx]{4}', clean_query)) or (len(orcid_cand) >= 15 and '-' in orcid_cand)
+            if is_orcid_like:
+                try:
+                    cypher_orcid = """
+                    MATCH (node:Person)
+                    WHERE node.orcid = $orcid OR any(o IN node.orcids WHERE o = $orcid OR o CONTAINS $orcid)
+                    OPTIONAL MATCH path = (node)-[:AFFILIATED_TO]->()-[:PART_OF*0..2]->(i:Institution)
+                    WITH node, collect(path)[0] AS p
+                    WITH node, CASE WHEN p IS NOT NULL THEN [n IN nodes(p) WHERE n <> node AND n.name IS NOT NULL | n.name] ELSE [] END AS parents
+                    RETURN coalesce(node.fullname, node.name, node.id) as name, node.id as id, labels(node) as labels,
+                           100.0 as score, "Academic" as type, parents,
+                           node.orcid as orcid, node.orcids as orcids, node.snii_level as snii_level
+                    LIMIT $limit
+                    """
+                    records_orcid = session.run(cypher_orcid, orcid=orcid_cand, limit=limit)
+                    for r in records_orcid:
+                        d = dict(r)
+                        k = (d.get("type"), d.get("name"), d.get("id"))
+                        if k not in seen_keys:
+                            seen_keys.add(k)
+                            results.append(d)
+                except Exception as e:
+                    print(f"Error en orcid direct search: {e}")
+
+            # 2. Búsqueda Full-Text combinada (Personas + Instituciones)
+            cypher = """
+            CALL db.index.fulltext.queryNodes("person_name_search", $q + "~") YIELD node, score
+            OPTIONAL MATCH path = (node)-[:AFFILIATED_TO]->()-[:PART_OF*0..2]->(i:Institution)
+            WITH node, score, collect(path)[0] AS p
+            WITH node, score, CASE WHEN p IS NOT NULL THEN [n IN nodes(p) WHERE n <> node AND n.name IS NOT NULL | n.name] ELSE [] END AS parents
+            RETURN coalesce(node.fullname, node.name, node.id) as name, node.id as id, labels(node) as labels, score, "Academic" as type, parents,
+                   node.orcid as orcid, node.orcids as orcids, node.snii_level as snii_level
+            LIMIT $limit
+            UNION
+            CALL db.index.fulltext.queryNodes("institution_name_search", $q + "~") YIELD node, score
+            OPTIONAL MATCH path = (node)-[:PART_OF*1..2]->(i:Institution)
+            WITH node, score, collect(path)[0] AS p
+            WITH node, score, CASE WHEN p IS NOT NULL THEN [n IN nodes(p) WHERE n <> node AND n.name IS NOT NULL | n.name] ELSE [] END AS parents
+            RETURN node.name as name, node.id as id, labels(node) as labels, score, "Institution" as type, parents,
+                   null as orcid, null as orcids, null as snii_level
+            LIMIT $limit
+            """
             try:
                 records = session.run(cypher, q=clean_query, limit=limit)
                 for r in records:
-                    results.append(dict(r))
+                    d = dict(r)
+                    k = (d.get("type"), d.get("name"), d.get("id"))
+                    if k not in seen_keys:
+                        seen_keys.add(k)
+                        results.append(d)
             except Exception as e:
                 print(f"Error en global_search: {e}")
-                
+
+        # Normalizar ORCID y atributos
+        for item in results:
+            raw_orc = item.get("orcid") or (item.get("orcids")[0] if isinstance(item.get("orcids"), list) and item.get("orcids") else None)
+            if raw_orc:
+                item["orcid"] = str(raw_orc).replace("https://orcid.org/", "").strip()
+            item.pop("orcids", None)
+            if item.get("parents"):
+                item["parents"] = [p for p in reversed(item["parents"]) if p and p != "SIN INFORMACIÓN"]
+
         # Ordenar por score descendente
-        return sorted(results, key=lambda x: x['score'], reverse=True)[:limit]
+        return sorted(results, key=lambda x: x.get('score', 0), reverse=True)[:limit]
 
     def get_hierarchical_academic_census(self, inst_name: str, dep_name: str = None, sub_name: str = None) -> List[str]:
         """

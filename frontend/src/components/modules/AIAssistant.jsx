@@ -8,9 +8,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Bot, Send, Sparkles, Trash2, Cpu, Copy, Check, RotateCcw,
   Download, Layers, Terminal, ChevronDown, ChevronUp, Database,
-  Brain, FileText, CheckCircle2
+  Brain, FileText, CheckCircle2, Shield
 } from 'lucide-react';
-import { useAppStore } from '../../store/useAppStore.js';
+import { useAppStore, isUserAdmin } from '../../store/useAppStore.js';
 import apiClient from '../../api/client.js';
 import MarkdownRenderer from '../common/MarkdownRenderer.jsx';
 
@@ -27,31 +27,35 @@ const getApiBase = () => {
 
 export function AIAssistant() {
   const t = useAppStore((state) => state.t)();
+  const userSession = useAppStore((state) => state.userSession);
   
-  // 1. Selector de Modelo LLM (CTL-M06-001)
-  const [selectedModel, setSelectedModel] = useState('lmstudio'); // 'lmstudio' | 'openai'
+  // Detección robusta de administrador (isUserAdmin, orcid de admin, o flag local)
+  const isAdmin = Boolean(
+    isUserAdmin(userSession) ||
+    userSession?.orcid === '0000-0003-3659-6769' ||
+    (typeof window !== 'undefined' && (
+      localStorage.getItem('tlachia_is_admin') === 'true' ||
+      isUserAdmin(JSON.parse(localStorage.getItem('tlachia_user') || '{}'))
+    ))
+  );
 
-  // 2. Modo del Asistente (CTL-M06-002)
+  // Modo del Asistente - Solo administradores tienen acceso al Agente Autónomo Híbrido
   const [assistantMode, setAssistantMode] = useState('direct'); // 'direct' | 'agent'
 
-  // 3. Habilidades Activas (CTL-M06-003)
-  const [skills, setSkills] = useState({
-    clickhouse: true,
-    neo4j: true,
-    snii: true,
-    embeddings: true
-  });
-
-  // Mensajes de la conversación
-  const [messages, setMessages] = useState([
-    {
-      role: 'assistant',
-      content: '¡Hola! Soy el Asistente de Inteligencia Científica de Info TlachIA. Puedo responder preguntas sobre la producción académica de investigadoras e investigadores, indicadores de impacto, redes de coautoría o cartografía temática.',
-      thoughts: 'Inicialización de memoria conversacional y registro de herramientas cienciométricas (ClickHouse, Neo4j, Padrón de Investigadoras e Investigadores).'
+  useEffect(() => {
+    if (!isAdmin && assistantMode === 'agent') {
+      setAssistantMode('direct');
     }
-  ]);
+  }, [isAdmin, assistantMode]);
 
-  // 4. Input de chat (CTL-M06-004)
+  // Mensajes de la conversación persistentes en el store global (no se pierden al cambiar de pestaña)
+  const messages = useAppStore((state) => state.assistantMessages);
+  const setMessages = useAppStore((state) => state.setAssistantMessages);
+  const resetAssistantMessages = useAppStore((state) => state.resetAssistantMessages);
+  const selectedLlmModel = useAppStore((state) => state.selectedLlmModel);
+  const setSelectedLlmModel = useAppStore((state) => state.setSelectedLlmModel);
+
+  // Input de chat (CTL-M06-004)
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [lastQuery, setLastQuery] = useState('');
@@ -68,11 +72,7 @@ export function AIAssistant() {
     scrollToBottom();
   }, [messages, loading]);
 
-  const toggleSkill = (key) => {
-    setSkills((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  // 5. Enviar Mensaje (CTL-M06-005) y 7. Streaming (CTL-M06-007)
+  // Enviar Mensaje (CTL-M06-005) y Streaming SSE (CTL-M06-007)
   const handleSend = async (textToSend) => {
     const q = textToSend || input;
     if (!q.trim() || loading) return;
@@ -83,13 +83,17 @@ export function AIAssistant() {
     setInput('');
     setLoading(true);
 
-    const activeSkillsList = Object.keys(skills).filter((k) => skills[k]).join(', ');
-    const simThoughts = `Modo: ${assistantMode.toUpperCase()} | Modelo: ${selectedModel.toUpperCase()} | Habilidades: [${activeSkillsList}]\n` +
-      `Consultando Padrón de Investigadoras e Investigadores 2026 y motor Zero-Join para la petición: "${q.slice(0, 60)}..."`;
+    const activeModel = isAdmin ? (selectedLlmModel || 'gpt-oss-120b') : 'default';
+    let liveThoughts = `Modo: ${assistantMode === 'agent' ? 'AGENTE AUTÓNOMO HÍBRIDO' : 'CHAT CIENCIOMÉTRICO'}\n` +
+      (isAdmin ? `Modelo: ${activeModel === 'gpt-oss-120b' ? 'C3 UNAM GPT-OSS 120B' : activeModel}\n` : '') +
+      `Iniciando análisis cienciométrico para la petición: "${q.slice(0, 60)}..."\n`;
+
+    const nextAssistantIdx = messages.length + 1;
+    setShowThoughts((prev) => ({ ...prev, [nextAssistantIdx]: true }));
 
     setMessages((prev) => [
       ...prev,
-      { role: 'assistant', content: '', thoughts: simThoughts }
+      { role: 'assistant', content: '', thoughts: liveThoughts }
     ]);
 
     try {
@@ -98,8 +102,9 @@ export function AIAssistant() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question: q,
-          model_type: selectedModel,
-          ui_context: `mode:${assistantMode};skills:${activeSkillsList}`,
+          model: activeModel,
+          model_type: activeModel,
+          ui_context: `mode:${assistantMode}`,
           stream: true
         })
       });
@@ -134,15 +139,62 @@ export function AIAssistant() {
             }
             try {
               const parsed = JSON.parse(dataStr);
-              const tokenText = parsed.chunk || parsed.token || '';
-              if (tokenText) {
-                aiText += tokenText;
-                // Crear nuevo objeto para garantizar re-render de React
+
+              // 1. Evento de inicio de herramienta
+              if (parsed.type === 'tool_start') {
+                const toolName = parsed.tool || parsed.name || 'Herramienta';
+                let inputDesc = '';
+                if (parsed.input) {
+                  if (typeof parsed.input === 'object') {
+                    if (parsed.input.cypher_query) {
+                      inputDesc = `\n🕸️ Consulta Cypher (Neo4j Grafo de Conocimiento):\n${parsed.input.cypher_query}`;
+                    } else if (parsed.input.sql_query) {
+                      inputDesc = `\n📊 Consulta SQL (ClickHouse / DuckDB):\n${parsed.input.sql_query}`;
+                    } else if (parsed.input.query) {
+                      inputDesc = `\n🔍 Búsqueda: "${parsed.input.query}"`;
+                    } else {
+                      inputDesc = `\nParámetros:\n${JSON.stringify(parsed.input, null, 2)}`;
+                    }
+                  } else {
+                    inputDesc = `\nEntrada: ${parsed.input}`;
+                  }
+                }
+                liveThoughts += `\n⚙️ [Ejecutando herramienta: ${toolName}]${inputDesc}\n`;
+
                 setMessages((prev) => {
                   const updated = [...prev];
                   const lastIdx = updated.length - 1;
                   if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
-                    updated[lastIdx] = { ...updated[lastIdx], content: aiText };
+                    updated[lastIdx] = { ...updated[lastIdx], thoughts: liveThoughts };
+                  }
+                  return updated;
+                });
+              } 
+              // 2. Evento de fin de herramienta con resultados
+              else if (parsed.type === 'tool_end') {
+                const toolName = parsed.tool || parsed.name || 'Herramienta';
+                const outVal = parsed.output || parsed.result || '';
+                liveThoughts += `✅ [Resultado de ${toolName}]: ${String(outVal).slice(0, 500)}${String(outVal).length > 500 ? '...' : ''}\n`;
+
+                setMessages((prev) => {
+                  const updated = [...prev];
+                  const lastIdx = updated.length - 1;
+                  if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
+                    updated[lastIdx] = { ...updated[lastIdx], thoughts: liveThoughts };
+                  }
+                  return updated;
+                });
+              }
+
+              // 3. Tokens de la respuesta generada
+              const tokenText = parsed.token || parsed.chunk || '';
+              if (tokenText && parsed.type !== 'tool_start' && parsed.type !== 'tool_end') {
+                aiText += tokenText;
+                setMessages((prev) => {
+                  const updated = [...prev];
+                  const lastIdx = updated.length - 1;
+                  if (lastIdx >= 0 && updated[lastIdx].role === 'assistant') {
+                    updated[lastIdx] = { ...updated[lastIdx], content: aiText, thoughts: liveThoughts };
                   }
                   return updated;
                 });
@@ -193,13 +245,8 @@ export function AIAssistant() {
     } catch (e) {
       // Ignorar error de red si ocurre
     }
-    setMessages([
-      {
-        role: 'assistant',
-        content: '¡Conversación reiniciada! ¿En qué puedo asistirte hoy sobre producción científica?',
-        thoughts: 'Memoria de contexto restablecida.'
-      }
-    ]);
+    resetAssistantMessages();
+    setInput('');
   };
 
   // 9. Copiar al Portapapeles (CTL-M06-009)
@@ -236,7 +283,7 @@ export function AIAssistant() {
 
   return (
     <div className="module-container" id="MODULO-06-ASISTENTE">
-      {/* Header del Módulo con Controles de Modelo y Modo */}
+      {/* Header del Módulo con Controles de Modo y Acciones */}
       <div className="glass-card" style={{ marginBottom: '1.25rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
@@ -251,21 +298,112 @@ export function AIAssistant() {
             </div>
           </div>
 
-          {/* Selector de Modelo (CTL-M06-001) y Acciones Rápidas */}
+          {/* Modo de Inferencia (Visible para Administradores) y Acciones Rápidas */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Cpu size={15} style={{ color: 'var(--text-muted)' }} />
-              <select
-                id="CTL-M06-001"
-                className="form-select form-input-sm"
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                style={{ width: 'auto' }}
+            {isAdmin ? (
+              <div id="CTL-M06-002" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginRight: '0.5rem' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t.assistant.mode_selection}:</span>
+                <div style={{
+                  display: 'flex',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  borderRadius: '8px',
+                  padding: '3px',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)'
+                }}>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${assistantMode === 'direct' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{
+                      padding: '0.3rem 0.75rem',
+                      fontSize: '0.78rem',
+                      borderRadius: '6px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontWeight: assistantMode === 'direct' ? 600 : 400
+                    }}
+                    onClick={() => setAssistantMode('direct')}
+                  >
+                    <Bot size={13} />
+                    <span>{t.assistant.modes.direct}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${assistantMode === 'agent' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{
+                      padding: '0.3rem 0.75rem',
+                      fontSize: '0.78rem',
+                      borderRadius: '6px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontWeight: assistantMode === 'agent' ? 600 : 400,
+                      background: assistantMode === 'agent' ? 'linear-gradient(135deg, #7928ca 0%, #ff0080 100%)' : undefined,
+                      boxShadow: assistantMode === 'agent' ? '0 0 12px rgba(255, 0, 128, 0.35)' : undefined
+                    }}
+                    onClick={() => setAssistantMode('agent')}
+                  >
+                    <Sparkles size={13} style={{ color: assistantMode === 'agent' ? '#fff' : '#ff0080' }} />
+                    <span>{t.assistant.modes.agent}</span>
+                  </button>
+                </div>
+
+                {/* Selector de Modelo Exclusivo para Administradores */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  background: 'rgba(0, 242, 254, 0.08)',
+                  padding: '3px 8px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(0, 242, 254, 0.25)',
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)'
+                }}>
+                  <Cpu size={14} style={{ color: 'var(--accent-cyan)' }} />
+                  <select
+                    className="form-select form-input-sm"
+                    style={{
+                      fontSize: '0.78rem',
+                      padding: '0.15rem 0.4rem',
+                      height: '28px',
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-primary)',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      outline: 'none'
+                    }}
+                    value={selectedLlmModel}
+                    onChange={(e) => setSelectedLlmModel(e.target.value)}
+                    title="Modelo de Lenguaje LLM (Configuración Exclusiva para Administradores)"
+                  >
+                    <option value="gpt-oss-120b" style={{ background: '#111827', color: '#fff' }}>🚀 C3 GPT-OSS 120B</option>
+                    <option value="Kimi-K2.6" style={{ background: '#111827', color: '#fff' }}>🧠 C3 Kimi K2.6</option>
+                    <option value="openai/default" style={{ background: '#111827', color: '#fff' }}>💻 LM Studio Local</option>
+                    <option value="gemini-3.5-flash-lite" style={{ background: '#111827', color: '#fff' }}>✨ Google Gemini</option>
+                  </select>
+                </div>
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '0.35rem 0.75rem',
+                  borderRadius: '6px',
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))',
+                  fontSize: '0.78rem',
+                  color: 'var(--text-muted)'
+                }}
+                title="El Agente Autónomo Híbrido está reservado para perfiles con privilegios de Administrador. Puedes autenticarte en Mi Espacio."
               >
-                <option value="lmstudio">LM Studio Local (DeepSeek-R1 / Qwen2.5)</option>
-                <option value="openai">OpenAI GPT-4o Mini</option>
-              </select>
-            </div>
+                <Shield size={13} style={{ color: '#f59e0b' }} />
+                <span>Modo: {t.assistant.modes.direct}</span>
+              </div>
+            )}
 
             {/* Exportar Conversación (CTL-M06-011) */}
             <button
@@ -286,54 +424,8 @@ export function AIAssistant() {
               title={t.assistant.btn_clear}
             >
               <Trash2 size={13} />
+              <span>{t.assistant.btn_clear}</span>
             </button>
-          </div>
-        </div>
-
-        {/* Modo de Inferencia (CTL-M06-002) y Habilidades (CTL-M06-003) */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
-          {/* Segmented Radio Modo (CTL-M06-002) */}
-          <div id="CTL-M06-002" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t.assistant.mode_selection}:</span>
-            <div style={{ display: 'flex', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '6px', padding: '2px' }}>
-              <button
-                className={`btn btn-sm ${assistantMode === 'direct' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '0.25rem 0.65rem', fontSize: '0.78rem', borderRadius: '4px' }}
-                onClick={() => setAssistantMode('direct')}
-              >
-                {t.assistant.modes.direct}
-              </button>
-              <button
-                className={`btn btn-sm ${assistantMode === 'agent' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '0.25rem 0.65rem', fontSize: '0.78rem', borderRadius: '4px' }}
-                onClick={() => setAssistantMode('agent')}
-              >
-                {t.assistant.modes.agent}
-              </button>
-            </div>
-          </div>
-
-          {/* Chips Habilidades Activas (CTL-M06-003) */}
-          <div id="CTL-M06-003" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{t.assistant.skills_filter}:</span>
-            {[
-              { id: 'clickhouse', label: 'ClickHouse' },
-              { id: 'neo4j', label: 'Neo4j' },
-              { id: 'snii', label: 'Padrón Oficial' },
-              { id: 'embeddings', label: 'Embeddings' }
-            ].map((sk) => {
-              const active = skills[sk.id];
-              return (
-                <button
-                  key={sk.id}
-                  className={`badge ${active ? 'badge-cyan' : 'badge-purple'}`}
-                  style={{ cursor: 'pointer', opacity: active ? 1 : 0.45, border: 'none', padding: '0.25rem 0.5rem' }}
-                  onClick={() => toggleSkill(sk.id)}
-                >
-                  {sk.label}
-                </button>
-              );
-            })}
           </div>
         </div>
       </div>
@@ -355,41 +447,44 @@ export function AIAssistant() {
                   gap: '0.35rem'
                 }}
               >
-                <div
-                  style={{
-                    padding: '0.85rem 1.15rem',
-                    borderRadius: '10px',
-                    background: isUser ? 'rgba(0, 242, 254, 0.12)' : 'var(--bg-input)',
-                    border: `1px solid ${isUser ? 'rgba(0, 242, 254, 0.3)' : 'var(--border-subtle)'}`,
-                    color: 'var(--text-primary)',
-                    fontSize: '0.9rem',
-                    lineHeight: 1.6,
-                    wordBreak: 'break-word'
-                  }}
-                >
-                  {isUser ? (
-                    <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
-                  ) : (
-                    <MarkdownRenderer content={m.content} />
-                  )}
-                </div>
+                {/* Contenido del Mensaje: Solo si es usuario o si hay texto generado */}
+                {(isUser || (m.content && m.content.trim().length > 0)) && (
+                  <div
+                    style={{
+                      padding: '0.85rem 1.15rem',
+                      borderRadius: '10px',
+                      background: isUser ? 'rgba(0, 242, 254, 0.12)' : 'var(--bg-card)',
+                      border: `1px solid ${isUser ? 'rgba(0, 242, 254, 0.3)' : 'var(--border-subtle)'}`,
+                      color: 'var(--text-primary)',
+                      fontSize: '0.9rem',
+                      lineHeight: 1.6,
+                      wordBreak: 'break-word',
+                      boxShadow: isUser ? 'none' : '0 2px 8px rgba(0, 0, 0, 0.04)'
+                    }}
+                  >
+                    {isUser ? (
+                      <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
+                    ) : (
+                      <MarkdownRenderer content={m.content} />
+                    )}
+                  </div>
+                )}
 
                 {/* Acordeón de Razonamiento y Herramientas (CTL-M06-008) */}
                 {!isUser && m.thoughts && (
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  <div style={{ fontSize: '0.78rem' }}>
                     <button
                       id="CTL-M06-008"
-                      className="btn btn-secondary btn-sm"
-                      style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem', background: 'transparent', border: '1px solid rgba(255, 255, 255, 0.1)' }}
+                      className="assistant-thoughts-btn"
                       onClick={() => setShowThoughts((prev) => ({ ...prev, [idx]: !prev[idx] }))}
                     >
-                      <Brain size={12} style={{ color: 'var(--accent-purple)' }} />
+                      <Brain size={13} style={{ color: 'var(--accent-purple)' }} />
                       <span>{t.assistant.thinking_process}</span>
                       {showThoughts[idx] ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                     </button>
 
                     {showThoughts[idx] && (
-                      <div style={{ marginTop: '0.35rem', padding: '0.5rem 0.75rem', background: 'rgba(0, 0, 0, 0.4)', borderRadius: '6px', border: '1px dashed rgba(255, 255, 255, 0.15)', fontFamily: 'monospace', fontSize: '0.75rem', color: '#94a3b8' }}>
+                      <div className="assistant-thoughts-box">
                         {m.thoughts}
                       </div>
                     )}
