@@ -86,11 +86,29 @@ export function GlobalSearchModal({ isOpen, onClose }) {
     };
   }, [query]);
 
+  const canSeeAll = canViewAllResearchers(userSession);
+
+  // Determinar si un resultado corresponde al propio usuario autenticado
+  const isSelfItem = (item) => {
+    if (!userSession?.isAuthenticated) return false;
+    if (userSession.orcid && item.orcid && userSession.orcid === item.orcid) return true;
+    if (userSession.name && item.name && userSession.name.trim().toLowerCase() === item.name.trim().toLowerCase()) return true;
+    return false;
+  };
+
+  // Filtrar resultados autorizados:
+  // Si es superusuario, puede ver todo.
+  // Si no es superusuario, los resultados de tipo 'Academic' se filtran por completo salvo que sea su propio perfil.
+  const authorizedResults = useMemo(() => {
+    if (canSeeAll) return results;
+    return results.filter((r) => r.type !== 'Academic' || isSelfItem(r));
+  }, [results, canSeeAll, userSession]);
+
   // Filtrado de resultados según la píldora activa
   const filteredResults = useMemo(() => {
-    if (filterType === 'all') return results;
-    return results.filter((r) => r.type === filterType);
-  }, [results, filterType]);
+    if (filterType === 'all') return authorizedResults;
+    return authorizedResults.filter((r) => r.type === filterType);
+  }, [authorizedResults, filterType]);
 
   // Navegación con teclado
   const handleKeyDown = (e) => {
@@ -207,7 +225,13 @@ export function GlobalSearchModal({ isOpen, onClose }) {
             ref={inputRef}
             type="text"
             className="global-search-input"
-            placeholder="Buscar investigadores, facultades, institutos u ORCID..."
+            placeholder={
+              canSeeAll
+                ? "Buscar investigadores, facultades, institutos u ORCID..."
+                : (userSession?.isAuthenticated
+                    ? "Buscar mi perfil, facultades o institutos..."
+                    : "Buscar facultades, institutos o dependencias...")
+            }
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -229,25 +253,27 @@ export function GlobalSearchModal({ isOpen, onClose }) {
         </div>
 
         {/* Píldoras de Filtro Rápido */}
-        {results.length > 0 && (
+        {authorizedResults.length > 0 && (
           <div className="global-search-filters">
             <button
               className={`search-filter-pill ${filterType === 'all' ? 'active' : ''}`}
               onClick={() => { setFilterType('all'); setSelectedIndex(0); }}
             >
-              Todos ({results.length})
+              Todos ({authorizedResults.length})
             </button>
-            <button
-              className={`search-filter-pill ${filterType === 'Academic' ? 'active' : ''}`}
-              onClick={() => { setFilterType('Academic'); setSelectedIndex(0); }}
-            >
-              <Users size={13} /> Investigadores ({results.filter(r => r.type === 'Academic').length})
-            </button>
+            {(canSeeAll || authorizedResults.some((r) => r.type === 'Academic')) && (
+              <button
+                className={`search-filter-pill ${filterType === 'Academic' ? 'active' : ''}`}
+                onClick={() => { setFilterType('Academic'); setSelectedIndex(0); }}
+              >
+                <Users size={13} /> {canSeeAll ? 'Investigadores' : 'Mi Perfil'} ({authorizedResults.filter(r => r.type === 'Academic').length})
+              </button>
+            )}
             <button
               className={`search-filter-pill ${filterType === 'Institution' ? 'active' : ''}`}
               onClick={() => { setFilterType('Institution'); setSelectedIndex(0); }}
             >
-              <Building2 size={13} /> Instituciones / Dependencias ({results.filter(r => r.type === 'Institution').length})
+              <Building2 size={13} /> Instituciones / Dependencias ({authorizedResults.filter(r => r.type === 'Institution').length})
             </button>
           </div>
         )}

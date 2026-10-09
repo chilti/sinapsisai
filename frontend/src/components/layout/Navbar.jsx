@@ -116,7 +116,9 @@ export function Navbar() {
               aria-label="Abrir buscador global"
             >
               <Search size={15} className="search-trigger-icon" />
-              <span className="search-trigger-placeholder">Buscar investigadores, entidades u ORCID...</span>
+              <span className="search-trigger-placeholder">
+                {canSeeResearchers ? "Buscar investigadores, entidades u ORCID..." : "Buscar facultades, institutos o dependencias..."}
+              </span>
               <span className="search-trigger-shortcut">
                 <kbd>{isMac ? '⌘' : 'Ctrl'}</kbd> <kbd>K</kbd>
               </span>
