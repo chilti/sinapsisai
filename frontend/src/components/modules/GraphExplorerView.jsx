@@ -546,7 +546,7 @@ export function GraphExplorerView() {
                 <span className="secihti-badge">SECIHTI Ejes 1 y 2</span>
               </h1>
               <p className="graph-subtitle">
-                Cartografía interactiva del grafo de conocimiento Neo4j para articular el Sistema Nacional de CTI, descentralización interestatal y evaluación por pares.
+                Ejemplo de redes construidas a partir de la red nacional que contiene personas, instituciones, dependencias, subdependencias, publicaciones, tópicos y ODS.
               </p>
             </div>
           </div>

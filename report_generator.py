@@ -163,7 +163,7 @@ def generate_html_report(
 ) -> str:
     """Genera un reporte analítico exhaustivo y sobrio en formato HTML para institución o investigador."""
     # Wrapper local para que todas las llamadas de prompts en este reporte utilicen el modelo solicitado (o default) con fallback automático
-    _orig_get_llm = get_llm_analysis
+    _orig_get_llm = globals()['get_llm_analysis']
     get_llm_analysis = lambda p, s=DEFAULT_SYSTEM_PROMPT: _orig_get_llm(p, s, model=model)
 
     if str(entity_type).lower() in ["researcher", "investigador", "inv"]:

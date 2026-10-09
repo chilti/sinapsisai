@@ -1040,7 +1040,11 @@ def get_hierarchy_metrics(
                 if d and "orcid-work" not in str(d)
             ][:5000]
         if "paper_id" in df_papers.columns:
-            oa_list = [str(d).strip() for d in df_papers["paper_id"].dropna().tolist() if d][:5000]
+            oa_list = [
+                str(d).replace("https://openalex.org/", "").strip()
+                for d in df_papers["paper_id"].dropna().tolist()
+                if d and "orcid-work" not in str(d) and (str(d).startswith("W") or "openalex.org" in str(d))
+            ][:5000]
 
     # 17. Verificar existencia de Reporte IA en disco
     base_dir_app = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

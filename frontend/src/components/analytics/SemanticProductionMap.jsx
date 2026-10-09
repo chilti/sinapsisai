@@ -12,8 +12,10 @@ export default function SemanticProductionMap({
   const [isLoading, setIsLoading] = useState(false);
   const iframeRef = useRef(null);
 
-  // Parámetro URL para destacar a la entidad o al autor
-  const encodedTarget = encodeURIComponent(targetName);
+  // Limpieza de siglas institucionales para URL y detección de ámbito nacional
+  const isMexico = targetName && (targetName.toUpperCase() === 'MÉXICO' || targetName.toUpperCase() === 'MEXICO');
+  const cleanTargetName = type === 'institution' ? targetName.replace(/\s*\([^)]*\)/g, '').trim() : targetName;
+  const encodedTarget = encodeURIComponent(cleanTargetName);
   const paramKey = type === "author" ? "highlight_author" : "highlight_inst";
   const iframeSrc = `https://dinamica1.fciencias.unam.mx/tiles/map_test.html?v=28&data=https://dinamica1.fciencias.unam.mx/tiles/articles_specter_data.json?v=28&color_by=cluster&${paramKey}=${encodedTarget}`;
 
@@ -44,7 +46,11 @@ export default function SemanticProductionMap({
           <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: '850px' }}>
             Exploración espacial de la producción científica en alta dimensión (Specter / UMAP).
             {totalWorks > 0 ? (
-              <> Los <strong style={{ color: 'var(--accent-cyan)' }}>{totalWorks.toLocaleString()} artículos</strong> de {targetName} están coloreados; el resto de la base nacional aparece en gris tenue.</>
+              isMexico ? (
+                <> Los <strong style={{ color: 'var(--accent-cyan)' }}>{totalWorks.toLocaleString()} artículos</strong> de la ciencia mexicana están proyectados y coloreados por cluster temático.</>
+              ) : (
+                <> Los <strong style={{ color: 'var(--accent-cyan)' }}>{totalWorks.toLocaleString()} artículos</strong> de {targetName} están coloreados; el resto de la base nacional aparece en gris tenue.</>
+              )
             ) : (
               <> Los artículos de la entidad están coloreados dentro del cosmos de la ciencia nacional.</>
             )}

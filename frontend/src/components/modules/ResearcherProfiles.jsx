@@ -971,7 +971,7 @@ export function ResearcherProfiles() {
                     rel="noreferrer"
                     style={{ color: '#f59e0b', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}
                   >
-                    <span>ID Autor: {profile.scopus_ids[0]}</span>
+                    <span>Scopus ID</span>
                     <ExternalLink size={12} />
                   </a>
                 )}

@@ -475,63 +475,63 @@ export function AboutView() {
 
       </div>
 
-      {/* ── 3.4. Descargo de Responsabilidad Legal e Institucional (CRÍTICO) ── */}
+      {/* ── 3.4. Alcance Institucional y Delimitación de Uso ── */}
       <div
         className="glass-card"
         style={{
           padding: '1.65rem 2rem',
           borderRadius: '12px',
-          border: '2px solid rgba(239, 68, 68, 0.45)',
-          borderLeft: '7px solid #ef4444',
+          border: '1px solid var(--border-subtle)',
+          borderLeft: '5px solid var(--accent-cyan)',
           background: isLight
-            ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.05) 0%, rgba(245, 158, 11, 0.03) 100%)'
-            : 'linear-gradient(135deg, rgba(239, 68, 68, 0.14) 0%, rgba(245, 158, 11, 0.06) 100%)',
-          boxShadow: '0 8px 32px rgba(239, 68, 68, 0.12)'
+            ? 'linear-gradient(135deg, rgba(0, 242, 254, 0.04) 0%, rgba(2, 132, 199, 0.02) 100%)'
+            : 'linear-gradient(135deg, rgba(0, 242, 254, 0.07) 0%, rgba(2, 132, 199, 0.04) 100%)',
+          boxShadow: '0 8px 32px rgba(0, 242, 254, 0.05)'
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
           <div style={{
             width: '40px', height: '40px', borderRadius: '10px',
-            background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444',
+            background: 'rgba(0, 242, 254, 0.15)', color: 'var(--accent-cyan)',
             display: 'flex', alignItems: 'center', justifyContent: 'center'
           }}>
-            <AlertOctagon size={24} />
+            <ShieldCheck size={24} />
           </div>
           <div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              4. Descargo de Responsabilidad Legal e Institucional (Disclaimer)
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
+              4. Alcance Institucional y Delimitación de Uso
             </h2>
-            <p style={{ fontSize: '0.8rem', color: isLight ? '#991b1b' : '#fca5a5', margin: '0.15rem 0 0 0', fontWeight: 600 }}>
-              Carácter demostrativo y deslinde de efectos evaluatorios vinculantes
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.15rem 0 0 0' }}>
+              Investigación cienciométrica, cartografía del conocimiento y gobernanza de datos
             </p>
           </div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', fontSize: '0.88rem', lineHeight: '1.65', color: 'var(--text-secondary)' }}>
-          <div style={{ padding: '0.85rem 1.15rem', borderRadius: '8px', background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(0,0,0,0.25)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-            <strong style={{ color: isLight ? '#991b1b' : '#f87171', display: 'block', marginBottom: '0.2rem' }}>
-              I. Naturaleza Experimental y Demostrativa (No Evaluatoria):
+          <div style={{ padding: '0.85rem 1.15rem', borderRadius: '8px', background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)' }}>
+            <strong style={{ color: 'var(--accent-cyan)', display: 'block', marginBottom: '0.2rem' }}>
+              I. Propósito Científico y Cartográfico:
             </strong>
             <span>
-              La plataforma <b>Info TlachIA SNII</b> constituye un <b>experimento de investigación académica, estadística y cienciométrica (proyecto piloto demostrativo)</b>. Bajo ninguna circunstancia representa ni pretende operar como un instrumento oficial de evaluación académica, laboral, administrativa o dictaminadora.
+              La plataforma <b>Info TlachIA SNII</b> es un proyecto de investigación académica y cienciométrica orientado al análisis y la cartografía del ecosistema científico nacional. Su objetivo primordial es aportar herramientas avanzadas de visualización topológica, espacios semánticos y modelos de grafos para la comprensión y articulación de las capacidades de investigación en México.
             </span>
           </div>
 
-          <div style={{ padding: '0.85rem 1.15rem', borderRadius: '8px', background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(0,0,0,0.25)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-            <strong style={{ color: isLight ? '#991b1b' : '#f87171', display: 'block', marginBottom: '0.2rem' }}>
-              II. Invalidez para Trámites Oficiales e Institucionales:
+          <div style={{ padding: '0.85rem 1.15rem', borderRadius: '8px', background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)' }}>
+            <strong style={{ color: 'var(--accent-cyan)', display: 'block', marginBottom: '0.2rem' }}>
+              II. Alcance Agregado y Ciencia Abierta:
             </strong>
             <span>
-              Las métricas, agregaciones, posicionamientos, percentiles y visualizaciones provistas en este portal <b>carecen de validez oficial, legal o administrativa</b> para contrataciones, promociones de categoría, dictámenes de permanencia, juicios de definitividad, evaluaciones del SNII/SECIHTI o cualquier proceso formal ante comisiones evaluadoras universitarias o gubernamentales.
+              La plataforma prioriza el análisis estructural a nivel agregado (instituciones, dependencias, disciplinas, tópicos y alineación con los Objetivos de Desarrollo Sostenible de la Agenda 2030), promoviendo la transparencia, la colaboración interdisciplinaria y el acceso abierto a la información científica.
             </span>
           </div>
 
-          <div style={{ padding: '0.85rem 1.15rem', borderRadius: '8px', background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(0,0,0,0.25)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-            <strong style={{ color: isLight ? '#991b1b' : '#f87171', display: 'block', marginBottom: '0.2rem' }}>
-              III. Exención de Responsabilidad por Exactitud del Dato Fuente:
+          <div style={{ padding: '0.85rem 1.15rem', borderRadius: '8px', background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)' }}>
+            <strong style={{ color: 'var(--accent-cyan)', display: 'block', marginBottom: '0.2rem' }}>
+              III. Fuentes Públicas y Procesamiento de Metadatos:
             </strong>
             <span>
-              Cualquier discrepancia, desfase temporal de indización, inconsistencia en la afiliación institucional histórica o posible omisión en la producción bibliográfica es <b>heredada directamente de las fuentes públicas primarias (OpenAlex / SECIHTI)</b>. Por consiguiente, el grupo de investigación, la Facultad de Ciencias, el Centro de Ciencias de la Complejidad (C3) y la Universidad Nacional Autónoma de México quedan formalmente <b>eximidos de toda responsabilidad</b> por la exactitud, integridad o completitud de los datos fuente recopilados.
+              Los corpus y grafos de conocimiento se integran a partir de repositorios públicos abiertos (OpenAlex, ROR y registros públicos del SNII). Los datos son procesados, desambiguados y enriquecidos de forma continua mediante modelos de lenguaje y algoritmos cienciométricos, reflejando el estado y la cobertura de los metadatos en las fuentes de origen.
             </span>
           </div>
         </div>

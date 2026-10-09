@@ -29,7 +29,7 @@ import {
   EyeOff,
   Radio
 } from 'lucide-react';
-import { useAppStore } from '../../store/useAppStore.js';
+import { useAppStore, canViewAllResearchers } from '../../store/useAppStore.js';
 import { apiClient } from '../../api/client.js';
 
 // ── 10 Capas Semánticas y de Redes Deepscatter WebGL ──────────────────────────
@@ -214,7 +214,11 @@ export function ScienceMaps() {
   const setSelectedResearcher = useAppStore((state) => state.setSelectedResearcher);
   const setActiveTab = useAppStore((state) => state.setActiveTab);
   const theme = useAppStore((state) => state.theme);
+  const userSession = useAppStore((state) => state.userSession);
   const isLight = theme === 'claro';
+
+  // Control de acceso: Ocultar mapas de académicos (investigadores o personas) excepto superuser
+  const isSuperuser = canViewAllResearchers(userSession);
 
   // Estados del Módulo
   const [selectedLayerId, setSelectedLayerId] = useState('articles_specter');
@@ -233,10 +237,31 @@ export function ScienceMaps() {
   const [umapData, setUmapData] = useState({ points: [], domains: [], total: 0 });
   const [loadingUmap, setLoadingUmap] = useState(false);
 
+  // Capas disponibles según permisos (ocultar capas de académicos/investigadores excepto superuser)
+  const availableLayers = useMemo(() => {
+    if (isSuperuser) return MAP_LAYERS;
+    return MAP_LAYERS.filter((l) => l.category !== 'investigadores');
+  }, [isSuperuser]);
+
+  // Si el usuario no es superuser y está en una capa restringida o modo restringido, volver a capa pública
+  useEffect(() => {
+    if (!isSuperuser) {
+      if (viewMode === 'umap_explorer') {
+        setViewMode('deepscatter');
+      }
+      if (categoryFilter === 'investigadores') {
+        setCategoryFilter('todos');
+      }
+      if (['people_specter', 'people_social', 'people_topics_sdg', 'people_performance'].includes(selectedLayerId)) {
+        setSelectedLayerId('articles_specter');
+      }
+    }
+  }, [isSuperuser, viewMode, categoryFilter, selectedLayerId]);
+
   // Capa activa
   const selectedLayer = useMemo(() => {
-    return MAP_LAYERS.find((l) => l.id === selectedLayerId) || MAP_LAYERS[0];
-  }, [selectedLayerId]);
+    return availableLayers.find((l) => l.id === selectedLayerId) || availableLayers[0] || MAP_LAYERS[0];
+  }, [availableLayers, selectedLayerId]);
 
   // URL del Iframe Deepscatter WebGL
   const iframeSrc = useMemo(() => {
@@ -244,9 +269,9 @@ export function ScienceMaps() {
     return `https://dinamica1.fciencias.unam.mx/tiles/map_test.html?v=28&data=${selectedLayer.url}?v=28${colorByParam}`;
   }, [selectedLayer]);
 
-  // Carga diferida de UMAP de investigadores si se activa el modo explorador
+  // Carga diferida de UMAP de investigadores si se activa el modo explorador (solo superuser)
   useEffect(() => {
-    if (viewMode !== 'umap_explorer') return;
+    if (viewMode !== 'umap_explorer' || !isSuperuser) return;
     async function loadUmap() {
       setLoadingUmap(true);
       try {
@@ -259,13 +284,13 @@ export function ScienceMaps() {
       }
     }
     loadUmap();
-  }, [viewMode, selectedDomain]);
+  }, [viewMode, selectedDomain, isSuperuser]);
 
   // Capas filtradas por categoría
   const filteredLayers = useMemo(() => {
-    if (categoryFilter === 'todos') return MAP_LAYERS;
-    return MAP_LAYERS.filter((l) => l.category === categoryFilter);
-  }, [categoryFilter]);
+    if (categoryFilter === 'todos') return availableLayers;
+    return availableLayers.filter((l) => l.category === categoryFilter);
+  }, [availableLayers, categoryFilter]);
 
   // Pantalla Completa
   const handleToggleFullscreen = () => {
@@ -401,32 +426,39 @@ export function ScienceMaps() {
                 <h2 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   Mapas de la Ciencia y Espacios Semánticos
                   <span className="badge badge-purple" style={{ fontSize: '0.68rem' }}>WebGL GPU 60 FPS</span>
+                  {isSuperuser && (
+                    <span className="badge badge-cyan" style={{ fontSize: '0.68rem' }}>Acceso Especial</span>
+                  )}
                 </h2>
                 <p style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', margin: '1px 0 0 0' }}>
-                  Cartografía topológica interactiva sobre millones de publicaciones y redes de investigadoras e investigadores del país.
+                  {isSuperuser
+                    ? 'Cartografía topológica interactiva sobre millones de publicaciones y redes de investigadoras e investigadores del país.'
+                    : 'Cartografía topológica interactiva sobre millones de publicaciones científicas y redes institucionales de conocimiento.'}
                 </p>
               </div>
             </div>
 
-            {/* Alternador de Modo: Deepscatter WebGL vs Explorador UMAP */}
-            <div style={{ display: 'flex', gap: '0.35rem', background: 'rgba(0,0,0,0.15)', padding: '0.2rem', borderRadius: '8px' }}>
-              <button
-                className={`btn btn-sm ${viewMode === 'deepscatter' ? 'btn-primary' : 'btn-ghost'}`}
-                onClick={() => setViewMode('deepscatter')}
-                style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
-              >
-                <Layers size={13} />
-                <span>Deepscatter WebGL (10 Capas)</span>
-              </button>
-              <button
-                className={`btn btn-sm ${viewMode === 'umap_explorer' ? 'btn-primary' : 'btn-ghost'}`}
-                onClick={() => setViewMode('umap_explorer')}
-                style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
-              >
-                <Users size={13} />
-                <span>Explorador Pares UMAP</span>
-              </button>
-            </div>
+            {/* Alternador de Modo: Deepscatter WebGL vs Explorador UMAP (Solo Superuser) */}
+            {isSuperuser && (
+              <div style={{ display: 'flex', gap: '0.35rem', background: 'rgba(0,0,0,0.15)', padding: '0.2rem', borderRadius: '8px' }}>
+                <button
+                  className={`btn btn-sm ${viewMode === 'deepscatter' ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => setViewMode('deepscatter')}
+                  style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
+                >
+                  <Layers size={13} />
+                  <span>Deepscatter WebGL (10 Capas)</span>
+                </button>
+                <button
+                  className={`btn btn-sm ${viewMode === 'umap_explorer' ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => setViewMode('umap_explorer')}
+                  style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
+                >
+                  <Users size={13} />
+                  <span>Explorador Pares UMAP</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Selector de Categorías y Capas para Deepscatter */}
@@ -439,7 +471,7 @@ export function ScienceMaps() {
                   onClick={() => setCategoryFilter('todos')}
                   style={{ padding: '0.15rem 0.5rem', fontSize: '0.72rem' }}
                 >
-                  <Globe size={12} /> Todas ({MAP_LAYERS.length})
+                  <Globe size={12} /> Todas ({availableLayers.length})
                 </button>
                 <button
                   className={`btn btn-xs ${categoryFilter === 'articulos' ? 'btn-primary' : 'btn-secondary'}`}
@@ -448,13 +480,15 @@ export function ScienceMaps() {
                 >
                   <BookOpen size={12} /> 📄 Artículos Semánticos
                 </button>
-                <button
-                  className={`btn btn-xs ${categoryFilter === 'investigadores' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setCategoryFilter('investigadores')}
-                  style={{ padding: '0.15rem 0.5rem', fontSize: '0.72rem' }}
-                >
-                  <Users size={12} /> 🧑‍🤝‍🧑 Investigadores & Desempeño
-                </button>
+                {isSuperuser && (
+                  <button
+                    className={`btn btn-xs ${categoryFilter === 'investigadores' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setCategoryFilter('investigadores')}
+                    style={{ padding: '0.15rem 0.5rem', fontSize: '0.72rem' }}
+                  >
+                    <Users size={12} /> 🧑‍🤝‍🧑 Investigadores & Desempeño
+                  </button>
+                )}
                 <button
                   className={`btn btn-xs ${categoryFilter === 'redes' ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setCategoryFilter('redes')}
@@ -693,7 +727,7 @@ export function ScienceMaps() {
       )}
 
       {/* ── 4. Modo Secundario: Explorador de Pares Académicos (Plotly UMAP) ── */}
-      {viewMode === 'umap_explorer' && (
+      {viewMode === 'umap_explorer' && isSuperuser && (
         <div className="glass-card" style={{ padding: '0.65rem 0.85rem', flex: '1 1 0', minHeight: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {/* Controles del Explorador UMAP */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem', flexShrink: 0 }}>
