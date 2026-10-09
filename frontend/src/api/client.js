@@ -132,6 +132,10 @@ export const apiClient = {
     const res = await api.get('/auth/profile-status', { params: { orcid } });
     return res.data;
   },
+  setProfileVisibility: async (payload) => {
+    const res = await api.post('/auth/profile/visibility', payload);
+    return res.data;
+  },
   searchPadron: async (query) => {
     const res = await api.get('/auth/search-padron', { params: { query } });
     return res.data;
@@ -295,6 +299,12 @@ export const apiClient = {
   },
   getNodeDetails: async (nodeId) => {
     const res = await api.get(`/graph/node-details/${nodeId}`);
+    return res.data;
+  },
+
+  // Autenticación de Superusuario / Personas Especiales
+  superuserLogin: async (username, password) => {
+    const res = await api.post('/auth/superuser-login', { username, password });
     return res.data;
   }
 };

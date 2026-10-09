@@ -17,7 +17,7 @@ import {
   Command,
   ArrowRight
 } from 'lucide-react';
-import { useAppStore } from '../../store/useAppStore.js';
+import { useAppStore, canViewAllResearchers } from '../../store/useAppStore.js';
 import { apiClient } from '../../api/client.js';
 
 export function GlobalSearchModal({ isOpen, onClose }) {
@@ -36,6 +36,8 @@ export function GlobalSearchModal({ isOpen, onClose }) {
   const setSelectedInstitution = useAppStore((state) => state.setSelectedInstitution);
   const setSelectedDependency = useAppStore((state) => state.setSelectedDependency);
   const setSelectedSubdependency = useAppStore((state) => state.setSelectedSubdependency);
+  const userSession = useAppStore((state) => state.userSession);
+  const setNotification = useAppStore((state) => state.setNotification);
 
   // Auto-focus al abrir
   useEffect(() => {
@@ -124,6 +126,23 @@ export function GlobalSearchModal({ isOpen, onClose }) {
     if (!item) return;
 
     if (item.type === 'Academic') {
+      const canSeeAll = canViewAllResearchers(userSession);
+      const isSelf = Boolean(
+        userSession?.isAuthenticated && (
+          (userSession.orcid && item.orcid && userSession.orcid === item.orcid) ||
+          (userSession.name && item.name && userSession.name.trim().toLowerCase() === item.name.trim().toLowerCase())
+        )
+      );
+
+      if (!canSeeAll && !isSelf) {
+        setNotification({
+          type: 'warning',
+          message: 'El perfil es exclusivo para el usuario logeado y solo puede ver su perfil.'
+        });
+        onClose();
+        return;
+      }
+
       // 1. Sincronizar jerarquía si los padres están disponibles
       const parents = item.parents || [];
       if (parents.length > 0) {

@@ -381,46 +381,9 @@ def fetch_all_works_by_author_id(
             '_raw_oa':     w,
         }
 
-    # ── Intento 1: API local con paginación completa ──────────────
-    try:
-        client = _get_client()
-        url    = f"{LOCAL_BASE}/works"
-        page   = 1
-        total_local = 0
-        while True:
-            params = {
-                "filter":   f"author.id:{oa_id_clean}",
-                "per_page": per_page,
-                "page":     page,
-            }
-            resp = client.get(url, params=params, timeout=60)
-            if resp.status_code != 200:
-                break
-            data    = resp.json()
-            works   = data.get('results', [])
-            if not works:
-                break
-            for w in works:
-                key, rec = _build_record(w, 'OpenAlex_AuthorID_Local')
-                if key and key not in metadatos:
-                    metadatos[key] = rec
-                    total_local += 1
-            if len(works) < per_page:
-                break
-            page += 1
-
-        if metadatos:
-            print(f"    [OpenAlex Local] Author {oa_id_clean}: "
-                  f"{len(metadatos)} trabajos ({page} página(s)).")
-            return metadatos
-
-    except Exception as e:
-        print(f"    [WARN] Error API Local OpenAlex Author ({oa_id_clean}): {e}")
-
-    # ── Intento 2: ClickHouse directo (works_flat.author_ids) ─────
-    # La API local no soporta filter=author.id en todos los despliegues.
-    # Fallback a una consulta directa sobre works_flat que sí es eficiente
-    # porque author_ids es un Array(String) con índice bloom filter.
+    # ── Intento 1: ClickHouse directo (works_flat.author_ids) ─────
+    # author_ids es un Array(String) con índice bloom filter en works_flat.
+    # Consulta directa de alto rendimiento (< 0.4s) sin depender del puerto 5012.
     oa_url_full = (openalex_author_id
                    if openalex_author_id.startswith('https://')
                    else f"https://openalex.org/{oa_id_clean}")
@@ -463,7 +426,45 @@ def fetch_all_works_by_author_id(
                       f"{len(metadatos)} trabajos.")
                 return metadatos
     except Exception as e:
-        print(f"    [WARN] ClickHouse fallback para author_ids ({oa_id_clean}): {e}")
+        print(f"    [WARN] ClickHouse para author_ids ({oa_id_clean}): {e}")
+
+    # ── Intento 2: API local con paginación completa (fallback) ───
+    # Solo si ClickHouse no retornó registros para este Author ID.
+    try:
+        client = _get_client()
+        url    = f"{LOCAL_BASE}/works"
+        page   = 1
+        total_local = 0
+        while True:
+            params = {
+                "filter":   f"author.id:{oa_id_clean}",
+                "per_page": per_page,
+                "page":     page,
+            }
+            # Timeout reducido a 5s para no bloquear horas en endpoints sin índice
+            resp = client.get(url, params=params, timeout=5)
+            if resp.status_code != 200:
+                break
+            data    = resp.json()
+            works   = data.get('results', [])
+            if not works:
+                break
+            for w in works:
+                key, rec = _build_record(w, 'OpenAlex_AuthorID_Local')
+                if key and key not in metadatos:
+                    metadatos[key] = rec
+                    total_local += 1
+            if len(works) < per_page:
+                break
+            page += 1
+
+        if metadatos:
+            print(f"    [OpenAlex Local] Author {oa_id_clean}: "
+                  f"{len(metadatos)} trabajos ({page} página(s)).")
+            return metadatos
+
+    except Exception as e:
+        print(f"    [WARN] Error API Local OpenAlex Author ({oa_id_clean}): {e}")
 
     if force_local:
         return {}

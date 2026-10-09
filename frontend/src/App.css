@@ -43,8 +43,8 @@
   width: 100%;
   display: flex;
   align-items: center;
-  background: rgba(10, 15, 29, 0.45);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .navbar-container {
@@ -432,7 +432,7 @@
 }
 
 [data-theme="claro"] .navbar-nav-row {
-  background: rgba(248, 250, 252, 0.95);
+  background: #ffffff;
   border-bottom: 1px solid #e2e8f0;
 }
 

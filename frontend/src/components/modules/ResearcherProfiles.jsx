@@ -29,10 +29,14 @@ import {
   Sparkles,
   HelpCircle,
   X,
+  Check,
+  AlertOctagon,
+  EyeOff,
+  ShieldCheck,
   Share2,
-  Check
+  KeyRound
 } from 'lucide-react';
-import { useAppStore } from '../../store/useAppStore.js';
+import { useAppStore, canViewAllResearchers } from '../../store/useAppStore.js';
 import { apiClient } from '../../api/client.js';
 import ThematicEvolutionTable from '../analytics/ThematicEvolutionTable.jsx';
 import CollaborationWorldMap from '../analytics/CollaborationWorldMap.jsx';
@@ -43,6 +47,7 @@ import UmapPerformanceMap from '../analytics/UmapPerformanceMap.jsx';
 import CoAuthraNetwork from '../analytics/CoAuthraNetwork.jsx';
 import WordCloudInteractive from '../analytics/WordCloudInteractive.jsx';
 import LoadingOverlay from '../common/LoadingOverlay.jsx';
+import { SuperuserLoginModal } from '../common/SuperuserLoginModal.jsx';
 
 // Colores oficiales de los 17 ODS de la ONU
 const SDG_COLORS = {
@@ -66,8 +71,24 @@ export function ResearcherProfiles() {
   const researcherName = useAppStore((state) => state.selectedResearcherName);
   const researcherOrcid = useAppStore((state) => state.selectedResearcherOrcid);
   const setSelectedResearcher = useAppStore((state) => state.setSelectedResearcher);
+  const setActiveTab = useAppStore((state) => state.setActiveTab);
   const setNotification = useAppStore((state) => state.setNotification);
   const theme = useAppStore((state) => state.theme);
+  const userSession = useAppStore((state) => state.userSession);
+
+  const canSeeAll = canViewAllResearchers(userSession);
+  const [superuserModalOpen, setSuperuserModalOpen] = useState(false);
+
+  // Para usuarios autenticados ordinarios (no superusuarios), forzar la visualización de su propio perfil
+  useEffect(() => {
+    if (!canSeeAll && userSession?.isAuthenticated) {
+      const myName = userSession.name || '';
+      const myOrcid = userSession.orcid || '';
+      if (myName && (researcherName !== myName || (myOrcid && researcherOrcid !== myOrcid))) {
+        setSelectedResearcher(myName, myOrcid);
+      }
+    }
+  }, [canSeeAll, userSession, researcherName, researcherOrcid, setSelectedResearcher]);
 
   const [copiedShare, setCopiedShare] = useState(false);
 
@@ -109,6 +130,7 @@ export function ResearcherProfiles() {
   const [loadingAcademics, setLoadingAcademics] = useState(false);
 
   const [profile, setProfile] = useState(null);
+  const [profileNotFound, setProfileNotFound] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState('production'); // 'production' | 'citations'
   const [showGlossary, setShowGlossary] = useState(true);
@@ -137,15 +159,26 @@ export function ResearcherProfiles() {
   // 1. Cargar Perfil Completo del Investigador
   useEffect(() => {
     async function loadProfile() {
-      if (!researcherName && !researcherOrcid) return;
+      if (!researcherName && !researcherOrcid) {
+        setProfile(null);
+        setProfileNotFound(false);
+        return;
+      }
       setLoadingProfile(true);
+      setProfileNotFound(false);
       try {
         const res = await apiClient.getAcademicProfile(researcherName, researcherOrcid);
         if (res && res.profile) {
           setProfile(res.profile);
+          setProfileNotFound(false);
+        } else {
+          setProfile(null);
+          setProfileNotFound(true);
         }
       } catch (err) {
         console.error('Error cargando perfil:', err);
+        setProfile(null);
+        setProfileNotFound(true);
       } finally {
         setLoadingProfile(false);
       }
@@ -233,8 +266,9 @@ export function ResearcherProfiles() {
     loadCiting();
   }, [activeSubTab, researcherName, researcherOrcid]);
 
-  // 1. Cargar lista de instituciones
+  // 1. Cargar lista de instituciones (solo superusuarios / evaluadores)
   useEffect(() => {
+    if (!canSeeAll) return;
     async function loadInstitutions() {
       try {
         const data = await apiClient.getInstitutions();
@@ -244,12 +278,12 @@ export function ResearcherProfiles() {
       }
     }
     loadInstitutions();
-  }, []);
+  }, [canSeeAll]);
 
   // 2. Cargar dependencias al cambiar institución
   useEffect(() => {
+    if (!canSeeAll || !selectedInstitution) return;
     async function loadDeps() {
-      if (!selectedInstitution) return;
       try {
         const data = await apiClient.getDependencies(selectedInstitution);
         setDependencies(data.dependencies || []);
@@ -258,15 +292,15 @@ export function ResearcherProfiles() {
       }
     }
     loadDeps();
-  }, [selectedInstitution]);
+  }, [canSeeAll, selectedInstitution]);
 
   // 3. Cargar subdependencias al cambiar dependencia
   useEffect(() => {
+    if (!canSeeAll || !selectedInstitution || !selectedDependency) {
+      setSubdependencies([]);
+      return;
+    }
     async function loadSubs() {
-      if (!selectedInstitution || !selectedDependency) {
-        setSubdependencies([]);
-        return;
-      }
       try {
         const data = await apiClient.getSubdependencies(selectedInstitution, selectedDependency);
         setSubdependencies(data.subdependencies || []);
@@ -275,10 +309,11 @@ export function ResearcherProfiles() {
       }
     }
     loadSubs();
-  }, [selectedInstitution, selectedDependency]);
+  }, [canSeeAll, selectedInstitution, selectedDependency]);
 
-  // 4. Cargar lista de académicos de la entidad para el Combobox
+  // 4. Cargar lista de académicos de la entidad para el Combobox (solo superusuarios)
   useEffect(() => {
+    if (!canSeeAll) return;
     async function loadAcademics() {
       setLoadingAcademics(true);
       try {
@@ -297,8 +332,15 @@ export function ResearcherProfiles() {
             if (match && match.name !== researcherName) {
               setSelectedResearcher(match.name, match.orcid || researcherOrcid);
             } else if (!match && !list.some((a) => a.name === researcherName)) {
-              // Si el investigador actual no pertenece a la entidad recién seleccionada, seleccionar el primero
-              setSelectedResearcher(list[0].name, list[0].orcid || '');
+              // Si el investigador actual no está en la lista pero vino desde un enlace directo (URL), permitir verificarlo
+              const urlParams = new URLSearchParams(window.location.search);
+              const urlAcademic = urlParams.get('academic');
+              const urlOrcid = urlParams.get('orcid');
+              if (urlAcademic || urlOrcid) {
+                // Conservar para que loadProfile ejecute la consulta y maneje el 404 (No found)
+              } else {
+                setSelectedResearcher(list[0].name, list[0].orcid || '');
+              }
             }
           } else {
             setSelectedResearcher(list[0].name, list[0].orcid || '');
@@ -311,7 +353,7 @@ export function ResearcherProfiles() {
       }
     }
     loadAcademics();
-  }, [selectedInstitution, selectedDependency, selectedSubdependency]);
+  }, [canSeeAll, selectedInstitution, selectedDependency, selectedSubdependency]);
 
   // Descargas de Dossier
   const handleDownloadMarkdown = async () => {
@@ -567,9 +609,130 @@ export function ResearcherProfiles() {
   }, [citingWorks, citingWorksPage]);
   const totalCitingPages = Math.ceil(citingWorks.length / PAGE_SIZE) || 1;
 
+  // Si el usuario no tiene permisos de superusuario y no ha iniciado sesión, mostrar pantalla de acceso restringido
+  if (!canSeeAll && !userSession?.isAuthenticated) {
+    return (
+      <div className="module-container" id="MODULO-02-PERFILES">
+        <div
+          className="glass-card"
+          style={{
+            maxWidth: '560px',
+            margin: '4rem auto',
+            padding: '2.5rem 2rem',
+            textAlign: 'center',
+            borderRadius: '16px',
+            border: '1px solid var(--border-color)',
+            background: 'var(--bg-surface)',
+            boxShadow: '0 20px 45px rgba(0, 0, 0, 0.25)'
+          }}
+        >
+          <div style={{
+            width: '54px',
+            height: '54px',
+            borderRadius: '50%',
+            background: 'rgba(239, 68, 68, 0.1)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 1.25rem auto'
+          }}>
+            <EyeOff size={28} style={{ color: '#ef4444' }} />
+          </div>
+
+          <h2 style={{ fontSize: '1.35rem', fontWeight: 800, marginBottom: '0.6rem', color: 'var(--text-primary)' }}>
+            Perfil de Investigador
+          </h2>
+
+          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.5, fontSize: '0.95rem', marginBottom: '1.75rem' }}>
+            El perfil es exclusivo para el usuario logeado y solo puede ver su perfil.
+          </p>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.65rem', justifyContent: 'center' }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ padding: '0.65rem 1.25rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.45rem' }}
+              onClick={() => setActiveTab('mySpace')}
+            >
+              <span>Iniciar sesión con ORCID</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ padding: '0.65rem 1.25rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.45rem' }}
+              onClick={() => setSuperuserModalOpen(true)}
+            >
+              <KeyRound size={15} />
+              <span>Acceso Especial</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ padding: '0.65rem 1.1rem' }}
+              onClick={() => setActiveTab('national')}
+            >
+              <span>Panorama Nacional</span>
+            </button>
+          </div>
+        </div>
+
+        <SuperuserLoginModal isOpen={superuserModalOpen} onClose={() => setSuperuserModalOpen(false)} />
+      </div>
+    );
+  }
+
   return (
     <div className="module-container" id="MODULO-02-PERFILES">
-      {/* 1. Selector Jerárquico y Combobox de Selección de Investigador (CTL-M02-001) */}
+      {/* 1. Selector Jerárquico o Banner de Perfil Personal según Nivel de Acceso */}
+      {!canSeeAll ? (
+        <div
+          className="glass-card"
+          style={{
+            marginBottom: '1.5rem',
+            padding: '1.25rem 1.5rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '1rem',
+            borderLeft: '4px solid var(--accent-cyan)'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '50%',
+              background: 'rgba(6, 182, 212, 0.12)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <Users size={22} style={{ color: 'var(--accent-cyan)' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Perfil Personal de Investigador
+              </div>
+              <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                {userSession.name || userSession.orcid}
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            onClick={() => setSuperuserModalOpen(true)}
+            title="Desbloquear catálogo nacional completo de investigadores"
+          >
+            <ShieldCheck size={14} style={{ color: 'var(--accent-cyan)' }} />
+            <span>Acceso Especial</span>
+          </button>
+        </div>
+      ) : (
       <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
         {/* Filtros Jerárquicos de Entidad */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
@@ -677,6 +840,11 @@ export function ResearcherProfiles() {
             {academicsList.length === 0 && (
               <option value="">(No hay académicos registrados en esta selección)</option>
             )}
+            {profileNotFound && researcherName && !academicsList.some((a) => a.name === researcherName) && (
+              <option value={researcherName} disabled>
+                ⚠️ {researcherName} (Perfil no disponible / Oculto)
+              </option>
+            )}
             {academicsList.map((item, idx) => (
               <option key={idx} value={item.name}>
                 {item.name}
@@ -698,8 +866,42 @@ export function ResearcherProfiles() {
           </div>
         </div>
       </div>
+      )}
 
       {/* 2. Ficha de Perfil del Investigador (CTL-M02-002 a CTL-M02-007) */}
+      {profileNotFound && !loadingProfile && (
+        <div
+          className="glass-card"
+          style={{
+            padding: '2.5rem 1.5rem',
+            textAlign: 'center',
+            marginBottom: '1.5rem',
+            border: '1px solid rgba(239, 68, 68, 0.35)',
+            background: isLight ? 'rgba(239, 68, 68, 0.03)' : 'rgba(239, 68, 68, 0.08)'
+          }}
+        >
+          <AlertOctagon size={36} style={{ color: '#ef4444', margin: '0 auto 0.75rem', display: 'block' }} />
+          <h2 style={{ fontSize: '1.45rem', fontWeight: 800, color: '#ef4444', margin: '0 0 1.25rem 0' }}>
+            No found (Perfil no disponible)
+          </h2>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                setProfileNotFound(false);
+                if (academicsList.length > 0) {
+                  setSelectedResearcher(academicsList[0].name, academicsList[0].orcid || '');
+                } else {
+                  setSelectedResearcher('', '');
+                }
+              }}
+            >
+              Explorar directorio de académicos
+            </button>
+          </div>
+        </div>
+      )}
+
       <LoadingOverlay
         loading={loadingProfile}
         message={t.common?.loading_profile || 'Cargando perfil e indicadores del investigador...'}
@@ -784,6 +986,31 @@ export function ResearcherProfiles() {
                     <ExternalLink size={12} />
                   </a>
                 )}
+
+                {/* Opción 1: Micro-enlace contextual discreto para gestión de privacidad */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('mySpace')}
+                  title="Si eres la persona titular de este perfil, puedes gestionarlo u ocultarlo autenticándote con tu ORCID en Mi Espacio"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    cursor: 'pointer',
+                    color: 'var(--text-muted)',
+                    fontSize: '0.78rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    textDecoration: 'underline',
+                    textUnderlineOffset: '3px'
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent-cyan)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
+                >
+                  <ShieldCheck size={13} style={{ color: 'var(--accent-cyan)' }} />
+                  <span>¿Es tu perfil? Gestiona su privacidad</span>
+                </button>
               </div>
             </div>
 
@@ -1791,6 +2018,9 @@ export function ResearcherProfiles() {
         </div>
         )}
       </LoadingOverlay>
+
+      {/* Modal de Acceso Especial para Superusuarios / Evaluadores */}
+      <SuperuserLoginModal isOpen={superuserModalOpen} onClose={() => setSuperuserModalOpen(false)} />
     </div>
   );
 }

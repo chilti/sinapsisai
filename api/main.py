@@ -143,8 +143,17 @@ if FRONTEND_DIST.exists() and (FRONTEND_DIST / "index.html").exists():
         og_desc = "Plataforma analítica avanzada para trayectoria de investigadores, métricas de citación zero-join y cartografía cienciométrica."
 
         if academic:
-            og_title = f"Perfil de {academic} | Info TlachIA SNII"
-            og_desc = f"Trayectoria cienciométrica, producción científica e impacto de citas en el Sistema Nacional de Investigadoras e Investigadores (SNII)."
+            try:
+                from api.db import get_curation
+                if get_curation().is_profile_hidden(name=academic):
+                    og_title = "Perfil no encontrado o privado | Info TlachIA SNII"
+                    og_desc = "El perfil solicitado no está disponible o ha sido configurado como privado por su titular."
+                else:
+                    og_title = f"Perfil de {academic} | Info TlachIA SNII"
+                    og_desc = f"Trayectoria cienciométrica, producción científica e impacto de citas en el Sistema Nacional de Investigadoras e Investigadores (SNII)."
+            except Exception:
+                og_title = f"Perfil de {academic} | Info TlachIA SNII"
+                og_desc = f"Trayectoria cienciométrica, producción científica e impacto de citas en el Sistema Nacional de Investigadoras e Investigadores (SNII)."
         elif institution:
             entity_lbl = f"{dependency} ({institution})" if dependency else institution
             og_title = f"Panorama Institucional: {entity_lbl} | Info TlachIA SNII"

@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, Query, HTTPException
-from api.db import get_cached_hierarchy, get_neo4j_store, get_clickhouse_client
+from api.db import get_cached_hierarchy, get_neo4j_store, get_clickhouse_client, get_curation
 from dashboard_analytics import load_cached_data, ISO2_TO_ISO3
 
 router = APIRouter(prefix="/api/hierarchy", tags=["Jerarquía Institucional"])
@@ -133,6 +133,29 @@ def search_entities(
     try:
         neo = get_neo4j_store()
         results = neo.global_search(q, limit=limit)
+        
+        # Filtrar perfiles de investigadores ocultos (Derechos ARCO)
+        try:
+            curation = get_curation()
+            h_info = curation.get_hidden_identities()
+            h_names = h_info.get("names", set())
+            h_orcids = h_info.get("orcids", set())
+            h_ids = h_info.get("ids", set())
+
+            filtered_results = []
+            for r in results:
+                if r.get("type") == "Academic":
+                    r_name = " ".join(str(r.get("name", "")).replace(",", "").strip().lower().split())
+                    r_raw = str(r.get("name", "")).strip().lower()
+                    r_orc = str(r.get("orcid", "")).replace("https://orcid.org/", "").strip().lower()
+                    r_id = str(r.get("id", "")).strip().lower()
+                    if r_name in h_names or r_raw in h_names or (r_orc and r_orc in h_orcids) or (r_id and r_id in h_ids):
+                        continue
+                filtered_results.append(r)
+            results = filtered_results
+        except Exception as e_h:
+            print(f"[hierarchy.search] Error filtrando perfiles ocultos: {e_h}")
+
         return {
             "query": q,
             "total": len(results),

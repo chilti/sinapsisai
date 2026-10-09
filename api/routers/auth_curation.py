@@ -19,6 +19,10 @@ class TokenExchangeRequest(BaseModel):
     code: str
     redirect_uri: Optional[str] = None
 
+class SuperuserLoginRequest(BaseModel):
+    username: str
+    password: str
+
 class IndependentRegisterRequest(BaseModel):
     orcid: str
     full_name: str
@@ -69,6 +73,13 @@ class WorkCurationRequest(BaseModel):
     work_title: Optional[str] = ""
     reason: Optional[str] = ""
 
+class ProfileVisibilityRequest(BaseModel):
+    orcid: str
+    hide: bool
+    academic_id: Optional[str] = None
+    academic_name: Optional[str] = None
+    reason: Optional[str] = ""
+
 @router.get("/orcid/login-url")
 def get_login_url(redirect_uri: Optional[str] = None) -> Dict[str, Any]:
     """Genera la URL de autorización OAuth de ORCID."""
@@ -109,6 +120,12 @@ def exchange_orcid_token(req: TokenExchangeRequest) -> Dict[str, Any]:
     except Exception as e_prof:
         print(f"[WARN] Error consultando perfil de usuario {orcid}: {e_prof}")
 
+    is_hidden = False
+    try:
+        is_hidden = curation.is_profile_hidden(orcid=orcid)
+    except Exception:
+        pass
+
     return {
         "status": "success",
         "orcid": orcid,
@@ -117,7 +134,37 @@ def exchange_orcid_token(req: TokenExchangeRequest) -> Dict[str, Any]:
         "is_admin": is_super or is_inst,
         "access_token": token_data.get("access_token"),
         "scope": token_data.get("scope"),
+        "is_hidden": is_hidden,
         "profile": profile_info
+    }
+
+@router.post("/superuser-login")
+def superuser_login(req: SuperuserLoginRequest) -> Dict[str, Any]:
+    """Autenticación para Superusuarios y Evaluadores Especiales."""
+    expected_user = os.getenv("SUPERUSER_USERNAME", "especial").strip()
+    expected_pass = os.getenv("SUPERUSER_PASSWORD", "").strip()
+    display_name = os.getenv("SUPERUSER_DISPLAY_NAME", "Acceso Especial").strip()
+
+    if not expected_pass:
+        raise HTTPException(status_code=500, detail="Credenciales de superusuario no configuradas en el servidor")
+
+    if req.username.strip() != expected_user or req.password.strip() != expected_pass:
+        raise HTTPException(status_code=401, detail="Usuario o contraseña de Acceso Especial incorrectos")
+
+    import secrets
+    token = f"super_{secrets.token_hex(24)}"
+    return {
+        "status": "success",
+        "token": token,
+        "user": {
+            "isAuthenticated": True,
+            "name": display_name,
+            "username": expected_user,
+            "role": "super_admin",
+            "is_admin": True,
+            "can_view_all_researchers": True,
+            "institution": "CONAHCYT / SECIHTI / UNAM"
+        }
     }
 
 # --- Estado de Perfil e Identidad Académica ---
@@ -125,18 +172,27 @@ def exchange_orcid_token(req: TokenExchangeRequest) -> Dict[str, Any]:
 @router.get("/profile-status")
 def get_profile_status(orcid: str = Query(...)) -> Dict[str, Any]:
     """
-    Retorna el estado de vinculación de un usuario con un perfil de académico (SNII o independiente).
+    Retorna el estado de vinculación de un usuario con un perfil de académico (SNII o independiente)
+    y su visibilidad pública (derechos ARCO).
     Si no está vinculado, busca coincidencias automáticas en el padrón institucional por ORCID.
     """
     if not orcid:
         raise HTTPException(status_code=400, detail="El ORCID es obligatorio")
     
+    curation = get_curation()
+    is_hidden = False
+    try:
+        is_hidden = curation.is_profile_hidden(orcid=orcid)
+    except Exception:
+        pass
+
     neo = get_neo4j_store()
     user_prof = neo.get_user_profile(orcid)
     if user_prof and user_prof.get("academic_id"):
         return {
             "status": "success",
             "is_linked": True,
+            "is_hidden": is_hidden,
             "academic_id": user_prof.get("academic_id"),
             "academic_name": user_prof.get("academic_name") or user_prof.get("name"),
             "institution": user_prof.get("institution") or "INDEPENDIENTE",
@@ -151,12 +207,55 @@ def get_profile_status(orcid: str = Query(...)) -> Dict[str, Any]:
     return {
         "status": "success",
         "is_linked": False,
+        "is_hidden": is_hidden,
         "academic_id": None,
         "academic_name": None,
         "institution": None,
         "is_snii": False,
         "is_independent": False,
         "suggested_match": suggested
+    }
+
+@router.post("/profile/visibility")
+def set_profile_visibility(req: ProfileVisibilityRequest) -> Dict[str, Any]:
+    """
+    Permite al usuario autenticado ocultar o reactivar su perfil público (Derechos ARCO / LGPDPPSO).
+    Al ocultarlo, se remueve del selector y accesos directos devuelven 404 (No found).
+    """
+    if not req.orcid:
+        raise HTTPException(status_code=400, detail="El ORCID es obligatorio")
+
+    curation = get_curation()
+    clean_orc = req.orcid.strip().split('/')[-1]
+    
+    if req.hide:
+        curation.hide_profile(
+            clean_orc,
+            academic_id=req.academic_id,
+            academic_name=req.academic_name,
+            reason=req.reason or "Ocultado por el autor en Mi Espacio"
+        )
+        msg = "Tu perfil ha sido ocultado del directorio público y del selector de investigadores."
+    else:
+        curation.unhide_profile(clean_orc)
+        msg = "Tu perfil ha sido reactivado y vuelve a ser visible públicamente en el directorio."
+
+    # Actualizar indicador en Neo4j si existe el nodo
+    try:
+        neo = get_neo4j_store()
+        with neo.driver.session() as session:
+            session.run("""
+                MATCH (a:Person)
+                WHERE a.orcid CONTAINS $orc OR $orc IN a.orcids OR ($aid IS NOT NULL AND a.id = $aid)
+                SET a.is_hidden = $val
+            """, orc=clean_orc, aid=req.academic_id, val=req.hide)
+    except Exception as e_neo:
+        print(f"[WARN] Error actualizando is_hidden en Neo4j: {e_neo}")
+
+    return {
+        "status": "success",
+        "is_hidden": req.hide,
+        "message": msg
     }
 
 @router.get("/search-padron")

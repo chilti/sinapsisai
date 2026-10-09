@@ -22,11 +22,13 @@ import {
   Info,
   Search,
   Menu,
-  X
+  X,
+  KeyRound
 } from 'lucide-react';
-import { useAppStore, isUserAdmin } from '../../store/useAppStore.js';
+import { useAppStore, isUserAdmin, canViewAllResearchers } from '../../store/useAppStore.js';
 import { LANGUAGES } from '../../i18n/index.js';
 import { GlobalSearchModal } from '../common/GlobalSearchModal.jsx';
+import { SuperuserLoginModal } from '../common/SuperuserLoginModal.jsx';
 
 export function Navbar() {
   const activeTab = useAppStore((state) => state.activeTab);
@@ -42,6 +44,7 @@ export function Navbar() {
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [superuserModalOpen, setSuperuserModalOpen] = useState(false);
 
   const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 
@@ -60,10 +63,12 @@ export function Navbar() {
     userSession?.isAuthenticated && isUserAdmin(userSession)
   );
 
+  const canSeeResearchers = canViewAllResearchers(userSession);
+
   const navItems = [
     { id: 'national', label: t.tabs?.national || 'Panorama Nacional', icon: Globe, controlId: 'CTL-M07-004B' },
     { id: 'panorama', label: t.tabs?.panorama || 'Panorama Institucional', icon: Building2, controlId: 'CTL-M07-005' },
-    { id: 'researchers', label: t.tabs?.researchers || 'Investigadoras e Investigadores', icon: Users, controlId: 'CTL-M07-006' },
+    ...(canSeeResearchers ? [{ id: 'researchers', label: t.tabs?.researchers || 'Investigadoras e Investigadores', icon: Users, controlId: 'CTL-M07-006' }] : []),
     { id: 'maps', label: t.tabs?.maps || 'Mapas de la Ciencia', icon: Compass, controlId: 'CTL-M07-007' },
     { id: 'networks', label: t.tabs?.networks || 'Redes SECIHTI', icon: Network, controlId: 'CTL-M07-007B' },
     { id: 'assistant', label: t.tabs?.assistant || 'Asistente IA', icon: Bot, isAi: true, controlId: 'CTL-M07-010' },
@@ -201,6 +206,27 @@ export function Navbar() {
                 <span>ORCID</span>
               </button>
             )}
+
+            {/* Acceso Especial (Superusuario / Evaluadores) */}
+            {!canSeeResearchers && (
+              <button
+                type="button"
+                className="theme-toggle-btn"
+                style={{
+                  padding: '0.38rem 0.65rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  borderColor: 'rgba(6, 182, 212, 0.4)'
+                }}
+                onClick={() => setSuperuserModalOpen(true)}
+                title="Acceso Especial (Superusuario / Evaluadores)"
+                aria-label="Acceso Especial"
+              >
+                <KeyRound size={13} style={{ color: 'var(--accent-cyan)' }} />
+                <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>Especial</span>
+              </button>
+            )}
           </div>
 
           {/* Acciones Móviles (< 1024px): Buscar, Tema y Menú Hamburguesa */}
@@ -273,6 +299,9 @@ export function Navbar() {
       {/* Modal / Spotlight de Búsqueda Global */}
       <GlobalSearchModal isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
 
+      {/* Modal de Acceso Especial para Superusuarios / Evaluadores */}
+      <SuperuserLoginModal isOpen={superuserModalOpen} onClose={() => setSuperuserModalOpen(false)} />
+
       {/* Cajón Lateral de Navegación Móvil (Mobile Drawer) */}
       {mobileMenuOpen && (
         <div
@@ -332,6 +361,29 @@ export function Navbar() {
             >
               <LogIn size={15} />
               <span>Iniciar sesión con ORCID</span>
+            </button>
+          )}
+
+          {/* Botón de Acceso Especial en Menú Móvil */}
+          {!canSeeResearchers && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              style={{
+                width: '100%',
+                justifyContent: 'center',
+                marginTop: '0.6rem',
+                gap: '0.45rem',
+                border: '1px dashed rgba(6, 182, 212, 0.5)',
+                color: 'var(--accent-cyan)'
+              }}
+              onClick={() => {
+                setSuperuserModalOpen(true);
+                setMobileMenuOpen(false);
+              }}
+            >
+              <KeyRound size={14} />
+              <span>Acceso Especial (Superusuario)</span>
             </button>
           )}
         </div>

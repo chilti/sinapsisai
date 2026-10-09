@@ -26,7 +26,12 @@ import {
   Eye,
   BookOpen,
   Clock,
-  Calendar
+  Calendar,
+  AlertOctagon,
+  AlertTriangle,
+  Scale,
+  KeyRound,
+  UserCheck
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore.js';
 import { apiClient } from '../../api/client.js';
@@ -36,9 +41,12 @@ export function AboutView() {
   const isLight = theme === 'claro';
 
   const [stats, setStats] = useState({
-    snii_total: 82334,
-    snii_with_orcid: 33677,
-    snii_with_oa: 34323,
+    snii_total: 83179,
+    snii_with_orcid: 61724,
+    snii_with_oa: 49882,
+    snii_2026_total: 48000,
+    snii_2026_with_orcid: 38738,
+    snii_2026_orcid_pct: 80.7,
     institutions_total: 2263,
     institutions_with_ror: 204,
     ror_high_confidence: 204,
@@ -206,7 +214,7 @@ export function AboutView() {
                 ? new Date(systemInfo.last_updated).toLocaleDateString('es-MX', {
                     year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
                   })
-                : '7 de octubre de 2026, 11:20'}
+                : '8 de octubre de 2026, 12:30'}
             </div>
           </div>
 
@@ -239,7 +247,7 @@ export function AboutView() {
               {(systemInfo?.total_works || 1652927).toLocaleString()} artículos analizados
             </div>
             <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-              {(systemInfo?.total_author_links || 2241792).toLocaleString()} vínculos de autoría
+              {(systemInfo?.total_author_links || 2339070).toLocaleString()} vínculos de autoría
             </span>
           </div>
 
@@ -336,27 +344,261 @@ export function AboutView() {
         </div>
       </div>
 
-      {/* ── 3. Aviso de Privacidad y Fuentes de Datos Públicas ─────────────── */}
+      {/* ── 3. Naturaleza del Proyecto, Transparencia y Metodología ────────── */}
+      <div className="glass-card" style={{ padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        
+        {/* 3.1. Naturaleza del Proyecto */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.65rem' }}>
+            <div style={{
+              width: '38px', height: '38px', borderRadius: '10px',
+              background: 'linear-gradient(135deg, rgba(0, 242, 254, 0.2) 0%, rgba(2, 132, 199, 0.2) 100%)',
+              color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>
+              <GraduationCap size={20} />
+            </div>
+            <div>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
+                1. Naturaleza del Proyecto e Identidad Académica
+              </h2>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
+                Investigación en cienciometría, sistemas complejos y ciencia de la ciencia
+              </p>
+            </div>
+          </div>
+          <p style={{ fontSize: '0.9rem', lineHeight: '1.65', color: 'var(--text-secondary)', margin: 0 }}>
+            <b>Info TlachIA SNII</b> es una plataforma de investigación científica desarrollada en la <b>Facultad de Ciencias</b> en estrecha colaboración con el <b>Centro de Ciencias de la Complejidad (C3)</b> de la <b>Universidad Nacional Autónoma de México (UNAM)</b>. El proyecto se inscribe en las áreas de la <b>cienciometría computacional</b>, los <b>sistemas complejos</b> y la <b>ciencia de la ciencia</b> (<em>science of science</em>), con el propósito de modelar las estructuras relacionales, flujos de colaboración, evolución temática y dinámicas cuantitativas de la comunidad científica nacional.
+          </p>
+        </div>
+
+        {/* 3.2. Origen de los Datos (Transparencia Activa) */}
+        <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.65rem' }}>
+            <div style={{
+              width: '38px', height: '38px', borderRadius: '10px',
+              background: 'rgba(16, 185, 129, 0.15)', color: '#10b981',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>
+              <Database size={20} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
+                2. Origen de los Datos y Principio de Transparencia
+              </h3>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
+                Agregación exclusiva de fuentes abiertas y repositorios públicos
+              </p>
+            </div>
+          </div>
+          <p style={{ fontSize: '0.9rem', lineHeight: '1.65', color: 'var(--text-secondary)', marginBottom: '0.85rem' }}>
+            La plataforma actúa estrictamente como un <b>agregador y analizador de fuentes públicas</b>. La información no procede de métodos de captura intrusivos ni de bases de datos privadas; se deriva exclusivamente de la intersección determinista de dos conjuntos de datos abiertos:
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
+            <div style={{ padding: '1rem', borderRadius: '10px', background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 700, color: '#10b981', marginBottom: '0.35rem', fontSize: '0.9rem' }}>
+                <CheckCircle2 size={16} />
+                <span>Padrón Público del SNII (SECIHTI)</span>
+              </div>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
+                El listado oficial de personas beneficiarias del <b>Sistema Nacional de Investigadoras e Investigadores</b>, publicado abiertamente por la <b>Secretaría de Ciencia, Humanidades, Tecnología e Innovación (SECIHTI)</b> (anteriormente CONAHCYT), con sus respectivos niveles vigentes, áreas del conocimiento e instituciones de adscripción declaradas.
+              </p>
+            </div>
+            <div style={{ padding: '1rem', borderRadius: '10px', background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: '0.35rem', fontSize: '0.9rem' }}>
+                <CheckCircle2 size={16} />
+                <span>Metadatos Públicos de OpenAlex</span>
+              </div>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
+                Los metadatos bibliográficos mundiales procedentes de los <em>snapshots</em> abiertos oficiales de <b>OpenAlex</b> (gestionados por la organización sin fines de lucro <em>OurResearch</em>), enlazados a través de identificadores persistentes globales: <b>ORCID</b> para autoría y <b>ROR</b> para instituciones.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* 3.3. Metodología de Indicadores Bibliométricos */}
+        <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.65rem' }}>
+            <div style={{
+              width: '38px', height: '38px', borderRadius: '10px',
+              background: 'rgba(168, 85, 247, 0.15)', color: 'var(--accent-purple)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>
+              <TrendingUp size={20} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
+                3. Metodología de Indicadores Bibliométricos
+              </h3>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
+                Modelado cuantitativo no invasivo estructurado en 4 niveles de agregación
+              </p>
+            </div>
+          </div>
+          <p style={{ fontSize: '0.9rem', lineHeight: '1.65', color: 'var(--text-secondary)', marginBottom: '0.85rem' }}>
+            El sistema procesa estas fuentes para calcular indicadores cienciométricos avanzados con el fin de estudiar las dinámicas de la productividad y visibilidad científica, <b>sin intervenir, alterar ni modificar en forma alguna los datos originales de las publicaciones</b> (títulos, autorías, sedes editoriales, citas o DOIs). La metodología articula el análisis en cuatro niveles de resolución:
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0.85rem' }}>
+            <div style={{ padding: '0.85rem 1rem', borderRadius: '8px', background: 'rgba(255,255,255,0.02)', borderLeft: '3px solid var(--accent-cyan)' }}>
+              <strong style={{ fontSize: '0.84rem', color: 'var(--text-primary)', display: 'block', marginBottom: '0.2rem' }}>
+                Impacto Normalizado y Visibilidad
+              </strong>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+                Cálculo del Impacto de Citación Normalizado por Campo (<em>Field-Weighted Citation Impact</em> - FWCI), percentiles mundiales promedio y proporción en el Top 10% y Top 1% más citado internacionalmente.
+              </span>
+            </div>
+            <div style={{ padding: '0.85rem 1rem', borderRadius: '8px', background: 'rgba(255,255,255,0.02)', borderLeft: '3px solid #10b981' }}>
+              <strong style={{ fontSize: '0.84rem', color: 'var(--text-primary)', display: 'block', marginBottom: '0.2rem' }}>
+                Liderazgo y Roles de Autoría
+              </strong>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+                Tipificación de posiciones autorales (primer autor, autor de correspondencia), tasas de liderazgo científico y matrices de colaboración internacional e interinstitucional.
+              </span>
+            </div>
+            <div style={{ padding: '0.85rem 1rem', borderRadius: '8px', background: 'rgba(255,255,255,0.02)', borderLeft: '3px solid #f59e0b' }}>
+              <strong style={{ fontSize: '0.84rem', color: 'var(--text-primary)', display: 'block', marginBottom: '0.2rem' }}>
+                Acceso Abierto y Economía Editorial
+              </strong>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+                Monitoreo analítico de las 6 vías de Acceso Abierto (Diamante, Dorada APC, Híbrida, Verde, Bronce, Cerrada), estimación de gasto en APC (USD) y visibilización del ahorro Diamante.
+              </span>
+            </div>
+            <div style={{ padding: '0.85rem 1rem', borderRadius: '8px', background: 'rgba(255,255,255,0.02)', borderLeft: '3px solid var(--accent-purple)' }}>
+              <strong style={{ fontSize: '0.84rem', color: 'var(--text-primary)', display: 'block', marginBottom: '0.2rem' }}>
+                Taxonomía y Objetivos de la ONU (ODS)
+              </strong>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+                Clasificación temática en jerarquía de 4 niveles (Dominios, Campos, Subcampos y Tópicos) y alineación con los 17 Objetivos de Desarrollo Sostenible (ODS) de la Agenda 2030.
+              </span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* ── 3.4. Descargo de Responsabilidad Legal e Institucional (CRÍTICO) ── */}
       <div
         className="glass-card"
         style={{
-          padding: '1.25rem 1.5rem',
-          borderLeft: '4px solid #10b981',
-          background: isLight ? 'rgba(16, 185, 129, 0.04)' : 'rgba(16, 185, 129, 0.08)'
+          padding: '1.65rem 2rem',
+          borderRadius: '12px',
+          border: '2px solid rgba(239, 68, 68, 0.45)',
+          borderLeft: '7px solid #ef4444',
+          background: isLight
+            ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.05) 0%, rgba(245, 158, 11, 0.03) 100%)'
+            : 'linear-gradient(135deg, rgba(239, 68, 68, 0.14) 0%, rgba(245, 158, 11, 0.06) 100%)',
+          boxShadow: '0 8px 32px rgba(239, 68, 68, 0.12)'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
-          <ShieldCheck size={20} style={{ color: '#10b981' }} />
-          <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0, color: isLight ? '#065f46' : '#34d399' }}>
-            Aviso de Privacidad, Ética y Fuentes de Datos de Acceso Abierto
-          </h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+          <div style={{
+            width: '40px', height: '40px', borderRadius: '10px',
+            background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444',
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}>
+            <AlertOctagon size={24} />
+          </div>
+          <div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              4. Descargo de Responsabilidad Legal e Institucional (Disclaimer)
+            </h2>
+            <p style={{ fontSize: '0.8rem', color: isLight ? '#991b1b' : '#fca5a5', margin: '0.15rem 0 0 0', fontWeight: 600 }}>
+              Carácter demostrativo y deslinde de efectos evaluatorios vinculantes
+            </p>
+          </div>
         </div>
-        <p style={{ fontSize: '0.88rem', lineHeight: '1.6', color: 'var(--text-secondary)', margin: '0 0 0.5rem 0' }}>
-          La información bibliométrica y de producción científica procesada en <b>Info TlachIA</b> procede exclusivamente de fuentes de datos públicas y repositorios de acceso libre: <b>OpenAlex</b>, <b>Scopus</b> (uso de scopus id), <b>ORCID</b>, padrones públicos del <b>SNII (CONAHCYT)</b>, <b>SIIA (UNAM)</b>, <b>Research Organization Registry (ROR)</b> y catálogos globales de metadatos.
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', fontSize: '0.88rem', lineHeight: '1.65', color: 'var(--text-secondary)' }}>
+          <div style={{ padding: '0.85rem 1.15rem', borderRadius: '8px', background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(0,0,0,0.25)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+            <strong style={{ color: isLight ? '#991b1b' : '#f87171', display: 'block', marginBottom: '0.2rem' }}>
+              I. Naturaleza Experimental y Demostrativa (No Evaluatoria):
+            </strong>
+            <span>
+              La plataforma <b>Info TlachIA SNII</b> constituye un <b>experimento de investigación académica, estadística y cienciométrica (proyecto piloto demostrativo)</b>. Bajo ninguna circunstancia representa ni pretende operar como un instrumento oficial de evaluación académica, laboral, administrativa o dictaminadora.
+            </span>
+          </div>
+
+          <div style={{ padding: '0.85rem 1.15rem', borderRadius: '8px', background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(0,0,0,0.25)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+            <strong style={{ color: isLight ? '#991b1b' : '#f87171', display: 'block', marginBottom: '0.2rem' }}>
+              II. Invalidez para Trámites Oficiales e Institucionales:
+            </strong>
+            <span>
+              Las métricas, agregaciones, posicionamientos, percentiles y visualizaciones provistas en este portal <b>carecen de validez oficial, legal o administrativa</b> para contrataciones, promociones de categoría, dictámenes de permanencia, juicios de definitividad, evaluaciones del SNII/SECIHTI o cualquier proceso formal ante comisiones evaluadoras universitarias o gubernamentales.
+            </span>
+          </div>
+
+          <div style={{ padding: '0.85rem 1.15rem', borderRadius: '8px', background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(0,0,0,0.25)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+            <strong style={{ color: isLight ? '#991b1b' : '#f87171', display: 'block', marginBottom: '0.2rem' }}>
+              III. Exención de Responsabilidad por Exactitud del Dato Fuente:
+            </strong>
+            <span>
+              Cualquier discrepancia, desfase temporal de indización, inconsistencia en la afiliación institucional histórica o posible omisión en la producción bibliográfica es <b>heredada directamente de las fuentes públicas primarias (OpenAlex / SECIHTI)</b>. Por consiguiente, el grupo de investigación, la Facultad de Ciencias, el Centro de Ciencias de la Complejidad (C3) y la Universidad Nacional Autónoma de México quedan formalmente <b>eximidos de toda responsabilidad</b> por la exactitud, integridad o completitud de los datos fuente recopilados.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 3.5. Gestión de Perfiles, Derechos ARCO y ORCID (LGPDPPSO) ─────── */}
+      <div
+        className="glass-card"
+        style={{
+          padding: '1.65rem 1.85rem',
+          borderLeft: '5px solid #10b981',
+          background: isLight ? 'rgba(16, 185, 129, 0.04)' : 'rgba(16, 185, 129, 0.07)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.85rem' }}>
+          <div style={{
+            width: '38px', height: '38px', borderRadius: '10px',
+            background: 'rgba(16, 185, 129, 0.2)', color: '#10b981',
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}>
+            <ShieldCheck size={22} />
+          </div>
+          <div>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: isLight ? '#065f46' : '#34d399' }}>
+              5. Gestión Soberana de Perfiles y Derechos ARCO (LGPDPPSO)
+            </h2>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.15rem 0 0 0' }}>
+              Apego irrestricto a la legislación universitaria y federal de protección de datos personales
+            </p>
+          </div>
+        </div>
+
+        <p style={{ fontSize: '0.9rem', lineHeight: '1.65', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+          En estricto apego a la <b>Ley General de Protección de Datos Personales en Posesión de Sujetos Obligados (LGPDPPSO)</b> y la normatividad de transparencia y privacidad de la UNAM, la plataforma no almacena datos personales sensibles y delega el <b>control y gobernanza absoluta de la información pública al propio investigador</b>:
         </p>
-        <p style={{ fontSize: '0.84rem', lineHeight: '1.55', color: 'var(--text-muted)', margin: 0 }}>
-          <b>Privacidad y Datos Personales:</b> Este sistema no almacena ni procesa datos personales sensibles. La plataforma se limita al análisis de metadatos públicos de producción y filiación científica, con estricto apego a los principios de Ciencia Abierta, trazabilidad metodológica y transparencia en la investigación nacional.
-        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+          <div style={{ padding: '1rem', borderRadius: '10px', background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: '0.35rem', fontSize: '0.88rem' }}>
+              <KeyRound size={16} />
+              <span>Autenticación Segura y Delegada vía ORCID</span>
+            </div>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
+              La identidad se verifica de manera soberana y cifrada mediante el protocolo OAuth 2.0 oficial de <b>ORCID</b> (<em>Open Researcher and Contributor ID</em>), sin custodiar contraseñas privadas en los servidores de la plataforma.
+            </p>
+          </div>
+
+          <div style={{ padding: '1rem', borderRadius: '10px', background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 700, color: '#f59e0b', marginBottom: '0.35rem', fontSize: '0.88rem' }}>
+              <UserCheck size={16} />
+              <span>Gestión de Homonimias y Visibilidad</span>
+            </div>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
+              Una vez autenticada, cada persona investigadora puede resolver homónimos, vincular identificadores alternos, precisar autorías y <b>ocultar artículos individuales</b> de su catálogo bibliográfico público.
+            </p>
+          </div>
+
+          <div style={{ padding: '1rem', borderRadius: '10px', background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 700, color: '#10b981', marginBottom: '0.35rem', fontSize: '0.88rem' }}>
+              <Scale size={16} />
+              <span>Derechos de Oposición y Baja de Perfil</span>
+            </div>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
+              En ejercicio pleno de los derechos ARCO (Acceso, Rectificación, Cancelación y Oposición), el titular cuenta con la facultad de <b>dar de baja su perfil de la visualización pública</b> del observatorio en cualquier momento.
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* ── 3. Equipo de Trabajo & Créditos Institucionales ────────────────── */}
@@ -470,15 +712,28 @@ export function AboutView() {
           <div style={{ padding: '1rem', borderRadius: '10px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Investigadoras e Investigadores SNII</span>
             <div style={{ fontSize: '1.55rem', fontWeight: 800, color: 'var(--accent-cyan)', marginTop: '0.2rem' }}>
-              {(stats.snii_total || 82334).toLocaleString()}
+              {(stats.snii_total || 83170).toLocaleString()}
             </div>
             <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Padrón histórico</span>
           </div>
 
           <div style={{ padding: '1rem', borderRadius: '10px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Con ORCID Verificado</span>
-            <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#10b981', marginTop: '0.2rem' }}>
-              {(stats.snii_with_orcid || 33677).toLocaleString()}
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Padrón 2026 con ORCID</span>
+            <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#10b981', marginTop: '0.2rem', display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
+              {(stats.snii_2026_with_orcid || 38738).toLocaleString()}
+              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#10b981', opacity: 0.9 }}>
+                ({stats.snii_2026_orcid_pct || 80.7}%)
+              </span>
+            </div>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+              De {(stats.snii_2026_total || 48000).toLocaleString()} activos en 2026
+            </span>
+          </div>
+
+          <div style={{ padding: '1rem', borderRadius: '10px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>ORCID Padrón Histórico</span>
+            <div style={{ fontSize: '1.55rem', fontWeight: 800, color: 'var(--accent-cyan)', marginTop: '0.2rem' }}>
+              {(stats.snii_with_orcid || 61724).toLocaleString()}
             </div>
             <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Identificador persistente unívoco</span>
           </div>
@@ -486,7 +741,7 @@ export function AboutView() {
           <div style={{ padding: '1rem', borderRadius: '10px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-subtle)' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Con OpenAlex ID</span>
             <div style={{ fontSize: '1.55rem', fontWeight: 800, color: 'var(--accent-purple)', marginTop: '0.2rem' }}>
-              {(stats.snii_with_oa || 34323).toLocaleString()}
+              {(stats.snii_with_oa || 49875).toLocaleString()}
             </div>
             <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Obras indizadas globalmente</span>
           </div>

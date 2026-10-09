@@ -55,10 +55,35 @@ def save_pipeline_metadata(base_dir=None):
         print(f"⚠️ [pipeline_metadata] Advertencia al consultar conteos de ClickHouse: {e}")
 
     # Conteos SNII y ROR
-    snii_total = 82334
-    snii_with_orcid = 33677
-    snii_with_oa = 34323
+    snii_total = 83642
+    snii_with_orcid = 61995
+    snii_with_oa = 50091
+    snii_2026_total = 48000
+    snii_2026_with_orcid = 38738
+    snii_2026_orcid_pct = 80.7
     institutions_total = 2263
+
+    try:
+        from api.db import get_neo4j_store
+        store = get_neo4j_store()
+        with store.driver.session() as s:
+            r = s.run("""
+                MATCH (p:Person)
+                RETURN count(p) as snii_total,
+                       count(CASE WHEN p.orcid IS NOT NULL OR size(p.orcids) > 0 THEN 1 END) as snii_with_orcid,
+                       count(CASE WHEN (p.openalex_ids IS NOT NULL AND size(p.openalex_ids) > 0) OR EXISTS { MATCH (p)-[:AUTHOR_OF]->(:Paper) } THEN 1 END) as snii_with_oa,
+                       count(CASE WHEN p.snii_active_2026 = true THEN 1 END) as snii_2026_total,
+                       count(CASE WHEN p.snii_active_2026 = true AND (p.orcid IS NOT NULL OR size(p.orcids) > 0) THEN 1 END) as snii_2026_with_orcid
+            """).single()
+            if r:
+                snii_total = int(r["snii_total"])
+                snii_with_orcid = int(r["snii_with_orcid"])
+                snii_with_oa = int(r["snii_with_oa"])
+                snii_2026_total = int(r["snii_2026_total"] or 48000)
+                snii_2026_with_orcid = int(r["snii_2026_with_orcid"] or 38738)
+                snii_2026_orcid_pct = round((snii_2026_with_orcid / max(snii_2026_total, 1)) * 100, 1)
+    except Exception as e:
+        print(f"⚠️ [pipeline_metadata] Advertencia al consultar conteos de Neo4j: {e}")
 
     mapping_path = data_dir / "snii_ror_verified_matches_v2.json"
     if mapping_path.exists():
@@ -81,6 +106,9 @@ def save_pipeline_metadata(base_dir=None):
         "snii_total": snii_total,
         "snii_with_orcid": snii_with_orcid,
         "snii_with_oa": snii_with_oa,
+        "snii_2026_total": snii_2026_total,
+        "snii_2026_with_orcid": snii_2026_with_orcid,
+        "snii_2026_orcid_pct": snii_2026_orcid_pct,
         "institutions_total": institutions_total,
         "pipeline_version": "2.0.0",
         "database_engine": "ClickHouse + Neo4j + Qdrant"

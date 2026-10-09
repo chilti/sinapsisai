@@ -9,7 +9,8 @@ import {
   UserCheck, Shield, FileText, CheckCircle, AlertCircle, LogIn,
   LogOut, Send, Search, RefreshCw, Download, ExternalLink,
   ChevronRight, Trash2, RotateCcw, UploadCloud, BookOpen,
-  PieChart, Award, Building, Sparkles, Globe, UserPlus
+  PieChart, Award, Building, Sparkles, Globe, UserPlus,
+  Eye, EyeOff, AlertOctagon
 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore.js';
 import apiClient from '../../api/client.js';
@@ -68,6 +69,11 @@ export function MyResearcherSpace() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncAlert, setSyncAlert] = useState(null);
 
+  // Estados de Privacidad y Ocultamiento de Perfil (Derechos ARCO / LGPDPPSO)
+  const [isProfileHidden, setIsProfileHidden] = useState(false);
+  const [updatingVisibility, setUpdatingVisibility] = useState(false);
+  const [showHideConfirmModal, setShowHideConfirmModal] = useState(false);
+
   useEffect(() => {
     if (activeName && !independentName) {
       setIndependentName(activeName);
@@ -81,6 +87,7 @@ export function MyResearcherSpace() {
       const res = await apiClient.getProfileStatus(activeOrcid);
       if (res && res.status === 'success') {
         setProfileStatus(res);
+        setIsProfileHidden(Boolean(res.is_hidden));
         if (res.is_linked) {
           setIdentityConfirmed('yes');
           setIdentityMode('status');
@@ -128,6 +135,33 @@ export function MyResearcherSpace() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginOrcidInput, setLoginOrcidInput] = useState('');
   const [loginNameInput, setLoginNameInput] = useState('');
+
+  // Gestión de Visibilidad del Perfil (Derechos ARCO)
+  const handleToggleProfileVisibility = async (hide) => {
+    if (!activeOrcid) return;
+    setUpdatingVisibility(true);
+    try {
+      const payload = {
+        orcid: activeOrcid,
+        hide: hide,
+        academic_id: profileStatus?.academic_id || null,
+        academic_name: profileStatus?.academic_name || activeName || null,
+        reason: hide ? 'Ocultado por el autor desde Mi Espacio' : 'Reactivado por el autor desde Mi Espacio'
+      };
+      const res = await apiClient.setProfileVisibility(payload);
+      if (res && res.status === 'success') {
+        setIsProfileHidden(hide);
+        setShowHideConfirmModal(false);
+        setProfileStatus((prev) => (prev ? { ...prev, is_hidden: hide } : prev));
+        setSyncAlert(res.message);
+      }
+    } catch (err) {
+      console.error('Error actualizando visibilidad del perfil:', err);
+      setSyncAlert('No se pudo actualizar la visibilidad del perfil. Intente nuevamente.');
+    } finally {
+      setUpdatingVisibility(false);
+    }
+  };
 
   // Cargar datos al cambiar de subtab solo si está autenticado
   useEffect(() => {
@@ -742,11 +776,43 @@ export function MyResearcherSpace() {
                 <h3 style={{ fontSize: '1.25rem', color: 'var(--text-primary)', margin: '0.2rem 0' }}>
                   {profileStatus?.academic_name || activeName || 'Investigador'}
                 </h3>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem', flexWrap: 'wrap' }}>
                   <span id="CTL-M04-010" className="badge badge-cyan" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                     <CheckCircle size={12} />
                     <span>{t.mySpace.badge_verified_orcid}</span>
                   </span>
+                  {isProfileHidden ? (
+                    <span
+                      className="badge"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.3rem',
+                        background: 'rgba(245, 158, 11, 0.15)',
+                        color: '#f59e0b',
+                        border: '1px solid rgba(245, 158, 11, 0.35)',
+                        fontWeight: 700
+                      }}
+                    >
+                      <EyeOff size={12} />
+                      <span>Perfil Oculto del Público</span>
+                    </span>
+                  ) : (
+                    <span
+                      className="badge"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.3rem',
+                        background: 'rgba(16, 185, 129, 0.12)',
+                        color: '#10b981',
+                        border: '1px solid rgba(16, 185, 129, 0.3)'
+                      }}
+                    >
+                      <Eye size={12} />
+                      <span>Perfil Público</span>
+                    </span>
+                  )}
                   <a
                     href={`https://orcid.org/${activeOrcid}`}
                     target="_blank"
@@ -1062,6 +1128,85 @@ export function MyResearcherSpace() {
                   {profileStatus?.is_linked ? 'Sincronizado' : 'En espera'}
                 </span>
               </div>
+            </div>
+
+            {/* Módulo de Soberanía y Privacidad del Perfil (Derechos ARCO) */}
+            <div style={{ marginTop: '1.25rem' }}>
+              {isProfileHidden ? (
+                <div
+                  style={{
+                    padding: '1.25rem',
+                    borderRadius: '10px',
+                    border: '2px solid rgba(245, 158, 11, 0.45)',
+                    background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(239, 68, 68, 0.04) 100%)',
+                    boxShadow: '0 4px 16px rgba(245, 158, 11, 0.08)'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <EyeOff size={20} style={{ color: '#f59e0b' }} />
+                    <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: '#f59e0b' }}>
+                      Tu Perfil está actualmente OCULTO del Directorio Público
+                    </h4>
+                  </div>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.55, margin: '0 0 1rem 0' }}>
+                    En cumplimiento con la <b>LGPDPPSO</b> y tus derechos ARCO, tu nombre fue <b>retirado del selector de investigadores</b> y de las búsquedas globales. Si alguien consulta tu perfil mediante URL directa, se mostrará <b>«No found»</b>. Solamente tú puedes ver este espacio privado.
+                  </p>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    style={{
+                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                      borderColor: '#10b981',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.45rem',
+                      fontWeight: 700
+                    }}
+                    disabled={updatingVisibility}
+                    onClick={() => handleToggleProfileVisibility(false)}
+                  >
+                    <Eye size={15} />
+                    <span>{updatingVisibility ? 'Reactivando...' : 'Reactivar y Hacer Visible mi Perfil'}</span>
+                  </button>
+                </div>
+              ) : (
+                <div
+                  style={{
+                    padding: '1.15rem',
+                    borderRadius: '10px',
+                    border: '1px solid var(--border-color)',
+                    background: 'rgba(255, 255, 255, 0.02)'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                      <Eye size={18} style={{ color: 'var(--accent-cyan)' }} />
+                      <h4 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        Privacidad y Visibilidad del Perfil
+                      </h4>
+                    </div>
+                    <span className="badge badge-cyan" style={{ fontSize: '0.72rem' }}>
+                      Público en el Directorio
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '0.81rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 0.85rem 0' }}>
+                    Tu perfil es visible en el selector de académicos y a través de enlaces directos. Puedes ocultar tu perfil del público en cualquier momento si deseas retirar tu nombre del censo visible y que tu URL responda «No found».
+                  </p>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.45rem',
+                      color: '#ef4444',
+                      borderColor: 'rgba(239, 68, 68, 0.4)'
+                    }}
+                    onClick={() => setShowHideConfirmModal(true)}
+                  >
+                    <EyeOff size={14} />
+                    <span>Ocultar mi perfil del público</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1562,6 +1707,86 @@ export function MyResearcherSpace() {
                 </table>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmación para Ocultar Perfil (Derechos ARCO) */}
+      {showHideConfirmModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.8)',
+            backdropFilter: 'blur(6px)',
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem'
+          }}
+        >
+          <div
+            className="glass-card"
+            style={{
+              maxWidth: '540px',
+              width: '100%',
+              padding: '1.75rem',
+              border: '2px solid rgba(239, 68, 68, 0.5)',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '1rem', color: '#ef4444' }}>
+              <AlertOctagon size={26} />
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
+                ¿Deseas ocultar tu perfil del directorio público?
+              </h3>
+            </div>
+            <div style={{ fontSize: '0.86rem', lineHeight: 1.6, color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
+              <p style={{ margin: '0 0 0.75rem 0' }}>
+                Al activar esta opción conforme a tus derechos ARCO y normatividad LGPDPPSO:
+              </p>
+              <ul style={{ margin: 0, paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <li>
+                  <strong>Quitaremos tu nombre del selector</strong> de investigadores para que ninguna persona pueda seleccionarte ni buscarte.
+                </li>
+                <li>
+                  Cualquier enlace directo o URL hacia tu perfil responderá con una pantalla de <strong>«No found» (Perfil no disponible)</strong>.
+                </li>
+                <li>
+                  Podrás <strong>revertir esta decisión en el futuro</strong> en cualquier momento volviendo a iniciar sesión con tu ORCID y pulsando «Reactivar Perfil».
+                </li>
+              </ul>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.65rem' }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={updatingVisibility}
+                onClick={() => setShowHideConfirmModal(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                className="btn btn-danger btn-sm"
+                style={{
+                  background: '#ef4444',
+                  borderColor: '#dc2626',
+                  color: '#fff',
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem'
+                }}
+                disabled={updatingVisibility}
+                onClick={() => handleToggleProfileVisibility(true)}
+              >
+                <EyeOff size={14} />
+                <span>{updatingVisibility ? 'Ocultando...' : 'Sí, ocultar mi perfil'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

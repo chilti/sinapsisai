@@ -21,6 +21,14 @@ export const isUserAdmin = (userSession) => {
   );
 };
 
+export const canViewAllResearchers = (userSession) => {
+  if (!userSession || !userSession.isAuthenticated) return false;
+  // Ningún usuario logeado mediante ORCID puede ver el directorio de todos los perfiles.
+  // Es exclusivo para la sesión autenticada con las credenciales de SUPERUSER_USERNAME.
+  if (userSession.orcid) return false;
+  return userSession.can_view_all_researchers === true;
+};
+
 export const useAppStore = create((set, get) => ({
   // Pestaña Activa (Inicio desactivada/oculta; Panorama Nacional por defecto)
   activeTab: 'national', // 'national', 'panorama', 'researchers', 'maps', 'mySpace', 'governance', 'assistant'

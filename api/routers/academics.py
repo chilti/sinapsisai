@@ -11,7 +11,7 @@ import pandas as pd
 import numpy as np
 from fastapi import APIRouter, Query, HTTPException
 
-from api.db import get_neo4j_store, get_clickhouse_client
+from api.db import get_neo4j_store, get_clickhouse_client, get_curation
 from lib.citations_explorer import (
     get_author_work_and_openalex_ids,
     get_citing_works_analysis,
@@ -208,6 +208,27 @@ def search_academics(
         raw_res = neo.global_search(clean_q, limit=limit)
         results = [r for r in raw_res if r.get("type") == "Academic"]
 
+    # Filtrar perfiles ocultos (Derechos ARCO)
+    try:
+        curation = get_curation()
+        h_info = curation.get_hidden_identities()
+        h_names = h_info.get("names", set())
+        h_orcids = h_info.get("orcids", set())
+        h_ids = h_info.get("ids", set())
+
+        filtered_results = []
+        for r in results:
+            r_name = " ".join(str(r.get("name", "")).replace(",", "").strip().lower().split())
+            r_raw = str(r.get("name", "")).strip().lower()
+            r_orc = str(r.get("orcid", "")).replace("https://orcid.org/", "").strip().lower()
+            r_id = str(r.get("id", "")).strip().lower()
+            if r_name in h_names or r_raw in h_names or (r_orc and r_orc in h_orcids) or (r_id and r_id in h_ids):
+                continue
+            filtered_results.append(r)
+        results = filtered_results
+    except Exception as e_fh:
+        print(f"[search_academics] Error filtrando perfiles ocultos: {e_fh}")
+
     return {
         "query": q,
         "total": len(results),
@@ -332,6 +353,33 @@ def list_academics(
             dedup_map[norm] = a
             
     final_list = sorted(list(dedup_map.values()), key=lambda x: x.get("name", "").lower())
+
+    # Filtrar perfiles ocultos del selector (Derechos ARCO / LGPDPPSO)
+    try:
+        curation = get_curation()
+        h_info = curation.get_hidden_identities()
+        h_names = h_info.get("names", set())
+        h_orcids = h_info.get("orcids", set())
+        h_ids = h_info.get("ids", set())
+
+        visible_list = []
+        for a in final_list:
+            a_name = " ".join(str(a.get("name", "")).replace(",", "").strip().lower().split())
+            a_raw = str(a.get("name", "")).strip().lower()
+            a_orc = str(a.get("orcid", "")).replace("https://orcid.org/", "").strip().lower()
+            a_id = str(a.get("id", "")).strip().lower()
+
+            if a_name in h_names or a_raw in h_names:
+                continue
+            if a_orc and (a_orc in h_orcids or f"https://orcid.org/{a_orc}" in h_orcids):
+                continue
+            if a_id and a_id in h_ids:
+                continue
+            visible_list.append(a)
+        final_list = visible_list
+    except Exception as e_hide:
+        print(f"[list_academics] Error filtrando perfiles ocultos: {e_hide}")
+
     names_only = [x["name"] for x in final_list]
 
     return {
@@ -358,6 +406,16 @@ def get_academic_profile(
     if not name and not orcid and not id:
         raise HTTPException(status_code=400, detail="Debe proporcionar 'name', 'orcid' o 'id'")
 
+    # Verificación de perfil oculto: si el investigador solicitó ocultar su perfil, retornar 404 (No found)
+    try:
+        curation = get_curation()
+        if curation.is_profile_hidden(orcid=orcid, name=name, academic_id=id):
+            raise HTTPException(status_code=404, detail="Perfil no encontrado o no disponible (No found)")
+    except HTTPException:
+        raise
+    except Exception as e_hide:
+        print(f"[get_academic_profile] Error comprobando privacidad: {e_hide}")
+
     nodes = _resolve_academic_nodes(name=name, orcid=orcid, person_id=id)
     
     # Consolidar propiedades de múltiples nodos en Neo4j (ej. Padrón oficial + Perfil OpenAlex)
@@ -372,6 +430,16 @@ def get_academic_profile(
     if not raw_orcid and isinstance(primary_node.get("orcids"), list) and primary_node.get("orcids"):
         raw_orcid = primary_node["orcids"][0]
     clean_orcid = str(raw_orcid).replace("https://orcid.org/", "").strip() if raw_orcid else ""
+
+    # Segunda verificación con los identificadores canónicos resueltos
+    try:
+        curation = get_curation()
+        if curation.is_profile_hidden(orcid=clean_orcid, name=final_name, academic_id=primary_node.get("id") or id):
+            raise HTTPException(status_code=404, detail="Perfil no encontrado o no disponible (No found)")
+    except HTTPException:
+        raise
+    except Exception as e_hide2:
+        pass
 
     snii_lvl = primary_node.get("snii_level")
     is_snii = bool(snii_lvl and str(snii_lvl).strip() not in ["None", "", "SIN NIVEL"])
@@ -975,6 +1043,16 @@ def get_academic_works(
     if isinstance(primary_node.get("orcids"), list) and primary_node.get("orcids"):
         clean_orcid = primary_node["orcids"][0]
     clean_orcid = str(clean_orcid).replace("https://orcid.org/", "").strip()
+
+    # Si el perfil está oculto, no retornar sus publicaciones
+    try:
+        curation = get_curation()
+        if curation.is_profile_hidden(orcid=clean_orcid or orcid, name=final_name or name, academic_id=primary_node.get("id")):
+            raise HTTPException(status_code=404, detail="Perfil no encontrado o no disponible (No found)")
+    except HTTPException:
+        raise
+    except Exception as e_wh:
+        pass
 
     inst = primary_node.get("snii_institution")
     subdep = primary_node.get("snii_subdependency")

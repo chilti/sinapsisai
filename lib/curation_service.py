@@ -133,6 +133,16 @@ def init_db():
     );
     """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS hidden_profiles (
+        orcid TEXT PRIMARY KEY,
+        academic_id TEXT,
+        academic_name TEXT,
+        hidden_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        reason TEXT
+    );
+    """)
+
     conn.commit()
     conn.close()
 
@@ -544,6 +554,108 @@ def import_bibtex_file(orcid: str, bibtex_content: str) -> tuple:
     return imported, f"Se importaron con éxito {imported} publicaciones a tu colección personal."
 
 
+# ── Funciones de Privacidad y Ocultamiento de Perfiles (Derechos ARCO) ──
+
+def hide_profile(orcid: str, academic_id: Optional[str] = None, academic_name: Optional[str] = None, reason: str = "Ocultado por el autor en Mi Espacio") -> bool:
+    """Registra un perfil como oculto del directorio público."""
+    if not orcid:
+        return False
+    clean_orc = str(orcid).strip().split('/')[-1]
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """INSERT OR REPLACE INTO hidden_profiles (orcid, academic_id, academic_name, hidden_at, reason)
+               VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?)""",
+            (clean_orc, (academic_id or "").strip(), (academic_name or "").strip(), reason)
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[curation_service] Error en hide_profile: {e}")
+        return False
+    finally:
+        conn.close()
+
+def unhide_profile(orcid: str) -> bool:
+    """Reactiva la visibilidad pública de un perfil previamente oculto."""
+    if not orcid:
+        return False
+    clean_orc = str(orcid).strip().split('/')[-1]
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM hidden_profiles WHERE orcid = ?", (clean_orc,))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[curation_service] Error en unhide_profile: {e}")
+        return False
+    finally:
+        conn.close()
+
+def is_profile_hidden(orcid: Optional[str] = None, name: Optional[str] = None, academic_id: Optional[str] = None) -> bool:
+    """Determina si un investigador está marcado como oculto."""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    try:
+        if orcid:
+            clean_orc = str(orcid).strip().split('/')[-1]
+            cur.execute("SELECT 1 FROM hidden_profiles WHERE orcid = ? LIMIT 1", (clean_orc,))
+            if cur.fetchone():
+                return True
+        if academic_id:
+            clean_id = str(academic_id).strip()
+            cur.execute("SELECT 1 FROM hidden_profiles WHERE academic_id = ? OR orcid = ? LIMIT 1", (clean_id, clean_id))
+            if cur.fetchone():
+                return True
+        if name:
+            clean_name = str(name).strip().lower()
+            norm_q = " ".join(clean_name.replace(",", "").split())
+            cur.execute("SELECT academic_name FROM hidden_profiles WHERE academic_name IS NOT NULL AND academic_name != ''")
+            for row in cur.fetchall():
+                h_name = (row[0] or "").strip().lower()
+                norm_h = " ".join(h_name.replace(",", "").split())
+                if norm_h and (norm_h == norm_q or norm_h in norm_q or norm_q in norm_h):
+                    return True
+        return False
+    except Exception as e:
+        print(f"[curation_service] Error en is_profile_hidden: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_hidden_identities() -> Dict[str, Any]:
+    """Retorna los conjuntos de orcids, ids y nombres normalizados de perfiles ocultos."""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    hidden_orcids = set()
+    hidden_ids = set()
+    hidden_names = set()
+    try:
+        cur.execute("SELECT orcid, academic_id, academic_name FROM hidden_profiles")
+        for orcid, aid, aname in cur.fetchall():
+            if orcid:
+                clean_o = str(orcid).strip().split('/')[-1].lower()
+                hidden_orcids.add(clean_o)
+                hidden_orcids.add(f"https://orcid.org/{clean_o}")
+            if aid:
+                hidden_ids.add(str(aid).strip().lower())
+            if aname:
+                norm_name = " ".join(str(aname).replace(",", "").strip().lower().split())
+                hidden_names.add(norm_name)
+                hidden_names.add(str(aname).strip().lower())
+    except Exception as e:
+        print(f"[curation_service] Error en get_hidden_identities: {e}")
+    finally:
+        conn.close()
+    return {
+        "orcids": hidden_orcids,
+        "ids": hidden_ids,
+        "names": hidden_names
+    }
+
+
 class CurationService:
     """Clase singleton para orquestar la curación en la UI."""
     def claim_work(self, orcid: str, work_id: str, title: str = "") -> bool:
@@ -596,6 +708,18 @@ class CurationService:
         
     def add_institutional_alias(self, institution_name: str, alias: str, created_by: str = "") -> bool:
         return add_institutional_alias(institution_name, alias, created_by)
+
+    def hide_profile(self, orcid: str, academic_id: Optional[str] = None, academic_name: Optional[str] = None, reason: str = "Ocultado por el autor en Mi Espacio") -> bool:
+        return hide_profile(orcid, academic_id=academic_id, academic_name=academic_name, reason=reason)
+
+    def unhide_profile(self, orcid: str) -> bool:
+        return unhide_profile(orcid)
+
+    def is_profile_hidden(self, orcid: Optional[str] = None, name: Optional[str] = None, academic_id: Optional[str] = None) -> bool:
+        return is_profile_hidden(orcid=orcid, name=name, academic_id=academic_id)
+
+    def get_hidden_identities(self) -> Dict[str, Any]:
+        return get_hidden_identities()
 
 
 _service_instance = CurationService()
