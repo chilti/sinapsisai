@@ -995,7 +995,7 @@ export function MyResearcherSpace() {
                     id="CTL-M04-004"
                     type="text"
                     className="form-input form-input-sm"
-                    placeholder="Ej. Carrillo Calvet, Pardo Cemo..."
+                    placeholder="Escribe tus apellidos para buscar tu registro..."
                     value={padronSearchQuery}
                     onChange={(e) => setPadronSearchQuery(e.target.value)}
                   />

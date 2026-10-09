@@ -79,8 +79,8 @@ export const useAppStore = create((set, get) => ({
   setSelectedPeriod: (period) => set({ selectedPeriod: period }),
 
   // Investigador Seleccionado
-  selectedResearcherName: 'PARDO CEMO, ANNIE',
-  selectedResearcherOrcid: '0000-0003-2168-9073',
+  selectedResearcherName: '',
+  selectedResearcherOrcid: '',
   setSelectedResearcher: (name, orcid = '') => set({
     selectedResearcherName: name,
     selectedResearcherOrcid: orcid

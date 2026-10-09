@@ -290,17 +290,9 @@ export function GlobalSearchModal({ isOpen, onClose }) {
                 Búsqueda Global en el Grafo Nacional de Conocimiento
               </h4>
               <p style={{ margin: '0 0 1rem', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                Escribe al menos 2 letras o ingresa un identificador ORCID para explorar:
+                Escribe al menos 2 letras para explorar entidades y facultades:
               </p>
               <div className="search-hints-grid">
-                <div className="search-hint-card" onClick={() => setQuery('Pardo Cemo')}>
-                  <Users size={15} style={{ color: '#0284c7' }} />
-                  <span>Ej. "Pardo Cemo, Annie"</span>
-                </div>
-                <div className="search-hint-card" onClick={() => setQuery('0000-0003-2168-9073')}>
-                  <Command size={15} style={{ color: '#10b981' }} />
-                  <span>Ej. "0000-0003-2168-9073" (ORCID)</span>
-                </div>
                 <div className="search-hint-card" onClick={() => setQuery('Facultad de Ciencias')}>
                   <Building2 size={15} style={{ color: '#8b5cf6' }} />
                   <span>Ej. "Facultad de Ciencias"</span>
@@ -308,6 +300,14 @@ export function GlobalSearchModal({ isOpen, onClose }) {
                 <div className="search-hint-card" onClick={() => setQuery('Biotecnologia')}>
                   <Sparkles size={15} style={{ color: '#f59e0b' }} />
                   <span>Ej. "Instituto de Biotecnología"</span>
+                </div>
+                <div className="search-hint-card" onClick={() => setQuery('Investigaciones Biomedicas')}>
+                  <Building2 size={15} style={{ color: '#0284c7' }} />
+                  <span>Ej. "Investigaciones Biomédicas"</span>
+                </div>
+                <div className="search-hint-card" onClick={() => setQuery('Instituto de Fisica')}>
+                  <Building2 size={15} style={{ color: '#10b981' }} />
+                  <span>Ej. "Instituto de Física"</span>
                 </div>
               </div>
             </div>
