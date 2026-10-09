@@ -221,7 +221,7 @@ export function ScienceMaps() {
   const [categoryFilter, setCategoryFilter] = useState('todos'); // 'todos', 'articulos', 'investigadores', 'redes'
   const [isMapLoaded, setIsMapLoaded] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showMethodology, setShowMethodology] = useState(true);
+  const [showMethodology, setShowMethodology] = useState(false);
   const [iframeKey, setIframeKey] = useState(1);
   const containerRef = useRef(null);
 
@@ -375,52 +375,55 @@ export function ScienceMaps() {
       ref={containerRef}
       className="module-container"
       style={{
-        padding: isFullscreen ? 0 : '0.5rem 1.5rem 2rem',
-        height: isFullscreen ? '100vh' : 'auto',
+        padding: isFullscreen ? 0 : '0.2rem 0.6rem 0 0.6rem',
+        height: isFullscreen ? '100vh' : '100%',
+        flex: '1 1 0',
+        minHeight: 0,
         display: 'flex',
         flexDirection: 'column',
-        gap: '1rem'
+        gap: '0.35rem',
+        overflow: 'hidden'
       }}
     >
       {/* ── 1. Barra de Navegación del Módulo y Modos de Visualización ─────── */}
       {!isFullscreen && (
-        <div className="glass-card" style={{ padding: '1rem 1.25rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div className="glass-card" style={{ padding: '0.45rem 0.85rem', flexShrink: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.35rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
               <div style={{
-                width: '42px', height: '42px', borderRadius: '10px',
+                width: '32px', height: '32px', borderRadius: '8px',
                 background: 'rgba(0, 242, 254, 0.12)', border: '1px solid rgba(0, 242, 254, 0.25)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-cyan)'
               }}>
-                <Compass size={24} />
+                <Compass size={18} />
               </div>
               <div>
-                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <h2 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   Mapas de la Ciencia y Espacios Semánticos
-                  <span className="badge badge-purple" style={{ fontSize: '0.72rem' }}>WebGL GPU 60 FPS</span>
+                  <span className="badge badge-purple" style={{ fontSize: '0.68rem' }}>WebGL GPU 60 FPS</span>
                 </h2>
-                <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
+                <p style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', margin: '1px 0 0 0' }}>
                   Cartografía topológica interactiva sobre millones de publicaciones y redes de investigadoras e investigadores del país.
                 </p>
               </div>
             </div>
 
             {/* Alternador de Modo: Deepscatter WebGL vs Explorador UMAP */}
-            <div style={{ display: 'flex', gap: '0.4rem', background: 'rgba(0,0,0,0.15)', padding: '0.25rem', borderRadius: '8px' }}>
+            <div style={{ display: 'flex', gap: '0.35rem', background: 'rgba(0,0,0,0.15)', padding: '0.2rem', borderRadius: '8px' }}>
               <button
                 className={`btn btn-sm ${viewMode === 'deepscatter' ? 'btn-primary' : 'btn-ghost'}`}
                 onClick={() => setViewMode('deepscatter')}
-                style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
+                style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
               >
-                <Layers size={14} />
+                <Layers size={13} />
                 <span>Deepscatter WebGL (10 Capas)</span>
               </button>
               <button
                 className={`btn btn-sm ${viewMode === 'umap_explorer' ? 'btn-primary' : 'btn-ghost'}`}
                 onClick={() => setViewMode('umap_explorer')}
-                style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
+                style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
               >
-                <Users size={14} />
+                <Users size={13} />
                 <span>Explorador Pares UMAP</span>
               </button>
             </div>
@@ -430,38 +433,42 @@ export function ScienceMaps() {
           {viewMode === 'deepscatter' && (
             <div>
               {/* Filtros de Categoría */}
-              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
                 <button
                   className={`btn btn-xs ${categoryFilter === 'todos' ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setCategoryFilter('todos')}
+                  style={{ padding: '0.15rem 0.5rem', fontSize: '0.72rem' }}
                 >
-                  <Globe size={13} /> Todas las Capas ({MAP_LAYERS.length})
+                  <Globe size={12} /> Todas ({MAP_LAYERS.length})
                 </button>
                 <button
                   className={`btn btn-xs ${categoryFilter === 'articulos' ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setCategoryFilter('articulos')}
+                  style={{ padding: '0.15rem 0.5rem', fontSize: '0.72rem' }}
                 >
-                  <BookOpen size={13} /> 📄 Artículos Semánticos
+                  <BookOpen size={12} /> 📄 Artículos Semánticos
                 </button>
                 <button
                   className={`btn btn-xs ${categoryFilter === 'investigadores' ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setCategoryFilter('investigadores')}
+                  style={{ padding: '0.15rem 0.5rem', fontSize: '0.72rem' }}
                 >
-                  <Users size={13} /> 🧑‍🤝‍🧑 Investigadoras e Investigadores & Desempeño
+                  <Users size={12} /> 🧑‍🤝‍🧑 Investigadores & Desempeño
                 </button>
                 <button
                   className={`btn btn-xs ${categoryFilter === 'redes' ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setCategoryFilter('redes')}
+                  style={{ padding: '0.15rem 0.5rem', fontSize: '0.72rem' }}
                 >
-                  <Network size={13} /> 🕸️ Redes Complejas (Louvain)
+                  <Network size={12} /> 🕸️ Redes Complejas
                 </button>
               </div>
 
               {/* Botonera / Pills de Selección de Capa */}
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-                gap: '0.5rem'
+                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                gap: '0.3rem'
               }}>
                 {filteredLayers.map((layer) => {
                   const isSelected = selectedLayerId === layer.id;
@@ -476,19 +483,19 @@ export function ScienceMaps() {
                       style={{
                         justifyContent: 'flex-start',
                         textAlign: 'left',
-                        padding: '0.45rem 0.75rem',
-                        fontSize: '0.8rem',
+                        padding: '0.25rem 0.5rem',
+                        fontSize: '0.73rem',
                         position: 'relative',
                         borderColor: isSelected ? 'var(--accent-cyan)' : 'var(--border-subtle)',
-                        boxShadow: isSelected ? '0 0 12px rgba(0, 242, 254, 0.25)' : 'none'
+                        boxShadow: isSelected ? '0 0 10px rgba(0, 242, 254, 0.25)' : 'none'
                       }}
                     >
-                      <span style={{ fontSize: '1rem', marginRight: '6px' }}>{layer.emoji}</span>
+                      <span style={{ fontSize: '0.85rem', marginRight: '5px' }}>{layer.emoji}</span>
                       <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
                         {layer.name.replace(/^[^\s]+\s/, '')}
                       </span>
                       {layer.badge && (
-                        <span className="badge badge-amber" style={{ fontSize: '0.62rem', padding: '0.1rem 0.35rem', marginLeft: '4px' }}>
+                        <span className="badge badge-amber" style={{ fontSize: '0.58rem', padding: '0.05rem 0.25rem', marginLeft: '3px' }}>
                           {layer.badge}
                         </span>
                       )}
@@ -506,47 +513,51 @@ export function ScienceMaps() {
         <div
           className="glass-card"
           style={{
-            padding: '1rem 1.25rem',
+            padding: '0.35rem 0.75rem',
             background: isLight ? 'linear-gradient(135deg, #f8fafc, #f1f5f9)' : 'linear-gradient(135deg, #0b1523, #13253b)',
-            borderLeft: '4px solid var(--accent-cyan)'
+            borderLeft: '4px solid var(--accent-cyan)',
+            flexShrink: 0
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
-                <span style={{ fontSize: '1.25rem' }}>{selectedLayer.emoji}</span>
-                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0, color: 'var(--accent-cyan)' }}>
-                  {selectedLayer.title}
-                </h3>
-              </div>
-              <p style={{ fontSize: '0.85rem', lineHeight: '1.55', color: 'var(--text-secondary)', margin: '0 0 0.5rem 0' }}>
-                {selectedLayer.desc}
-              </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0, overflow: 'hidden' }}>
+              <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>{selectedLayer.emoji}</span>
+              <h3 style={{ fontSize: '0.88rem', fontWeight: 700, margin: 0, color: 'var(--accent-cyan)', flexShrink: 0 }}>
+                {selectedLayer.title}
+              </h3>
+              {!showMethodology && (
+                <span style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  — {selectedLayer.desc}
+                </span>
+              )}
             </div>
 
             <button
               onClick={() => setShowMethodology(!showMethodology)}
               className="btn btn-ghost btn-xs"
-              style={{ flexShrink: 0 }}
+              style={{ flexShrink: 0, fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
               title={showMethodology ? "Ocultar detalles técnicos" : "Ver detalles técnicos"}
             >
-              <Info size={14} />
+              <Info size={13} />
               <span>{showMethodology ? "Menos info" : "Metodología y Casos"}</span>
-              {showMethodology ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              {showMethodology ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
           </div>
 
           {showMethodology && (
-            <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)', fontSize: '0.82rem' }}>
-              <div style={{ marginBottom: '0.5rem' }}>
+            <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-subtle)', fontSize: '0.8rem' }}>
+              <p style={{ fontSize: '0.82rem', lineHeight: '1.5', color: 'var(--text-secondary)', margin: '0 0 0.4rem 0' }}>
+                {selectedLayer.desc}
+              </p>
+              <div style={{ marginBottom: '0.4rem' }}>
                 <strong style={{ color: 'var(--accent-purple)' }}>⚙️ Pipeline Tecnológico: </strong>
-                <code style={{ fontSize: '0.78rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: 'rgba(255,255,255,0.06)' }}>
+                <code style={{ fontSize: '0.75rem', padding: '0.12rem 0.35rem', borderRadius: '4px', background: 'rgba(255,255,255,0.06)' }}>
                   {selectedLayer.tech}
                 </code>
               </div>
               <div>
                 <strong style={{ color: 'var(--accent-cyan)' }}>💡 Casos de Uso Principales:</strong>
-                <ul style={{ margin: '0.35rem 0 0 0', paddingLeft: '1.25rem', lineHeight: '1.5', color: 'var(--text-secondary)' }}>
+                <ul style={{ margin: '0.25rem 0 0 0', paddingLeft: '1.25rem', lineHeight: '1.45', color: 'var(--text-secondary)' }}>
                   {selectedLayer.uses.map((u, i) => (
                     <li key={i}>{u}</li>
                   ))}
@@ -562,12 +573,15 @@ export function ScienceMaps() {
         <div
           className="glass-card"
           style={{
-            padding: isFullscreen ? 0 : '0.5rem',
+            padding: isFullscreen ? 0 : '0.35rem',
             position: 'relative',
-            flex: 1,
-            minHeight: isFullscreen ? '100vh' : '750px',
+            flex: '1 1 0',
+            minHeight: 0,
+            height: '100%',
             display: 'flex',
-            flexDirection: 'column'
+            flexDirection: 'column',
+            marginBottom: 0,
+            overflow: 'hidden'
           }}
         >
           {/* Barra de Controles del Lienzo */}
@@ -575,47 +589,48 @@ export function ScienceMaps() {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            padding: '0.5rem 0.75rem',
+            padding: '0.35rem 0.65rem',
             borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
             flexWrap: 'wrap',
-            gap: '0.5rem'
+            gap: '0.4rem',
+            flexShrink: 0
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span className="badge badge-cyan" style={{ fontSize: '0.75rem' }}>
+              <span className="badge badge-cyan" style={{ fontSize: '0.73rem', padding: '0.15rem 0.45rem' }}>
                 {selectedLayer.name}
               </span>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                 Navegación: Arrastra para desplazar · Rueda del mouse para zoom profundo
               </span>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
               <button
                 className={`btn btn-sm ${isMapLoaded ? 'btn-secondary' : 'btn-primary'}`}
                 onClick={() => setIsMapLoaded(!isMapLoaded)}
-                style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
+                style={{ fontSize: '0.73rem', padding: '0.25rem 0.55rem' }}
               >
-                {isMapLoaded ? <EyeOff size={13} /> : <Play size={13} />}
+                {isMapLoaded ? <EyeOff size={12} /> : <Play size={12} />}
                 <span>{isMapLoaded ? "Ocultar Mapa" : "Cargar Mapa"}</span>
               </button>
 
               <button
                 className="btn btn-secondary btn-sm"
                 onClick={handleReload}
-                style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
+                style={{ fontSize: '0.73rem', padding: '0.25rem 0.55rem' }}
                 title="Recargar lienzo WebGL"
               >
-                <RotateCcw size={13} />
+                <RotateCcw size={12} />
                 <span>Recargar</span>
               </button>
 
               <button
                 className="btn btn-secondary btn-sm"
                 onClick={handleToggleFullscreen}
-                style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
+                style={{ fontSize: '0.73rem', padding: '0.25rem 0.55rem' }}
                 title="Pantalla Completa"
               >
-                {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                {isFullscreen ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
                 <span>{isFullscreen ? "Salir" : "Pantalla Completa"}</span>
               </button>
 
@@ -624,10 +639,10 @@ export function ScienceMaps() {
                 target="_blank"
                 rel="noreferrer"
                 className="btn btn-ghost btn-sm"
-                style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
+                style={{ fontSize: '0.73rem', padding: '0.25rem 0.55rem' }}
                 title="Abrir visor en pestaña nueva"
               >
-                <ExternalLink size={13} />
+                <ExternalLink size={12} />
                 <span>Abrir directo</span>
               </a>
             </div>
@@ -635,7 +650,7 @@ export function ScienceMaps() {
 
           {/* Iframe Deepscatter WebGL */}
           {isMapLoaded ? (
-            <div style={{ flex: 1, position: 'relative', width: '100%', height: isFullscreen ? 'calc(100vh - 46px)' : '720px' }}>
+            <div style={{ flex: '1 1 0', position: 'relative', width: '100%', height: '100%', minHeight: 0 }}>
               <iframe
                 key={`${selectedLayer.id}-${iframeKey}`}
                 src={iframeSrc}
@@ -644,7 +659,7 @@ export function ScienceMaps() {
                   width: '100%',
                   height: '100%',
                   border: 'none',
-                  borderRadius: isFullscreen ? 0 : '8px',
+                  borderRadius: isFullscreen ? 0 : '6px',
                   display: 'block'
                 }}
                 loading="lazy"
@@ -653,7 +668,9 @@ export function ScienceMaps() {
             </div>
           ) : (
             <div style={{
-              height: '480px',
+              flex: '1 1 0',
+              minHeight: 0,
+              height: '100%',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -677,25 +694,25 @@ export function ScienceMaps() {
 
       {/* ── 4. Modo Secundario: Explorador de Pares Académicos (Plotly UMAP) ── */}
       {viewMode === 'umap_explorer' && (
-        <div className="glass-card" style={{ padding: '1rem' }}>
+        <div className="glass-card" style={{ padding: '0.65rem 0.85rem', flex: '1 1 0', minHeight: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {/* Controles del Explorador UMAP */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem' }}>
-            <div style={{ flex: 1, minWidth: '240px', position: 'relative' }}>
-              <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem', flexShrink: 0 }}>
+            <div style={{ flex: 1, minWidth: '220px', position: 'relative' }}>
+              <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
               <input
                 type="text"
                 className="form-input"
-                style={{ paddingLeft: '2.2rem', fontSize: '0.85rem' }}
+                style={{ paddingLeft: '2.1rem', fontSize: '0.82rem' }}
                 placeholder="Buscar investigador, institución o tópico..."
                 value={searchFilter}
                 onChange={(e) => setSearchFilter(e.target.value)}
               />
             </div>
 
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
               <select
                 className="form-select"
-                style={{ fontSize: '0.82rem', padding: '0.35rem 0.65rem' }}
+                style={{ fontSize: '0.8rem', padding: '0.3rem 0.6rem' }}
                 value={colorMode}
                 onChange={(e) => setColorMode(e.target.value)}
               >
@@ -706,7 +723,7 @@ export function ScienceMaps() {
 
               <select
                 className="form-select"
-                style={{ fontSize: '0.82rem', padding: '0.35rem 0.65rem' }}
+                style={{ fontSize: '0.8rem', padding: '0.3rem 0.6rem' }}
                 value={selectedDomain}
                 onChange={(e) => setSelectedDomain(e.target.value)}
               >
@@ -720,60 +737,63 @@ export function ScienceMaps() {
                 className="btn btn-secondary btn-sm"
                 onClick={() => { setSearchFilter(''); setSelectedDomain('all'); }}
                 title="Restablecer filtros"
+                style={{ padding: '0.3rem 0.5rem' }}
               >
                 <RotateCcw size={13} />
               </button>
             </div>
           </div>
 
-          <div style={{ marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span className="badge badge-cyan" style={{ fontSize: '0.75rem' }}>
+          <div style={{ marginBottom: '0.35rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+            <span className="badge badge-cyan" style={{ fontSize: '0.73rem' }}>
               {filteredUmapPoints.length.toLocaleString()} pares académicos evaluados
             </span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
               Tip: Haz clic sobre un nodo para abrir su perfil individual en el Módulo de Investigadores
             </span>
           </div>
 
           {loadingUmap ? (
-            <div style={{ height: '560px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ flex: '1 1 0', minHeight: 0, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
               <Sparkles size={32} style={{ color: 'var(--accent-cyan)', animation: 'spin 2s linear infinite', marginBottom: '1rem' }} />
               <p style={{ color: 'var(--text-secondary)' }}>Cargando proyecciones UMAP de pares...</p>
             </div>
           ) : (
-            <Plot
-              data={plotData}
-              layout={{
-                autosize: true,
-                height: 580,
-                paper_bgcolor: 'transparent',
-                plot_bgcolor: 'transparent',
-                font: { family: 'Plus Jakarta Sans, sans-serif', color: isLight ? '#334155' : '#94a3b8' },
-                xaxis: {
-                  zeroline: false,
-                  showgrid: true,
-                  gridcolor: isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)',
-                  showticklabels: false
-                },
-                yaxis: {
-                  zeroline: false,
-                  showgrid: true,
-                  gridcolor: isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)',
-                  showticklabels: false
-                },
-                legend: { orientation: 'h', y: -0.08, x: 0 },
-                margin: { l: 20, r: 20, t: 20, b: 50 },
-                hovermode: 'closest'
-              }}
-              config={{
-                responsive: true,
-                scrollZoom: true,
-                displayModeBar: true,
-                modeBarButtonsToRemove: ['lasso2d', 'select2d']
-              }}
-              style={{ width: '100%' }}
-              onClick={handlePointClick}
-            />
+            <div style={{ flex: '1 1 0', minHeight: 0, width: '100%', height: '100%' }}>
+              <Plot
+                data={plotData}
+                useResizeHandler={true}
+                layout={{
+                  autosize: true,
+                  paper_bgcolor: 'transparent',
+                  plot_bgcolor: 'transparent',
+                  font: { family: 'Plus Jakarta Sans, sans-serif', color: isLight ? '#334155' : '#94a3b8' },
+                  xaxis: {
+                    zeroline: false,
+                    showgrid: true,
+                    gridcolor: isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)',
+                    showticklabels: false
+                  },
+                  yaxis: {
+                    zeroline: false,
+                    showgrid: true,
+                    gridcolor: isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)',
+                    showticklabels: false
+                  },
+                  legend: { orientation: 'h', y: -0.08, x: 0 },
+                  margin: { l: 20, r: 20, t: 20, b: 40 },
+                  hovermode: 'closest'
+                }}
+                config={{
+                  responsive: true,
+                  scrollZoom: true,
+                  displayModeBar: true,
+                  modeBarButtonsToRemove: ['lasso2d', 'select2d']
+                }}
+                style={{ width: '100%', height: '100%' }}
+                onClick={handlePointClick}
+              />
+            </div>
           )}
         </div>
       )}

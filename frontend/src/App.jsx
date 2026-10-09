@@ -182,7 +182,7 @@ export function App() {
   ]);
 
   return (
-    <div className={`app-root ${activeTab === 'networks' ? 'networks-mode' : ''}`}>
+    <div className={`app-root ${activeTab === 'networks' || activeTab === 'maps' ? 'networks-mode' : ''}`}>
       {/* Luz Ambiental de Fondo */}
       <div className="ambient-glow" />
 
@@ -193,7 +193,7 @@ export function App() {
       <Navbar />
 
       {/* 3. Área de Contenido Dinámico */}
-      <main className={`main-content-area ${activeTab === 'networks' ? 'networks-view-active' : ''}`} role="main">
+      <main className={`main-content-area ${activeTab === 'networks' || activeTab === 'maps' ? 'networks-view-active' : ''}`} role="main">
         <ErrorBoundary>
           {activeTab === 'home' && <HomeGalaxy />}
           {activeTab === 'national' && <NationalPanorama />}
@@ -209,7 +209,7 @@ export function App() {
       </main>
 
       {/* 4. Pie de Página (oculto en vistas inmersivas de pantalla completa) */}
-      {activeTab !== 'networks' && (
+      {activeTab !== 'networks' && activeTab !== 'maps' && (
         <footer className="app-footer">
           <div>
             <span>© 2026 Ecosistema TlachIA · Universidad Nacional Autónoma de México (UNAM)</span>
